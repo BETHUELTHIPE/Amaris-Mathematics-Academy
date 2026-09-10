@@ -13,8 +13,8 @@ export default async function Home() {
     <main className="min-h-screen bg-[#f5f7fb] text-[#0a1b36]">
       <Header />
       <section className="relative isolate overflow-hidden bg-[#07152d] text-white">
-        <Image src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" fill priority quality={82} className="object-cover object-[62%_center] opacity-65" sizes="100vw" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,#07152d_0%,#07152d_34%,rgba(7,21,45,.78)_54%,rgba(7,21,45,.12)_100%)]" />
+        <Image src="/amaris-math-hero.png" alt="A student working through mathematics in a focused study environment" fill priority quality={90} className="object-cover object-[62%_center] opacity-90" sizes="100vw" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,#07152d_0%,rgba(7,21,45,.95)_34%,rgba(7,21,45,.66)_54%,rgba(7,21,45,.04)_100%)]" />
         <div className="graph-paper absolute inset-0 opacity-15" />
         <div className="relative mx-auto grid min-h-[690px] max-w-7xl items-center px-5 py-20 lg:px-8">
           <div className="max-w-2xl">
