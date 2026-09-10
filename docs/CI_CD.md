@@ -13,7 +13,7 @@ The `Quality Gates and Release` workflow validates every pull request to `main`,
 | Test suites | Unit, integration, permission, payment and full regression suites |
 | Frontend correctness | ESLint, TypeScript, production build and Node tests |
 | Accessibility | Pa11y against home, courses, contact, login and registration at WCAG 2 AA |
-| Lighthouse | Performance 75%, accessibility 95%, best practices 90%, SEO 90% minimum |
+| Lighthouse | Performance 85%, accessibility 95%, best practices 90%, SEO 90%, plus Core Web Vitals lab budgets |
 | Dependency security | `pip-audit` and `npm audit` with critical findings blocking |
 | Secret security | Full-history Gitleaks scan |
 | Container quality | Docker Compose validation and a clean production-image build |

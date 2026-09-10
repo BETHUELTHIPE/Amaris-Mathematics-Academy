@@ -75,6 +75,10 @@ The backend disaster-recovery policy and operator runbook are in [`backend/docs/
 
 The staging-only Locust suite covers public course discovery, account entry points, authenticated learning, progress, application checkout creation and payment-status polling. It includes normal, peak, sudden-spike, database-delay, Redis-loss, Celery-backlog and monitoring-outage scenarios with enforceable response-time and failure-rate limits. Direct PayFast traffic and the live Amaris hostname are blocked by default. See [`backend/load_tests/README.md`](backend/load_tests/README.md).
 
+## Performance
+
+Public page rendering no longer waits for authentication, global CMS content is fetched once per render, course lists use summary payloads, Django public reads use a failure-tolerant cache, and Celery's durable broker is isolated from the eviction-based response cache. Gunicorn, PostgreSQL, Redis, NGINX and container resource defaults are explicitly bounded and observable. Targets, sizing guidance and the measurement loop are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+
 ## Quality gates and releases
 
 GitHub Actions now blocks releases on Python, Django, frontend, accessibility, Lighthouse, dependency, secret, Docker and container-security checks. Successful `main` builds promote an immutable backend image to staging; production requires a manual run, a protected GitHub environment approval, a pre-migration backup for high-risk changes and a successful post-deployment readiness check. See [`docs/CI_CD.md`](docs/CI_CD.md) for repository settings, protected secrets and webhook contracts.

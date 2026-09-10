@@ -29,5 +29,5 @@ export const academyBrand: AcademyBrand = {
   hours: "Mon–Sun, 07:00–20:00",
   website: "amaris-mathematics-academy.bethuelthipe.chatgpt.site",
   websiteHref: "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site",
-  logoPath: "/brand/amaris-academy-mark.png",
+  logoPath: "/brand/amaris-academy-icon-192.png",
 };

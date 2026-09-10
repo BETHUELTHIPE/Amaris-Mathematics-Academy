@@ -126,6 +126,8 @@ jobs:
         run: npm run typecheck
       - name: Production build
         run: npm run build
+      - name: Frontend performance budgets
+        run: npm run check:performance
       - name: Frontend unit tests
         run: npm run test:unit
       - name: Accessibility tests

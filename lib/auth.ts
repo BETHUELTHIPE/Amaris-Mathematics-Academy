@@ -1,4 +1,5 @@
-import type { User } from "@supabase/supabase-js";
+import type { JwtPayload } from "@supabase/supabase-js";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getSupabaseConfig } from "@/lib/supabase/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -12,18 +13,15 @@ export type StudentIdentity = {
   emailVerified: boolean;
 };
 
-export async function getStudentIdentity(): Promise<StudentIdentity | null> {
+export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null> => {
   if (!getSupabaseConfig()) return null;
 
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getClaims();
 
-  if (error || !user) return null;
-  return mapUser(user);
-}
+  if (error || !data?.claims) return null;
+  return mapClaims(data.claims);
+});
 
 export async function requireVerifiedStudent(
   returnTo = "/dashboard",
@@ -68,16 +66,17 @@ export function safeRelativePath(value: string | null | undefined): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function mapUser(user: User): StudentIdentity {
-  const firstName = cleanName(user.user_metadata?.first_name) || "Student";
-  const lastName = cleanName(user.user_metadata?.last_name);
+function mapClaims(claims: JwtPayload): StudentIdentity {
+  const metadata = claims.user_metadata ?? {};
+  const firstName = cleanName(metadata.first_name) || "Student";
+  const lastName = cleanName(metadata.last_name);
   return {
-    id: user.id,
-    email: user.email ?? "",
+    id: claims.sub,
+    email: typeof claims.email === "string" ? claims.email : "",
     firstName,
     lastName,
     displayName: [firstName, lastName].filter(Boolean).join(" "),
-    emailVerified: Boolean(user.email_confirmed_at),
+    emailVerified: claims.email_verified === true,
   };
 }
 

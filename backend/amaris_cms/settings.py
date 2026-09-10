@@ -78,11 +78,50 @@ ASGI_APPLICATION = "amaris_cms.asgi.application"
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        conn_max_age=600,
+        conn_max_age=int(os.getenv("DATABASE_CONN_MAX_AGE", "600")),
         conn_health_checks=True,
         ssl_require=env_bool("DATABASE_SSL_REQUIRED", False),
     )
 }
+if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    DATABASES["default"].setdefault("OPTIONS", {}).update(
+        {
+            "connect_timeout": int(os.getenv("DATABASE_CONNECT_TIMEOUT", "5")),
+            "options": " ".join(
+                [
+                    f"-c statement_timeout={int(os.getenv('DATABASE_STATEMENT_TIMEOUT_MS', '30000'))}",
+                    "-c idle_in_transaction_session_timeout=30000",
+                ]
+            ),
+        }
+    )
+
+CACHES = {
+    "default": {
+        "BACKEND": "amaris_cms.cache.ResilientRedisCache",
+        "LOCATION": os.getenv("DJANGO_CACHE_URL", "redis://redis_cache:6379/0"),
+        "TIMEOUT": int(os.getenv("DJANGO_CACHE_DEFAULT_TIMEOUT", "300")),
+        "KEY_PREFIX": os.getenv("DJANGO_CACHE_KEY_PREFIX", "amaris"),
+        "OPTIONS": {
+            "socket_connect_timeout": 1,
+            "socket_timeout": 1,
+            "max_connections": int(os.getenv("DJANGO_CACHE_MAX_CONNECTIONS", "30")),
+        },
+    },
+    "public_content": {
+        "BACKEND": "amaris_cms.cache.ResilientRedisCache",
+        "LOCATION": os.getenv("DJANGO_PUBLIC_CACHE_URL", "redis://redis_cache:6379/1"),
+        "TIMEOUT": int(os.getenv("DJANGO_CACHE_DEFAULT_TIMEOUT", "300")),
+        "KEY_PREFIX": os.getenv("DJANGO_PUBLIC_CACHE_KEY_PREFIX", "amaris-public"),
+        "OPTIONS": {
+            "socket_connect_timeout": 1,
+            "socket_timeout": 1,
+            "max_connections": int(os.getenv("DJANGO_CACHE_MAX_CONNECTIONS", "30")),
+        },
+    },
+}
+PUBLIC_CONTENT_CACHE_SECONDS = int(os.getenv("PUBLIC_CONTENT_CACHE_SECONDS", "300"))
+SITE_BOOTSTRAP_CACHE_SECONDS = int(os.getenv("SITE_BOOTSTRAP_CACHE_SECONDS", "60"))
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -166,6 +205,19 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_MAX_TASKS_PER_CHILD = int(os.getenv("CELERY_WORKER_MAX_TASKS_PER_CHILD", "500"))
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = int(os.getenv("CELERY_WORKER_MAX_MEMORY_PER_CHILD_KB", "350000"))
+CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
+CELERY_BROKER_POOL_LIMIT = int(os.getenv("CELERY_BROKER_POOL_LIMIT", "10"))
+CELERY_RESULT_EXPIRES = int(os.getenv("CELERY_RESULT_EXPIRES_SECONDS", "86400"))
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TASK_PUBLISH_RETRY = True
+CELERY_TASK_PUBLISH_RETRY_POLICY = {
+    "max_retries": 5,
+    "interval_start": 0,
+    "interval_step": 1,
+    "interval_max": 5,
+}
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     "visibility_timeout": 3600,

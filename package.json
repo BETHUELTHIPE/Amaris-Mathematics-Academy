@@ -15,6 +15,7 @@
     "test:unit": "node --test tests/*.test.mjs",
     "test:accessibility": "pa11y-ci --config .pa11yci.json",
     "test:lighthouse": "lhci autorun --config=lighthouserc.json",
+    "check:performance": "node scripts/performance/check-budgets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"

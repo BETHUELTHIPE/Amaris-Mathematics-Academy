@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from content.models import Enrollment, Payment, PaymentReconciliationRun
@@ -15,21 +16,37 @@ def reconcile_verified_payments() -> PaymentReconciliationRun:
 
     run = PaymentReconciliationRun.objects.create()
     try:
-        eligible_ids = list(
+        eligible_ids = (
             Payment.objects.filter(
                 status=Payment.Status.PAID,
                 gateway_verified_at__isnull=False,
-            ).values_list("pk", flat=True)
+            )
+            .filter(Q(enrollment__isnull=True) | Q(enrollment__status=Enrollment.Status.PENDING))
+            .values_list("pk", flat=True)
+            .iterator(chunk_size=200)
         )
         unresolved = Payment.objects.filter(
             status=Payment.Status.PAID,
             gateway_verified_at__isnull=True,
         ).count()
         repaired = 0
+        scanned = 0
 
         for payment_id in eligible_ids:
             with transaction.atomic():
-                payment = Payment.objects.select_for_update().select_related("enrollment").get(pk=payment_id)
+                payment = (
+                    Payment.objects.select_for_update(skip_locked=True)
+                    .select_related("enrollment")
+                    .filter(
+                        pk=payment_id,
+                        status=Payment.Status.PAID,
+                        gateway_verified_at__isnull=False,
+                    )
+                    .first()
+                )
+                if payment is None:
+                    continue
+                scanned += 1
                 enrollment, created = Enrollment.objects.select_for_update().get_or_create(
                     student=payment.student,
                     course=payment.course,
@@ -56,7 +73,7 @@ def reconcile_verified_payments() -> PaymentReconciliationRun:
 
         run.status = PaymentReconciliationRun.Status.SUCCEEDED
         run.completed_at = timezone.now()
-        run.payments_scanned = len(eligible_ids)
+        run.payments_scanned = scanned
         run.enrollments_repaired = repaired
         run.unresolved_count = unresolved
         run.save(

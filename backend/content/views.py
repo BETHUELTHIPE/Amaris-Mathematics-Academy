@@ -1,5 +1,8 @@
+from django.conf import settings
 from django.db.models import Count, Prefetch, Q
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -25,6 +28,7 @@ from .serializers import (
     ContactEnquirySerializer,
     CourseCategorySerializer,
     CourseSerializer,
+    CourseSummarySerializer,
     FAQSerializer,
     NavigationItemSerializer,
     PageSerializer,
@@ -35,11 +39,16 @@ from .serializers import (
 )
 
 
+def public_cache(seconds: int):
+    return method_decorator(cache_page(seconds, cache="public_content", key_prefix="public-api-v1"), name="dispatch")
+
+
 def live_filter(now=None):
     now = now or timezone.now()
     return Q(is_published=True) & (Q(publish_at__isnull=True) | Q(publish_at__lte=now))
 
 
+@public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class SiteSettingsView(generics.GenericAPIView):
     serializer_class = SiteSettingsSerializer
 
@@ -50,6 +59,7 @@ class SiteSettingsView(generics.GenericAPIView):
         return Response(self.get_serializer(settings).data)
 
 
+@public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class NavigationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NavigationItemSerializer
     pagination_class = None
@@ -58,6 +68,7 @@ class NavigationViewSet(viewsets.ReadOnlyModelViewSet):
         return NavigationItem.objects.filter(is_active=True)
 
 
+@public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class PageViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PageSerializer
     lookup_field = "slug"
@@ -70,6 +81,7 @@ class PageViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
 
+@public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class CourseCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseCategorySerializer
     lookup_field = "slug"
@@ -77,6 +89,7 @@ class CourseCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = CourseCategory.objects.filter(is_active=True)
 
 
+@public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class CourseViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseSerializer
     lookup_field = "slug"
@@ -85,16 +98,20 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
     ordering_fields = ("title", "price", "order", "created_at")
     ordering = ("order", "title")
 
+    def get_serializer_class(self):
+        if getattr(self, "action", None) in {"list", "featured"}:
+            return CourseSummarySerializer
+        return CourseSerializer
+
     def get_queryset(self):
         now = timezone.now()
-        lesson_queryset = Lesson.objects.filter(live_filter(now)).select_related("video").order_by("order")
+        lesson_queryset = Lesson.objects.filter(live_filter(now)).order_by("order")
         module_queryset = CourseModule.objects.filter(is_published=True).prefetch_related(
             Prefetch("lessons", queryset=lesson_queryset)
         )
-        return (
+        queryset = (
             Course.objects.filter(live_filter(now), status=Course.Status.PUBLISHED)
             .select_related("category")
-            .prefetch_related(Prefetch("modules", queryset=module_queryset))
             .annotate(
                 lesson_count=Count(
                     "modules__lessons",
@@ -104,6 +121,11 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
                 )
             )
         )
+        if getattr(self, "action", None) in {"list", "featured"}:
+            queryset = queryset.defer("description", "outcomes")
+        if getattr(self, "action", None) == "retrieve":
+            queryset = queryset.prefetch_related(Prefetch("modules", queryset=module_queryset))
+        return queryset
 
     @action(detail=False, methods=["get"])
     def featured(self, request):
@@ -112,6 +134,7 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
+@public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class PricingPlanViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PricingPlanSerializer
     pagination_class = None
@@ -120,6 +143,7 @@ class PricingPlanViewSet(viewsets.ReadOnlyModelViewSet):
         return PricingPlan.objects.filter(live_filter()).order_by("order", "price")
 
 
+@public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class TestimonialViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TestimonialSerializer
     pagination_class = None
@@ -128,6 +152,7 @@ class TestimonialViewSet(viewsets.ReadOnlyModelViewSet):
         return Testimonial.objects.filter(live_filter()).order_by("order")
 
 
+@public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class FAQViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = FAQSerializer
     pagination_class = None
@@ -137,6 +162,7 @@ class FAQViewSet(viewsets.ReadOnlyModelViewSet):
         return FAQ.objects.filter(live_filter()).order_by("order")
 
 
+@public_cache(settings.SITE_BOOTSTRAP_CACHE_SECONDS)
 class AnnouncementViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AnnouncementSerializer
     pagination_class = None
@@ -156,6 +182,7 @@ class ContactEnquiryViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     throttle_classes = (EnquiryThrottle,)
 
 
+@public_cache(settings.SITE_BOOTSTRAP_CACHE_SECONDS)
 class SiteBootstrapView(generics.GenericAPIView):
     """One request for global website content used by the public frontend shell."""
 

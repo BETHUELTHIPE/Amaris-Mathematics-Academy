@@ -8,7 +8,27 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes: [postgres_data:/var/lib/postgresql/data]
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-100}
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-256MB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-768MB}
+      - -c
+      - work_mem=${POSTGRES_WORK_MEM:-8MB}
+      - -c
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-128MB}
+      - -c
+      - idle_in_transaction_session_timeout=30s
+      - -c
+      - statement_timeout=30s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init/001-performance.sql:/docker-entrypoint-initdb.d/001-performance.sql:ro
     networks: [backend_network, monitoring_network]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -16,11 +36,13 @@ services:
       timeout: 5s
       retries: 5
     stop_grace_period: 60s
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-1g}
+    cpus: ${POSTGRES_CPU_LIMIT:-1.5}
 
   redis:
     image: redis:8-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--save", "60", "1000", "--maxmemory-policy", "noeviction"]
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--save", "60", "1000", "--maxmemory", "${REDIS_BROKER_MAXMEMORY:-512mb}", "--maxmemory-policy", "noeviction", "--tcp-keepalive", "60"]
     volumes: [redis_data:/data]
     networks: [backend_network, monitoring_network]
     healthcheck:
@@ -29,6 +51,22 @@ services:
       timeout: 5s
       retries: 5
     stop_grace_period: 30s
+    mem_limit: ${REDIS_BROKER_MEMORY_LIMIT:-640m}
+    cpus: ${REDIS_BROKER_CPU_LIMIT:-0.75}
+
+  redis_cache:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "${REDIS_CACHE_MAXMEMORY:-256mb}", "--maxmemory-policy", "allkeys-lru", "--tcp-keepalive", "60"]
+    networks: [backend_network, monitoring_network]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 10s
+    mem_limit: ${REDIS_CACHE_MEMORY_LIMIT:-320m}
+    cpus: ${REDIS_CACHE_CPU_LIMIT:-0.5}
 
   migrate:
     build: .
@@ -38,6 +76,7 @@ services:
     environment:
       SERVICE_ROLE: migrate
       POSTGRES_HOST: db
+      DATABASE_STATEMENT_TIMEOUT_MS: 0
       RESTIC_PASSWORD_FILE: /run/secrets/restic_password
     command: /app/ops/migrate.sh
     volumes:
@@ -71,6 +110,8 @@ services:
       start_period: 30s
     stop_signal: SIGTERM
     stop_grace_period: 90s
+    mem_limit: ${WEB_MEMORY_LIMIT:-1g}
+    cpus: ${WEB_CPU_LIMIT:-1.5}
 
   celery_worker:
     build: .
@@ -93,6 +134,8 @@ services:
       start_period: 30s
     stop_signal: SIGTERM
     stop_grace_period: 10m
+    mem_limit: ${CELERY_MEMORY_LIMIT:-1g}
+    cpus: ${CELERY_CPU_LIMIT:-1.5}
 
   celery_beat:
     build: .
@@ -115,6 +158,8 @@ services:
       start_period: 30s
     stop_signal: SIGTERM
     stop_grace_period: 60s
+    mem_limit: ${CELERY_BEAT_MEMORY_LIMIT:-256m}
+    cpus: ${CELERY_BEAT_CPU_LIMIT:-0.25}
 
   payment_reconciler:
     build: .
@@ -310,6 +355,12 @@ services:
     environment: {REDIS_ADDR: redis://redis:6379}
     networks: [backend_network, monitoring_network]
 
+  redis_cache_exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    restart: unless-stopped
+    environment: {REDIS_ADDR: redis://redis_cache:6379}
+    networks: [backend_network, monitoring_network]
+
   node_exporter:
     image: prom/node-exporter:v1.9.1
     restart: unless-stopped
@@ -342,6 +393,8 @@ services:
     networks: [frontend_network, backend_network, monitoring_network]
     stop_signal: SIGQUIT
     stop_grace_period: 60s
+    mem_limit: ${NGINX_MEMORY_LIMIT:-256m}
+    cpus: ${NGINX_CPU_LIMIT:-0.5}
 
   pgadmin:
     image: dpage/pgadmin4:9.8

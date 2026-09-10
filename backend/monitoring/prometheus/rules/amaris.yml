@@ -29,6 +29,13 @@ groups:
         annotations:
           summary: Redis is unavailable; web traffic continues but queued work is degraded
 
+      - alert: AmarisResponseCacheUnavailable
+        expr: up{job="redis_cache_exporter"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: The response cache is unavailable; Django continues with uncached database reads
+
   - name: amaris-recovery
     rules:
       - alert: AmarisBackupFailed

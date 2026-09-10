@@ -76,6 +76,13 @@ class NavigationItem(TimeStampedModel):
     class Meta:
         ordering = ["location", "order", "label"]
         unique_together = [("location", "label")]
+        indexes = [
+            models.Index(
+                fields=["location", "order"],
+                condition=models.Q(is_active=True),
+                name="nav_active_loc_order_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return self.label
@@ -117,6 +124,13 @@ class PageSection(PublishableModel):
     class Meta:
         ordering = ["page", "order", "id"]
         unique_together = [("page", "section_key")]
+        indexes = [
+            models.Index(
+                fields=["page", "order"],
+                condition=models.Q(is_published=True),
+                name="page_section_live_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.page}: {self.heading}"
@@ -164,6 +178,18 @@ class Course(PublishableModel):
 
     class Meta:
         ordering = ["order", "title"]
+        indexes = [
+            models.Index(
+                fields=["order", "title"],
+                condition=models.Q(status="published", is_published=True),
+                name="course_live_order_idx",
+            ),
+            models.Index(
+                fields=["order"],
+                condition=models.Q(status="published", is_published=True, featured=True),
+                name="course_featured_live_idx",
+            ),
+        ]
 
     def save(self, *args, **kwargs):
         self.is_published = self.status == self.Status.PUBLISHED
@@ -183,6 +209,13 @@ class CourseModule(TimeStampedModel):
     class Meta:
         ordering = ["course", "order", "id"]
         unique_together = [("course", "order")]
+        indexes = [
+            models.Index(
+                fields=["course", "order"],
+                condition=models.Q(is_published=True),
+                name="module_live_order_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.course}: {self.title}"
@@ -242,6 +275,13 @@ class Lesson(PublishableModel):
     class Meta:
         ordering = ["module", "order", "id"]
         unique_together = [("module", "slug"), ("module", "order")]
+        indexes = [
+            models.Index(
+                fields=["module", "order", "publish_at"],
+                condition=models.Q(is_published=True),
+                name="lesson_live_order_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.module}: {self.title}"
@@ -334,6 +374,13 @@ class Announcement(PublishableModel):
 
     class Meta:
         ordering = ["-priority", "-created_at"]
+        indexes = [
+            models.Index(
+                fields=["-priority", "-created_at", "expires_at"],
+                condition=models.Q(is_published=True),
+                name="announcement_live_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return self.title
@@ -361,6 +408,7 @@ class ContactEnquiry(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         verbose_name_plural = "Contact enquiries"
+        indexes = [models.Index(fields=["status", "-created_at"], name="enquiry_status_created_idx")]
 
     def __str__(self) -> str:
         return f"{self.subject} — {self.name}"
@@ -400,6 +448,7 @@ class Enrollment(TimeStampedModel):
     class Meta:
         ordering = ["-enrolled_at"]
         unique_together = [("student", "course")]
+        indexes = [models.Index(fields=["student", "status", "-enrolled_at"], name="enrol_student_status_idx")]
 
     def clean(self):
         super().clean()
@@ -449,6 +498,14 @@ class Payment(TimeStampedModel):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["created_at"],
+                condition=models.Q(status="paid", gateway_verified_at__isnull=False, enrollment__isnull=True),
+                name="payment_reconcile_idx",
+            ),
+            models.Index(fields=["student", "status", "-created_at"], name="payment_student_status_idx"),
+        ]
 
     def __str__(self) -> str:
         return self.reference
@@ -476,6 +533,7 @@ class PaymentReconciliationRun(TimeStampedModel):
 
     class Meta:
         ordering = ["-started_at"]
+        indexes = [models.Index(fields=["status", "-started_at"], name="reconcile_status_time_idx")]
 
     def __str__(self) -> str:
         return f"{self.started_at:%Y-%m-%d %H:%M} — {self.status}"

@@ -59,6 +59,8 @@ Prometheus -> Django + Flower + cAdvisor -> Grafana
 
 Gunicorn remains the production process manager. Its Uvicorn worker runs Django's ASGI application, so future asynchronous endpoints can be added without replacing the current HTTP deployment model.
 
+Performance defaults are environment-driven: Gunicorn recycles workers with jitter, Django reuses healthy database connections, PostgreSQL records normalised query statistics, and public API responses use a separate eviction-safe Redis cache. Do not increase web or Celery concurrency until the resulting database connection total and container memory remain within the headroom defined in [`../docs/PERFORMANCE.md`](../docs/PERFORMANCE.md).
+
 ## AWS production notes
 
 - Deploy `web`, `celery_worker` and `celery_beat` from the same container image to ECS/Fargate or EC2.

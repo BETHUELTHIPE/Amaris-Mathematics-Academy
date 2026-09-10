@@ -4,7 +4,8 @@ from unittest.mock import patch
 from django.apps import apps
 from django.contrib import admin
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core.cache import caches
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -78,6 +79,40 @@ class PublicContentApiTests(TestCase):
         response = self.client.get(reverse("site-settings"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["site_name"], "Amaris Mathematics Academy")
+
+    @override_settings(
+        CACHES={
+            "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "throttles"},
+            "public_content": {
+                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+                "LOCATION": "public-content",
+            },
+        }
+    )
+    def test_course_list_is_lightweight_and_cached(self):
+        course = Course.objects.create(
+            category=self.category,
+            title="Cached course",
+            slug="cached-course",
+            short_description="Ready",
+            description="Long detail-page copy",
+            curriculum="CAPS",
+            academic_level="Grade 12",
+            price=950,
+            status=Course.Status.PUBLISHED,
+        )
+        CourseModule.objects.create(course=course, title="Algebra", order=1, is_published=True)
+        caches["public_content"].clear()
+
+        first = self.client.get(reverse("courses-list"))
+        payload = first.json()["results"][0]
+        self.assertNotIn("modules", payload)
+        self.assertNotIn("outcomes", payload)
+        self.assertNotIn("description", payload)
+
+        with self.assertNumQueries(0):
+            second = self.client.get(reverse("courses-list"))
+        self.assertEqual(second.content, first.content)
 
 
 class PermissionTests(TestCase):

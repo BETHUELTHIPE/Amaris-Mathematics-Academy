@@ -182,6 +182,34 @@ class CourseSerializer(AbsoluteFileMixin, serializers.ModelSerializer):
         return CourseModuleSerializer(modules, many=True, context=self.context).data
 
 
+class CourseSummarySerializer(AbsoluteFileMixin, serializers.ModelSerializer):
+    category = CourseCategorySerializer(read_only=True)
+    cover_image_url = serializers.SerializerMethodField()
+    lesson_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Course
+        fields = (
+            "id",
+            "category",
+            "title",
+            "slug",
+            "short_description",
+            "curriculum",
+            "academic_level",
+            "price",
+            "compare_at_price",
+            "cover_image_url",
+            "estimated_hours",
+            "featured",
+            "lesson_count",
+        )
+
+    @extend_schema_field(OpenApiTypes.URI)
+    def get_cover_image_url(self, obj) -> str | None:
+        return self.file_url(obj.cover_image)
+
+
 class PricingPlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = PricingPlan

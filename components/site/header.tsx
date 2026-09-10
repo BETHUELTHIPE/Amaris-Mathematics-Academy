@@ -1,13 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Mail, MapPin, Phone } from "lucide-react";
-import { signOutAction } from "@/app/auth/actions";
-import { getStudentIdentity } from "@/lib/auth";
+import { AuthControls } from "@/components/site/auth-controls";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
 
 export async function Header() {
-  const [user, academyBrand, links] = await Promise.all([
-    getStudentIdentity(),
+  const [academyBrand, links] = await Promise.all([
     getManagedBrand(),
     getManagedNavigation("header"),
   ]);
@@ -32,29 +30,7 @@ export async function Header() {
         <nav className="hidden items-center gap-6 text-sm text-white/75 lg:flex" aria-label="Main navigation">
           {links.map(({ label, url, open_in_new_tab }) => <Link key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined} className="transition hover:text-white">{label}</Link>)}
         </nav>
-        <div className="hidden items-center gap-3 sm:flex">
-          {user ? (
-            <>
-              <Link href="/dashboard" className="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">My dashboard</Link>
-              <Link href="/documents" className="text-sm font-semibold text-white/70 hover:text-white">Documents</Link>
-              <form action={signOutAction}><button type="submit" className="text-sm text-white/65 hover:text-white">Sign out</button></form>
-            </>
-          ) : (
-            <>
-              <Link href="/login" className="text-sm font-semibold text-white/80 hover:text-white">Log in</Link>
-              <Link href="/register" className="rounded-full bg-[#ffcc66] px-5 py-2.5 text-sm font-bold text-[#07152d] transition hover:bg-[#ffd780]">Register</Link>
-            </>
-          )}
-        </div>
-        <details className="relative sm:hidden">
-          <summary className="cursor-pointer list-none rounded-lg border border-white/20 px-3 py-2 text-sm">Menu</summary>
-          <div className="absolute right-0 mt-3 w-64 rounded-2xl border border-white/10 bg-[#0c2042] p-3 shadow-2xl">
-            {links.map(({ label, url, open_in_new_tab }) => <Link key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined} className="block rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/10">{label}</Link>)}
-            {user && <Link href="/documents" className="block rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/10">Documents & invoices</Link>}
-            <Link href={user ? "/dashboard" : "/register"} className="mt-2 block rounded-xl bg-[#ffcc66] px-3 py-2.5 text-center text-sm font-bold text-[#07152d]">{user ? "My dashboard" : "Register"}</Link>
-            {user ? <form action={signOutAction}><button type="submit" className="mt-2 w-full rounded-xl px-3 py-2.5 text-left text-sm text-white/70 hover:bg-white/10">Sign out</button></form> : <Link href="/login" className="mt-2 block rounded-xl px-3 py-2.5 text-center text-sm text-white/80 hover:bg-white/10">Log in</Link>}
-          </div>
-        </details>
+        <AuthControls links={links} />
       </div>
     </header>
   );

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { academyBrand, type AcademyBrand } from "@/lib/brand";
 import { courses, type Course } from "@/lib/courses";
 
@@ -28,15 +29,19 @@ type CmsCourse = {
   academic_level: string;
   price: string;
   short_description: string;
-  description: string;
-  outcomes: string[];
+  description?: string;
+  outcomes?: string[];
   estimated_hours: number;
   featured: boolean;
   lesson_count: number;
-  modules: Array<{ title: string }>;
+  modules?: Array<{ title: string }>;
 };
 
 type Paginated<T> = { results: T[] };
+type CmsBootstrap = {
+  settings: CmsSettings | null;
+  navigation: CmsNavigationItem[];
+};
 
 const cmsBaseUrl = process.env.CMS_API_URL?.replace(/\/$/, "");
 
@@ -55,12 +60,16 @@ async function cmsFetch<T>(path: string): Promise<T | null> {
   }
 }
 
+const getManagedBootstrap = cache(async (): Promise<CmsBootstrap | null> =>
+  cmsFetch<CmsBootstrap>("/bootstrap/"),
+);
+
 function phoneHref(phone: string): string {
   return `tel:${phone.replace(/(?!^\+)\D/g, "")}`;
 }
 
-export async function getManagedBrand(): Promise<AcademyBrand> {
-  const settings = await cmsFetch<CmsSettings>("/settings/");
+export const getManagedBrand = cache(async (): Promise<AcademyBrand> => {
+  const settings = (await getManagedBootstrap())?.settings;
   if (!settings) return academyBrand;
   const addressQuery = encodeURIComponent(settings.address);
   let website = settings.website_url;
@@ -85,7 +94,7 @@ export async function getManagedBrand(): Promise<AcademyBrand> {
     websiteHref: settings.website_url,
     logoPath: settings.logo_url || academyBrand.logoPath,
   };
-}
+});
 
 const fallbackNavigation: CmsNavigationItem[] = [
   { label: "Courses", url: "/courses", location: "both", order: 10, open_in_new_tab: false },
@@ -95,12 +104,13 @@ const fallbackNavigation: CmsNavigationItem[] = [
   { label: "Contact", url: "/contact", location: "both", order: 50, open_in_new_tab: false },
 ];
 
-export async function getManagedNavigation(location: "header" | "footer") {
-  const items = (await cmsFetch<CmsNavigationItem[]>("/navigation/")) ?? fallbackNavigation;
+export const getManagedNavigation = cache(async (location: "header" | "footer") => {
+  const managedItems = (await getManagedBootstrap())?.navigation;
+  const items = managedItems?.length ? managedItems : fallbackNavigation;
   return items
     .filter((item) => item.location === location || item.location === "both")
     .sort((a, b) => a.order - b.order);
-}
+});
 
 function mapCourse(course: CmsCourse): Course {
   return {
@@ -111,7 +121,7 @@ function mapCourse(course: CmsCourse): Course {
     price: Number(course.price),
     lessons: course.lesson_count,
     hours: course.estimated_hours,
-    description: course.short_description || course.description,
+    description: course.short_description || course.description || "",
     outcomes: course.outcomes ?? [],
     modules: course.modules?.map((module) => module.title) ?? [],
     featured: course.featured,

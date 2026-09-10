@@ -15,3 +15,12 @@ test("all requested recovery states are configured", async () => {
     assert.match(source, new RegExp(`\\"${key}\\"\\s*:`), key);
   }
 });
+
+test("connection notice can be closed and blocks offline submissions", async () => {
+  const source = await readFile(new URL("../components/site/connection-recovery.tsx", import.meta.url), "utf8");
+  assert.match(source, /onClick=\{\(\) => setDismissed\(true\)\}/);
+  assert.match(source, /aria-label="Close connection notice"/);
+  assert.match(source, /event\.preventDefault\(\)/);
+  assert.match(source, /document\.addEventListener\("submit", preventOfflineSubmission, true\)/);
+  assert.match(source, /event\.key === "Escape"/);
+});
