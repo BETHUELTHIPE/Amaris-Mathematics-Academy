@@ -1,6 +1,6 @@
 # CI/CD quality gates and release controls
 
-The `Quality Gates and Release` workflow validates every pull request to `main`, repeats the gates on `main`, publishes an immutable backend image only after all gates pass, deploys that image to staging, and allows production promotion only from a manual workflow run.
+The `Quality Gates and Release` workflow validates every pull request to `main`, repeats the gates on `main`, publishes a multi-platform backend image to Docker Hub only after all gates pass, deploys that immutable image to staging, and allows production promotion only from a manual workflow run.
 
 ## Blocking quality gates
 
@@ -31,7 +31,22 @@ Configure the following settings in the GitHub repository before enabling deploy
 3. Require branches to be current before merging and dismiss approvals when new commits arrive.
 4. Prevent force pushes and branch deletion.
 5. Enable GitHub secret scanning and push protection when available.
-6. Allow GitHub Actions to write packages for the repository's GHCR image.
+6. Create a Docker Hub access token with read/write permission for the `bethuelm/amaris-mathematics-academy` repository.
+
+## Docker Hub publishing
+
+Create this GitHub Actions repository secret:
+
+- `DOCKERHUB_TOKEN`: a Docker Hub personal access token with permission to push to `bethuelm/amaris-mathematics-academy`
+
+The Docker Hub username is fixed to `bethuelm` in the workflow. Never store the Docker Hub password or access token in source code, repository variables, workflow logs or image layers.
+
+After every successful push to `main`, the workflow publishes both of these Linux `amd64` and `arm64` tags:
+
+- `bethuelm/amaris-mathematics-academy:<full-commit-sha>`
+- `bethuelm/amaris-mathematics-academy:latest`
+
+Staging and production use the immutable full-commit-SHA tag. The mutable `latest` tag is provided for convenient manual pulls only.
 
 ## Environments
 
@@ -72,7 +87,7 @@ The workflow cannot create environment reviewers from source code. Production ap
 ## Release flow
 
 1. A pull request must pass every quality and security gate.
-2. Merging to `main` repeats the gates and publishes `ghcr.io/bethuelthipe/amaris-mathematics-academy-backend:<commit-sha>`.
+2. Merging to `main` repeats the gates and publishes `docker.io/bethuelm/amaris-mathematics-academy:<commit-sha>` and `:latest`.
 3. The immutable image is deployed to staging and its readiness endpoint is checked repeatedly.
 4. If staging is unhealthy, the deployment webhook receives a rollback request and the workflow fails.
 5. To deploy production, run `Quality Gates and Release` manually, enable **Promote the tested release to production**, and select the migration risk.
@@ -91,7 +106,7 @@ The hosting platform must expose an authenticated HTTPS webhook. It receives a J
 {
   "action": "deploy",
   "environment": "production",
-  "image": "ghcr.io/bethuelthipe/amaris-mathematics-academy-backend:<commit-sha>",
+  "image": "docker.io/bethuelm/amaris-mathematics-academy:<commit-sha>",
   "release_sha": "<commit-sha>"
 }
 ```
