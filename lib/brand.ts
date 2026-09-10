@@ -1,4 +1,21 @@
-export const academyBrand = {
+export type AcademyBrand = {
+  name: string;
+  shortName: string;
+  managingDirector: string;
+  phoneDisplay: string;
+  phoneHref: string;
+  email: string;
+  emailHref: string;
+  address: string;
+  addressShort: string;
+  addressHref: string;
+  hours: string;
+  website: string;
+  websiteHref: string;
+  logoPath: string;
+};
+
+export const academyBrand: AcademyBrand = {
   name: "Amaris Mathematics Academy",
   shortName: "Amaris",
   managingDirector: "Bethuel Moukangwe",
@@ -13,4 +30,4 @@ export const academyBrand = {
   website: "amaris-mathematics-academy.bethuelthipe.chatgpt.site",
   websiteHref: "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site",
   logoPath: "/brand/amaris-academy-mark.png",
-} as const;
+};

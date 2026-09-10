@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Clock3, ShieldCheck } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
-import { courses, formatRand, getCourse } from "@/lib/courses";
+import { courses, formatRand } from "@/lib/courses";
+import { getManagedCourse } from "@/lib/cms";
 import { getStudentIdentity } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -12,12 +13,12 @@ export const dynamic = "force-dynamic";
 export function generateStaticParams() { return courses.map(({ slug }) => ({ slug })); }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const course = getCourse((await params).slug);
+  const course = await getManagedCourse((await params).slug);
   return course ? { title: course.title, description: course.description } : {};
 }
 
 export default async function CoursePage({ params }: { params: Promise<{ slug: string }> }) {
-  const course = getCourse((await params).slug);
+  const course = await getManagedCourse((await params).slug);
   if (!course) notFound();
   const student = await getStudentIdentity();
   const canEnrol = Boolean(student?.emailVerified);

@@ -3,21 +3,21 @@ import { Clock3, Mail, MapPin, Phone } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { EnquiryForm } from "@/components/site/enquiry-form";
-import { academyBrand } from "@/lib/brand";
+import { getManagedBrand } from "@/lib/cms";
 
 export const metadata: Metadata = {
   title: "Contact Us",
   description: "Contact Amaris Mathematics Academy for course guidance, enrolment, payment or technical support.",
 };
 
-const contactCards = [
-  { Icon: Phone, label: "Call us", value: academyBrand.phoneDisplay, href: academyBrand.phoneHref },
-  { Icon: Mail, label: "Email us", value: academyBrand.email, href: academyBrand.emailHref },
-  { Icon: Clock3, label: "Support hours", value: academyBrand.hours },
-  { Icon: MapPin, label: "Registered office", value: academyBrand.address, href: academyBrand.addressHref },
-];
-
-export default function ContactPage() {
+export default async function ContactPage() {
+  const academyBrand = await getManagedBrand();
+  const contactCards = [
+    { Icon: Phone, label: "Call us", value: academyBrand.phoneDisplay, href: academyBrand.phoneHref },
+    { Icon: Mail, label: "Email us", value: academyBrand.email, href: academyBrand.emailHref },
+    { Icon: Clock3, label: "Support hours", value: academyBrand.hours },
+    { Icon: MapPin, label: "Registered office", value: academyBrand.address, href: academyBrand.addressHref },
+  ];
   return (
     <main className="min-h-screen bg-[#f5f7fb]">
       <Header />

@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, BookOpen, Clock3, Search } from "lucide-react";
-import { courses, formatRand } from "@/lib/courses";
+import { formatRand, type Course } from "@/lib/courses";
 
-export function CourseBrowser() {
+export function CourseBrowser({ courses }: { courses: Course[] }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All");
   const filters = ["All", "CAPS", "TVET", "University"];
@@ -13,7 +13,7 @@ export function CourseBrowser() {
     const matchesText = `${course.title} ${course.description} ${course.curriculum}`.toLowerCase().includes(query.toLowerCase());
     const matchesFilter = filter === "All" || (filter === "TVET" ? course.level.includes("TVET") : filter === "University" ? course.level === "University" : course.curriculum.includes(filter));
     return matchesText && matchesFilter;
-  }), [query, filter]);
+  }), [courses, query, filter]);
 
   return (
     <>

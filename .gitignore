@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.lighthouseci/
 
 # next.js
 /.next/
@@ -42,3 +43,13 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+
+# Django backend runtime output
+/backend/staticfiles/
+/backend/media/
+/backend/.venv/
+/backend/db.sqlite3
+/backend/celerybeat-schedule*
+/backend/load_tests/results/
+__pycache__/
+*.py[cod]

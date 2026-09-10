@@ -1,0 +1,80 @@
+name: Load Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Staging traffic profile
+        required: true
+        type: choice
+        options: [normal, peak, spike]
+        default: normal
+      full_journey:
+        description: Include protected and write operations using staging fixtures
+        required: true
+        type: boolean
+        default: false
+  schedule:
+    - cron: "30 3 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-staging-load-test
+  cancel-in-progress: false
+
+jobs:
+  staging-load-test:
+    name: Staging load test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    env:
+      LOADTEST_ENVIRONMENT: staging
+      LOADTEST_TARGET_URL: ${{ vars.LOADTEST_TARGET_URL }}
+      LOADTEST_ALLOWED_HOSTS: ${{ vars.LOADTEST_ALLOWED_HOSTS }}
+      LOADTEST_PROFILE: ${{ github.event_name == 'schedule' && 'smoke' || inputs.profile }}
+      LOADTEST_REQUIRE_FULL_JOURNEY: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey || false }}
+      LOADTEST_ALLOW_WRITES: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey || false }}
+      LOADTEST_AUTH_BEARER: ${{ secrets.LOADTEST_AUTH_BEARER }}
+      LOADTEST_COOKIE_HEADER: ${{ secrets.LOADTEST_COOKIE_HEADER }}
+      LOADTEST_SESSION_COOKIE_NAME: ${{ secrets.LOADTEST_SESSION_COOKIE_NAME }}
+      LOADTEST_SESSION_COOKIE_VALUE: ${{ secrets.LOADTEST_SESSION_COOKIE_VALUE }}
+      LOADTEST_LOGIN_EMAIL: ${{ secrets.LOADTEST_LOGIN_EMAIL }}
+      LOADTEST_LOGIN_PASSWORD: ${{ secrets.LOADTEST_LOGIN_PASSWORD }}
+      LOADTEST_REGISTRATION_PASSWORD: ${{ secrets.LOADTEST_REGISTRATION_PASSWORD }}
+      LOADTEST_REGISTRATION_EMAIL_DOMAIN: ${{ vars.LOADTEST_REGISTRATION_EMAIL_DOMAIN }}
+      LOADTEST_REGISTRATION_SUBMIT_PATH: ${{ vars.LOADTEST_REGISTRATION_SUBMIT_PATH }}
+      LOADTEST_LOGIN_SUBMIT_PATH: ${{ vars.LOADTEST_LOGIN_SUBMIT_PATH }}
+      LOADTEST_LESSON_PATH: ${{ vars.LOADTEST_LESSON_PATH }}
+      LOADTEST_PROGRESS_PATH: ${{ vars.LOADTEST_PROGRESS_PATH }}
+      LOADTEST_CHECKOUT_PATH: ${{ vars.LOADTEST_CHECKOUT_PATH }}
+      LOADTEST_PAYMENT_STATUS_PATH: ${{ vars.LOADTEST_PAYMENT_STATUS_PATH }}
+      LOADTEST_COURSE_DETAIL_PATH: ${{ vars.LOADTEST_COURSE_DETAIL_PATH || '/courses/university-calculus-foundations' }}
+      LOADTEST_COURSE_ID: ${{ vars.LOADTEST_COURSE_ID }}
+      LOADTEST_LESSON_ID: ${{ vars.LOADTEST_LESSON_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-load.txt
+      - name: Install load-test dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && pip install -r requirements-load.txt
+      - name: Confirm safe staging target
+        working-directory: backend
+        run: python -c "from load_tests.config import env_bool, env_csv, validate_target; import os; validate_target(os.environ['LOADTEST_TARGET_URL'], environment_name='staging', allowed_hosts=env_csv('LOADTEST_ALLOWED_HOSTS'), allow_production=env_bool('LOADTEST_ALLOW_PRODUCTION'), allow_live_payfast=False)"
+      - name: Run Locust traffic profile
+        working-directory: backend
+        run: load_tests/run.sh
+      - name: Upload load-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-${{ github.run_id }}
+          path: backend/load_tests/results/
+          if-no-files-found: error
+          retention-days: 30

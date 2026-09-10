@@ -1,0 +1,17 @@
+{
+  "defaults": {
+    "standard": "WCAG2AA",
+    "timeout": 30000,
+    "wait": 1000,
+    "chromeLaunchConfig": {
+      "args": ["--no-sandbox", "--disable-dev-shm-usage"]
+    }
+  },
+  "urls": [
+    "http://127.0.0.1:3000/",
+    "http://127.0.0.1:3000/courses",
+    "http://127.0.0.1:3000/contact",
+    "http://127.0.0.1:3000/login",
+    "http://127.0.0.1:3000/register"
+  ]
+}

@@ -9,6 +9,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { getStudentIdentity } from "@/lib/auth";
+import { SafeFormDraft } from "@/components/site/safe-form-draft";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Registration" };
@@ -37,6 +38,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
         <div className="flex items-center gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LockKeyhole className="size-6" /></span><div><h2 className="text-2xl font-semibold tracking-[-.03em]">Student details</h2><p className="mt-1 text-sm text-[#60708a]">All fields are required.</p></div></div>
         {error && <Alert variant="destructive" className="mt-6"><AlertDescription>{error}</AlertDescription></Alert>}
         <form action={registerAction} className="mt-7 grid gap-5">
+          <SafeFormDraft draftKey="student-registration-v1" allowedFields={["firstName", "lastName", "email", "mobile", "province", "academicLevel", "institution"]} />
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="First name" name="firstName" autoComplete="given-name" /><AuthField label="Last name" name="lastName" autoComplete="family-name" /></div>
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="Email address" name="email" type="email" autoComplete="email" /><AuthField label="Mobile number" name="mobile" type="tel" autoComplete="tel" placeholder="071 234 5678" /></div>
           <div className="grid gap-5 sm:grid-cols-2">

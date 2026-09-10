@@ -1,9 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Clock3, Mail, MapPin, Phone } from "lucide-react";
-import { academyBrand } from "@/lib/brand";
+import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
 
-export function Footer() {
+export async function Footer() {
+  const [academyBrand, links] = await Promise.all([
+    getManagedBrand(),
+    getManagedNavigation("footer"),
+  ]);
   return (
     <footer className="border-t border-white/10 bg-[#061126] text-white">
       <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-[1.35fr_.7fr_1.15fr] lg:px-8">
@@ -19,7 +23,8 @@ export function Footer() {
         <div>
           <p className="text-sm font-semibold text-[#ffcc66]">Explore</p>
           <div className="mt-4 grid gap-3 text-sm text-white/65">
-            <Link href="/courses">Mathematics courses</Link><Link href="/how-it-works">How it works</Link><Link href="/pricing">Pricing</Link><Link href="/about">About us</Link><Link href="/documents">Documents & invoices</Link>
+            {links.map(({ label, url, open_in_new_tab }) => <Link key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined}>{label}</Link>)}
+            <Link href="/documents">Documents & invoices</Link>
           </div>
         </div>
         <div>

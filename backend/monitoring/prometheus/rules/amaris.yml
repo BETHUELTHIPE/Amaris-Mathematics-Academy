@@ -1,0 +1,99 @@
+groups:
+  - name: amaris-platform-availability
+    rules:
+      - alert: AmarisPublicSiteUnavailable
+        expr: probe_success{job="blackbox_http", instance=~"https://.*chatgpt.site/"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: The public Amaris student website is unavailable
+
+      - alert: AmarisBackendNotReady
+        expr: probe_success{job="blackbox_http", instance="http://nginx/health/ready/"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: The Django backend or its PostgreSQL dependency is not ready
+
+      - alert: AmarisPostgreSQLUnavailable
+        expr: up{job="postgres_exporter"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: PostgreSQL metrics are unavailable; verify database health immediately
+
+      - alert: AmarisRedisUnavailable
+        expr: up{job="redis_exporter"} == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: Redis is unavailable; web traffic continues but queued work is degraded
+
+  - name: amaris-recovery
+    rules:
+      - alert: AmarisBackupFailed
+        expr: (amaris_backup_last_status == 0) or absent(amaris_backup_last_status)
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: The encrypted PostgreSQL and media backup failed or has no status
+
+      - alert: AmarisBackupStale
+        expr: (time() - amaris_backup_last_success_timestamp_seconds) > 28800
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: No successful backup has completed within eight hours
+
+      - alert: AmarisRestoreTestFailed
+        expr: (amaris_restore_test_last_status == 0) or absent(amaris_restore_test_last_status)
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: The isolated backup restoration test failed or has no status
+
+      - alert: AmarisRestoreTestStale
+        expr: (time() - amaris_restore_test_last_success_timestamp_seconds) > 691200
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: No successful isolated restore test has completed within eight days
+
+  - name: amaris-monitoring
+    rules:
+      - alert: AmarisFlowerUnavailable
+        expr: up{job="flower"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Flower cannot report Celery health; student traffic is not blocked
+
+      - alert: AmarisContainerMonitoringUnavailable
+        expr: up{job="cadvisor"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: cAdvisor container metrics are unavailable
+
+      - alert: AmarisHostMonitoringUnavailable
+        expr: up{job="node_exporter"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Host and recovery metrics are unavailable
+
+  - name: amaris-capacity
+    rules:
+      - alert: AmarisContainerHighMemory
+        expr: container_memory_working_set_bytes{name=~".*amaris.*"} / container_spec_memory_limit_bytes{name=~".*amaris.*"} > 0.90
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: An Amaris container is using more than 90% of its memory limit
+
+      - alert: AmarisHostDiskSpaceLow
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.10
+        for: 15m
+        labels: {severity: critical}
+        annotations:
+          summary: Less than 10% disk space remains on an Amaris host filesystem

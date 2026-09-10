@@ -3,18 +3,14 @@ import Image from "next/image";
 import { Mail, MapPin, Phone } from "lucide-react";
 import { signOutAction } from "@/app/auth/actions";
 import { getStudentIdentity } from "@/lib/auth";
-import { academyBrand } from "@/lib/brand";
-
-const links = [
-  ["Courses", "/courses"],
-  ["How it works", "/how-it-works"],
-  ["Pricing", "/pricing"],
-  ["About", "/about"],
-  ["Contact", "/contact"],
-];
+import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
 
 export async function Header() {
-  const user = await getStudentIdentity();
+  const [user, academyBrand, links] = await Promise.all([
+    getStudentIdentity(),
+    getManagedBrand(),
+    getManagedNavigation("header"),
+  ]);
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07152d]/95 text-white backdrop-blur-xl">
       <div className="border-b border-white/10 bg-[#041026]">
@@ -34,7 +30,7 @@ export async function Header() {
           <span className="leading-tight">Amaris <span className="hidden text-white/60 sm:inline">Mathematics Academy</span></span>
         </Link>
         <nav className="hidden items-center gap-6 text-sm text-white/75 lg:flex" aria-label="Main navigation">
-          {links.map(([label, href]) => <Link key={href} href={href} className="transition hover:text-white">{label}</Link>)}
+          {links.map(({ label, url, open_in_new_tab }) => <Link key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined} className="transition hover:text-white">{label}</Link>)}
         </nav>
         <div className="hidden items-center gap-3 sm:flex">
           {user ? (
@@ -53,7 +49,7 @@ export async function Header() {
         <details className="relative sm:hidden">
           <summary className="cursor-pointer list-none rounded-lg border border-white/20 px-3 py-2 text-sm">Menu</summary>
           <div className="absolute right-0 mt-3 w-64 rounded-2xl border border-white/10 bg-[#0c2042] p-3 shadow-2xl">
-            {links.map(([label, href]) => <Link key={href} href={href} className="block rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/10">{label}</Link>)}
+            {links.map(({ label, url, open_in_new_tab }) => <Link key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined} className="block rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/10">{label}</Link>)}
             {user && <Link href="/documents" className="block rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/10">Documents & invoices</Link>}
             <Link href={user ? "/dashboard" : "/register"} className="mt-2 block rounded-xl bg-[#ffcc66] px-3 py-2.5 text-center text-sm font-bold text-[#07152d]">{user ? "My dashboard" : "Register"}</Link>
             {user ? <form action={signOutAction}><button type="submit" className="mt-2 w-full rounded-xl px-3 py-2.5 text-left text-sm text-white/70 hover:bg-white/10">Sign out</button></form> : <Link href="/login" className="mt-2 block rounded-xl px-3 py-2.5 text-center text-sm text-white/80 hover:bg-white/10">Log in</Link>}

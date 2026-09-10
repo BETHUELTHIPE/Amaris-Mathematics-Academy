@@ -58,6 +58,7 @@ export function safeRelativePath(value: string | null | undefined): string {
       "/forgot-password",
       "/reset-password",
       "/verify-email",
+      "/session-expired",
     ].includes(url.pathname) ||
     url.pathname.startsWith("/auth/")
   ) {

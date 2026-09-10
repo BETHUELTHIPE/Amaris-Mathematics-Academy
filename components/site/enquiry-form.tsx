@@ -11,6 +11,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { academyBrand } from "@/lib/brand";
+import { ClearSafeFormDraft, SafeFormDraft } from "@/components/site/safe-form-draft";
 
 function FieldError({ message }: { message?: string }) {
   return message ? <p className="mt-2 text-sm font-medium text-[#b42318]" role="alert">{message}</p> : null;
@@ -25,11 +26,12 @@ export function EnquiryForm() {
   const [state, formAction] = useActionState(submitEnquiry, initialEnquiryState);
 
   if (state.status === "success") {
-    return <div className="mt-8 overflow-hidden rounded-2xl border border-[#a6d7be] bg-white" role="status"><div className="flex items-center gap-3 border-b border-[#dce4ef] bg-[#f6f8fc] px-5 py-4"><Image src={academyBrand.logoPath} alt="Amaris Mathematics Academy logo" width={48} height={48} unoptimized className="size-12 object-contain" /><div><p className="font-bold text-[#07152d]">{academyBrand.name}</p><p className="text-xs text-[#60708a]">{academyBrand.phoneDisplay} · {academyBrand.email}</p></div></div><div className="p-6"><CheckCircle2 className="size-8 text-[#147a4b]" /><h3 className="mt-4 text-xl font-semibold text-[#0a4d30]">Enquiry received</h3><p className="mt-2 text-base leading-7 text-[#396554]">{state.message}</p><p className="mt-4 text-sm text-[#557365]">For urgent support, call <a href={academyBrand.phoneHref} className="font-semibold underline">{academyBrand.phoneDisplay}</a>.</p><p className="mt-5 border-t border-[#dce4ef] pt-4 text-xs leading-5 text-[#60708a]">{academyBrand.address} · {academyBrand.website}</p></div></div>;
+    return <><ClearSafeFormDraft draftKey="contact-enquiry-v1" /><div className="mt-8 overflow-hidden rounded-2xl border border-[#a6d7be] bg-white" role="status"><div className="flex items-center gap-3 border-b border-[#dce4ef] bg-[#f6f8fc] px-5 py-4"><Image src={academyBrand.logoPath} alt="Amaris Mathematics Academy logo" width={48} height={48} unoptimized className="size-12 object-contain" /><div><p className="font-bold text-[#07152d]">{academyBrand.name}</p><p className="text-xs text-[#60708a]">{academyBrand.phoneDisplay} · {academyBrand.email}</p></div></div><div className="p-6"><CheckCircle2 className="size-8 text-[#147a4b]" /><h3 className="mt-4 text-xl font-semibold text-[#0a4d30]">Enquiry received</h3><p className="mt-2 text-base leading-7 text-[#396554]">{state.message}</p><p className="mt-4 text-sm text-[#557365]">For urgent support, call <a href={academyBrand.phoneHref} className="font-semibold underline">{academyBrand.phoneDisplay}</a>.</p><p className="mt-5 border-t border-[#dce4ef] pt-4 text-xs leading-5 text-[#60708a]">{academyBrand.address} · {academyBrand.website}</p></div></div></>;
   }
 
   return (
     <form action={formAction} className="mt-8 space-y-6">
+      <SafeFormDraft draftKey="contact-enquiry-v1" allowedFields={["fullName", "email", "phone", "enquiryType", "message"]} />
       <div className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">
         <label htmlFor="website">Website</label><input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
       </div>

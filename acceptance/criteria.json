@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "release_status": "pre-production",
+  "criteria": [
+    {"id": 1, "name": "Core Web Vitals meet defined targets", "status": "pending", "evidence": [], "verified_by": null, "verified_at": null},
+    {"id": 2, "name": "WCAG 2.2 AA checks pass", "status": "partial", "evidence": ["Pa11y and Lighthouse accessibility gates are configured; WCAG 2.2 manual review remains."], "verified_by": null, "verified_at": null},
+    {"id": 3, "name": "Full mobile journey works", "status": "pending", "evidence": [], "verified_by": null, "verified_at": null},
+    {"id": 4, "name": "Student resumes the last lesson", "status": "partial", "evidence": ["Progress schema stores last_lesson; enrolled lesson resume journey still requires staging proof."], "verified_by": null, "verified_at": null},
+    {"id": 5, "name": "Slow and interrupted connections recover gracefully", "status": "partial", "evidence": ["Branded connection recovery and safe form drafts are implemented; mobile network testing remains."], "verified_by": null, "verified_at": null},
+    {"id": 6, "name": "Course search returns useful results", "status": "partial", "evidence": ["Topic, title, curriculum and level filtering is implemented; representative search relevance sign-off remains."], "verified_by": null, "verified_at": null},
+    {"id": 7, "name": "Checkout communicates every state", "status": "partial", "evidence": ["Pending, cancelled and failed payment pages are implemented; paid and delayed confirmation journey requires staging proof."], "verified_by": null, "verified_at": null},
+    {"id": 8, "name": "Delayed PayFast ITN is handled correctly", "status": "partial", "evidence": ["Payment reconciliation is idempotent and tested; delayed sandbox ITN evidence remains."], "verified_by": null, "verified_at": null},
+    {"id": 9, "name": "Students cannot access another student's data", "status": "partial", "evidence": ["Supabase profile RLS and Django permission tests exist; full cross-student enrolment, progress and order proof remains."], "verified_by": null, "verified_at": null},
+    {"id": 10, "name": "Protected content is never publicly cached", "status": "pending", "evidence": [], "verified_by": null, "verified_at": null},
+    {"id": 11, "name": "Automated backups restore successfully", "status": "partial", "evidence": ["Encrypted backup and weekly isolated restore-test services are implemented; successful staging restore evidence remains."], "verified_by": null, "verified_at": null},
+    {"id": 12, "name": "Load tests meet agreed thresholds", "status": "partial", "evidence": ["Normal, peak, spike and degraded Locust gates are implemented; staging results remain."], "verified_by": null, "verified_at": null},
+    {"id": 13, "name": "Lighthouse CI passes", "status": "pending", "evidence": [], "verified_by": null, "verified_at": null},
+    {"id": 14, "name": "No critical security vulnerabilities remain", "status": "partial", "evidence": ["Python and Node critical dependency audits pass locally; container and repository scans remain GitHub evidence."], "verified_by": null, "verified_at": null},
+    {"id": 15, "name": "Transactional email passes SPF, DKIM and DMARC", "status": "pending", "evidence": [], "verified_by": null, "verified_at": null},
+    {"id": 16, "name": "Errors are useful without technical disclosure", "status": "partial", "evidence": ["Branded safe error pages and correlation-reference tests pass; staging response review remains."], "verified_by": null, "verified_at": null},
+    {"id": 17, "name": "Monitoring captures failures without personal data", "status": "partial", "evidence": ["Prometheus/Grafana rules avoid personal labels; staging failure capture and dashboard review remain."], "verified_by": null, "verified_at": null},
+    {"id": 18, "name": "Essential navigation and forms work without JavaScript", "status": "pending", "evidence": [], "verified_by": null, "verified_at": null},
+    {"id": 19, "name": "Monitoring and administration outages do not stop students", "status": "partial", "evidence": ["Services are not application dependencies and a controlled outage test exists; staging result remains."], "verified_by": null, "verified_at": null},
+    {"id": 20, "name": "Desktop, Android and iPhone experience is professional", "status": "pending", "evidence": [], "verified_by": null, "verified_at": null}
+  ]
+}

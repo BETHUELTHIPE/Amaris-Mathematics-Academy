@@ -86,6 +86,7 @@ export async function registerAction(formData: FormData) {
   });
 
   if (error) {
+    if (/rate limit|too many/i.test(error.message)) redirect("/errors/429");
     redirectWithMessage(
       "/register",
       "error",
@@ -139,13 +140,17 @@ export async function resendVerificationAction(formData: FormData) {
   }
 
   const supabase = await createSupabaseServerClient();
-  await supabase.auth.resend({
+  const { error } = await supabase.auth.resend({
     type: "signup",
     email,
     options: {
       emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
     },
   });
+
+  if (error && /rate limit|too many/i.test(error.message)) {
+    redirect("/errors/429");
+  }
 
   redirect(
     `/verify-email?email=${encodeURIComponent(email)}&resent=1`,
@@ -173,6 +178,7 @@ export async function loginAction(formData: FormData) {
   });
 
   if (error) {
+    if (/rate limit|too many/i.test(error.message)) redirect("/errors/429");
     if (/email not confirmed/i.test(error.message)) {
       redirect(
         `/verify-email?email=${encodeURIComponent(parsed.data.email)}&error=${encodeURIComponent("Verify your email before logging in.")}`,
@@ -199,9 +205,13 @@ export async function forgotPasswordAction(formData: FormData) {
   }
 
   const supabase = await createSupabaseServerClient();
-  await supabase.auth.resetPasswordForEmail(email, {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${getSiteUrl()}/auth/confirm?next=/reset-password`,
   });
+
+  if (error && /rate limit|too many/i.test(error.message)) {
+    redirect("/errors/429");
+  }
 
   // The same response is shown whether the account exists or not.
   redirect("/forgot-password?sent=1");

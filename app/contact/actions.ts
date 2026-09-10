@@ -38,6 +38,30 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
   }
 
   try {
+    const cmsBaseUrl = process.env.CMS_API_URL?.replace(/\/$/, "");
+    if (cmsBaseUrl) {
+      try {
+        const cmsResponse = await fetch(`${cmsBaseUrl}/enquiries/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            name: parsed.data.fullName,
+            email: parsed.data.email.toLowerCase(),
+            phone: parsed.data.phone,
+            subject: parsed.data.enquiryType.replaceAll("-", " "),
+            message: parsed.data.message,
+          }),
+          signal: AbortSignal.timeout(6_000),
+        });
+        if (cmsResponse.ok) {
+          return { status: "success", message: "Thank you. Your enquiry has been received, and the Amaris team will respond as soon as possible." };
+        }
+        console.error("Django CMS rejected contact enquiry", cmsResponse.status);
+      } catch (cmsError) {
+        console.error("Django CMS contact endpoint unavailable", cmsError);
+      }
+    }
+
     const db = getD1();
     await db.prepare(`
       INSERT INTO contact_enquiries (id, full_name, email, phone, enquiry_type, message, consent_given, status)

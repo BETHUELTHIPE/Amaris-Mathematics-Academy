@@ -3,9 +3,11 @@ import Link from "next/link";
 import { ArrowRight, BarChart3, BookOpenCheck, Check, CirclePlay, GraduationCap, ShieldCheck, Sigma, Target } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
-import { courses, formatRand } from "@/lib/courses";
+import { formatRand } from "@/lib/courses";
+import { getManagedCourses } from "@/lib/cms";
 
-export default function Home() {
+export default async function Home() {
+  const courses = await getManagedCourses();
   const featured = courses.filter((course) => course.featured);
   return (
     <main className="min-h-screen bg-[#f5f7fb] text-[#0a1b36]">

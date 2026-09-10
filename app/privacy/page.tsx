@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
-import { academyBrand } from "@/lib/brand";
+import { getManagedBrand } from "@/lib/cms";
 
 export const metadata: Metadata = { title: "Privacy Policy" };
 
@@ -13,6 +13,7 @@ const sections = [
   ["Your choices", "You may ask to access, correct or delete eligible personal information, or raise a privacy concern, by contacting the academy."],
 ];
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const academyBrand = await getManagedBrand();
   return <main className="min-h-screen bg-[#f5f7fb]"><Header /><article className="mx-auto max-w-4xl px-5 py-16 lg:px-8 lg:py-24"><p className="eyebrow">Privacy policy</p><h1 className="section-title mt-4">Your student information stays protected.</h1><p className="mt-5 text-sm text-[#6a7890]">Effective 8 September 2026</p><div className="mt-10 grid gap-5">{sections.map(([title, body]) => <section key={title} className="rounded-2xl border border-[#dce4ef] bg-white p-6"><h2 className="text-xl font-semibold">{title}</h2><p className="mt-3 leading-7 text-[#5b6a82]">{body}</p></section>)}</div><p className="mt-8 text-sm leading-7 text-[#60708a]">Privacy enquiries: <a href={academyBrand.emailHref} className="font-semibold text-[#1f5bbd]">{academyBrand.email}</a> or <a href={academyBrand.phoneHref} className="font-semibold text-[#1f5bbd]">{academyBrand.phoneDisplay}</a>.</p></article><Footer /></main>;
 }
