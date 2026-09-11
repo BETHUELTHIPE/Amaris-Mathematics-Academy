@@ -1,0 +1,25 @@
+name: Python Format Diagnostic
+
+on:
+  push:
+    branches:
+      - security/owasp-test-suite
+
+permissions:
+  contents: read
+
+jobs:
+  black-diff:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install exact formatter
+        run: python -m pip install black==26.5.1
+      - name: Show required Black diff
+        run: black --check --diff content/management/commands/migration_plan.py tests/integration/test_migration_plan_command.py
