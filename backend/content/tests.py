@@ -159,7 +159,7 @@ class PermissionTests(TestCase):
             is_published=True,
         )
 
-        response = self.client.get(reverse("course-detail", kwargs={"slug": course.slug}), secure=True)
+        response = self.client.get(reverse("courses-detail", kwargs={"slug": course.slug}), secure=True)
         self.assertEqual(response.status_code, 200)
         body = response.content.decode("utf-8")
         self.assertNotIn("private-video-id", body)
