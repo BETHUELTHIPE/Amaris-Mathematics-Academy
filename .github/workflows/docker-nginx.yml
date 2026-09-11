@@ -33,11 +33,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Generate ephemeral Django secret
-        run: printf 'DJANGO_SECRET_KEY=%s\n' "$(openssl rand -hex 64)" >> "$GITHUB_ENV"
+        shell: bash
+        run: |
+          secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$secret"
+          printf 'DJANGO_SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Validate Compose file
         working-directory: backend
-        run: docker compose -f docker-compose.yml config --quiet
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env -f docker-compose.yml config --quiet
 
       - name: Build production backend image
         run: docker build -t amaris-backend-docker-test ./backend
@@ -194,5 +200,6 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          rm -f backend/.env
           docker rm -f amaris-nginx-test amaris-web-test 2>/dev/null || true
           docker network rm amaris-nginx-test-net 2>/dev/null || true
