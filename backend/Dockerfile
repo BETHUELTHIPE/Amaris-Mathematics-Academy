@@ -14,8 +14,7 @@ COPY requirements.txt ./
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt \
     && pip install --upgrade "setuptools>=78.1.1" "msgpack>=1.2.1,<2.0" \
-    && rm -rf /usr/local/lib/python3.13/site-packages/msgpack-1.1.2.dist-info \
-              /usr/local/lib/python3.13/site-packages/setuptools-70.3.0.dist-info
+    && python -m pip cache purge || true
 
 COPY . ./
 RUN groupadd --system amaris \
