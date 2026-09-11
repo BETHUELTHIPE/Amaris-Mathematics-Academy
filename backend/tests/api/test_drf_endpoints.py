@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.core.cache import caches
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -201,6 +202,8 @@ class PublicDrfEndpointTests(TestCase):
 )
 class EnquiryApiTests(TestCase):
     def setUp(self):
+        caches["default"].clear()
+        caches["public_content"].clear()
         self.client = APIClient()
         self.url = reverse("enquiries-list")
         self.valid_payload = {
