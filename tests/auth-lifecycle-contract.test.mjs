@@ -23,8 +23,17 @@ test("registration enforces strong passwords and matching confirmation", () => {
 test("registration delegates credential storage to Supabase Auth and normalizes email", () => {
   expectSource(/\.trim\(\)\.toLowerCase\(\)\.email\(\)/, "email should be normalized and validated");
   expectSource(/supabase\.auth\.signUp\(/, "registration should use Supabase Auth");
-  assert.doesNotMatch(actionsSource, /password\s*:\s*values\.password[\s\S]*studentProfiles/,
-    "plaintext passwords must not be written to the profile mirror");
+
+  const studentProfileWriteStart = actionsSource.indexOf(".insert(studentProfiles)");
+  const studentProfileWriteEnd = actionsSource.indexOf(".onConflictDoUpdate", studentProfileWriteStart);
+  assert.ok(studentProfileWriteStart >= 0, "student profile mirror write must exist");
+  assert.ok(studentProfileWriteEnd > studentProfileWriteStart, "student profile mirror upsert must exist");
+  const studentProfileWrite = actionsSource.slice(studentProfileWriteStart, studentProfileWriteEnd);
+  assert.doesNotMatch(
+    studentProfileWrite,
+    /password\s*:/,
+    "plaintext passwords must not be written to the profile mirror",
+  );
 });
 
 test("email verification requires a six-digit OTP and uses signup verification", () => {
