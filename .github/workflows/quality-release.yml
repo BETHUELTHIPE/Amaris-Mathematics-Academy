@@ -132,7 +132,7 @@ jobs:
         run: npm run build
       - name: Frontend performance budgets
         run: npm run check:performance
-      - name: Frontend unit tests
+      - name: Frontend unit and authentication lifecycle tests
         run: npm run test:unit
       - name: Accessibility tests
         shell: bash
