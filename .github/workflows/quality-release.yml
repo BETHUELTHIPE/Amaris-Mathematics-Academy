@@ -58,7 +58,7 @@ jobs:
           --health-retries 5
     env:
       DJANGO_DEBUG: "false"
-      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
       DATABASE_URL: postgresql://amaris_ci:amaris_ci_password@127.0.0.1:5432/amaris_ci
       DATABASE_SSL_REQUIRED: "false"
       CELERY_BROKER_URL: redis://127.0.0.1:6379/0
@@ -120,6 +120,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - uses: browser-actions/setup-chrome@v1
+      - name: Refresh lockfile for security overrides
+        run: npm install --package-lock-only --ignore-scripts
       - name: Install locked frontend dependencies
         run: npm ci
       - name: Frontend linting
@@ -174,6 +176,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+      - name: Refresh lockfile for security overrides
+        run: npm install --package-lock-only --ignore-scripts
       - name: Audit production Node dependencies
         run: npm audit --omit=dev --audit-level=high
 
