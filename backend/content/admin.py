@@ -1,3 +1,4 @@
+from django.apps import apps
 from django.contrib import admin, messages
 from django.utils import timezone
 
@@ -387,3 +388,11 @@ class PaymentReconciliationRunAdmin(TimeStampedAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+# Safety net: register any concrete content model that is not already registered.
+# Custom ModelAdmin classes above remain authoritative; this only covers future
+# models so they are visible in Django Admin instead of being silently omitted.
+for model in apps.get_app_config("content").get_models():
+    if model not in admin.site._registry:
+        admin.site.register(model)
