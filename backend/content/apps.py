@@ -7,5 +7,7 @@ class ContentConfig(AppConfig):
     verbose_name = "Academy content"
 
     def ready(self):
-        from . import admin_users  # noqa: F401
-        from . import signals  # noqa: F401
+        from . import (
+            admin_users,  # noqa: F401
+            signals,  # noqa: F401
+        )
