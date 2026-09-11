@@ -12,6 +12,7 @@
     "http://127.0.0.1:3000/courses",
     "http://127.0.0.1:3000/contact",
     "http://127.0.0.1:3000/login",
-    "http://127.0.0.1:3000/register"
+    "http://127.0.0.1:3000/register",
+    "http://127.0.0.1:3000/dashboard"
   ]
 }
