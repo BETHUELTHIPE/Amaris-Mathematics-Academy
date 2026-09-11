@@ -307,28 +307,116 @@ jobs:
           docker pull "${REGISTRY_IMAGE}:ci-${GITHUB_SHA}"
           docker image inspect "${REGISTRY_IMAGE}:ci-${GITHUB_SHA}" >/dev/null
 
-  deploy-staging:
-    name: Deploy and verify staging
+  staging-release-gate:
+    name: Staging deploy, migrate, verify, and approve release candidate
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     needs: [publish-image]
     environment:
       name: staging
       url: ${{ vars.STAGING_URL }}
+    env:
+      STAGING_URL: ${{ vars.STAGING_URL }}
+      STAGING_API_URL: ${{ vars.STAGING_API_URL }}
+      STAGING_HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL }}
+      STAGING_METRICS_URL: ${{ vars.STAGING_METRICS_URL }}
+      STAGING_SMOKE_VUS: ${{ vars.STAGING_SMOKE_VUS }}
+      STAGING_SMOKE_DURATION: ${{ vars.STAGING_SMOKE_DURATION }}
     steps:
       - uses: actions/checkout@v4
-      - name: Promote reversible staging release
+
+      - id: deploy
+        name: STAGING - deploy exact immutable image
         env:
           DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
           DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
-          HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL }}
-        run: scripts/release/promote.sh staging "${{ needs.publish-image.outputs.image }}"
+        run: scripts/release/deploy-webhook.sh deploy staging "${{ needs.publish-image.outputs.image }}"
+
+      - id: migration
+        name: DATABASE MIGRATION - run staging migrations for this image
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+        run: scripts/release/deploy-webhook.sh migrate staging "${{ needs.publish-image.outputs.image }}"
+
+      - name: HEALTH CHECK - readiness and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_URL"
+          test -n "$STAGING_HEALTHCHECK_URL"
+          scripts/release/verify-health.sh "$STAGING_HEALTHCHECK_URL"
+          api_url="${STAGING_API_URL:-$STAGING_URL}"
+          dependencies="$(curl --fail --silent --show-error --retry 3 --max-time 20 "${api_url%/}/health/dependencies/")"
+          python - "$dependencies" <<'PY'
+          import json
+          import sys
+          payload = json.loads(sys.argv[1])
+          dependencies = payload.get("dependencies", {})
+          required = ("postgresql", "redis")
+          missing = [name for name in required if dependencies.get(name) is not True]
+          if payload.get("status") != "ok" or missing:
+              raise SystemExit(f"Staging dependencies are not healthy: {missing or payload.get('status')}")
+          PY
+
+      - name: E2E - public frontend and Django API smoke journeys
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_url="${STAGING_API_URL:-$STAGING_URL}"
+          for route in / /courses /login /register; do
+            curl --fail --silent --show-error --location --max-redirs 5 --retry 2 --max-time 20 "${STAGING_URL%/}${route}" >/dev/null
+          done
+          curl --fail --silent --show-error --retry 2 --max-time 20 "${api_url%/}/api/v1/courses/?page=1" >/dev/null
+          curl --fail --silent --show-error --retry 2 --max-time 20 "${api_url%/}/api/v1/bootstrap/" >/dev/null
+
+      - name: SECURITY - TLS and response-header checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_url="${STAGING_API_URL:-$STAGING_URL}"
+          case "$STAGING_URL" in https://*) ;; *) echo "STAGING_URL must use HTTPS" >&2; exit 1 ;; esac
+          case "$api_url" in https://*) ;; *) echo "STAGING_API_URL must use HTTPS" >&2; exit 1 ;; esac
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 --max-time 20 "${STAGING_URL%/}/" >/dev/null
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 -D /tmp/staging-api-headers -o /dev/null --max-time 20 "${api_url%/}/health/ready/"
+          grep -qi '^Strict-Transport-Security:' /tmp/staging-api-headers
+          grep -qi '^X-Content-Type-Options:[[:space:]]*nosniff' /tmp/staging-api-headers
+          grep -qi '^X-Frame-Options:[[:space:]]*DENY' /tmp/staging-api-headers
+
+      - name: Install k6 for staging performance smoke
+        uses: grafana/setup-k6-action@v1
+
+      - name: PERFORMANCE SMOKE - short production-threshold test
+        env:
+          STAGING_TARGET_URL: ${{ vars.STAGING_URL }}
+        run: k6 run performance/k6/staging-smoke.js
+
+      - name: OBSERVABILITY CHECK - metrics and correlation signal
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_url="${STAGING_API_URL:-$STAGING_URL}"
+          metrics_url="${STAGING_METRICS_URL:-${api_url%/}/metrics}"
+          curl --fail --silent --show-error --retry 2 --max-time 20 "$metrics_url" -o /tmp/staging-metrics
+          grep -Eq '^# (HELP|TYPE) ' /tmp/staging-metrics
+          grep -q 'django_' /tmp/staging-metrics
+          curl --fail --silent --show-error -D /tmp/staging-observability-headers -o /dev/null --max-time 20 "${api_url%/}/health/ready/"
+          grep -qi '^X-Correlation-ID:' /tmp/staging-observability-headers
+
+      - name: Roll back staging if any post-deploy gate fails
+        if: failure() && steps.deploy.outcome == 'success'
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+        run: |
+          scripts/release/deploy-webhook.sh rollback staging "${{ needs.publish-image.outputs.image }}"
+          scripts/release/verify-health.sh "$STAGING_HEALTHCHECK_URL" || true
 
   deploy-production:
-    name: Approve, deploy, and verify production
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy_production == true
+    name: PRODUCTION APPROVAL - approve, deploy, and verify production
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy_production == true
     runs-on: ubuntu-latest
-    needs: [publish-image, deploy-staging]
+    needs: [publish-image, staging-release-gate]
     environment:
       name: production
       url: ${{ vars.PRODUCTION_URL }}
@@ -342,7 +430,7 @@ jobs:
           BACKUP_WEBHOOK_URL: ${{ secrets.PRODUCTION_BACKUP_WEBHOOK_URL }}
           BACKUP_TOKEN: ${{ secrets.PRODUCTION_BACKUP_TOKEN }}
         run: scripts/release/backup-before-migration.sh production
-      - name: Promote reversible production release
+      - name: Promote the exact image that passed staging
         env:
           DEPLOY_WEBHOOK_URL: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK_URL }}
           DEPLOY_TOKEN: ${{ secrets.PRODUCTION_DEPLOY_TOKEN }}
