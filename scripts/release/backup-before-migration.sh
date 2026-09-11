@@ -28,3 +28,9 @@ printf '%s' "$response" | jq -e '
     (.status == "ok" or .status == "completed" or .status == "succeeded")
     and (.recovery_id | type == "string" and length > 0)
 ' >/dev/null
+
+# GitHub Actions carries this non-secret boolean to the later deployment step.
+# The recovery identifier itself is deliberately not written to logs or environment output.
+if [ -n "${GITHUB_ENV:-}" ]; then
+    printf 'PRE_MIGRATION_BACKUP_VERIFIED=true\n' >> "$GITHUB_ENV"
+fi
