@@ -13,8 +13,10 @@ RUN apt-get update \
 COPY requirements.txt ./
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt \
-    && pip install --upgrade "setuptools>=78.1.1" "msgpack>=1.2.1,<2.0" \
-    && python -m pip cache purge || true
+    && pip install --upgrade --force-reinstall "setuptools>=78.1.1" "msgpack>=1.2.1,<2.0" \
+    && find /usr/local/lib/python3.13/site-packages -maxdepth 1 -type d \
+         \( -name 'msgpack-1.1.2.dist-info' -o -name 'setuptools-70.3.0.dist-info' \) \
+         -exec rm -rf {} +
 
 COPY . ./
 RUN groupadd --system amaris \
