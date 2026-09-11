@@ -98,8 +98,8 @@ jobs:
         run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests
       - name: Integration tests
         run: python manage.py test content.tests.PublicContentApiTests
-      - name: Permission tests
-        run: python manage.py test content.tests.AdminRegistrationTests content.tests.PermissionTests
+      - name: Authorization and RBAC tests
+        run: python manage.py test tests.authorization.test_rbac_admin content.tests.AdminRegistrationTests content.tests.PermissionTests
       - name: Payment tests
         run: python manage.py test content.tests.PaymentReconciliationTests
       - name: Full Django regression suite
