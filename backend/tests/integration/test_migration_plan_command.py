@@ -25,9 +25,7 @@ class MigrationOperationClassificationTests(SimpleTestCase):
         self.assertTrue(result["reversible"])
 
     def test_remove_field_is_blocked_as_destructive(self):
-        result = classify_operation(
-            migrations.RemoveField(model_name="example", name="legacy_value")
-        )
+        result = classify_operation(migrations.RemoveField(model_name="example", name="legacy_value"))
 
         self.assertTrue(result["destructive"])
 
