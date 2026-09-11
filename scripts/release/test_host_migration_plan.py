@@ -64,9 +64,9 @@ class HostMigrationPlanContractTests(unittest.TestCase):
         self.assertEqual(command[0:2], ["docker", "run"])
         self.assertIn("--env-file", command)
         self.assertIn("--network", command)
-        self.assertEqual(command[-2], "--entrypoint")
-        self.assertEqual(command[-1].startswith("/app/ops/"), False)
-        self.assertIn("/app/ops/migration-plan.sh", command)
+        self.assertEqual(command[-3], "--entrypoint")
+        self.assertEqual(command[-2], "/app/ops/migration-plan.sh")
+        self.assertEqual(command[-1], self.valid_payload()["image"])
 
     @mock.patch.object(host_migration_plan.subprocess, "run")
     def test_runs_candidate_image_and_returns_validated_plan(self, run):
