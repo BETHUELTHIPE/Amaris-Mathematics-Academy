@@ -48,6 +48,17 @@ def _validate_environment(payload: dict[str, Any]) -> str:
     return configured
 
 
+def _validate_release_identity(payload: dict[str, Any]) -> None:
+    image = payload.get("image")
+    release_sha = payload.get("release_sha")
+    if not isinstance(image, str) or not image.startswith(host_migration_plan.IMAGE_PREFIX):
+        raise WebhookError("image must use the approved Amaris Docker Hub repository")
+    if not isinstance(release_sha, str) or not host_migration_plan.SHA_RE.fullmatch(release_sha):
+        raise WebhookError("release_sha must be a full 40-character lowercase git SHA")
+    if image.removeprefix(host_migration_plan.IMAGE_PREFIX) != release_sha:
+        raise WebhookError("image tag must exactly match release_sha")
+
+
 def _delegate_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     env_name = ACTION_EXECUTABLE_ENV[action]
     executable_value = os.environ.get(env_name, "")
@@ -88,6 +99,9 @@ def dispatch(payload: dict[str, Any]) -> dict[str, Any]:
 
     if action == "migration-plan":
         return host_migration_plan.run_migration_plan(payload)
+
+    if action in {"deploy", "migrate"}:
+        _validate_release_identity(payload)
 
     return _delegate_action(action, payload)
 
