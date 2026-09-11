@@ -1,3 +1,5 @@
+import os
+
 from django.conf import settings
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -8,9 +10,11 @@ class SecurityBaselineTests(TestCase):
         self.client = APIClient()
 
     def test_production_security_settings(self):
-        """Assert the effective settings loaded by the production-like CI job."""
-        if settings.DEBUG:
-            self.skipTest("Production security assertions run in django-deploy-check with DEBUG=False.")
+        """Assert production hardening only when CI loads production settings."""
+        debug_env = os.getenv("DJANGO_DEBUG", "true").strip().lower()
+        if debug_env in {"1", "true", "yes", "on"}:
+            self.skipTest("Production security assertions run in django-deploy-check with DJANGO_DEBUG=false.")
+        self.assertFalse(settings.DEBUG)
         self.assertTrue(settings.SECURE_SSL_REDIRECT)
         self.assertTrue(settings.SESSION_COOKIE_SECURE)
         self.assertTrue(settings.CSRF_COOKIE_SECURE)
