@@ -61,8 +61,18 @@ jobs:
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
       DATABASE_URL: postgresql://amaris_ci:amaris_ci_password@127.0.0.1:5432/amaris_ci
       DATABASE_SSL_REQUIRED: "false"
+      DJANGO_CACHE_URL: redis://127.0.0.1:6379/2
+      DJANGO_PUBLIC_CACHE_URL: redis://127.0.0.1:6379/3
       CELERY_BROKER_URL: redis://127.0.0.1:6379/0
       CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+      PAYFAST_MERCHANT_ID: ""
+      PAYFAST_MERCHANT_KEY: ""
+      WHATSAPP_TOKEN: ""
+      SMS_API_KEY: ""
+      ZOOM_CLIENT_SECRET: ""
+      OPENAI_API_KEY: ""
+      GEMINI_API_KEY: ""
+      YOUTUBE_API_KEY: ""
     defaults:
       run:
         working-directory: backend
@@ -96,6 +106,8 @@ jobs:
         run: python manage.py collectstatic --noinput
       - name: Unit tests
         run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests
+      - name: Real integration tests
+        run: python manage.py test tests.integration.test_runtime_integrations
       - name: Integration tests
         run: python manage.py test content.tests.PublicContentApiTests
       - name: API tests
