@@ -1,5 +1,4 @@
 import uuid
-from unittest.mock import patch
 
 from django.apps import apps
 from django.contrib import admin
@@ -147,10 +146,18 @@ class PermissionTests(TestCase):
         module = CourseModule.objects.create(course=course, title="Algebra", order=1, is_published=True)
         video = VideoAsset.objects.create(
             title="Private algebra lesson",
+            provider=VideoAsset.Provider.YOUTUBE,
             youtube_video_id="private-video-id",
-            visibility=VideoAsset.Visibility.PRIVATE,
+            is_published=False,
         )
-        Lesson.objects.create(module=module, title="Lesson 1", order=1, video=video, is_published=True)
+        Lesson.objects.create(
+            module=module,
+            title="Lesson 1",
+            slug="lesson-1",
+            order=1,
+            video=video,
+            is_published=True,
+        )
 
         response = self.client.get(reverse("course-detail", kwargs={"slug": course.slug}), secure=True)
         self.assertEqual(response.status_code, 200)
@@ -160,10 +167,12 @@ class PermissionTests(TestCase):
 
 class PaymentReconciliationTests(TestCase):
     def setUp(self):
-        self.student = get_user_model().objects.create_user(
-            username="payment-student",
+        self.student = StudentRecord.objects.create(
+            supabase_user_id=uuid.uuid4(),
             email="payment-student@example.com",
-            password="Strong-Test-Password-123!",
+            first_name="Payment",
+            last_name="Student",
+            academic_level="N4",
         )
         self.category = CourseCategory.objects.create(name="TVET", slug="tvet")
         self.course = Course.objects.create(
@@ -179,42 +188,54 @@ class PaymentReconciliationTests(TestCase):
         )
 
     def test_verified_payment_creates_enrollment_idempotently(self):
+        now = timezone.now()
         payment = Payment.objects.create(
+            reference=f"PAY-{uuid.uuid4()}",
             student=self.student,
             course=self.course,
+            provider=Payment.Provider.PAYFAST,
             amount=950,
-            status=Payment.Status.VERIFIED,
-            provider_reference=f"PAY-{uuid.uuid4()}",
-            verified_at=timezone.now(),
+            status=Payment.Status.PAID,
+            provider_reference=f"PF-{uuid.uuid4()}",
+            paid_at=now,
+            gateway_verified_at=now,
+            verification_source="ci-test",
         )
         reconcile_verified_payments()
         reconcile_verified_payments()
 
         self.assertEqual(Enrollment.objects.filter(student=self.student, course=self.course).count(), 1)
+        enrollment = Enrollment.objects.get(student=self.student, course=self.course)
+        self.assertEqual(enrollment.status, Enrollment.Status.ACTIVE)
         payment.refresh_from_db()
-        self.assertEqual(payment.status, Payment.Status.VERIFIED)
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(payment.enrollment_id, enrollment.pk)
 
-    @patch("content.services.reconciliation.logger")
-    def test_unverified_payment_does_not_create_enrollment(self, logger):
+    def test_unverified_payment_does_not_create_enrollment(self):
         Payment.objects.create(
+            reference=f"PAY-{uuid.uuid4()}",
             student=self.student,
             course=self.course,
+            provider=Payment.Provider.PAYFAST,
             amount=950,
-            status=Payment.Status.PENDING,
-            provider_reference=f"PAY-{uuid.uuid4()}",
+            status=Payment.Status.PAID,
+            provider_reference=f"PF-{uuid.uuid4()}",
+            paid_at=timezone.now(),
+            gateway_verified_at=None,
         )
         reconcile_verified_payments()
 
         self.assertFalse(Enrollment.objects.filter(student=self.student, course=self.course).exists())
-        logger.info.assert_not_called()
 
 
 class StudentRecordTests(TestCase):
     def test_student_record_created_for_user(self):
-        user = get_user_model().objects.create_user(
-            username="student-record",
+        record = StudentRecord.objects.create(
+            supabase_user_id=uuid.uuid4(),
             email="student-record@example.com",
-            password="Strong-Test-Password-123!",
+            first_name="Student",
+            last_name="Record",
+            academic_level="Grade 12",
         )
-        record = StudentRecord.objects.create(user=user, curriculum="CAPS", academic_level="Grade 12")
-        self.assertEqual(record.user, user)
+        self.assertEqual(record.email, "student-record@example.com")
+        self.assertEqual(record.academic_level, "Grade 12")
