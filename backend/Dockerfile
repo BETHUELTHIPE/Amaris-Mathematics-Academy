@@ -11,7 +11,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip "setuptools>=78.1.1" \
+    && pip install -r requirements.txt
 
 COPY . ./
 RUN groupadd --system amaris \
