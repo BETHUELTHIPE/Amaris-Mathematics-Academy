@@ -16,7 +16,10 @@ RUN pip install --upgrade pip \
     && pip install --upgrade --force-reinstall "setuptools>=78.1.1" "msgpack>=1.2.1,<2.0" \
     && find /usr/local/lib/python3.13/site-packages -maxdepth 1 -type d \
          \( -name 'msgpack-1.1.2.dist-info' -o -name 'setuptools-70.3.0.dist-info' \) \
-         -exec rm -rf {} +
+         -exec rm -rf {} + \
+    && rm -rf /usr/local/lib/python3.13/site-packages/pip \
+              /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+    && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
 
 COPY . ./
 RUN groupadd --system amaris \
