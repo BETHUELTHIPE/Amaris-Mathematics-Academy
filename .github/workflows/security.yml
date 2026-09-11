@@ -103,7 +103,7 @@ jobs:
       - name: Build backend image
         run: docker build -t amaris-backend-security-scan ./backend
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: amaris-backend-security-scan
           format: table
