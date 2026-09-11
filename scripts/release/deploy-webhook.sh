@@ -6,7 +6,7 @@ environment_name=${2:?environment name is required}
 image_reference=${3:-}
 
 case "$action" in
-    deploy|rollback) ;;
+    deploy|migrate|rollback) ;;
     *) echo "Unsupported deployment action." >&2; exit 2 ;;
 esac
 
