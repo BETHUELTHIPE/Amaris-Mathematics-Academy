@@ -8,6 +8,13 @@ import { safeRelativePath } from "@/lib/auth";
 import { getDb } from "@/db";
 import { studentProfiles } from "@/db/schema";
 
+const registrationRoleSchema = z.enum([
+  "student",
+  "tutor",
+  "administrator",
+  "super_administrator",
+]);
+
 const passwordSchema = z
   .string()
   .min(12, "Use at least 12 characters for your password.")
@@ -19,6 +26,7 @@ const passwordSchema = z
 
 const registrationSchema = z
   .object({
+    role: registrationRoleSchema,
     firstName: z.string().trim().min(2).max(80),
     lastName: z.string().trim().min(2).max(80),
     email: z.string().trim().toLowerCase().email(),
@@ -48,6 +56,7 @@ const loginSchema = z.object({
 
 export async function registerAction(formData: FormData) {
   const parsed = registrationSchema.safeParse({
+    role: formData.get("role"),
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
     email: formData.get("email"),
@@ -69,6 +78,7 @@ export async function registerAction(formData: FormData) {
   }
 
   const values = parsed.data;
+  const isPrivilegedRegistration = values.role !== "student";
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signUp({
     email: values.email,
@@ -82,6 +92,8 @@ export async function registerAction(formData: FormData) {
         province: values.province,
         institution: values.institution,
         academic_level: values.academicLevel,
+        requested_role: values.role,
+        privileged_role_approved: false,
         terms_accepted_at: new Date().toISOString(),
       },
     },
@@ -96,7 +108,7 @@ export async function registerAction(formData: FormData) {
     );
   }
 
-  if (data.user) {
+  if (data.user && values.role === "student") {
     try {
       await getDb()
         .insert(studentProfiles)
@@ -118,8 +130,14 @@ export async function registerAction(formData: FormData) {
     }
   }
 
-  if (data.session && data.user?.email_confirmed_at) {
+  if (data.session && data.user?.email_confirmed_at && !isPrivilegedRegistration) {
     redirect("/dashboard?registered=1");
+  }
+
+  if (isPrivilegedRegistration) {
+    redirect(
+      `/verify-email?email=${encodeURIComponent(values.email)}&registered=1&role_request=${encodeURIComponent(values.role)}`,
+    );
   }
 
   redirect(
