@@ -284,7 +284,8 @@ class EnquiryApiTests(TestCase):
         max_length = getattr(field, "max_length", None)
         if max_length is None:
             self.skipTest(
-                "ContactEnquiry.message currently has no max_length; request-size limits belong at proxy/server level."
+                "ContactEnquiry.message currently has no max_length; "
+                "request-size limits belong at proxy/server level."
             )
         payload = {**self.valid_payload, "message": "x" * (max_length + 1)}
         response = self.client.post(self.url, payload, format="json", secure=True)
