@@ -97,7 +97,9 @@ class PublicDrfEndpointTests(TestCase):
 
     def test_course_list_is_paginated_and_filters(self):
         response = self.client.get(
-            reverse("courses-list"), {"curriculum": "CAPS"}, secure=True
+            reverse("courses-list"),
+            {"curriculum": "CAPS"},
+            secure=True,
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -108,13 +110,17 @@ class PublicDrfEndpointTests(TestCase):
 
     def test_course_search_and_ordering(self):
         searched = self.client.get(
-            reverse("courses-list"), {"search": "Mathematics"}, secure=True
+            reverse("courses-list"),
+            {"search": "Mathematics"},
+            secure=True,
         )
         self.assertEqual(searched.status_code, 200)
         self.assertEqual(searched.json()["count"], 1)
 
         ordered = self.client.get(
-            reverse("courses-list"), {"ordering": "price"}, secure=True
+            reverse("courses-list"),
+            {"ordering": "price"},
+            secure=True,
         )
         self.assertEqual(ordered.status_code, 200)
         self.assertEqual(ordered.json()["results"][0]["slug"], self.course.slug)
@@ -130,13 +136,19 @@ class PublicDrfEndpointTests(TestCase):
         detail = reverse("courses-detail", kwargs={"slug": self.course.slug})
         self.assertEqual(
             self.client.post(
-                reverse("courses-list"), {}, format="json", secure=True
+                reverse("courses-list"),
+                {},
+                format="json",
+                secure=True,
             ).status_code,
             405,
         )
         self.assertEqual(
             self.client.patch(
-                detail, {"title": "Nope"}, format="json", secure=True
+                detail,
+                {"title": "Nope"},
+                format="json",
+                secure=True,
             ).status_code,
             405,
         )
@@ -160,7 +172,9 @@ class PublicDrfEndpointTests(TestCase):
 
     def test_faq_filtering(self):
         response = self.client.get(
-            reverse("faqs-list"), {"category": "General"}, secure=True
+            reverse("faqs-list"),
+            {"category": "General"},
+            secure=True,
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 1)
@@ -199,20 +213,30 @@ class EnquiryApiTests(TestCase):
 
     def test_valid_post_creates_enquiry_and_response_schema(self):
         response = self.client.post(
-            self.url, self.valid_payload, format="json", secure=True
+            self.url,
+            self.valid_payload,
+            format="json",
+            secure=True,
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(
-            set(response.json()), {"name", "email", "phone", "subject", "message"}
+            set(response.json()),
+            {"name", "email", "phone", "subject", "message"},
         )
         self.assertEqual(ContactEnquiry.objects.count(), 1)
 
     def test_duplicate_requests_are_independent_but_valid(self):
         first = self.client.post(
-            self.url, self.valid_payload, format="json", secure=True
+            self.url,
+            self.valid_payload,
+            format="json",
+            secure=True,
         )
         second = self.client.post(
-            self.url, self.valid_payload, format="json", secure=True
+            self.url,
+            self.valid_payload,
+            format="json",
+            secure=True,
         )
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 201)
@@ -249,13 +273,19 @@ class EnquiryApiTests(TestCase):
         self.assertEqual(self.client.get(self.url, secure=True).status_code, 405)
         self.assertEqual(
             self.client.put(
-                self.url, self.valid_payload, format="json", secure=True
+                self.url,
+                self.valid_payload,
+                format="json",
+                secure=True,
             ).status_code,
             405,
         )
         self.assertEqual(
             self.client.patch(
-                self.url, self.valid_payload, format="json", secure=True
+                self.url,
+                self.valid_payload,
+                format="json",
+                secure=True,
             ).status_code,
             405,
         )
@@ -264,18 +294,27 @@ class EnquiryApiTests(TestCase):
     def test_rate_limit_returns_429(self):
         self.assertEqual(
             self.client.post(
-                self.url, self.valid_payload, format="json", secure=True
+                self.url,
+                self.valid_payload,
+                format="json",
+                secure=True,
             ).status_code,
             201,
         )
         self.assertEqual(
             self.client.post(
-                self.url, self.valid_payload, format="json", secure=True
+                self.url,
+                self.valid_payload,
+                format="json",
+                secure=True,
             ).status_code,
             201,
         )
         limited = self.client.post(
-            self.url, self.valid_payload, format="json", secure=True
+            self.url,
+            self.valid_payload,
+            format="json",
+            secure=True,
         )
         self.assertEqual(limited.status_code, 429)
 
@@ -288,5 +327,10 @@ class EnquiryApiTests(TestCase):
                 "request-size limits belong at proxy/server level."
             )
         payload = {**self.valid_payload, "message": "x" * (max_length + 1)}
-        response = self.client.post(self.url, payload, format="json", secure=True)
+        response = self.client.post(
+            self.url,
+            payload,
+            format="json",
+            secure=True,
+        )
         self.assertEqual(response.status_code, 400)
