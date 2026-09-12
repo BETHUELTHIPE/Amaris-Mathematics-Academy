@@ -379,7 +379,7 @@ services:
     networks: [frontend_network, backend_network, monitoring_network]
 
   nginx:
-    image: nginx:1.29-alpine
+    build: ./nginx
     restart: unless-stopped
     ports: ["${NGINX_PORT:-8080}:80"]
     volumes:
