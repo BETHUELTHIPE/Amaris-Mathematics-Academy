@@ -6,21 +6,44 @@ environment_name=${2:?environment name is required}
 image_reference=${3:-}
 
 case "$action" in
-    deploy|migrate|migration-plan|rollback) ;;
+    current-release|deploy|migrate|migration-plan|rollback) ;;
     *) echo "Unsupported deployment action." >&2; exit 2 ;;
 esac
 
 : "${DEPLOY_WEBHOOK_URL:?DEPLOY_WEBHOOK_URL is required}"
 : "${DEPLOY_TOKEN:?DEPLOY_TOKEN is required}"
 
+image_prefix="docker.io/bethuelm/amaris-mathematics-academy:"
+release_sha=""
+
+validate_immutable_image() {
+    case "$image_reference" in
+        "${image_prefix}"*) ;;
+        *) echo "Image must use the approved immutable Amaris Docker Hub repository." >&2; exit 2 ;;
+    esac
+
+    release_sha=${image_reference#"$image_prefix"}
+    if ! printf '%s' "$release_sha" | grep -Eq '^[0-9a-f]{40}$'; then
+        echo "Image tag must be a full 40-character lowercase Git SHA; ambiguous tags such as latest are forbidden." >&2
+        exit 2
+    fi
+}
+
 post_action() {
     action_name=$1
-    payload=$(jq -n \
-        --arg action "$action_name" \
-        --arg environment "$environment_name" \
-        --arg image "$image_reference" \
-        --arg release_sha "${GITHUB_SHA:-unknown}" \
-        '{action: $action, environment: $environment, image: $image, release_sha: $release_sha}')
+    if [ -n "$image_reference" ]; then
+        payload=$(jq -n \
+            --arg action "$action_name" \
+            --arg environment "$environment_name" \
+            --arg image "$image_reference" \
+            --arg release_sha "$release_sha" \
+            '{action: $action, environment: $environment, image: $image, release_sha: $release_sha}')
+    else
+        payload=$(jq -n \
+            --arg action "$action_name" \
+            --arg environment "$environment_name" \
+            '{action: $action, environment: $environment}')
+    fi
 
     curl \
         --fail-with-body \
@@ -50,14 +73,20 @@ preflight_migration() {
 }
 
 case "$action" in
+    current-release)
+        post_action current-release
+        ;;
     deploy|migrate)
+        validate_immutable_image
         preflight_migration
         post_action "$action" >/dev/null
         ;;
     migration-plan)
+        validate_immutable_image
         post_action migration-plan
         ;;
     rollback)
+        validate_immutable_image
         post_action rollback >/dev/null
         ;;
 esac
