@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest import mock
+
 from django.core.cache import caches
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -18,6 +20,7 @@ from content.models import (
     SiteSettings,
     Testimonial,
 )
+from content.views import EnquiryThrottle
 
 
 @override_settings(
@@ -295,30 +298,32 @@ class EnquiryApiTests(TestCase):
         self.assertEqual(self.client.delete(self.url, secure=True).status_code, 405)
 
     def test_rate_limit_returns_429(self):
-        self.assertEqual(
-            self.client.post(
+        caches["default"].clear()
+        with mock.patch.object(EnquiryThrottle, "rate", "2/min"):
+            self.assertEqual(
+                self.client.post(
+                    self.url,
+                    self.valid_payload,
+                    format="json",
+                    secure=True,
+                ).status_code,
+                201,
+            )
+            self.assertEqual(
+                self.client.post(
+                    self.url,
+                    self.valid_payload,
+                    format="json",
+                    secure=True,
+                ).status_code,
+                201,
+            )
+            limited = self.client.post(
                 self.url,
                 self.valid_payload,
                 format="json",
                 secure=True,
-            ).status_code,
-            201,
-        )
-        self.assertEqual(
-            self.client.post(
-                self.url,
-                self.valid_payload,
-                format="json",
-                secure=True,
-            ).status_code,
-            201,
-        )
-        limited = self.client.post(
-            self.url,
-            self.valid_payload,
-            format="json",
-            secure=True,
-        )
+            )
         self.assertEqual(limited.status_code, 429)
 
     def test_oversized_message_is_rejected_by_field_limit_when_configured(self):
