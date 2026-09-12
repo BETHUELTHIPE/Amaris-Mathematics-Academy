@@ -51,7 +51,7 @@ async function cmsFetch<T>(path: string): Promise<T | null> {
     const response = await fetch(`${cmsBaseUrl}${path}`, {
       headers: { Accept: "application/json" },
       next: { revalidate: 60 },
-      signal: AbortSignal.timeout(4_000),
+      signal: AbortSignal.timeout(900),
     });
     if (!response.ok) return null;
     return (await response.json()) as T;
