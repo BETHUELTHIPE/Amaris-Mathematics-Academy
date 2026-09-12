@@ -18,18 +18,18 @@ export async function Footer() {
             </span>
             <span>{academyBrand.name}</span>
           </div>
-          <p className="mt-5 text-sm leading-7 text-white/58">Structured mathematics courses for South African school, TVET and university students. Learn clearly, practise deliberately and track real progress.</p>
+          <p className="mt-5 text-sm leading-7 text-white/65">Structured mathematics courses for South African school, TVET and university students. Learn clearly, practise deliberately and track real progress.</p>
         </div>
         <div>
           <p className="text-sm font-semibold text-[#ffcc66]">Explore</p>
-          <div className="mt-4 grid gap-3 text-sm text-white/65">
+          <div className="mt-4 grid gap-3 text-sm text-white/70">
             {links.map(({ label, url, open_in_new_tab }) => <Link key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined}>{label}</Link>)}
             <Link href="/documents">Documents & invoices</Link>
           </div>
         </div>
         <div>
           <p className="text-sm font-semibold text-[#ffcc66]">Contact & support</p>
-          <div className="mt-4 grid gap-4 text-sm text-white/65">
+          <div className="mt-4 grid gap-4 text-sm text-white/70">
             <a href={academyBrand.phoneHref} className="flex items-start gap-3 transition hover:text-white"><Phone className="mt-0.5 size-4 shrink-0 text-[#ffcc66]" /><span>{academyBrand.phoneDisplay}</span></a>
             <a href={academyBrand.emailHref} className="flex min-w-0 items-start gap-3 transition hover:text-white"><Mail className="mt-0.5 size-4 shrink-0 text-[#ffcc66]" /><span className="break-all">{academyBrand.email}</span></a>
             <a href={academyBrand.addressHref} target="_blank" rel="noreferrer" className="flex items-start gap-3 transition hover:text-white"><MapPin className="mt-0.5 size-4 shrink-0 text-[#ffcc66]" /><span>{academyBrand.address}</span></a>
@@ -38,7 +38,7 @@ export async function Footer() {
           </div>
         </div>
       </div>
-      <div className="border-t border-white/10 px-5 py-5 text-xs text-white/45"><div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 sm:flex-row"><span>© {new Date().getFullYear()} Amaris Mathematics Academy. Mathematics, taught with clarity.</span><span className="flex gap-5"><Link href="/terms" className="hover:text-white">Student terms</Link><Link href="/privacy" className="hover:text-white">Privacy</Link></span></div></div>
+      <div className="border-t border-white/10 px-5 py-5 text-xs text-white/60"><div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 sm:flex-row"><span>© {new Date().getFullYear()} Amaris Mathematics Academy. Mathematics, taught with clarity.</span><span className="flex gap-5"><Link href="/terms" className="hover:text-white">Student terms</Link><Link href="/privacy" className="hover:text-white">Privacy</Link></span></div></div>
     </footer>
   );
 }
