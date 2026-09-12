@@ -1,0 +1,90 @@
+name: Lighthouse production diagnostics
+
+on:
+  push:
+    branches: [security/owasp-test-suite]
+    paths:
+      - .github/workflows/lighthouse-diagnostics-temporary.yml
+      - app/**
+      - components/**
+      - lib/**
+      - public/**
+      - package.json
+      - package-lock.json
+      - vite.config.ts
+      - lighthouserc.json
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: browser-actions/setup-chrome@v1
+      - run: npm ci
+      - run: npm run build
+      - name: Start isolated production preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/vite preview --host 127.0.0.1 --port 4173 >/tmp/amaris-preview.log 2>&1 &
+          echo $! >/tmp/amaris-preview.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            if [ "$attempt" -eq 30 ]; then cat /tmp/amaris-preview.log; exit 1; fi
+            sleep 1
+          done
+      - name: Capture homepage Lighthouse JSON
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/lighthouse http://127.0.0.1:4173/ \
+            --output=json \
+            --output-path=/tmp/lighthouse-home.json \
+            --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' \
+            --quiet || true
+      - name: Print actionable Lighthouse diagnostics
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const report = JSON.parse(fs.readFileSync('/tmp/lighthouse-home.json', 'utf8'));
+          console.log(`performance=${report.categories.performance.score}`);
+          console.log(`accessibility=${report.categories.accessibility.score}`);
+          for (const id of ['first-contentful-paint','largest-contentful-paint','speed-index','total-blocking-time','cumulative-layout-shift','server-response-time','total-byte-weight','unused-javascript','unused-css-rules','render-blocking-resources','mainthread-work-breakdown','bootup-time','network-requests','largest-contentful-paint-element','lcp-discovery-insight','render-blocking-insight','image-delivery-insight']) {
+            const a = report.audits[id];
+            if (!a) continue;
+            console.log(`AUDIT ${id}: score=${a.score} numeric=${a.numericValue ?? ''} display=${a.displayValue ?? ''}`);
+            if (a.details?.overallSavingsMs != null) console.log(`  savingsMs=${a.details.overallSavingsMs}`);
+            if (a.details?.overallSavingsBytes != null) console.log(`  savingsBytes=${a.details.overallSavingsBytes}`);
+            const items = a.details?.items;
+            if (Array.isArray(items)) {
+              for (const item of items.slice(0, 8)) {
+                const pick = {};
+                for (const key of ['url','wastedMs','wastedBytes','totalBytes','duration','transferSize','node','element','requestStartTime','networkRequestTime']) {
+                  if (item[key] != null) pick[key] = item[key];
+                }
+                if (Object.keys(pick).length) console.log('  item', JSON.stringify(pick));
+              }
+            }
+          }
+          console.log('ACCESSIBILITY FAILURES');
+          for (const ref of report.categories.accessibility.auditRefs) {
+            const a = report.audits[ref.id];
+            if (a && a.score !== null && a.score < 1) {
+              console.log(`A11Y ${ref.id}: score=${a.score} title=${a.title}`);
+              for (const item of (a.details?.items ?? []).slice(0, 10)) {
+                console.log('  item', JSON.stringify({node:item.node, explanation:item.explanation}));
+              }
+            }
+          }
+          NODE
+      - name: Stop preview
+        if: always()
+        run: kill "$(cat /tmp/amaris-preview.pid)" 2>/dev/null || true
