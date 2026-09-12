@@ -85,7 +85,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Generate an ephemeral Django secret
         shell: bash
-        run: printf 'DJANGO_SECRET_KEY=%s\n' "$(openssl rand -hex 64)" >> "$GITHUB_ENV"
+        run: |
+          secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$secret"
+          printf 'DJANGO_SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -230,26 +233,44 @@ jobs:
           docker compose --env-file backend/.env -f backend/docker-compose.yml config --quiet
       - name: Build production backend image
         run: docker build --tag amaris-backend:${{ github.sha }} backend
+      - name: Build patched production Nginx image
+        run: docker build --tag amaris-nginx:${{ github.sha }} backend/nginx
       - name: Generate CycloneDX software bill of materials
         uses: anchore/sbom-action@v0
         with:
           image: amaris-backend:${{ github.sha }}
           format: cyclonedx-json
           output-file: amaris-backend-sbom.cdx.json
-      - name: Scan container for high and critical vulnerabilities
+      - name: Scan backend container for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: amaris-backend:${{ github.sha }}
           format: sarif
-          output: trivy-results.sarif
+          output: trivy-backend-results.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-      - name: Upload container scan results
-        if: always() && hashFiles('trivy-results.sarif') != ''
+      - name: Upload backend container scan results
+        if: always() && hashFiles('trivy-backend-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: trivy-results.sarif
+          sarif_file: trivy-backend-results.sarif
+          category: trivy-backend
+      - name: Scan Nginx container for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: amaris-nginx:${{ github.sha }}
+          format: sarif
+          output: trivy-nginx-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Upload Nginx container scan results
+        if: always() && hashFiles('trivy-nginx-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-nginx-results.sarif
+          category: trivy-nginx
       - name: Upload software bill of materials
         if: always()
         uses: actions/upload-artifact@v4
@@ -258,6 +279,9 @@ jobs:
           path: amaris-backend-sbom.cdx.json
           if-no-files-found: error
           retention-days: 30
+      - name: Remove CI Compose environment file
+        if: always()
+        run: rm -f backend/.env
 
   publish-image:
     name: Publish release image to Docker Hub
