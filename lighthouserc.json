@@ -1,14 +1,14 @@
 {
   "ci": {
     "collect": {
-      "startServerCommand": "pkill -TERM -f '[v]ite.*--port 3000' || true; pkill -TERM -f '[w]orkerd' || true; sleep 1; ./node_modules/.bin/vite preview --host 127.0.0.1 --port 4173",
-      "startServerReadyPattern": "Local|localhost|127.0.0.1",
+      "startServerCommand": "bash scripts/performance/start-lighthouse-server.sh",
+      "startServerReadyPattern": "Lighthouse production-like server ready",
       "startServerReadyTimeout": 90000,
       "numberOfRuns": 1,
       "url": [
-        "http://127.0.0.1:4173/",
-        "http://127.0.0.1:4173/courses",
-        "http://127.0.0.1:4173/contact"
+        "http://127.0.0.1:4180/",
+        "http://127.0.0.1:4180/courses",
+        "http://127.0.0.1:4180/contact"
       ],
       "settings": {
         "chromeFlags": "--headless --no-sandbox --disable-dev-shm-usage"
