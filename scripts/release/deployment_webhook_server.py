@@ -2,9 +2,10 @@
 """Authenticated host-side deployment webhook service.
 
 Run this only on the deployment host, bound to loopback behind an HTTPS reverse proxy.
-`migration-plan` is implemented directly and is read-only. Existing deploy/migrate/rollback
-operations are delegated to fixed executable paths configured by the operator; request
-content is never executed as shell input.
+`migration-plan` is implemented directly and is read-only. Deployment operations are
+delegated to fixed executable paths configured by the operator; request content is never
+executed as shell input. `current-release` is a read-only adapter used to discover the
+exact immutable image that must be restored if a release fails health checks.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ import host_migration_plan
 MAX_BODY_BYTES = 16 * 1024
 DEFAULT_PATH = "/deploy"
 ACTION_EXECUTABLE_ENV = {
+    "current-release": "CURRENT_RELEASE_ACTION_EXECUTABLE",
     "deploy": "DEPLOY_ACTION_EXECUTABLE",
     "migrate": "MIGRATE_ACTION_EXECUTABLE",
     "rollback": "ROLLBACK_ACTION_EXECUTABLE",
@@ -92,7 +94,7 @@ def _delegate_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 def dispatch(payload: dict[str, Any]) -> dict[str, Any]:
     action = payload.get("action")
-    if action not in {"deploy", "migrate", "migration-plan", "rollback"}:
+    if action not in {"current-release", "deploy", "migrate", "migration-plan", "rollback"}:
         raise WebhookError("unsupported deployment action")
 
     _validate_environment(payload)
@@ -100,7 +102,12 @@ def dispatch(payload: dict[str, Any]) -> dict[str, Any]:
     if action == "migration-plan":
         return host_migration_plan.run_migration_plan(payload)
 
-    if action in {"deploy", "migrate"}:
+    if action == "current-release":
+        result = _delegate_action(action, payload)
+        _validate_release_identity(result)
+        return result
+
+    if action in {"deploy", "migrate", "rollback"}:
         _validate_release_identity(payload)
 
     return _delegate_action(action, payload)
