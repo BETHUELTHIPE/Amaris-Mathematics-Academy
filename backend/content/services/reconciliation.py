@@ -34,9 +34,11 @@ def reconcile_verified_payments() -> PaymentReconciliationRun:
 
         for payment_id in eligible_ids:
             with transaction.atomic():
+                # Lock only the Payment row. Joining the nullable enrollment FK here
+                # produces a LEFT OUTER JOIN, which PostgreSQL correctly refuses to
+                # lock with FOR UPDATE. The enrollment is acquired separately below.
                 payment = (
                     Payment.objects.select_for_update(skip_locked=True)
-                    .select_related("enrollment")
                     .filter(
                         pk=payment_id,
                         status=Payment.Status.PAID,
