@@ -67,6 +67,14 @@ test("renders branded recovery pages without technical details", async () => {
 
 test("keeps the hero background photo visible on the homepage", async () => {
   const homepageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(homepageSource, /src="\/amaris-math-hero\.png"/);
+  assert.match(homepageSource, /src="\/amaris-math-hero\.webp"/);
   assert.match(homepageSource, /opacity-90/);
+});
+
+test("course discovery works without client-side JavaScript", async () => {
+  const coursesSource = await readFile(new URL("../app/courses/page.tsx", import.meta.url), "utf8");
+  assert.match(coursesSource, /<form method="get" action="\/courses"/);
+  assert.match(coursesSource, /name="q"/);
+  assert.match(coursesSource, /aria-label="Course pathways"/);
+  assert.doesNotMatch(coursesSource, /^"use client"/);
 });
