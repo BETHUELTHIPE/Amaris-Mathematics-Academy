@@ -1,6 +1,18 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
+
+@source ".";
+@source "../components/site";
+@source "../components/documents";
+@source "../components/ui/alert.tsx";
+@source "../components/ui/button.tsx";
+@source "../components/ui/checkbox.tsx";
+@source "../components/ui/input.tsx";
+@source "../components/ui/input-otp.tsx";
+@source "../components/ui/native-select.tsx";
+@source "../components/ui/textarea.tsx";
+@source inline("animate-in scrollbar-thin scrollbar-none scrollbar-gutter-stable scroll-fade-b shimmer");
 
 @utility scrollbar-thin { scrollbar-width:thin; }
 @utility scrollbar-none {
