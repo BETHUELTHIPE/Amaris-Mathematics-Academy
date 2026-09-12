@@ -16,13 +16,6 @@ export const metadata: Metadata = { title: "Registration" };
 
 const provinces = ["Eastern Cape", "Free State", "Gauteng", "KwaZulu-Natal", "Limpopo", "Mpumalanga", "Northern Cape", "North West", "Western Cape"];
 const levels = ["Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12", "TVET / College", "University", "Adult learner"];
-const roles = [
-  { value: "student", label: "Student" },
-  { value: "tutor", label: "Tutor" },
-  { value: "administrator", label: "Admin" },
-  { value: "super_administrator", label: "Super Admin" },
-];
-
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const student = await getStudentIdentity();
   if (student?.emailVerified) redirect("/dashboard");
@@ -34,9 +27,9 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <div className="lg:sticky lg:top-36">
         <p className="eyebrow">Account registration</p>
         <h1 className="section-title mt-4">Create your Amaris account.</h1>
-        <p className="mt-6 max-w-xl text-lg leading-8 text-[#60708a]">Choose the role you are registering for, then complete your profile. Student accounts can be activated after email verification. Tutor, Admin and Super Admin registrations remain subject to authorization before privileged access is granted.</p>
+        <p className="mt-6 max-w-xl text-lg leading-8 text-[#60708a]">Create your student profile, then verify your email before accessing protected learning areas. Tutor and administration accounts are created privately by the Super Administrator.</p>
         <div className="mt-8 grid gap-3">
-          {["Role-aware account registration", "Verified email before protected access", "Secure password-based authentication", "Privileged roles require authorization"].map((item) => <span key={item} className="flex items-center gap-3 text-sm font-medium text-[#3f4f67]"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#daf5ec] text-[#16836d]"><Check className="size-3.5" /></span>{item}</span>)}
+          {["Student self-service registration", "Verified email before protected access", "Secure password-based authentication", "Privileged accounts are invitation-only"].map((item) => <span key={item} className="flex items-center gap-3 text-sm font-medium text-[#3f4f67]"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#daf5ec] text-[#16836d]"><Check className="size-3.5" /></span>{item}</span>)}
         </div>
         <div className="mt-8 flex items-start gap-3 rounded-2xl border border-[#dce4ef] bg-white p-5 text-sm leading-6 text-[#60708a]"><ShieldCheck className="mt-0.5 size-5 shrink-0 text-[#1f5bbd]" />Your password is handled by Supabase Auth and is never stored in the Amaris course database.</div>
       </div>
@@ -44,9 +37,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
         <div className="flex items-center gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LockKeyhole className="size-6" /></span><div><h2 className="text-2xl font-semibold tracking-[-.03em]">Registration details</h2><p className="mt-1 text-sm text-[#60708a]">All fields are required.</p></div></div>
         {error && <Alert variant="destructive" className="mt-6"><AlertDescription>{error}</AlertDescription></Alert>}
         <form action={registerAction} className="mt-7 grid gap-5">
-          <SafeFormDraft draftKey="account-registration-v2" allowedFields={["role", "firstName", "lastName", "email", "mobile", "province", "academicLevel", "institution"]} />
-          <label className="grid gap-2 text-sm font-semibold text-[#263852]">Register as<NativeSelect name="role" required className="h-12 w-full bg-white"><NativeSelectOption value="">Select role</NativeSelectOption>{roles.map((role) => <NativeSelectOption key={role.value} value={role.value}>{role.label}</NativeSelectOption>)}</NativeSelect></label>
-          <p className="-mt-2 text-xs leading-5 text-[#68778f]">Student registration is self-service. Tutor, Admin and Super Admin selections do not automatically grant privileged access; approval and server-side role assignment are still required.</p>
+          <SafeFormDraft draftKey="account-registration-v3" allowedFields={["firstName", "lastName", "email", "mobile", "province", "academicLevel", "institution"]} />
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="First name" name="firstName" autoComplete="given-name" /><AuthField label="Last name" name="lastName" autoComplete="family-name" /></div>
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="Email address" name="email" type="email" autoComplete="email" /><AuthField label="Mobile number" name="mobile" type="tel" autoComplete="tel" placeholder="071 234 5678" /></div>
           <div className="grid gap-5 sm:grid-cols-2">

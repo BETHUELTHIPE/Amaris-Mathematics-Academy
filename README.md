@@ -9,8 +9,11 @@ Online mathematics course platform for South African school, TVET, college and u
 - Mandatory email verification before dashboard or course enrolment access
 - Six-digit verification-code screen plus secure email-link callback
 - Forgot-password and secure password-update flows
+- Public self-registration is restricted to students; tutor and administration accounts are created privately by the Super Administrator
 - Private student dashboards and student-owned Supabase profile records
 - Row Level Security policies that restrict each profile to its authenticated owner
+- Private-by-default Django REST permissions with explicit public content endpoints
+- Browser security headers and private/no-store caching for authenticated routes
 - Cloudflare D1 support for course progress and contact enquiries
 - Branded student documents, letterhead and invoice previews
 - Django CMS with a branded Jazzmin administration dashboard

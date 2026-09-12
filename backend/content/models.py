@@ -397,7 +397,7 @@ class ContactEnquiry(TimeStampedModel):
     email = models.EmailField()
     phone = models.CharField(max_length=30, blank=True)
     subject = models.CharField(max_length=180)
-    message = models.TextField()
+    message = models.TextField(max_length=5000)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.NEW, db_index=True)
     assigned_to = models.ForeignKey(
         "auth.User", related_name="assigned_enquiries", on_delete=models.SET_NULL, blank=True, null=True

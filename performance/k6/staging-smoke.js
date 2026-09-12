@@ -31,7 +31,7 @@ export const options = {
 
 const paths = ["/", "/courses", "/login", "/register"];
 
-export default function () {
+export default function stagingSmokeJourney() {
   const path = paths[Math.floor(Math.random() * paths.length)];
   const response = http.get(`${target}${path}`, {
     redirects: 5,

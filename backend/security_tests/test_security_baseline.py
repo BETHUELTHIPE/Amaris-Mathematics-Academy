@@ -20,6 +20,12 @@ class SecurityBaselineTests(TestCase):
         self.assertTrue(settings.CSRF_COOKIE_SECURE)
         self.assertTrue(settings.SECURE_CONTENT_TYPE_NOSNIFF)
         self.assertEqual(settings.X_FRAME_OPTIONS, "DENY")
+        self.assertTrue(settings.SESSION_COOKIE_HTTPONLY)
+        self.assertTrue(settings.CSRF_COOKIE_HTTPONLY)
+        self.assertEqual(settings.SESSION_COOKIE_SAMESITE, "Lax")
+        self.assertEqual(settings.CSRF_COOKIE_SAMESITE, "Lax")
+        self.assertEqual(settings.SECURE_REFERRER_POLICY, "strict-origin-when-cross-origin")
+        self.assertEqual(settings.SECURE_CROSS_ORIGIN_OPENER_POLICY, "same-origin")
         self.assertGreaterEqual(settings.SECURE_HSTS_SECONDS, 31536000)
         self.assertTrue(settings.SECURE_HSTS_INCLUDE_SUBDOMAINS)
         self.assertTrue(settings.SECURE_HSTS_PRELOAD)
@@ -34,10 +40,12 @@ class SecurityBaselineTests(TestCase):
         self.assertIn("user", settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"])
 
     def test_default_permissions_are_audited(self):
-        # Public content APIs currently rely on AllowAny. Any future private API
-        # must explicitly set a stricter permission class and be covered by
-        # authorization/IDOR regression tests before production release.
+        # A new API is private until its view explicitly opts into public access.
         self.assertEqual(
             settings.REST_FRAMEWORK.get("DEFAULT_PERMISSION_CLASSES"),
-            ["rest_framework.permissions.AllowAny"],
+            ["rest_framework.permissions.IsAuthenticated"],
+        )
+        self.assertEqual(
+            settings.REST_FRAMEWORK.get("DEFAULT_AUTHENTICATION_CLASSES"),
+            ["rest_framework.authentication.SessionAuthentication"],
         )

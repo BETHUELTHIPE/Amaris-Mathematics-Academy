@@ -102,5 +102,18 @@ class RemoteMigrationPlanTests(unittest.TestCase):
         self.assertTrue(any("verified pre-migration backup" in error for error in errors))
 
 
+class MigrationEntrypointContractTests(unittest.TestCase):
+    def test_migrate_entrypoint_fails_closed(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        script = (repo_root / "backend" / "ops" / "migrate.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("python manage.py migration_plan", script)
+        self.assertIn('plan.get("destructive") is not False', script)
+        self.assertIn("MIGRATION_BACKUP_REQUIRED=true", script)
+        self.assertLess(script.index("/app/ops/backup.sh"), script.index("migrate --noinput"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -181,13 +181,13 @@ jobs:
           grep -q 'proxy_set_header X-Forwarded-Proto' backend/nginx/default.conf
           echo "TLS termination is expected upstream of this port-80 Nginx service; Django must enforce HTTPS using forwarded proto in production."
 
-      - name: Validate rate-limiting configuration or document absence
+      - name: Validate rate-limiting configuration
         run: |
-          if grep -Eq 'limit_req_zone|limit_req ' backend/nginx/default.conf; then
-            echo 'Nginx rate limiting configured.'
-          else
-            echo 'No Nginx limit_req policy is currently configured; application-level throttling remains the active protection.'
-          fi
+          grep -q 'limit_req_zone.*amaris_enquiry' backend/nginx/default.conf
+          grep -q 'limit_req zone=amaris_enquiry' backend/nginx/default.conf
+          grep -q 'limit_req_zone.*amaris_admin_login' backend/nginx/default.conf
+          grep -q 'limit_req zone=amaris_admin_login' backend/nginx/default.conf
+          grep -q 'limit_conn amaris_per_ip' backend/nginx/default.conf
 
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241

@@ -5,6 +5,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 
@@ -51,6 +52,7 @@ def live_filter(now=None):
 @public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class SiteSettingsView(generics.GenericAPIView):
     serializer_class = SiteSettingsSerializer
+    permission_classes = (AllowAny,)
 
     def get(self, request):
         settings = SiteSettings.objects.first()
@@ -62,6 +64,7 @@ class SiteSettingsView(generics.GenericAPIView):
 @public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class NavigationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NavigationItemSerializer
+    permission_classes = (AllowAny,)
     pagination_class = None
 
     def get_queryset(self):
@@ -71,6 +74,7 @@ class NavigationViewSet(viewsets.ReadOnlyModelViewSet):
 @public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class PageViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PageSerializer
+    permission_classes = (AllowAny,)
     lookup_field = "slug"
     pagination_class = None
 
@@ -84,6 +88,7 @@ class PageViewSet(viewsets.ReadOnlyModelViewSet):
 @public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class CourseCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseCategorySerializer
+    permission_classes = (AllowAny,)
     lookup_field = "slug"
     pagination_class = None
     queryset = CourseCategory.objects.filter(is_active=True)
@@ -92,6 +97,7 @@ class CourseCategoryViewSet(viewsets.ReadOnlyModelViewSet):
 @public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class CourseViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseSerializer
+    permission_classes = (AllowAny,)
     lookup_field = "slug"
     filterset_fields = ("category__slug", "curriculum", "academic_level", "featured")
     search_fields = ("title", "short_description", "description", "curriculum", "academic_level")
@@ -137,6 +143,7 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
 @public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class PricingPlanViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PricingPlanSerializer
+    permission_classes = (AllowAny,)
     pagination_class = None
 
     def get_queryset(self):
@@ -146,6 +153,7 @@ class PricingPlanViewSet(viewsets.ReadOnlyModelViewSet):
 @public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class TestimonialViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TestimonialSerializer
+    permission_classes = (AllowAny,)
     pagination_class = None
 
     def get_queryset(self):
@@ -155,6 +163,7 @@ class TestimonialViewSet(viewsets.ReadOnlyModelViewSet):
 @public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class FAQViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = FAQSerializer
+    permission_classes = (AllowAny,)
     pagination_class = None
     filterset_fields = ("category",)
 
@@ -165,6 +174,7 @@ class FAQViewSet(viewsets.ReadOnlyModelViewSet):
 @public_cache(settings.SITE_BOOTSTRAP_CACHE_SECONDS)
 class AnnouncementViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AnnouncementSerializer
+    permission_classes = (AllowAny,)
     pagination_class = None
 
     def get_queryset(self):
@@ -180,6 +190,7 @@ class ContactEnquiryViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     queryset = ContactEnquiry.objects.none()
     serializer_class = ContactEnquirySerializer
     throttle_classes = (EnquiryThrottle,)
+    permission_classes = (AllowAny,)
 
 
 @public_cache(settings.SITE_BOOTSTRAP_CACHE_SECONDS)
@@ -187,6 +198,7 @@ class SiteBootstrapView(generics.GenericAPIView):
     """One request for global website content used by the public frontend shell."""
 
     serializer_class = SiteBootstrapSerializer
+    permission_classes = (AllowAny,)
 
     def get(self, request):
         now = timezone.now()

@@ -79,7 +79,7 @@ const paths = [
   "/register",
 ];
 
-export default function () {
+export default function capacityJourney() {
   const path = paths[Math.floor(Math.random() * paths.length)];
   const response = http.get(`${target}${path}`, {
     redirects: 0,

@@ -142,8 +142,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - uses: browser-actions/setup-chrome@v1
-      - name: Refresh lockfile for security overrides
-        run: npm install --package-lock-only --ignore-scripts
       - name: Install locked frontend dependencies
         run: npm ci
       - name: Frontend linting
@@ -198,8 +196,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - name: Refresh lockfile for security overrides
-        run: npm install --package-lock-only --ignore-scripts
       - name: Audit production Node dependencies
         run: npm audit --omit=dev --audit-level=high
 

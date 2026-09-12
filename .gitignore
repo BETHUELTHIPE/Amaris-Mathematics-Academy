@@ -48,6 +48,7 @@ next-env.d.ts
 /backend/staticfiles/
 /backend/media/
 /backend/.venv/
+/.venv/
 /backend/db.sqlite3
 /backend/celerybeat-schedule*
 /backend/load_tests/results/

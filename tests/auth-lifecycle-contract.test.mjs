@@ -36,6 +36,14 @@ test("registration delegates credential storage to Supabase Auth and normalizes 
   );
 });
 
+test("public registration creates student accounts only", () => {
+  assert.doesNotMatch(actionsSource, /formData\.get\("role"\)/);
+  assert.doesNotMatch(actionsSource, /requested_role|privileged_role_approved/);
+  const registerPageSource = fs.readFileSync(path.join(process.cwd(), "app/register/page.tsx"), "utf8");
+  assert.doesNotMatch(registerPageSource, /name="role"/);
+  assert.match(registerPageSource, /created privately by the Super Administrator/);
+});
+
 test("email verification requires a six-digit OTP and uses signup verification", () => {
   expectSource(/\^\\d\{6\}\$\/.test\(token\)/, "verification token must be six digits");
   expectSource(/supabase\.auth\.verifyOtp\(\{[\s\S]*type:\s*"signup"/, "signup OTP verification must be used");
