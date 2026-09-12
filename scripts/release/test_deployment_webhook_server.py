@@ -78,6 +78,62 @@ class DeploymentWebhookDispatchTests(unittest.TestCase):
         delegated_payload = json.loads(run.call_args.kwargs["input"])
         self.assertEqual(delegated_payload["action"], "deploy")
 
+    @mock.patch.object(deployment_webhook_server.subprocess, "run")
+    def test_current_release_returns_validated_immutable_identity(self, run):
+        sha = "a" * 40
+        current = {
+            "status": "succeeded",
+            "image": f"docker.io/bethuelm/amaris-mathematics-academy:{sha}",
+            "release_sha": sha,
+        }
+        run.return_value = mock.Mock(returncode=0, stdout=json.dumps(current), stderr="")
+
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "current-release-handler"
+            executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            executable.chmod(0o700)
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "DEPLOYMENT_ENVIRONMENT": "staging",
+                    "CURRENT_RELEASE_ACTION_EXECUTABLE": str(executable),
+                },
+                clear=False,
+            ):
+                result = deployment_webhook_server.dispatch(
+                    {"action": "current-release", "environment": "staging"}
+                )
+
+        self.assertEqual(result["image"], current["image"])
+        self.assertEqual(result["release_sha"], sha)
+
+    @mock.patch.object(deployment_webhook_server.subprocess, "run")
+    def test_rollback_requires_exact_immutable_target(self, run):
+        run.return_value = mock.Mock(
+            returncode=0,
+            stdout=json.dumps({"status": "succeeded"}),
+            stderr="",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "rollback-handler"
+            executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            executable.chmod(0o700)
+            environment = {
+                "DEPLOYMENT_ENVIRONMENT": "staging",
+                "ROLLBACK_ACTION_EXECUTABLE": str(executable),
+            }
+            with mock.patch.dict(os.environ, environment, clear=False):
+                result = deployment_webhook_server.dispatch(self.valid_payload("rollback"))
+
+                mutable = self.valid_payload("rollback")
+                mutable["image"] = "docker.io/bethuelm/amaris-mathematics-academy:latest"
+                with self.assertRaises(deployment_webhook_server.WebhookError):
+                    deployment_webhook_server.dispatch(mutable)
+
+        self.assertEqual(result["status"], "succeeded")
+        delegated_payload = json.loads(run.call_args_list[0].kwargs["input"])
+        self.assertEqual(delegated_payload["image"], self.valid_payload("rollback")["image"])
+
     def test_unknown_action_is_rejected(self):
         payload = self.valid_payload()
         payload["action"] = "shell"
