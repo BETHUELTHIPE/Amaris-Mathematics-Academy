@@ -1,0 +1,69 @@
+name: Next.js Production Check
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nextjs-production-check:
+    name: Next.js production check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Test using the repository test script
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Public route smoke check
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev:ci > /tmp/amaris-next.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat /tmp/amaris-next.log
+              exit 1
+            fi
+            sleep 2
+          done
+
+          for route in / /about /courses /contact /pricing /how-it-works /login /register /forgot-password /privacy /terms; do
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:3000${route}")"
+            case "$status" in
+              200|204|301|302|303|307|308) ;;
+              *)
+                echo "Route ${route} returned HTTP ${status}" >&2
+                exit 1
+                ;;
+            esac
+          done
