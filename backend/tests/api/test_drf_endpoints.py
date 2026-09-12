@@ -299,7 +299,7 @@ class EnquiryApiTests(TestCase):
 
     def test_rate_limit_returns_429(self):
         caches["default"].clear()
-        with mock.patch.object(EnquiryThrottle, "rate", "2/min"):
+        with mock.patch.object(EnquiryThrottle, "rate", "2/min", create=True):
             self.assertEqual(
                 self.client.post(
                     self.url,
