@@ -11,7 +11,7 @@ jobs:
   nextjs-production-check:
     name: Next.js production check
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -23,8 +23,19 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Install locked dependencies
+      - name: Clean install from committed lockfile
+        id: clean_install
+        continue-on-error: true
         run: npm ci
+
+      - name: Diagnostic-only lockfile refresh after clean-install failure
+        if: steps.clean_install.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts
+          git diff -- package-lock.json | sed -n '1,240p'
+          npm ci
 
       - name: Lint
         run: npm run lint
@@ -37,6 +48,9 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      - name: Bundle budget check
+        run: npm run check:performance
 
       - name: Public route smoke check
         shell: bash
@@ -67,3 +81,9 @@ jobs:
                 ;;
             esac
           done
+
+      - name: Enforce committed lockfile integrity
+        if: steps.clean_install.outcome == 'failure'
+        run: |
+          echo "Production blocker: package-lock.json is not synchronized with package.json."
+          exit 1
