@@ -1,7 +1,7 @@
 {
   "ci": {
     "collect": {
-      "startServerCommand": "pkill -TERM -f 'vite.*--port 3000' || true; pkill -TERM -f 'workerd' || true; sleep 1; ./node_modules/.bin/vite preview --host 127.0.0.1 --port 4173",
+      "startServerCommand": "pkill -TERM -f '[v]ite.*--port 3000' || true; pkill -TERM -f '[w]orkerd' || true; sleep 1; ./node_modules/.bin/vite preview --host 127.0.0.1 --port 4173",
       "startServerReadyPattern": "Local|localhost|127.0.0.1",
       "startServerReadyTimeout": 90000,
       "numberOfRuns": 1,
