@@ -7,6 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y ca-certificates curl libpq5 postgresql-client restic \
     && rm -rf /var/lib/apt/lists/*
 
