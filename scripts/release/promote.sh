@@ -80,13 +80,26 @@ write_record "deploying" "$previous_image" "$previous_sha" "not-required"
 
 scripts/release/deploy-webhook.sh deploy "$environment_name" "$candidate_image"
 
+release_ok=false
 if scripts/release/verify-health.sh "$HEALTHCHECK_URL"; then
+    if [ "$environment_name" = "production" ]; then
+        if scripts/release/post-deploy-smoke.sh; then
+            release_ok=true
+        else
+            echo "Production post-deploy smoke checks failed." >&2
+        fi
+    else
+        release_ok=true
+    fi
+fi
+
+if [ "$release_ok" = "true" ]; then
     write_record "succeeded" "$candidate_image" "$candidate_sha" "not-required"
     append_summary "succeeded" "$candidate_image" "$candidate_sha" "not-required"
     exit 0
 fi
 
-echo "The new release is unhealthy; rolling back to the exact previously active immutable image." >&2
+echo "The new release failed critical health or post-deploy checks; rolling back to the exact previously active immutable image." >&2
 scripts/release/deploy-webhook.sh rollback "$environment_name" "$previous_image"
 
 if scripts/release/verify-health.sh "$HEALTHCHECK_URL"; then
