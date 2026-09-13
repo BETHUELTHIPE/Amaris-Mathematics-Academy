@@ -152,6 +152,9 @@ class RollbackDeploymentTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.state.image, IMAGE_N)
         self.assertTrue(self.state.healthy)
+        self.assertEqual(
+            self.state.events, ["status", "deploy", "status", "rollback", "status"]
+        )
         self.assertEqual(record["outcome"], "rollback_test_passed")
 
 
