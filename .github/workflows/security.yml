@@ -70,7 +70,7 @@ jobs:
           image: amaris-backend:${{ github.sha }}
           format: cyclonedx-json
           output-file: amaris-backend-sbom.cdx.json
-      - name: Scan container for critical vulnerabilities
+      - name: Generate critical-vulnerability SARIF
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: amaris-backend:${{ github.sha }}
@@ -78,12 +78,21 @@ jobs:
           output: trivy-results.sarif
           severity: CRITICAL
           ignore-unfixed: true
-          exit-code: "1"
+          exit-code: "0"
       - name: Upload container scan results
-        if: always() && hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
+      - name: Enforce no critical container vulnerabilities
+        shell: bash
+        run: |
+          finding_count=$(jq '[.runs[].results[]?] | length' trivy-results.sarif)
+          if [ "$finding_count" -gt 0 ]; then
+            jq -r '.runs[].results[]? | "\(.ruleId): \(.message.text)"' trivy-results.sarif
+            echo "$finding_count critical container vulnerability finding(s) block release." >&2
+            exit 1
+          fi
+          echo "No critical container vulnerabilities found."
       - name: Upload software bill of materials
         if: always()
         uses: actions/upload-artifact@v4
