@@ -5,7 +5,8 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
-from django.core.exceptions import PermissionDenied
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import PermissionDenied, ValidationError
 
 from .rbac import (
     ROLE_ADMINISTRATOR,
@@ -44,6 +45,19 @@ class SuperAdminUserCreationForm(forms.ModelForm):
         password2 = cleaned.get("password2")
         if password1 and password2 and password1 != password2:
             self.add_error("password2", "The passwords do not match.")
+            return cleaned
+
+        if password1:
+            candidate = User(
+                username=cleaned.get("username") or "",
+                email=cleaned.get("email") or "",
+                first_name=cleaned.get("first_name") or "",
+                last_name=cleaned.get("last_name") or "",
+            )
+            try:
+                validate_password(password1, user=candidate)
+            except ValidationError as exc:
+                self.add_error("password1", exc)
         return cleaned
 
     def save(self, commit=True):
