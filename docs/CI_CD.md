@@ -88,30 +88,58 @@ The workflow cannot create environment reviewers from source code. Production ap
 
 1. A pull request must pass every quality and security gate.
 2. Merging to `main` repeats the gates and publishes `docker.io/bethuelm/amaris-mathematics-academy:<commit-sha>` and `:latest`.
-3. The immutable image is deployed to staging and its readiness endpoint is checked repeatedly.
-4. If staging is unhealthy, the deployment webhook receives a rollback request and the workflow fails.
+3. The workflow records the currently active immutable release (version N), deploys the SHA-tagged candidate (version N+1), and checks both deployment state and readiness.
+4. If staging is unhealthy or reports the wrong Git SHA or Docker tag, the workflow rolls back to the exact version N image and verifies that version N is active and healthy.
 5. To deploy production, run `Quality Gates and Release` manually, enable **Promote the tested release to production**, and select the migration risk.
 6. GitHub pauses the production job for its required environment reviewer.
 7. The production-acceptance manifest must show all 20 criteria as passed, evidenced, dated and reviewer-approved.
 8. A high-risk migration requires a successful backup response containing a non-empty `recovery_id` before deployment starts.
-9. Production readiness is verified after deployment. A failed check requests rollback and leaves the workflow failed for investigation.
+9. Production readiness and release identity are verified after deployment. A failed check must restore the exact previous image, prove its Git SHA and Docker tag, pass readiness, and leave the workflow failed for investigation.
+10. Each staging deployment stores a 90-day JSON release record; each production deployment stores a 365-day record containing the candidate, previous and restored immutable identities.
 
 The authoritative evidence requirements and current pre-production status are in [`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md). A build or manual approval cannot bypass the acceptance verifier.
 
 ## Deployment webhook contract
 
-The hosting platform must expose an authenticated HTTPS webhook. It receives a JSON request similar to:
+The hosting platform must expose an authenticated HTTPS webhook supporting exactly three actions: `status`, `deploy` and `rollback`. It must reject arbitrary shell commands and unapproved image repositories.
+
+A status request contains:
+
+```json
+{
+  "action": "status",
+  "environment": "production",
+  "image": "",
+  "release_sha": ""
+}
+```
+
+It must return the release currently serving traffic:
+
+```json
+{
+  "status": "ready",
+  "active": {
+    "image": "docker.io/bethuelm/amaris-mathematics-academy:<full-commit-sha>",
+    "git_sha": "<full-commit-sha>"
+  }
+}
+```
+
+Deploy and rollback requests contain the exact target image and its matching Git SHA:
 
 ```json
 {
   "action": "deploy",
   "environment": "production",
-  "image": "docker.io/bethuelm/amaris-mathematics-academy:<commit-sha>",
-  "release_sha": "<commit-sha>"
+  "image": "docker.io/bethuelm/amaris-mathematics-academy:<full-commit-sha>",
+  "release_sha": "<full-commit-sha>"
 }
 ```
 
-It must return HTTP 2xx only after the requested action has been accepted. For `deploy`, the platform must retain the previously healthy immutable image and configuration. For `rollback`, it must atomically restore that previous release. The webhook must not accept arbitrary shell commands from workflow input.
+The adapter must return HTTP 2xx only after accepting the action. It must set `APP_RELEASE_GIT_SHA` and `APP_RELEASE_IMAGE_TAG` on the web container. The Django `/health/ready/` response publishes these two non-secret identifiers, allowing the workflow to prove which release is healthy.
+
+For `deploy`, retain at least the previous two known-good immutable images and configurations. For `rollback`, atomically restore the exact `image` and `release_sha` in the request. A rollback is not considered successful merely because the webhook returned 2xx: the status response and readiness endpoint must both report version N before the workflow records recovery.
 
 The backup webhook receives `action: backup` and `tag: pre-migration`. It must wait for a verified encrypted backup and return:
 
@@ -123,6 +151,10 @@ The backup webhook receives `action: backup` and `tag: pre-migration`. It must w
 ```
 
 A timeout, non-2xx result, failed status or missing recovery reference stops a high-risk production release.
+
+## Staging rollback drill
+
+Run the workflow manually with **rollback_test** enabled and **deploy_production** disabled. The job records version N, deploys N+1, deliberately enters the rollback path, restores N, and passes only when status and readiness both identify N. Use a new commit so N+1 differs from the staging release already active. A successful drill produces a `rollback_test_passed` deployment record; it never promotes the candidate to production.
 
 ## Recovery and operations
 
