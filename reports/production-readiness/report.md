@@ -2,67 +2,76 @@
 
 ## Release identity
 
-- **Git SHA tested:** `da346d72fa930ae909f2806728b87a6e87d26ee1`
-- **Docker image:** PR CI built `amaris-backend:da346d72fa930ae909f2806728b87a6e87d26ee1` locally. The immutable release target is `docker.io/bethuelm/amaris-mathematics-academy:da346d72fa930ae909f2806728b87a6e87d26ee1`, but the publish job was intentionally skipped for the pull-request run.
+- **Git SHA:** `1bd4116968ed6bac1f5f49f19514cceedbf152b1` (tested PR head)
+- **CI merge SHA:** `5fccfc77421b8962cc38a86448f43f4518118739` (GitHub Actions pull-request merge ref used for image build and scans)
+- **Docker image:** CI built and scanned `amaris-backend:5fccfc77421b8962cc38a86448f43f4518118739` and `amaris-nginx:5fccfc77421b8962cc38a86448f43f4518118739`. The immutable registry target is `docker.io/bethuelm/amaris-mathematics-academy`, but the publish job was intentionally skipped for this pull-request run, so no release image was published from this evidence set.
 - **Test date:** 2026-09-13
-- **Environment:** GitHub Actions pull-request CI on `security/owasp-test-suite`; PostgreSQL 17 and Redis 8 CI services; production deployment not executed.
+- **Environment:** GitHub Actions pull-request CI for `security/owasp-test-suite`; Ubuntu 24.04 runner, PostgreSQL 17 and Redis 8 CI services; staging and production deployment jobs were not executed.
 
-> **Status semantics:** `PASS` means the required automated evidence for that category passed on the tested SHA. `FAIL` means production evidence is incomplete or the required production/staging drill was not executed. A CI unit test passing does not substitute for a production-readiness drill where one is required.
+> **Status semantics:** `PASS` means the automated evidence required for that category passed on the tested release candidate. `FAIL` means required production-like or staging evidence is incomplete or was not executed. Passing unit/contract checks does not substitute for a required deployment, recovery, restore, provider, or capacity drill.
 
 ## Readiness matrix
 
 | Area | Result | Evidence / note |
 |---|---|---|
-| UNIT TESTS | **PASS** | Django unit tests and the full Django regression suite passed in Quality Gates and Release #185. |
-| INTEGRATION | **PASS** | Real integration tests and public-content integration tests passed. |
-| AUTHENTICATION | **PASS** | Frontend unit/authentication lifecycle tests passed. Provider-level staging verification remains part of the staging release gate. |
-| AUTHORIZATION | **PASS** | Authorization/RBAC tests, including Super Administrator user-management tests, passed. |
-| API | **PASS** | DRF API tests passed, including validation, method handling, filtering, pagination, throttling and malformed-request coverage implemented by the suite. |
+| UNIT TESTS | **PASS** | Django unit tests and the complete Django regression suite passed in Quality Gates and Release #186. |
+| INTEGRATION | **PASS** | Real integration tests and integration tests passed in Quality Gates and Release #186. |
+| AUTHENTICATION | **PASS** | Frontend unit/authentication lifecycle tests passed. Provider-level delivery and production-domain verification remain part of the staging release gate. |
+| AUTHORIZATION | **PASS** | Authorization and RBAC tests passed, including the Super Administrator user-management coverage in the regression suite. |
+| API | **PASS** | DRF API tests passed, including validation, method handling, filtering, pagination, throttling, malformed-request and error-path coverage implemented by the suite. |
 | DATABASE | **PASS** | Migration drift check, CI migrations and database-backed integration/regression tests passed against PostgreSQL 17. |
-| PAYMENTS | **FAIL** | Automated payment reconciliation tests passed, but real payment-provider staging evidence has not been executed/approved for this release candidate. |
-| E2E | **FAIL** | The staging deploy/E2E job was skipped on the pull-request run; public frontend/API staging journeys were therefore not executed against a deployed immutable image. |
-| SECURITY | **PASS** | Dedicated Security Test Suite #149 passed, including Django security regression tests and container security checks. Staging TLS/header verification is still part of the unexecuted release gate. |
-| DEPENDENCY SCAN | **PASS** | Python and production Node dependency vulnerability gates passed; JavaScript/Python dependency audits passed in the security workflow. |
-| SECRET SCAN | **PASS** | Repository secret scan and Gitleaks scan passed. |
-| DJANGO DEPLOYMENT CHECK | **PASS** | `manage.py check --deploy` security/deployment checks passed. |
-| NEXT.JS BUILD | **PASS** | Lint, TypeScript, production build, unit/auth tests, accessibility tests, Lighthouse and frontend performance budgets passed. |
-| PERFORMANCE | **FAIL** | Frontend performance budgets/Lighthouse passed, but controlled staging load/capacity testing has not been executed for this release candidate. No high-concurrency capacity claim is supported. |
+| PAYMENTS | **FAIL** | Automated payment tests passed, but approved payment-provider sandbox/staging evidence has not been executed and retained for this release candidate. |
+| E2E | **FAIL** | The protected staging deployment/E2E job was skipped on the pull-request run; deployed frontend/API/authenticated journeys were not executed against a published immutable image. |
+| SECURITY | **PASS** | Security Test Suite #150 passed. Backend and Nginx container scans also passed with fail-closed HIGH/CRITICAL gates. Production-like TLS/header/observability verification is still pending staging. |
+| DEPENDENCY SCAN | **PASS** | Python and production Node dependency vulnerability gates passed. |
+| SECRET SCAN | **PASS** | Repository secret scanning and the dedicated security workflow passed. |
+| DJANGO DEPLOYMENT CHECK | **PASS** | Django deployment/security checks passed in the dedicated security pipeline. |
+| NEXT.JS BUILD | **PASS** | Production build, lint, TypeScript, frontend unit/auth tests, accessibility, Lighthouse and frontend performance budgets passed. Next.js Production Check #29 also passed. |
+| PERFORMANCE | **FAIL** | Lighthouse and frontend performance budgets passed, and the load-test safety contract passed, but no controlled staging capacity/load test was executed. No high-concurrency capacity claim is supported. |
 | BACKUP RESTORE | **FAIL** | No successful production-like backup-and-restore drill is recorded for this release candidate. |
-| RECOVERY | **FAIL** | No end-to-end disaster/service recovery drill has been executed and verified for this release candidate. |
-| ROLLBACK | **FAIL** | Rollback capability/contract code exists, but no deployed staging rollback drill proving N -> N+1 -> failure -> N restoration has been completed for this release candidate. |
+| RECOVERY | **FAIL** | No end-to-end service/disaster recovery drill has been executed and verified for this release candidate. |
+| ROLLBACK | **FAIL** | Rollback capability and contracts exist, but no deployed staging drill proving version N -> N+1 -> health failure -> N restored has been completed for this release candidate. |
 
 ## GitHub Actions evidence
 
-The tested SHA completed all four pull-request workflows successfully:
+All four pull-request workflows passed for the tested PR head:
 
-- **Quality Gates and Release #185** — success
-- **Security Test Suite #149** — success
-- **Docker and Nginx Validation #76** — success
-- **Next.js Production Check #28** — success
+- **Quality Gates and Release #186** — PASS
+- **Security Test Suite #150** — PASS
+- **Docker and Nginx Validation #77** — PASS
+- **Next.js Production Check #29** — PASS
 
-Within Quality Gates and Release #185, the automated quality/security jobs passed, including repository secret scanning, frontend build/accessibility/Lighthouse, dependency vulnerability gates, Python/Django quality checks, API tests, RBAC tests, payment tests, full regression tests, load-test safety contract, production-acceptance contract, Docker/Compose validation, HIGH/CRITICAL container scans and SBOM generation. The release-image publish, staging deployment and production deployment jobs were intentionally skipped because this was a pull-request run.
+Within Quality Gates and Release #186, the following completed successfully: repository secret scan; frontend lint, TypeScript, production build, unit/authentication tests, accessibility and Lighthouse; Python formatting, linting and typing; Django system/deployment checks, migration drift and migrations; unit, integration, API, RBAC, payment and full regression tests; dependency vulnerability gates; Docker/Compose validation; SBOM generation; and fail-closed HIGH/CRITICAL backend and Nginx container scans.
+
+The following release jobs were intentionally skipped on this pull-request run and therefore do **not** count as production evidence:
+
+- Publish release image to Docker Hub
+- Staging deploy, migrate, verify, and approve release candidate
+- Production approval, deploy, and verify production
 
 ## FINAL RESULT
 
 # **NOT READY FOR PRODUCTION**
 
-The codebase is a strong production candidate, but the release cannot be approved as production-ready until the operational/staging gates below are completed successfully.
+The codebase has a green automated CI/security baseline, but the release is not production-ready until the mandatory production-like operational gates below are completed successfully with retained evidence.
 
 ## Blocking failures
 
 | Blocking failure | Severity | Affected component | Recommended fix |
 |---|---|---|---|
-| Staging deployment and E2E verification not executed | **CRITICAL** | Release pipeline / frontend / API | Publish the exact immutable SHA image, deploy it to the protected staging environment, then run health, dependency, frontend, API and authenticated smoke/E2E journeys. |
-| Backup restore proof missing | **CRITICAL** | PostgreSQL / disaster recovery | Take a release backup, restore it into an isolated staging database, run integrity checks and application smoke tests, and retain the restore evidence. |
-| Rollback drill not completed | **CRITICAL** | Deployment / recovery | In staging, deploy version N, deploy N+1, trigger a safe failed health condition, roll back to N, and prove health/readiness and data compatibility after restoration. |
-| Production environment approval not executed | **CRITICAL** | Deployment governance | Use the protected production GitHub environment and require the explicit production approval gate before any live promotion. |
-| Payment-provider staging evidence missing | **HIGH** | Payments / PayFast | Run the approved provider sandbox/staging flow end to end: checkout creation, redirect/return, signed webhook/IPN validation, idempotency, reconciliation and failure handling. Do not use a real production payment for the test. |
-| Controlled capacity/load test not executed | **HIGH** | Django / Next.js / PostgreSQL / Redis / Nginx | Run the controlled staging load plan with realistic synthetic users. Record throughput, p95/p99 latency, error rate, CPU/memory, DB connections/locks, Redis health and queue behavior. Do not claim 50,000 concurrent users unless that level is actually demonstrated. |
-| Service/disaster recovery drill not executed | **HIGH** | Operations / observability / data | Simulate a controlled service/dependency failure in staging, execute the documented recovery runbook, and verify RTO/RPO plus application health after recovery. |
-| Production-like TLS/header/observability verification pending | **HIGH** | Edge / Nginx / Cloudflare / monitoring | Complete the staging security verification against the deployed URL, including TLS, security headers, protected-route caching, logs, metrics and alerting. |
-| Email delivery/DNS evidence pending | **HIGH** | Authentication / notifications | Verify production-domain SPF, DKIM and DMARC, then validate OTP/password-reset delivery, expiry, replay resistance and failure handling with dedicated synthetic accounts. |
-| Manual device/accessibility acceptance still pending | **MEDIUM** | Frontend UX/accessibility | Complete manual keyboard, screen-reader and representative mobile/desktop browser checks and record sign-off before promotion. |
+| Staging deployment and E2E verification not executed | **CRITICAL** | Release pipeline / frontend / API / authentication | Publish the exact immutable candidate image, deploy it to the protected staging environment, run migrations safely, then execute health, static-asset, API and authenticated E2E journeys against that deployed version. |
+| Backup restore proof missing | **CRITICAL** | PostgreSQL / disaster recovery | Take a release backup, restore it into an isolated production-like staging database, verify integrity, migrations and application smoke tests, and retain the restore evidence. |
+| Rollback drill not completed | **CRITICAL** | Deployment / recovery | In staging, establish version N, deploy N+1, trigger a safe health-check failure, roll back to N, and prove health/readiness plus data compatibility after restoration. |
+| Production environment approval not executed | **CRITICAL** | Deployment governance | Use the protected production GitHub environment and require explicit authorized production approval only after every mandatory staging gate is green. |
+| Payment-provider staging evidence missing | **HIGH** | Payments / PayFast | Run the approved sandbox/staging payment flow end to end: checkout creation, redirect/return, signed webhook/IPN validation, idempotency, reconciliation, duplicate handling and failure paths. Do not make a real production payment for the test. |
+| Controlled capacity/load test not executed | **HIGH** | Django / Next.js / PostgreSQL / Redis / Nginx | Run the controlled production-like staging load plan using synthetic users and record throughput, p95/p99 latency, error rate, CPU/memory, database connections/locks, Redis health and queue behavior. Do not claim 50,000 concurrent users unless that level is actually demonstrated. |
+| Service/disaster recovery drill not executed | **HIGH** | Operations / observability / data | Simulate a controlled service or dependency failure in staging, execute the recovery runbook, and verify application health plus measured RTO/RPO after recovery. |
+| Production-like TLS/header/observability verification pending | **HIGH** | Edge / Nginx / Cloudflare / monitoring | Verify the deployed staging URL for TLS, security headers, protected-route cache behavior, health/readiness, logs, metrics and alert delivery before production promotion. |
+| Email delivery and DNS evidence pending | **HIGH** | Authentication / notifications | Verify production-domain SPF, DKIM and DMARC, then validate OTP/password-reset delivery, expiry, replay resistance, invalid-code behavior and failure handling with dedicated synthetic accounts. |
+| Manual device/accessibility acceptance pending | **MEDIUM** | Frontend UX / accessibility | Complete keyboard, screen-reader and representative mobile/desktop browser checks and retain acceptance sign-off before promotion. |
 
 ## Release decision
 
-Do **not** merge/deploy this candidate to live production solely because pull-request CI is green. Promote only after the immutable image has passed the protected staging gate, backup/restore and rollback/recovery drills are evidenced, payment/email integrations are verified, performance capacity is measured, and the explicit production approval gate is granted.
+Do **not** merge or deploy this candidate to live production solely because pull-request CI is green. Promote only after the immutable release image has passed protected staging, provider integration checks, backup/restore, rollback/recovery, controlled capacity testing and the explicit production approval gate.
+
+> This report records the last fully verified release-candidate evidence set. Updating this documentation creates a later documentation-only commit; that later commit must not be treated as tested until its own required workflows complete successfully.
