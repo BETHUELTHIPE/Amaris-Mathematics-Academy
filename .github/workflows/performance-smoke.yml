@@ -1,0 +1,39 @@
+name: Performance Smoke
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  performance-smoke:
+    name: Bundle budgets and Lighthouse
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: browser-actions/setup-chrome@v1
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Build production assets for bundle budgets
+        run: npm run build
+      - name: Enforce frontend asset budgets
+        run: npm run check:performance
+      - name: Run Lighthouse smoke budgets
+        run: npm run test:lighthouse
+      - name: Preserve Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: .lighthouseci/
+          if-no-files-found: warn
+          retention-days: 14
