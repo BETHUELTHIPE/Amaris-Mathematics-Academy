@@ -25,7 +25,16 @@ def _postgresql_available():
 
 def health_ready(_request):
     ready = _postgresql_available()
-    return JsonResponse(\n        {\n            "status": "ready" if ready else "unavailable",\n            "version": {\n                "git_sha": settings.RELEASE_GIT_SHA,\n                "image_tag": settings.RELEASE_IMAGE_TAG,\n            },\n        },\n        status=200 if ready else 503,\n    )
+    return JsonResponse(
+        {
+            "status": "ready" if ready else "unavailable",
+            "version": {
+                "git_sha": settings.RELEASE_GIT_SHA,
+                "image_tag": settings.RELEASE_IMAGE_TAG,
+            },
+        },
+        status=200 if ready else 503,
+    )
 
 
 def health_dependencies(_request):
