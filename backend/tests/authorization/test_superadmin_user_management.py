@@ -84,6 +84,22 @@ class SuperAdminUserManagementTests(TestCase):
         self.assertFalse(user.is_superuser)
         self.assertTrue(user.check_password("VeryStrongStudentPass123!"))
 
+    def test_managed_user_creation_enforces_configured_password_validators(self):
+        form = SuperAdminUserCreationForm(
+            data={
+                "username": "weak-password-user",
+                "email": "weak-password-user@example.com",
+                "first_name": "Weak",
+                "last_name": "Password",
+                "role": ROLE_TUTOR,
+                "password1": "123456789012",
+                "password2": "123456789012",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("password1", form.errors)
+
     def test_only_super_admin_can_manage_users_in_admin_class(self):
         factory = RequestFactory()
         model_admin = SuperAdminUserAdmin(User, admin.site)
