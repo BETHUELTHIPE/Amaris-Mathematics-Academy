@@ -66,8 +66,12 @@ fi
 echo "Deploying git_sha=$release_sha image=$image_reference to $environment_name."
 sh scripts/release/deploy-webhook.sh deploy "$environment_name" "$image_reference" "$release_sha" >/dev/null
 
-if [ "$force_rollback_test" != "true" ] && \
-    sh scripts/release/verify-release.sh "$environment_name" "$image_reference" "$release_sha" "$HEALTHCHECK_URL"; then
+candidate_state_verified=true
+if [ "$force_rollback_test" = "true" ]; then
+    if ! sh scripts/release/verify-deployment-state.sh "$environment_name" "$image_reference" "$release_sha"; then
+        candidate_state_verified=false
+    fi
+elif sh scripts/release/verify-release.sh "$environment_name" "$image_reference" "$release_sha" "$HEALTHCHECK_URL"; then
     write_record deployed
     exit 0
 fi
@@ -86,6 +90,11 @@ fi
 
 if sh scripts/release/verify-release.sh "$environment_name" "$previous_image" "$previous_sha" "$HEALTHCHECK_URL"; then
     if [ "$force_rollback_test" = "true" ]; then
+        if [ "$candidate_state_verified" != "true" ]; then
+            write_record rollback_test_failed "$previous_image" "$previous_sha"
+            echo "Rollback drill failed because version N+1 was never observed as active." >&2
+            exit 2
+        fi
         write_record rollback_test_passed "$previous_image" "$previous_sha"
         echo "Rollback drill passed: git_sha=$previous_sha image=$previous_image is healthy." >&2
         exit 0
