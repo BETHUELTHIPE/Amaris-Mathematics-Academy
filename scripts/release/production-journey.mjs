@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { requestAllowed, validateSyntheticAccount } from './production-request-policy.mjs';
 
 // Use the browser dependency already pinned in the existing pa11y lock tree.
 const require = createRequire(import.meta.url);
@@ -16,6 +17,7 @@ assert.match(course ?? '', /^\/courses\/[a-z0-9-]+$/);
 assert.match(lesson ?? '', /^\/[a-zA-Z0-9/_-]+$/);
 assert.ok(lesson !== course && !['/dashboard', '/login', '/register'].includes(lesson));
 assert.ok(process.env.PRODUCTION_STUDENT_EMAIL && process.env.PRODUCTION_STUDENT_PASSWORD);
+validateSyntheticAccount(process.env.PRODUCTION_STUDENT_EMAIL);
 
 let browser;
 let phase = 'browser-start';
@@ -26,14 +28,22 @@ try {
     args: ['--no-sandbox'],
   });
   const page = await browser.newPage();
+  await page.setBypassServiceWorker(true);
+  await page.setCacheEnabled(false);
   page.setDefaultTimeout(15000);
   page.setDefaultNavigationTimeout(20000);
   await page.setRequestInterception(true);
+  let allowLogin = false;
+  let blockedMutation = false;
   page.on('request', (request) => {
-    const hostname = new URL(request.url()).hostname.toLowerCase();
-    // Never create a real charge or contact a live PayFast endpoint in this check.
-    if (/(^|\.)payfast\.(co\.za|io)$/.test(hostname)) request.abort();
-    else request.continue();
+    const allowed = requestAllowed(request.url(), request.method(), request.resourceType(), { base, course, lesson, allowLogin });
+    if (!allowed) {
+      if (!['GET', 'HEAD'].includes(request.method())) blockedMutation = true;
+      void request.abort();
+    } else {
+      if (request.method() === 'POST') allowLogin = false;
+      void request.continue();
+    }
   });
   async function visit(path) {
     const response = await page.goto(new URL(path, base).href, { waitUntil: 'domcontentloaded' });
@@ -42,7 +52,7 @@ try {
     return new URL(page.url()).pathname;
   }
   phase = 'public-smoke';
-  for (const path of ['/', '/courses', '/login', '/register', course]) {
+  for (const path of ['/', '/courses', '/login', course]) {
     assert.equal(await visit(path), path);
     assert.ok(await page.$('main h1'));
   }
@@ -53,10 +63,12 @@ try {
   await visit('/login');
   await page.type('input[name="email"]', process.env.PRODUCTION_STUDENT_EMAIL);
   await page.type('input[name="password"]', process.env.PRODUCTION_STUDENT_PASSWORD);
+  allowLogin = true;
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
     page.click('form button[type="submit"]'),
   ]);
+  allowLogin = false;
   assert.equal(new URL(page.url()).origin, base.origin);
   assert.equal(new URL(page.url()).pathname, '/dashboard');
   const state = await page.evaluate(async () => {
@@ -74,6 +86,7 @@ try {
   await page.waitForSelector('[data-testid="lesson-content"]', { visible: true });
   const content = await page.$eval('[data-testid="lesson-content"]', element => element.textContent.trim());
   assert.ok(content.length > 20);
+  assert.equal(blockedMutation, false, 'An unexpected write was blocked');
   console.log('Production public smoke and verified student learning journey passed.');
 } catch {
   // Do not upload screenshots, traces, account data, DOM, cookies or exception text.

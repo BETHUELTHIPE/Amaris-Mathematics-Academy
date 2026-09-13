@@ -37,9 +37,16 @@ class LoadTestSafetyTests(unittest.TestCase):
             )
 
     def test_external_endpoint_paths_are_rejected(self):
-        with patch.dict(os.environ, {"LOADTEST_CHECKOUT_PATH": "https://www.payfast.co.za/eng/process"}, clear=True):
-            with self.assertRaisesRegex(ValueError, "relative application path"):
-                Endpoints.from_environment()
+        for path in (
+            "https://www.payfast.co.za/eng/process",
+            "/\\external.test",
+            "/a/../payments",
+            "/%2fexample",
+            "/a#x",
+        ):
+            with patch.dict(os.environ, {"LOADTEST_CHECKOUT_PATH": path}, clear=True):
+                with self.assertRaisesRegex(ValueError, "relative application path"):
+                    Endpoints.from_environment()
 
     def test_full_journey_lists_unconfigured_writes_and_protected_routes(self):
         missing = missing_full_journey_configuration(Endpoints())

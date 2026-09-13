@@ -53,8 +53,8 @@ Sources: [GitHub environment protection and secret scope](https://docs.github.co
 | --- | --- | --- |
 | Production environment secrets | `PRODUCTION_DEPLOY_WEBHOOK_URL`, `PRODUCTION_DEPLOY_TOKEN` | Hosting transaction API |
 | Production environment secrets | `PRODUCTION_BACKUP_WEBHOOK_URL`, `PRODUCTION_BACKUP_TOKEN` | Verified recovery point |
-| Production environment secrets | `PRODUCTION_STUDENT_EMAIL`, `PRODUCTION_STUDENT_PASSWORD` | Dedicated verified student fixture with access to the fixture lesson |
-| Production environment variables | `PRODUCTION_URL`, `PRODUCTION_HEALTHCHECK_URL` | HTTPS origin and backend `/health/ready/` endpoint |
+| Production environment secrets | `PRODUCTION_STUDENT_EMAIL`, `PRODUCTION_STUDENT_PASSWORD` | Dedicated verified `synthetic-smoke@amaris.test` student, pre-entitled to the fixture lesson |
+| Production environment variables | `PRODUCTION_URL`, `PRODUCTION_API_URL`, `PRODUCTION_HEALTHCHECK_URL` | Frontend HTTPS origin, backend HTTPS origin, and exact backend `/health/ready/` endpoint |
 | Production environment variables | `PRODUCTION_COURSE_PATH`, `PRODUCTION_LESSON_PATH` | Real course and protected, pre-entitled lesson paths |
 | Staging environment only | Existing `STAGING_*` and load-test secrets | Staging deployment and tests |
 | Repository secret | `DOCKERHUB_TOKEN` | Image publication only; must not grant hosting or database access |
@@ -82,7 +82,7 @@ workflow code: required reviews and branch protection are also necessary.
 7. Deploy `repository:full-git-sha@sha256:digest`; run the safe migration command once
    under a PostgreSQL advisory lock, with lock and statement timeouts.
 8. Verify hosting state and readiness, including the full SHA, tag and active digest.
-9. Check public pages, deny anonymous dashboard/lesson access, sign in as the verified
+9. Immediately run the six safe checks below, deny anonymous dashboard/lesson access, sign in as the verified
    fixture student, verify server auth state, visit the dashboard/course/entitled lesson.
 10. Sample identity, health and production telemetry ten times over five minutes.
     Any critical alert, failed check, timeout or unknown response fails the release.
@@ -91,12 +91,33 @@ workflow code: required reviews and branch protection are also necessary.
 Every failure after the deployment request is issued, including an HTTP error whose
 side effects are unknown, migration failure, browser failure, monitor failure or
 runner cancellation, attempts rollback to the **captured** previous digest. Recovery
-must prove version N's identity, health and student journey. The workflow remains
+must prove version N's identity, all six public smoke checks and student journey. The workflow remains
 failed after recovery so a rolled-back release cannot appear successful. Failed
 recovery emits a critical error and leaves the hosting watchdog/lease active.
 No reverse database migration or automatic database restore is performed; expansions
 must remain compatible with version N. A destructive migration requires its own
 approved maintenance/restore plan.
+
+### Safe post-deployment testing
+
+The public smoke suite runs in the deployment transaction after migration/readiness and before the synthetic student journey, monitoring and commit. A missing response, timeout, wrong content type, missing UI structure, wrong release or failed asset triggers rollback. The same suite runs again on restored version N. The existing `post-deploy.yml` remains the final **staging** identity gate; a separate production job would run too late to participate in the transaction's rollback.
+
+| Check | Read-only request and evidence |
+| --- | --- |
+| Homepage | Frontend `GET /`; HTML with main content and heading |
+| Health | Backend `GET /health/`; JSON healthy status |
+| Login page | Frontend `GET /login`; email and password fields |
+| Course catalogue | Frontend `GET /courses`; HTML main content and heading |
+| API health | Backend `GET /health/ready/`; healthy JSON and exact Git SHA/image tag |
+| Static assets | At most 12 deduplicated same-origin assets referenced by homepage HTML under `/assets/` or `/_next/static/`; valid nonempty JavaScript and CSS required |
+
+Requests are bounded to ten seconds and 5 MB each, carry no credentials, and do not follow redirects. Use canonical HTTPS origins. Redirecting health endpoints or HTML error pages fail closed. Only names and pass/fail outcomes are retained in the deployment record, never response bodies or personal data.
+
+The browser check uses the dedicated pre-created account above and one intentional same-origin login submission. Its request allowlist permits only the named public/protected read routes and local static resources. All other mutations and all external destinations are blocked, including both direct payment-provider requests and same-origin checkout/payment proxies. Service workers and cache are bypassed. An attempted unexpected mutation fails the journey. Registration, password resets, payments, new bookings, progress writes, invoice delivery and external messaging must never be added to production smoke tests. Account provisioning and entitlements occur outside the deployment smoke run; no real payment is needed.
+
+Browser-side interception cannot prevent a server from causing a side effect in response to a read or login. The allowlisted application handlers must preserve their read/login-only semantics; keep mock payment and notification checks in isolated staging. Existing paid-learning acceptance gates remain required, and this branch still lacks a complete protected lesson route, so production remains blocked until it exists.
+
+See [synthetic factories](../backend/test_data/README.md) for offline fixtures. Request filtering follows [Puppeteer's interception contract](https://pptr.dev/guides/network-interception).
 
 ## Hosting adapter API v2
 

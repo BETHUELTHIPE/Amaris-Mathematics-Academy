@@ -51,5 +51,6 @@ next-env.d.ts
 /backend/db.sqlite3
 /backend/celerybeat-schedule*
 /backend/load_tests/results/
+/backend/test_data/generated/
 __pycache__/
 *.py[cod]

@@ -17,6 +17,9 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from post_deploy_smoke import origin
+from post_deploy_smoke import run as run_smoke
+
 IMAGE_REPOSITORY = "docker.io/bethuelm/amaris-mathematics-academy"
 
 
@@ -27,8 +30,14 @@ def require(condition, message):
 
 def identity(image, sha, digest):
     require(bool(re.fullmatch(r"[0-9a-f]{40}", sha)), "Invalid full Git SHA")
-    require(image == f"{IMAGE_REPOSITORY}:{sha}", "Image repository/tag must match the exact release SHA")
-    require(bool(re.fullmatch(r"sha256:[0-9a-f]{64}", digest)), "Missing immutable registry digest")
+    require(
+        image == f"{IMAGE_REPOSITORY}:{sha}",
+        "Image repository/tag must match the exact release SHA",
+    )
+    require(
+        bool(re.fullmatch(r"sha256:[0-9a-f]{64}", digest)),
+        "Missing immutable registry digest",
+    )
     return {"image": image, "git_sha": sha, "digest": digest}
 
 
@@ -66,10 +75,26 @@ class Adapter:
     def __init__(self, env):
         self.env = env
         self.transaction = f"{env['GITHUB_RUN_ID']}-{env['GITHUB_RUN_ATTEMPT']}"
-        for name in ("DEPLOY_WEBHOOK_URL", "BACKUP_WEBHOOK_URL", "HEALTHCHECK_URL", "PRODUCTION_URL"):
+        for name in (
+            "DEPLOY_WEBHOOK_URL",
+            "BACKUP_WEBHOOK_URL",
+            "HEALTHCHECK_URL",
+            "PRODUCTION_URL",
+        ):
             https(env[name])
-        for name in ("DEPLOY_TOKEN", "BACKUP_TOKEN", "PRODUCTION_STUDENT_EMAIL", "PRODUCTION_STUDENT_PASSWORD"):
+        origin(env["PRODUCTION_URL"])
+        origin(env["PRODUCTION_API_URL"])
+        for name in (
+            "DEPLOY_TOKEN",
+            "BACKUP_TOKEN",
+            "PRODUCTION_STUDENT_EMAIL",
+            "PRODUCTION_STUDENT_PASSWORD",
+        ):
             require(bool(env.get(name)), f"{name} is required")
+        require(
+            env["PRODUCTION_STUDENT_EMAIL"] == "synthetic-smoke@amaris.test",
+            "Only the dedicated synthetic production smoke account is permitted",
+        )
         require(
             bool(re.fullmatch(r"/courses/[a-z0-9-]+", env.get("PRODUCTION_COURSE_PATH", ""))),
             "A real course path is required",
@@ -124,7 +149,19 @@ class Adapter:
             "PRODUCTION_STUDENT_PASSWORD",
         }
         env = {k: v for k, v in self.env.items() if k in allowed}
-        subprocess.run(["node", "scripts/release/production-journey.mjs"], env=env, check=True, timeout=150)
+        subprocess.run(
+            ["node", "scripts/release/production-journey.mjs"],
+            env=env,
+            check=True,
+            timeout=150,
+        )
+
+    def smoke(self, release):
+        return run_smoke(
+            self.env["PRODUCTION_URL"],
+            self.env["PRODUCTION_API_URL"],
+            release["git_sha"],
+        )
 
 
 class Deployment:
@@ -154,17 +191,24 @@ class Deployment:
         response = self.adapter.call(action, release, **extra)
         require(response.get("status") == "completed", f"{action} has not completed")
         require(
-            response.get("transaction_id") == self.adapter.transaction, f"{action} belongs to a different transaction"
+            response.get("transaction_id") == self.adapter.transaction,
+            f"{action} belongs to a different transaction",
         )
         if release:
-            require(response.get("release") == release, f"{action} returned a different release")
+            require(
+                response.get("release") == release,
+                f"{action} returned a different release",
+            )
         return response
 
     def verify(self, release, attempts=12):
         for attempt in range(attempts):
             try:
                 state = self.adapter.call("status")
-                require(state.get("active") == release, "Hosting state differs from requested release")
+                require(
+                    state.get("active") == release,
+                    "Hosting state differs from requested release",
+                )
                 self.adapter.health(release)
                 return
             except Exception:
@@ -177,7 +221,12 @@ class Deployment:
         try:
             self.event("started")
             preflight = self.completed("preflight", self.candidate, migration_risk=self.risk)
-            for field in ("registry_verified", "ready", "rollback_compatible", "watchdog_ready"):
+            for field in (
+                "registry_verified",
+                "ready",
+                "rollback_compatible",
+                "watchdog_ready",
+            ):
                 require(preflight.get(field) is True, f"Preflight did not prove {field}")
             self.event("image-and-readiness")
             phase = "acquire-lock"
@@ -185,7 +234,10 @@ class Deployment:
             self.leased = True
             previous = lease["previous"]
             self.previous = identity(previous["image"], previous["git_sha"], previous["digest"])
-            require(lease.get("watchdog_armed") is True, "Hosting rollback watchdog is not armed")
+            require(
+                lease.get("watchdog_armed") is True,
+                "Hosting rollback watchdog is not armed",
+            )
             self.record["previous"] = self.previous
             self.verify(self.previous)
             self.event("previous-release-healthy")
@@ -210,11 +262,19 @@ class Deployment:
             # Arm recovery BEFORE the request; a failed response can mean the
             # server changed state but its acknowledgement was lost.
             self.changed = True
-            self.completed("deploy", self.candidate, previous=self.previous, recovery_id=backup["recovery_id"])
+            self.completed(
+                "deploy",
+                self.candidate,
+                previous=self.previous,
+                recovery_id=backup["recovery_id"],
+            )
             self.event("deploy")
             phase = "migrate"
             migration = self.completed(
-                "migrate", self.candidate, recovery_id=backup["recovery_id"], backwards_compatible_only=True
+                "migrate",
+                self.candidate,
+                recovery_id=backup["recovery_id"],
+                backwards_compatible_only=True,
             )
             require(
                 migration.get("pending") == 0 and migration.get("backwards_compatible") is True,
@@ -224,6 +284,9 @@ class Deployment:
             phase = "health"
             self.verify(self.candidate)
             self.event("health")
+            phase = "safe-public-smoke"
+            self.record["post_deployment_checks"] = self.adapter.smoke(self.candidate)
+            self.event("safe-public-smoke")
             phase = "student-journey"
             self.adapter.journey()
             self.event("smoke-and-student-journey")
@@ -257,6 +320,7 @@ class Deployment:
                 try:
                     self.completed("rollback", self.previous)
                     self.verify(self.previous)
+                    self.record["rollback_checks"] = self.adapter.smoke(self.previous)
                     self.adapter.journey()
                     self.record["restored"] = self.previous
                     self.record["outcome"] = "rolled_back"
@@ -283,7 +347,11 @@ class Deployment:
 
 
 def main():
-    candidate = identity(os.environ["RELEASE_IMAGE"], os.environ["GITHUB_SHA"], os.environ["RELEASE_DIGEST"])
+    candidate = identity(
+        os.environ["RELEASE_IMAGE"],
+        os.environ["GITHUB_SHA"],
+        os.environ["RELEASE_DIGEST"],
+    )
     deployment = Deployment(
         Adapter(os.environ),
         candidate,
@@ -312,5 +380,8 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception:
-        print("Production configuration or evidence recording failed; inspect the deployment record.", file=sys.stderr)
+        print(
+            "Production configuration or evidence recording failed; inspect the deployment record.",
+            file=sys.stderr,
+        )
         raise SystemExit(1) from None

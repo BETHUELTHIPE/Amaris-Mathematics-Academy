@@ -85,7 +85,9 @@ jobs:
       - name: Full Django regression suite
         run: python manage.py test
       - name: Load-test safety contract
-        run: python -m unittest load_tests.test_contract
+        run: python -m unittest load_tests.test_contract load_tests.test_synthetic
+      - name: Synthetic fixture determinism and integrity
+        run: python -m unittest discover -s test_data -p 'test_*.py'
       - name: Production-acceptance and rollback contracts
         working-directory: .
         run: python -m unittest discover -s scripts/release -p 'test_*.py'

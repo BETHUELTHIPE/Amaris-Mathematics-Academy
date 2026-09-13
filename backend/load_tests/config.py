@@ -15,7 +15,14 @@ def env_csv(name: str, default: str = "") -> tuple[str, ...]:
 
 def relative_path(name: str, default: str = "") -> str:
     value = os.getenv(name, default).strip()
-    if value and (not value.startswith("/") or value.startswith("//")):
+    if value and (
+        not value.startswith("/")
+        or value.startswith("//")
+        or "\\" in value
+        or "#" in value
+        or "%" in value.split("?", 1)[0]
+        or any(part in (".", "..") for part in value.split("?", 1)[0].split("/"))
+    ):
         raise ValueError(f"{name} must be a relative application path beginning with one slash.")
     return value
 

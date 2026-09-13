@@ -30,9 +30,18 @@ class FakeHosting:
             raise ConnectionError("SECRET-REMOTE-RESPONSE")
         if action == "rollback":
             self.active = release
-        response = {"status": "completed", "transaction_id": self.transaction, "release": release}
+        response = {
+            "status": "completed",
+            "transaction_id": self.transaction,
+            "release": release,
+        }
         if action == "preflight":
-            response.update(registry_verified=True, ready=True, rollback_compatible=True, watchdog_ready=True)
+            response.update(
+                registry_verified=True,
+                ready=True,
+                rollback_compatible=True,
+                watchdog_ready=True,
+            )
         elif action == "acquire":
             response.update(previous=self.active, watchdog_armed=True)
         elif action == "status":
@@ -72,6 +81,12 @@ class FakeHosting:
         if self.fail == "cancel" and self.journeys == 1:
             raise KeyboardInterrupt()
 
+    def smoke(self, release):
+        self.events.append("smoke")
+        if self.fail == "smoke" and release == CANDIDATE:
+            raise ValueError("static assets failed")
+        return [{"name": "public-checks", "status": "passed"}]
+
 
 class ProductionTransactionTests(unittest.TestCase):
     def deploy(self, host):
@@ -95,6 +110,8 @@ class ProductionTransactionTests(unittest.TestCase):
             ("migration-plan", "deploy"),
             ("deploy", "migrate"),
             ("migrate", "journey"),
+            ("migrate", "smoke"),
+            ("smoke", "journey"),
             ("journey", "monitor"),
             ("monitor", "commit"),
         ]:
@@ -127,6 +144,7 @@ class ProductionTransactionTests(unittest.TestCase):
             "migrate",
             "pending-migration",
             "health",
+            "smoke",
             "journey",
             "critical-alert",
             "monitor",
@@ -142,6 +160,7 @@ class ProductionTransactionTests(unittest.TestCase):
                 self.assertEqual(host.active, N)
                 rollback_at = host.events.index("rollback")
                 self.assertIn("health", host.events[rollback_at:])
+                self.assertIn("smoke", host.events[rollback_at:])
                 self.assertIn("journey", host.events[rollback_at:])
 
     def test_failed_rollback_keeps_lock_and_watchdog(self):
@@ -164,7 +183,11 @@ class ProductionTransactionTests(unittest.TestCase):
         for image, sha, digest in [
             (f"{IMAGE_REPOSITORY}:latest", CANDIDATE["git_sha"], CANDIDATE["digest"]),
             (CANDIDATE["image"], N["git_sha"], CANDIDATE["digest"]),
-            ("attacker/image:" + CANDIDATE["git_sha"], CANDIDATE["git_sha"], CANDIDATE["digest"]),
+            (
+                "attacker/image:" + CANDIDATE["git_sha"],
+                CANDIDATE["git_sha"],
+                CANDIDATE["digest"],
+            ),
             (CANDIDATE["image"], CANDIDATE["git_sha"], ""),
         ]:
             with self.assertRaises(ValueError):
@@ -201,13 +224,22 @@ class ApprovalTests(unittest.TestCase):
         self.run = {"head_sha": CANDIDATE["git_sha"], "head_branch": "main"}
 
     def check(self):
-        return validate(self.environment, self.policies, self.reviews, self.run, CANDIDATE["git_sha"])
+        return validate(
+            self.environment,
+            self.policies,
+            self.reviews,
+            self.run,
+            CANDIDATE["git_sha"],
+        )
 
     def test_native_approval_passes(self):
         self.assertTrue(self.check())
 
     def test_missing_rules_or_approval_or_wrong_run_block(self):
-        for key, value in [("protection_rules", []), ("deployment_branch_policy", None)]:
+        for key, value in [
+            ("protection_rules", []),
+            ("deployment_branch_policy", None),
+        ]:
             original = copy.deepcopy(self.environment)
             self.environment[key] = value
             with self.assertRaises(ValueError):

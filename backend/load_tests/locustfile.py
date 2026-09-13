@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
-import uuid
+from itertools import count
 
 from locust import HttpUser, LoadTestShape, between, events, task
 from locust.env import Environment
+from locust.exception import StopUser
+from requests import Session
 
 from load_tests.config import (
     AUTHENTICATED_REQUESTS,
@@ -17,7 +19,13 @@ from load_tests.config import (
     env_bool,
     env_csv,
     missing_full_journey_configuration,
+    relative_path,
     validate_target,
+)
+from load_tests.synthetic import (
+    verify_data_configuration,
+    verify_identity,
+    verify_isolation,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -38,18 +46,28 @@ REGISTRATION_PASSWORD = os.getenv("LOADTEST_REGISTRATION_PASSWORD", "").strip()
 REGISTRATION_EMAIL_DOMAIN = os.getenv("LOADTEST_REGISTRATION_EMAIL_DOMAIN", "").strip().lower()
 COURSE_ID = os.getenv("LOADTEST_COURSE_ID", "").strip() or "load-test-course"
 LESSON_ID = os.getenv("LOADTEST_LESSON_ID", "").strip() or "load-test-lesson"
+REGISTRATION_SEQUENCE = count()
+DATA_FACTORY = None
+SAFETY_PASSED = False
+WORKER_INDEX = int(os.getenv("LOADTEST_WORKER_INDEX", "0"))
+if WORKER_INDEX < 0:
+    raise ValueError("LOADTEST_WORKER_INDEX must be non-negative")
 
 
 def checked_get(user: HttpUser, path: str, name: str, *, protected: bool = False) -> None:
+    if not SAFETY_PASSED:
+        raise StopUser()
     if not path:
         return
-    with user.client.get(path, name=name, catch_response=True, allow_redirects=not protected) as response:
+    with user.client.get(path, name=name, catch_response=True, allow_redirects=False) as response:
         expected = {200} if protected else {200, 301, 302, 303, 307, 308}
         if response.status_code not in expected:
             response.failure(f"unexpected status {response.status_code}")
 
 
 def checked_post(user: HttpUser, path: str, name: str, payload: dict[str, object]) -> None:
+    if not SAFETY_PASSED:
+        raise StopUser()
     if not path or not ALLOW_WRITES:
         return
     with user.client.post(path, name=name, json=payload, catch_response=True, allow_redirects=False) as response:
@@ -81,7 +99,11 @@ class PublicJourneyUser(HttpUser):
     def registration(self) -> None:
         checked_get(self, ENDPOINTS.registration_page, "05a Registration page")
         if ENDPOINTS.registration_submit and ALLOW_WRITES and REGISTRATION_PASSWORD and REGISTRATION_EMAIL_DOMAIN:
-            unique_email = f"loadtest+{uuid.uuid4().hex}@{REGISTRATION_EMAIL_DOMAIN}"
+            if DATA_FACTORY is None:
+                raise RuntimeError("Synthetic data preflight has not passed")
+            unique_email = (
+                f"registration-{DATA_FACTORY.seed}-{WORKER_INDEX}-{next(REGISTRATION_SEQUENCE):07d}@amaris.test"
+            )
             checked_post(
                 self,
                 ENDPOINTS.registration_submit,
@@ -126,7 +148,12 @@ class AuthenticatedStudentUser(HttpUser):
 
     @task(4)
     def dashboard(self) -> None:
-        checked_get(self, ENDPOINTS.dashboard, "07 Student dashboard", protected=self.authenticated)
+        checked_get(
+            self,
+            ENDPOINTS.dashboard,
+            "07 Student dashboard",
+            protected=self.authenticated,
+        )
 
     @task(5)
     def lesson_access(self) -> None:
@@ -158,7 +185,12 @@ class AuthenticatedStudentUser(HttpUser):
     @task(3)
     def payment_status_polling(self) -> None:
         if self.authenticated:
-            checked_get(self, ENDPOINTS.payment_status, "11 Payment-status polling", protected=True)
+            checked_get(
+                self,
+                ENDPOINTS.payment_status,
+                "11 Payment-status polling",
+                protected=True,
+            )
 
 
 class AmarisTrafficShape(LoadTestShape):
@@ -172,6 +204,22 @@ class AmarisTrafficShape(LoadTestShape):
 
 @events.test_start.add_listener
 def validate_run(environment: Environment, **_kwargs) -> None:
+    global SAFETY_PASSED
+    SAFETY_PASSED = False
+    try:
+        validate_safety(environment)
+        SAFETY_PASSED = True
+    except Exception:
+        environment.process_exit_code = 2
+        if environment.runner:
+            environment.runner.quit()
+        raise RuntimeError(
+            "Load-test safety preflight failed; check target and synthetic fixture configuration"
+        ) from None
+
+
+def validate_safety(environment: Environment) -> None:
+    global DATA_FACTORY, REGISTRATION_SEQUENCE
     target_url = environment.host or os.getenv("LOADTEST_TARGET_URL", "")
     validate_target(
         target_url,
@@ -180,6 +228,37 @@ def validate_run(environment: Environment, **_kwargs) -> None:
         allow_production=env_bool("LOADTEST_ALLOW_PRODUCTION"),
         allow_live_payfast=env_bool("LOADTEST_ALLOW_LIVE_PAYFAST"),
     )
+    DATA_FACTORY = verify_data_configuration(os.environ)
+    REGISTRATION_SEQUENCE = count()
+    authenticated = bool(AUTH_BEARER or COOKIE_HEADER or (SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE))
+    if ALLOW_WRITES and getattr(environment.parsed_options, "worker", False):
+        if "LOADTEST_WORKER_INDEX" not in os.environ:
+            raise ValueError("Distributed write tests require an explicit unique LOADTEST_WORKER_INDEX per worker")
+    if authenticated or ALLOW_WRITES:
+        # A declared synthetic email is insufficient: verify the supplied opaque
+        # token/cookie against the server before spawning any authenticated users.
+        identity_path = relative_path("LOADTEST_IDENTITY_PATH")
+        if not identity_path or "?" in identity_path or "#" in identity_path or "\\" in identity_path:
+            raise ValueError("A same-origin read-only synthetic identity endpoint is required")
+        with Session() as session:
+            if AUTH_BEARER:
+                session.headers["Authorization"] = f"Bearer {AUTH_BEARER}"
+            elif COOKIE_HEADER:
+                session.headers["Cookie"] = COOKIE_HEADER
+            elif SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE:
+                session.cookies.set(SESSION_COOKIE_NAME, SESSION_COOKIE_VALUE)
+            response = session.get(
+                target_url.rstrip("/") + identity_path,
+                timeout=10,
+                allow_redirects=False,
+            )
+            if response.status_code != 200:
+                raise ValueError("Synthetic identity check failed")
+            body = response.json()
+            if authenticated:
+                verify_identity(body, LOGIN_EMAIL)
+            if ALLOW_WRITES:
+                verify_isolation(body)
     if REQUIRE_FULL_JOURNEY:
         missing = missing_full_journey_configuration(ENDPOINTS)
         if missing:
