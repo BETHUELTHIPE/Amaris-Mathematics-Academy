@@ -1,0 +1,94 @@
+name: Security
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "24"
+
+jobs:
+  dependency-security:
+    name: Dependency vulnerability gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Audit Python dependencies
+        run: |
+          python -m pip install 'pip-audit>=2.7,<3'
+          pip-audit --requirement backend/requirements.txt
+          pip-audit --requirement backend/requirements-load.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Audit Node dependencies
+        run: npm audit --audit-level=critical
+
+  secret-security:
+    name: Repository secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect committed credentials
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  container-security:
+    name: Docker, Compose, image scan, and SBOM
+    runs-on: ubuntu-latest
+    needs: [dependency-security, secret-security]
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Docker Compose
+        shell: bash
+        run: |
+          cp backend/.env.example backend/.env
+          docker compose --env-file backend/.env -f backend/docker-compose.yml config --quiet
+      - name: Build production backend image
+        run: docker build --tag amaris-backend:${{ github.sha }} backend
+      - name: Generate CycloneDX software bill of materials
+        uses: anchore/sbom-action@v0
+        with:
+          image: amaris-backend:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: amaris-backend-sbom.cdx.json
+      - name: Scan container for critical vulnerabilities
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: amaris-backend:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Upload container scan results
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+      - name: Upload software bill of materials
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-backend-sbom
+          path: amaris-backend-sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 30
