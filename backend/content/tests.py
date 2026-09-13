@@ -177,7 +177,10 @@ class HealthAndMetricsTests(TestCase):
         self.assertEqual(live.status_code, 200)
         self.assertEqual(live.json(), {"status": "ok"})
         self.assertEqual(ready.status_code, 200)
-        self.assertEqual(\n            ready.json(),\n            {"status": "ready", "version": {"git_sha": "unknown", "image_tag": "unknown"}},\n        )
+        self.assertEqual(
+            ready.json(),
+            {"status": "ready", "version": {"git_sha": "unknown", "image_tag": "unknown"}},
+        )
         self.assertNotContains(live, "postgres", status_code=200)
         self.assertNotContains(ready, "redis", status_code=200)
 
