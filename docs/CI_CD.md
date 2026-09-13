@@ -1,6 +1,21 @@
 # CI/CD quality gates and release controls
 
-The `Quality Gates and Release` workflow validates every pull request to `main`, repeats the gates on `main`, publishes a multi-platform backend image to Docker Hub only after all gates pass, deploys that immutable image to staging, and allows production promotion only from a manual workflow run.
+The `Quality Gates and Release` workflow validates every pull request to `main`, repeats the gates on `main`, publishes a multi-platform backend image to Docker Hub only after all gates pass, deploys that immutable image to staging, and allows production promotion only from a manual workflow run. It is a thin coordinator over reusable workflows so each gate has one owner.
+
+## Workflow topology
+
+| Workflow | Single responsibility |
+|---|---|
+| `quality-release.yml` | Triggers the pipeline, joins all blocking results and publishes the SHA-tagged release image |
+| `ci.yml` | Python/Django and frontend correctness |
+| `security.yml` | Dependency, secret, Compose, container, SBOM and vulnerability checks |
+| `e2e.yml` | Browser route and WCAG smoke tests |
+| `performance-smoke.yml` | Asset-size budgets and Lighthouse |
+| `load-tests.yml` | Scheduled and operator-selected staging capacity profiles; retained instead of adding a duplicate `capacity.yml` |
+| `deploy-staging.yml` | Reusable staging promotion and optional rollback drill |
+| `deploy-production.yml` | Protected production acceptance, backup and promotion |
+
+Post-deploy release verification is intentionally part of the deployment transaction rather than a separate `post-deploy.yml`. Both deployment workflows call `scripts/release/promote.sh`, which records version N, deploys N+1, verifies state and readiness, and restores and re-verifies N after failure. Splitting those steps would duplicate checks and weaken the rollback transaction.
 
 ## Blocking quality gates
 
@@ -27,7 +42,7 @@ The container, image publishing and deployment jobs use normal successful-job de
 Configure the following settings in the GitHub repository before enabling deployments:
 
 1. Protect `main` and require a pull request.
-2. Require the `Python quality and Django checks`, `Frontend, accessibility, and Lighthouse`, `Dependency vulnerability gates`, `Repository secret scan`, and `Docker, Compose, image scan, and SBOM` checks.
+2. Require every check emitted by the `CI`, `Security`, `E2E and accessibility`, and `Performance smoke` reusable workflow calls. Select the exact check names from a completed pull-request run so GitHub stores their current qualified names.
 3. Require branches to be current before merging and dismiss approvals when new commits arrive.
 4. Prevent force pushes and branch deletion.
 5. Enable GitHub secret scanning and push protection when available.
