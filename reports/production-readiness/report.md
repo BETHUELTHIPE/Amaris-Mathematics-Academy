@@ -18,7 +18,25 @@
 
 **50,000 CONCURRENT USERS VERIFIED:** **NO**
 
-`0` means that no controlled concurrency/capacity test has yet completed successfully with retained evidence for this release candidate. It is not an estimate of the platform's real capacity. Production readiness and capacity certification are intentionally reported as separate results. A future release may be production-ready without being verified for 50,000 concurrent users, but no positive concurrency claim may be made until an actual controlled test demonstrates it.
+**CAPACITY TEST ENVIRONMENT:** **NOT EXECUTED**
+
+**TEST TOOL:** **NOT EXECUTED**
+
+**TEST DURATION:** **NOT EXECUTED**
+
+**PEAK VERIFIED REQUEST RATE:** **0 requests/second**
+
+**P95 RESPONSE TIME:** **NOT AVAILABLE**
+
+**P99 RESPONSE TIME:** **NOT AVAILABLE**
+
+**ERROR RATE:** **NOT AVAILABLE**
+
+**CAPACITY EVIDENCE:** **NONE — no completed controlled capacity/load test report exists for this release candidate**
+
+`0` is a sentinel meaning that no controlled concurrency/capacity test has yet completed successfully with retained evidence for this release candidate. It is not an estimate of the platform's real capacity and must never be interpreted as a tested capacity result. Production readiness and capacity certification are intentionally reported as separate results. A future release may be production-ready without being verified for 50,000 concurrent users, but no positive concurrency claim may be made until an actual controlled test demonstrates it.
+
+A concurrency level only counts as verified when the applicable workload acceptance criteria pass together: HTTP/API error rate, response-time thresholds, database stability, Redis/cache stability, application-worker stability, CPU/memory utilisation, connection-pool health, queue backlog, crash/restart behavior, and critical student journeys. Payment-provider endpoints must remain excluded from unsafe load generation. If a higher stage fails, the report must retain the highest lower stage that actually passed all required criteria.
 
 ## Readiness matrix
 
@@ -84,4 +102,4 @@ The codebase has a green automated CI/security baseline, but the release is not 
 
 Do **not** merge or deploy this candidate to live production solely because pull-request CI is green. Promote only after the immutable release image has passed protected staging, provider integration checks, backup/restore, rollback/recovery, controlled capacity testing and the explicit production approval gate.
 
-> This report records the last fully verified release-candidate evidence set. Updating this documentation creates a later documentation-only commit; that later commit must not be treated as tested until its own required workflows complete successfully.
+> This report records the last fully verified release-candidate evidence set. Updating this documentation or its reporting contract creates a later commit; that later commit must not be treated as tested until its own required workflows complete successfully.
