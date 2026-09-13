@@ -1,0 +1,76 @@
+name: Staging Security Verification
+
+on:
+  workflow_call:
+    inputs:
+      target_url:
+        description: Optional staging base URL override
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  staging-security:
+    name: Staging HTTPS, headers, cookies, and disclosure checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      CONFIGURED_TARGET_URL: ${{ inputs.target_url != '' && inputs.target_url || vars.STAGING_URL }}
+    steps:
+      - name: Validate staging target
+        shell: bash
+        run: |
+          case "$CONFIGURED_TARGET_URL" in
+            https://*) ;;
+            *) echo "STAGING_URL must be a non-empty HTTPS URL." >&2; exit 2 ;;
+          esac
+          echo "TARGET_URL=${CONFIGURED_TARGET_URL%/}" >> "$GITHUB_ENV"
+      - name: Fetch staging response safely
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location --max-time 30 \
+            --dump-header /tmp/staging-headers.txt \
+            --output /tmp/staging-body.html \
+            "$TARGET_URL/"
+      - name: Enforce browser security headers
+        shell: bash
+        run: |
+          for header in \
+            strict-transport-security \
+            content-security-policy \
+            x-content-type-options \
+            referrer-policy \
+            permissions-policy
+          do
+            if ! grep -qi "^${header}:" /tmp/staging-headers.txt; then
+              echo "Missing required staging response header: $header" >&2
+              exit 1
+            fi
+          done
+          if grep -Eqi '^access-control-allow-origin:[[:space:]]*\*' /tmp/staging-headers.txt; then
+            echo "Wildcard CORS is not allowed on staging." >&2
+            exit 1
+          fi
+      - name: Enforce secure cookie attributes
+        shell: bash
+        run: |
+          while IFS= read -r cookie; do
+            normalized=$(printf '%s' "$cookie" | tr '[:upper:]' '[:lower:]')
+            for attribute in secure httponly samesite; do
+              case "$normalized" in
+                *"$attribute"*) ;;
+                *) echo "A staging cookie is missing $attribute." >&2; exit 1 ;;
+              esac
+            done
+          done < <(grep -i '^set-cookie:' /tmp/staging-headers.txt || true)
+      - name: Detect debug and error disclosure
+        shell: bash
+        run: |
+          if grep -Eqi 'traceback \(most recent call last\)|django debug|debug[[:space:]]*=[[:space:]]*true|stack trace|exception at /' /tmp/staging-body.html; then
+            echo "Staging response appears to disclose debug or exception details." >&2
+            exit 1
+          fi
