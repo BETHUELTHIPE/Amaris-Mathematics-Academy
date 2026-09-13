@@ -10,6 +10,16 @@
 
 > **Status semantics:** `PASS` means the automated evidence required for that category passed on the tested release candidate. `FAIL` means required production-like or staging evidence is incomplete or was not executed. Passing unit/contract checks does not substitute for a required deployment, recovery, restore, provider, or capacity drill.
 
+## Production readiness vs capacity
+
+**PRODUCTION READINESS:** **FAIL**
+
+**MAXIMUM VERIFIED CONCURRENT USERS:** **0**
+
+**50,000 CONCURRENT USERS VERIFIED:** **NO**
+
+`0` means that no controlled concurrency/capacity test has yet completed successfully with retained evidence for this release candidate. It is not an estimate of the platform's real capacity. Production readiness and capacity certification are intentionally reported as separate results. A future release may be production-ready without being verified for 50,000 concurrent users, but no positive concurrency claim may be made until an actual controlled test demonstrates it.
+
 ## Readiness matrix
 
 | Area | Result | Evidence / note |
@@ -27,7 +37,7 @@
 | SECRET SCAN | **PASS** | Repository secret scanning and the dedicated security workflow passed. |
 | DJANGO DEPLOYMENT CHECK | **PASS** | Django deployment/security checks passed in the dedicated security pipeline. |
 | NEXT.JS BUILD | **PASS** | Production build, lint, TypeScript, frontend unit/auth tests, accessibility, Lighthouse and frontend performance budgets passed. Next.js Production Check #29 also passed. |
-| PERFORMANCE | **FAIL** | Lighthouse and frontend performance budgets passed, and the load-test safety contract passed, but no controlled staging capacity/load test was executed. No high-concurrency capacity claim is supported. |
+| PERFORMANCE | **FAIL** | Lighthouse and frontend performance budgets passed, and the load-test safety contract passed, but no controlled staging capacity/load test was executed. No positive concurrent-user capacity claim is supported. |
 | BACKUP RESTORE | **FAIL** | No successful production-like backup-and-restore drill is recorded for this release candidate. |
 | RECOVERY | **FAIL** | No end-to-end service/disaster recovery drill has been executed and verified for this release candidate. |
 | ROLLBACK | **FAIL** | Rollback capability and contracts exist, but no deployed staging drill proving version N -> N+1 -> health failure -> N restored has been completed for this release candidate. |
