@@ -7,6 +7,10 @@ on:
         description: Immutable Docker image tagged with the full Git SHA
         required: true
         type: string
+      registry_digest:
+        description: Registry digest recorded when this exact release was published
+        required: true
+        type: string
       migration_risk:
         description: Database migration risk for this release
         required: true
@@ -14,17 +18,29 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   deploy-production:
     name: Approve, deploy, and verify production
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    timeout-minutes: 45
+    concurrency:
+      group: amaris-production
+      cancel-in-progress: false
     environment:
       name: production
       url: ${{ vars.PRODUCTION_URL }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify production protection and explicit approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/release/verify_production_approval.py
       - name: Validate deployment inputs
         shell: bash
         env:
@@ -36,25 +52,49 @@ jobs:
           esac
       - name: Verify all professional acceptance evidence
         run: python scripts/release/verify_acceptance.py acceptance/criteria.json
-      - name: Create recovery point before high-risk migration
-        if: inputs.migration_risk == 'high'
+      - uses: docker/setup-buildx-action@v3
+      - name: Recheck the published image digest after approval
+        shell: bash
         env:
-          BACKUP_WEBHOOK_URL: ${{ secrets.PRODUCTION_BACKUP_WEBHOOK_URL }}
-          BACKUP_TOKEN: ${{ secrets.PRODUCTION_BACKUP_TOKEN }}
-        run: scripts/release/backup-before-migration.sh production
-      - name: Promote reversible production release
+          RELEASE_IMAGE: ${{ inputs.image }}
+          RELEASE_DIGEST: ${{ inputs.registry_digest }}
+        run: |
+          python -c 'import os, sys; sys.path.insert(0, "scripts/release"); from production_deploy import identity; identity(os.environ["RELEASE_IMAGE"], os.environ["GITHUB_SHA"], os.environ["RELEASE_DIGEST"])'
+          actual_digest="sha256:$(docker buildx imagetools inspect --raw "$RELEASE_IMAGE" | sha256sum | cut -d ' ' -f 1)"
+          [ "$actual_digest" = "$RELEASE_DIGEST" ] || { echo "Published image digest changed; production blocked." >&2; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - id: chrome
+        uses: browser-actions/setup-chrome@v1
+      - name: Prepare browser checks before changing production
+        run: npm ci --ignore-scripts
+      - name: Verify, back up, deploy, migrate, test, monitor, and recover
         env:
           DEPLOY_WEBHOOK_URL: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK_URL }}
           DEPLOY_TOKEN: ${{ secrets.PRODUCTION_DEPLOY_TOKEN }}
+          BACKUP_WEBHOOK_URL: ${{ secrets.PRODUCTION_BACKUP_WEBHOOK_URL }}
+          BACKUP_TOKEN: ${{ secrets.PRODUCTION_BACKUP_TOKEN }}
           HEALTHCHECK_URL: ${{ vars.PRODUCTION_HEALTHCHECK_URL }}
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+          PRODUCTION_COURSE_PATH: ${{ vars.PRODUCTION_COURSE_PATH }}
+          PRODUCTION_LESSON_PATH: ${{ vars.PRODUCTION_LESSON_PATH }}
+          PRODUCTION_STUDENT_EMAIL: ${{ secrets.PRODUCTION_STUDENT_EMAIL }}
+          PRODUCTION_STUDENT_PASSWORD: ${{ secrets.PRODUCTION_STUDENT_PASSWORD }}
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
           DEPLOYMENT_RECORD_PATH: production-deployment-record.json
           RELEASE_IMAGE: ${{ inputs.image }}
-        run: scripts/release/promote.sh production "$RELEASE_IMAGE"
+          RELEASE_DIGEST: ${{ inputs.registry_digest }}
+          MIGRATION_RISK: ${{ inputs.migration_risk }}
+        run: python scripts/release/production_deploy.py
       - name: Preserve production deployment record
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: production-deployment-record-${{ github.run_id }}-${{ github.run_attempt }}
-          path: production-deployment-record.json
+          path: |
+            production-deployment-record.json
+            production-approval-record.json
           if-no-files-found: warn
-          retention-days: 365
+          retention-days: 90

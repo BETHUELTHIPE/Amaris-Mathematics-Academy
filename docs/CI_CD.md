@@ -1,6 +1,6 @@
 # CI/CD quality gates and release controls
 
-The `Quality Gates and Release` workflow validates every pull request to `main`, repeats the gates on `main`, publishes a multi-platform backend image to Docker Hub only after all gates pass, deploys that immutable image to staging, and allows production promotion only from a manual workflow run. It is a thin coordinator over reusable workflows so each gate has one owner.
+The `Quality Gates and Release` workflow validates every pull request to `main`, repeats the gates on `main`, publishes a multi-platform backend image to Docker Hub only after all gates pass, deploys that immutable image to staging, and reaches the protected production approval gate after a successful main release (or an explicitly requested manual main run). It is a thin coordinator over reusable workflows so each gate has one owner.
 
 ## Workflow topology
 
@@ -15,7 +15,7 @@ The `Quality Gates and Release` workflow validates every pull request to `main`,
 | `deploy-staging.yml` | Reusable staging promotion and optional rollback drill |
 | `deploy-production.yml` | Protected production acceptance, backup and promotion |
 
-Post-deploy release verification is intentionally part of the deployment transaction rather than a separate `post-deploy.yml`. Both deployment workflows call `scripts/release/promote.sh`, which records version N, deploys N+1, verifies state and readiness, and restores and re-verifies N after failure. Splitting those steps would duplicate checks and weaken the rollback transaction.
+`post-deploy.yml` verifies staging identity after its test gates. Staging uses `scripts/release/promote.sh`. Production uses the stricter `scripts/release/production_deploy.py` transaction for digest verification, backups, safe migrations, student checks, five-minute monitoring and verified rollback. See [Production deployment](PRODUCTION_DEPLOYMENT.md) for required environment setup and the hosting adapter API v2 contract.
 
 ## Blocking quality gates
 
@@ -61,7 +61,7 @@ After every successful push to `main`, the workflow publishes both of these Linu
 - `bethuelm/amaris-mathematics-academy:<full-commit-sha>`
 - `bethuelm/amaris-mathematics-academy:latest`
 
-Staging and production use the immutable full-commit-SHA tag. The mutable `latest` tag is provided for convenient manual pulls only.
+Staging uses the full-commit-SHA tag. Production also requires the publication digest and deploys the combined SHA tag plus digest reference. The mutable `latest` tag is provided for convenient manual pulls only.
 
 ## Environments
 
@@ -83,6 +83,8 @@ Staging deploys automatically after a successful push to `main`. Restrict its se
 
 ### `production`
 
+Follow [Production deployment setup](PRODUCTION_DEPLOYMENT.md#required-repository-setup). Missing native approval or protection blocks production. The GitHub connector cannot configure environment administration.
+
 Environment variables:
 
 - `PRODUCTION_URL`: user-facing production URL
@@ -94,6 +96,10 @@ Protected environment secrets:
 - `PRODUCTION_DEPLOY_TOKEN`
 - `PRODUCTION_BACKUP_WEBHOOK_URL`
 - `PRODUCTION_BACKUP_TOKEN`
+- `PRODUCTION_STUDENT_EMAIL`
+- `PRODUCTION_STUDENT_PASSWORD`
+
+Also configure `PRODUCTION_COURSE_PATH` and `PRODUCTION_LESSON_PATH` as environment variables for real protected fixture content. Keep all production secrets exclusively in this environment; no repository/organisation copies and no `secrets: inherit`.
 
 Configure at least one required reviewer, disable administrator bypass where policy permits, and restrict the deployment branch to `main`. GitHub stores the secrets; do not place their values in repository variables, workflow YAML, deployment responses or logs.
 
@@ -105,16 +111,18 @@ The workflow cannot create environment reviewers from source code. Production ap
 2. Merging to `main` repeats the gates and publishes `docker.io/bethuelm/amaris-mathematics-academy:<commit-sha>` and `:latest`.
 3. The workflow records the currently active immutable release (version N), deploys the SHA-tagged candidate (version N+1), and checks both deployment state and readiness.
 4. If staging is unhealthy or reports the wrong Git SHA or Docker tag, the workflow rolls back to the exact version N image and verifies that version N is active and healthy.
-5. To deploy production, run `Quality Gates and Release` manually, enable **Promote the tested release to production**, and select the migration risk.
-6. GitHub pauses the production job for its required environment reviewer.
-7. The production-acceptance manifest must show all 20 criteria as passed, evidenced, dated and reviewer-approved.
-8. A high-risk migration requires a successful backup response containing a non-empty `recovery_id` before deployment starts.
-9. Production readiness and release identity are verified after deployment. A failed check must restore the exact previous image, prove its Git SHA and Docker tag, pass readiness, and leave the workflow failed for investigation.
-10. Each staging deployment stores a 90-day JSON release record; each production deployment stores a 365-day record containing the candidate, previous and restored immutable identities.
+5. A successful main release reaches the production approval gate; a manual main run must explicitly enable `deploy_production`.
+6. GitHub pauses for required production reviewers. The job then verifies native protection and approval for the exact run/SHA.
+7. The production acceptance manifest must show all 20 criteria as passed, evidenced, dated and reviewer-approved.
+8. Recheck the published registry digest; acquire the hosting lease; prove N is healthy; create and verify a fresh backup for every release; inspect migration compatibility.
+9. Deploy by digest, run safe migrations, verify health, run public smoke and the critical student journey, and monitor for five minutes before commit. Any failure after deployment attempts verified rollback to N and leaves the workflow failed.
+10. Both environments retain deployment records for 90 days. Production includes approval, recovery ID, digest identities, phase timestamps and outcome; export to controlled audit storage for longer retention.
 
 The authoritative evidence requirements and current pre-production status are in [`ACCEPTANCE_CRITERIA.md`](ACCEPTANCE_CRITERIA.md). A build or manual approval cannot bypass the acceptance verifier.
 
-## Deployment webhook contract
+## Staging webhook contract (v1)
+
+Production requires the extended [API v2 contract](PRODUCTION_DEPLOYMENT.md#hosting-adapter-api-v2), including safe migrations, fresh backups, monitoring and a durable rollback watchdog. The following v1 contract remains for staging.
 
 The hosting platform must expose an authenticated HTTPS webhook supporting exactly three actions: `status`, `deploy` and `rollback`. It must reject arbitrary shell commands and unapproved image repositories.
 
@@ -123,7 +131,7 @@ A status request contains:
 ```json
 {
   "action": "status",
-  "environment": "production",
+  "environment": "staging",
   "image": "",
   "release_sha": ""
 }
@@ -146,7 +154,7 @@ Deploy and rollback requests contain the exact target image and its matching Git
 ```json
 {
   "action": "deploy",
-  "environment": "production",
+  "environment": "staging",
   "image": "docker.io/bethuelm/amaris-mathematics-academy:<full-commit-sha>",
   "release_sha": "<full-commit-sha>"
 }
@@ -156,16 +164,7 @@ The adapter must return HTTP 2xx only after accepting the action. It must set `A
 
 For `deploy`, retain at least the previous two known-good immutable images and configurations. For `rollback`, atomically restore the exact `image` and `release_sha` in the request. A rollback is not considered successful merely because the webhook returned 2xx: the status response and readiness endpoint must both report version N before the workflow records recovery.
 
-The backup webhook receives `action: backup` and `tag: pre-migration`. It must wait for a verified encrypted backup and return:
-
-```json
-{
-  "status": "succeeded",
-  "recovery_id": "opaque-recovery-point-reference"
-}
-```
-
-A timeout, non-2xx result, failed status or missing recovery reference stops a high-risk production release.
+Production backups and their transaction-bound evidence are specified in the API v2 contract.
 
 ## Staging rollback drill
 
@@ -180,3 +179,4 @@ Run the workflow manually with **rollback_test** enabled and **deploy_production
 - Review Lighthouse reports for 14 days and SBOM artifacts for 30 days; retain production release and approval records according to the organisation's audit policy.
 
 The broader database restoration, Redis/Celery recovery and RPO/RTO policy is in [`backend/docs/DISASTER_RECOVERY.md`](../backend/docs/DISASTER_RECOVERY.md).
+

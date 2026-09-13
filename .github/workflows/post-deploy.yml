@@ -27,7 +27,7 @@ jobs:
           DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
           HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL }}
           RELEASE_IMAGE: ${{ inputs.image }}
-        run: scripts/release/verify-release.sh staging "$RELEASE_IMAGE" "$GITHUB_SHA" "$HEALTHCHECK_URL"
+        run: sh scripts/release/verify-release.sh staging "$RELEASE_IMAGE" "$GITHUB_SHA" "$HEALTHCHECK_URL"
       - name: Record final staging health gate
         shell: bash
         env:

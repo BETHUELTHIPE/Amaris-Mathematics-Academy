@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+if [ "${DEPLOYMENT_ENVIRONMENT:-}" = "production" ]; then
+    exec python /app/ops/safe_migrate.py
+fi
+
 python manage.py showmigrations --plan
 
 if [ "${MIGRATION_BACKUP_REQUIRED:-false}" = "true" ]; then

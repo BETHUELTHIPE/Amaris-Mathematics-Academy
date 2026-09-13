@@ -207,26 +207,22 @@ jobs:
     with:
       image: ${{ needs.push-image.outputs.image }}
       rollback_test: ${{ github.event_name == 'workflow_dispatch' && inputs.rollback_test }}
-    secrets: inherit
 
   staging-e2e:
     name: Staging E2E
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.rollback_test == true) }}
     needs: [deploy-staging]
     uses: ./.github/workflows/e2e.yml
-    secrets: inherit
 
   staging-security:
     name: Staging security verification
     needs: [staging-e2e]
     uses: ./.github/workflows/staging-security.yml
-    secrets: inherit
 
   performance-smoke:
     name: Performance smoke
     needs: [staging-security]
     uses: ./.github/workflows/performance-smoke.yml
-    secrets: inherit
 
   post-deploy-health:
     name: Health and readiness
@@ -234,10 +230,12 @@ jobs:
     uses: ./.github/workflows/post-deploy.yml
     with:
       image: ${{ needs.push-image.outputs.image }}
-    secrets: inherit
 
   deploy-production:
     name: Production approval gate
+    permissions:
+      contents: read
+      actions: read
     if: >-
       github.ref == 'refs/heads/main' &&
       (
@@ -252,5 +250,6 @@ jobs:
     uses: ./.github/workflows/deploy-production.yml
     with:
       image: ${{ needs.push-image.outputs.image }}
+      registry_digest: ${{ needs.push-image.outputs.registry_digest }}
       migration_risk: ${{ github.event_name == 'workflow_dispatch' && inputs.migration_risk || 'high' }}
-    secrets: inherit
+
