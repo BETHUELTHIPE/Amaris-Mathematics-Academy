@@ -7,7 +7,6 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SHA_N = "1" * 40
 SHA_N_PLUS_1 = "2" * 40
@@ -45,7 +44,13 @@ class RollbackHandler(BaseHTTPRequestHandler):
             self.send_error(400)
             return
 
-        self._json(200, {"status": "accepted", "active": {"image": self.state.image, "git_sha": self.state.git_sha}})
+        self._json(
+            200,
+            {
+                "status": "accepted",
+                "active": {"image": self.state.image, "git_sha": self.state.git_sha},
+            },
+        )
 
     def do_GET(self):  # noqa: N802
         if self.path != "/health/ready/":
@@ -76,7 +81,9 @@ class RollbackHandler(BaseHTTPRequestHandler):
 class RollbackDeploymentTests(unittest.TestCase):
     def setUp(self):
         self.state = DeploymentState()
-        handler = type("BoundRollbackHandler", (RollbackHandler,), {"state": self.state})
+        handler = type(
+            "BoundRollbackHandler", (RollbackHandler,), {"state": self.state}
+        )
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -86,7 +93,9 @@ class RollbackDeploymentTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join(timeout=5)
 
-    def run_promote(self, image=IMAGE_N_PLUS_1, sha=SHA_N_PLUS_1, force_rollback_test=False):
+    def run_promote(
+        self, image=IMAGE_N_PLUS_1, sha=SHA_N_PLUS_1, force_rollback_test=False
+    ):
         with tempfile.TemporaryDirectory() as directory:
             record_path = Path(directory) / "deployment-record.json"
             env = {
@@ -108,7 +117,9 @@ class RollbackDeploymentTests(unittest.TestCase):
                 text=True,
                 check=False,
             )
-            record = json.loads(record_path.read_text()) if record_path.exists() else None
+            record = (
+                json.loads(record_path.read_text()) if record_path.exists() else None
+            )
             return result, record
 
     def test_failed_n_plus_1_restores_healthy_version_n(self):
@@ -118,9 +129,13 @@ class RollbackDeploymentTests(unittest.TestCase):
         self.assertEqual(self.state.image, IMAGE_N)
         self.assertEqual(self.state.git_sha, SHA_N)
         self.assertTrue(self.state.healthy)
-        self.assertEqual(self.state.events, ["status", "deploy", "status", "rollback", "status"])
+        self.assertEqual(
+            self.state.events, ["status", "deploy", "status", "rollback", "status"]
+        )
         self.assertEqual(record["outcome"], "rolled_back")
-        self.assertEqual(record["candidate"], {"image": IMAGE_N_PLUS_1, "git_sha": SHA_N_PLUS_1})
+        self.assertEqual(
+            record["candidate"], {"image": IMAGE_N_PLUS_1, "git_sha": SHA_N_PLUS_1}
+        )
         self.assertEqual(record["restored"], {"image": IMAGE_N, "git_sha": SHA_N})
 
     def test_latest_tag_is_rejected_before_deployment(self):
