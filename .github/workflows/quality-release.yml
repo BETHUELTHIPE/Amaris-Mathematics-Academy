@@ -12,6 +12,14 @@ on:
         required: true
         type: boolean
         default: false
+      production_approval:
+        description: Explicitly approve the production promotion
+        required: true
+        type: choice
+        options:
+          - DO_NOT_DEPLOY
+          - APPROVE_PRODUCTION
+        default: DO_NOT_DEPLOY
       migration_risk:
         description: Database migration risk for this release
         required: true
@@ -434,14 +442,22 @@ jobs:
 
   deploy-production:
     name: PRODUCTION APPROVAL - approve, deploy, and verify production
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy_production == true
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy_production == true && inputs.production_approval == 'APPROVE_PRODUCTION'
     runs-on: ubuntu-latest
     needs: [publish-image, staging-release-gate]
+    permissions:
+      contents: read
+    concurrency:
+      group: production-deployment
+      cancel-in-progress: false
     environment:
       name: production
       url: ${{ vars.PRODUCTION_URL }}
     steps:
       - uses: actions/checkout@v4
+      - name: Validate explicit production approval
+        shell: bash
+        run: test "${{ inputs.production_approval }}" = "APPROVE_PRODUCTION"
       - name: Verify all professional acceptance evidence
         run: python scripts/release/verify_acceptance.py acceptance/criteria.json
       - name: Create recovery point before high-risk migration
