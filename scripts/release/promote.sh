@@ -83,7 +83,7 @@ scripts/release/deploy-webhook.sh deploy "$environment_name" "$candidate_image"
 release_ok=false
 if scripts/release/verify-health.sh "$HEALTHCHECK_URL"; then
     if [ "$environment_name" = "production" ]; then
-        if scripts/release/post-deploy-smoke.sh; then
+        if sh scripts/release/post-deploy-smoke.sh; then
             release_ok=true
         else
             echo "Production post-deploy smoke checks failed." >&2
