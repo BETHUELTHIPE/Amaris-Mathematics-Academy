@@ -4,12 +4,13 @@ set -eu
 action=${1:?deployment action is required}
 environment_name=${2:?environment name is required}
 image_reference=${3:-}
-release_sha=${4:-${GITHUB_SHA:-}}
+release_sha=${4:-}
 
 case "$action" in
     status) ;;
     deploy|rollback)
         [ -n "$image_reference" ] || { echo "Immutable image reference is required." >&2; exit 2; }
+        release_sha=${release_sha:-${GITHUB_SHA:-}}
         [ -n "$release_sha" ] || { echo "Release Git SHA is required." >&2; exit 2; }
         ;;
     *) echo "Unsupported deployment action." >&2; exit 2 ;;
