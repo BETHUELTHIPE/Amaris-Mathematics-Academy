@@ -64,6 +64,7 @@ jobs:
     env:
       DJANGO_DEBUG: "false"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DJANGO_SECURE_SSL_REDIRECT: "false"
       DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_ci
       DATABASE_SSL_REQUIRED: "false"
       CELERY_BROKER_URL: redis://127.0.0.1:6379/0
