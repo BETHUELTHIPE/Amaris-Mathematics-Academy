@@ -24,6 +24,8 @@ if not SECRET_KEY:
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+RELEASE_GIT_SHA = os.getenv("APP_RELEASE_GIT_SHA", "unknown")
+RELEASE_IMAGE_TAG = os.getenv("APP_RELEASE_IMAGE_TAG", "unknown")
 
 INSTALLED_APPS = [
     "jazzmin",
