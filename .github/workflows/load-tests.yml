@@ -37,13 +37,13 @@ jobs:
       LOADTEST_PROFILE: ${{ github.event_name == 'schedule' && 'smoke' || inputs.profile }}
       LOADTEST_REQUIRE_FULL_JOURNEY: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey || false }}
       LOADTEST_ALLOW_WRITES: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey || false }}
-      LOADTEST_AUTH_BEARER: ${{ secrets.LOADTEST_AUTH_BEARER }}
-      LOADTEST_COOKIE_HEADER: ${{ secrets.LOADTEST_COOKIE_HEADER }}
-      LOADTEST_SESSION_COOKIE_NAME: ${{ secrets.LOADTEST_SESSION_COOKIE_NAME }}
-      LOADTEST_SESSION_COOKIE_VALUE: ${{ secrets.LOADTEST_SESSION_COOKIE_VALUE }}
-      LOADTEST_LOGIN_EMAIL: ${{ secrets.LOADTEST_LOGIN_EMAIL }}
-      LOADTEST_LOGIN_PASSWORD: ${{ secrets.LOADTEST_LOGIN_PASSWORD }}
-      LOADTEST_REGISTRATION_PASSWORD: ${{ secrets.LOADTEST_REGISTRATION_PASSWORD }}
+      LOADTEST_AUTH_BEARER: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey && secrets.LOADTEST_AUTH_BEARER || '' }}
+      LOADTEST_COOKIE_HEADER: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey && secrets.LOADTEST_COOKIE_HEADER || '' }}
+      LOADTEST_SESSION_COOKIE_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey && secrets.LOADTEST_SESSION_COOKIE_NAME || '' }}
+      LOADTEST_SESSION_COOKIE_VALUE: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey && secrets.LOADTEST_SESSION_COOKIE_VALUE || '' }}
+      LOADTEST_LOGIN_EMAIL: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey && secrets.LOADTEST_LOGIN_EMAIL || '' }}
+      LOADTEST_LOGIN_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey && secrets.LOADTEST_LOGIN_PASSWORD || '' }}
+      LOADTEST_REGISTRATION_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && inputs.full_journey && secrets.LOADTEST_REGISTRATION_PASSWORD || '' }}
       LOADTEST_REGISTRATION_EMAIL_DOMAIN: ${{ vars.LOADTEST_REGISTRATION_EMAIL_DOMAIN }}
       LOADTEST_REGISTRATION_SUBMIT_PATH: ${{ vars.LOADTEST_REGISTRATION_SUBMIT_PATH }}
       LOADTEST_LOGIN_SUBMIT_PATH: ${{ vars.LOADTEST_LOGIN_SUBMIT_PATH }}
@@ -54,6 +54,9 @@ jobs:
       LOADTEST_COURSE_DETAIL_PATH: ${{ vars.LOADTEST_COURSE_DETAIL_PATH || '/courses/university-calculus-foundations' }}
       LOADTEST_COURSE_ID: ${{ vars.LOADTEST_COURSE_ID }}
       LOADTEST_LESSON_ID: ${{ vars.LOADTEST_LESSON_ID }}
+      LOADTEST_DATA_MANIFEST: test_data/fixtures/smoke/manifest.json
+      LOADTEST_IDENTITY_PATH: ${{ vars.LOADTEST_IDENTITY_PATH }}
+      LOADTEST_PAYMENT_MODE: mock
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -67,6 +70,9 @@ jobs:
       - name: Confirm safe staging target
         working-directory: backend
         run: python -c "from load_tests.config import env_bool, env_csv, validate_target; import os; validate_target(os.environ['LOADTEST_TARGET_URL'], environment_name='staging', allowed_hosts=env_csv('LOADTEST_ALLOWED_HOSTS'), allow_production=env_bool('LOADTEST_ALLOW_PRODUCTION'), allow_live_payfast=False)"
+      - name: Verify synthetic data and runner safety contracts
+        working-directory: backend
+        run: python -m unittest load_tests.test_contract load_tests.test_synthetic load_tests.test_runtime_safety test_data.test_factories
       - name: Run Locust traffic profile
         working-directory: backend
         run: load_tests/run.sh

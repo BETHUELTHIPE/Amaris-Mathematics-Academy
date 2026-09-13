@@ -8,16 +8,21 @@ on:
   workflow_dispatch:
     inputs:
       deploy_production:
-        description: Promote the tested release to production
+        description: On a manual main run, continue to the production approval gate
         required: true
         type: boolean
         default: false
       migration_risk:
-        description: Database migration risk for this release
+        description: Database migration risk for a manual production release
         required: true
         type: choice
         options: [low, high]
         default: low
+      rollback_test:
+        description: Deploy N+1 to staging, force rollback, and verify version N is restored
+        required: true
+        type: boolean
+        default: false
 
 concurrency:
   group: amaris-release-${{ github.ref }}
@@ -27,293 +32,224 @@ permissions:
   contents: read
 
 env:
-  PYTHON_VERSION: "3.13"
-  NODE_VERSION: "24"
   REGISTRY_IMAGE: docker.io/bethuelm/amaris-mathematics-academy
 
 jobs:
-  backend-quality:
-    name: Python quality and Django checks
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: amaris_ci
-          POSTGRES_USER: amaris_ci
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U amaris_ci -d amaris_ci"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:8-alpine
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DJANGO_DEBUG: "false"
-      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
-      DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_ci
-      DATABASE_SSL_REQUIRED: "false"
-      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
-      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - name: Generate an ephemeral Django secret
-        shell: bash
-        run: printf 'DJANGO_SECRET_KEY=%s\n' "$(openssl rand -hex 64)" >> "$GITHUB_ENV"
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: |
-            backend/requirements.txt
-            backend/requirements-dev.txt
-      - name: Install Python dependencies
-        run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
-      - name: Python formatting
-        run: black --check .
-      - name: Python linting
-        run: ruff check .
-      - name: Static type checks
-        run: mypy
-      - name: Django system checks
-        run: python manage.py check --deploy --fail-level ERROR
-      - name: Django migration drift
-        run: python manage.py makemigrations --check --dry-run
-      - name: Apply migrations in CI
-        run: python manage.py migrate --noinput
-      - name: Unit tests
-        run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests
-      - name: Integration tests
-        run: python manage.py test content.tests.PublicContentApiTests
-      - name: Permission tests
-        run: python manage.py test content.tests.AdminRegistrationTests content.tests.PermissionTests
-      - name: Payment tests
-        run: python manage.py test content.tests.PaymentReconciliationTests
-      - name: Full Django regression suite
-        run: python manage.py test
-      - name: Load-test safety contract
-        run: python -m unittest load_tests.test_contract
-      - name: Production-acceptance gate contract
-        working-directory: .
-        run: python -m unittest discover -s scripts/release -p 'test_*.py'
+  ci:
+    name: Full CI
+    uses: ./.github/workflows/ci.yml
 
-  frontend-quality:
-    name: Frontend, accessibility, and Lighthouse
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - uses: browser-actions/setup-chrome@v1
-      - name: Install locked frontend dependencies
-        run: npm ci
-      - name: Frontend linting
-        run: npm run lint
-      - name: TypeScript checks
-        run: npm run typecheck
-      - name: Production build
-        run: npm run build
-      - name: Frontend performance budgets
-        run: npm run check:performance
-      - name: Frontend unit tests
-        run: npm run test:unit
-      - name: Accessibility tests
-        shell: bash
-        run: |
-          npm run dev:ci > /tmp/amaris-site.log 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then break; fi
-            if [ "$attempt" -eq 30 ]; then cat /tmp/amaris-site.log; exit 1; fi
-            sleep 2
-          done
-          npm run test:accessibility
-      - name: Lighthouse CI
-        run: npm run test:lighthouse
-      - name: Preserve Lighthouse reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lighthouse-reports
-          path: .lighthouseci/
-          if-no-files-found: warn
-          retention-days: 14
-
-  dependency-security:
-    name: Dependency vulnerability gates
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-      - name: Audit Python dependencies
-        run: |
-          python -m pip install 'pip-audit>=2.7,<3'
-          pip-audit --requirement backend/requirements.txt
-          pip-audit --requirement backend/requirements-load.txt
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - name: Audit Node dependencies
-        run: npm audit --audit-level=critical
-
-  secret-security:
-    name: Repository secret scan
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Detect committed credentials
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  container-security:
-    name: Docker, Compose, image scan, and SBOM
-    runs-on: ubuntu-latest
-    needs: [backend-quality, frontend-quality, dependency-security, secret-security]
+  security:
+    name: Security
+    needs: [ci]
+    uses: ./.github/workflows/security.yml
     permissions:
       contents: read
       security-events: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate Docker Compose
-        shell: bash
-        run: |
-          cp backend/.env.example backend/.env
-          docker compose --env-file backend/.env -f backend/docker-compose.yml config --quiet
-      - name: Build production backend image
-        run: docker build --tag amaris-backend:${{ github.sha }} backend
-      - name: Generate CycloneDX software bill of materials
-        uses: anchore/sbom-action@v0
-        with:
-          image: amaris-backend:${{ github.sha }}
-          format: cyclonedx-json
-          output-file: amaris-backend-sbom.cdx.json
-      - name: Scan container for critical vulnerabilities
-        uses: aquasecurity/trivy-action@0.33.1
-        with:
-          image-ref: amaris-backend:${{ github.sha }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-      - name: Upload container scan results
-        if: always() && hashFiles('trivy-results.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
-      - name: Upload software bill of materials
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: amaris-backend-sbom
-          path: amaris-backend-sbom.cdx.json
-          if-no-files-found: error
-          retention-days: 30
 
-  publish-image:
-    name: Publish release image to Docker Hub
+  build-image:
+    name: Build immutable Docker image
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    needs: [container-security]
+    needs: [security]
     permissions:
       contents: read
     outputs:
-      image: ${{ steps.image.outputs.reference }}
+      artifact: ${{ steps.identity.outputs.artifact }}
+      build_digest: ${{ steps.build.outputs.digest }}
+      image: ${{ steps.identity.outputs.reference }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: docker.io
-          username: bethuelm
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: metadata
-        name: Create Docker image tags and labels
+        name: Create immutable image metadata
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_IMAGE }}
-          tags: |
-            type=sha,format=long,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
-      - name: Build and push multi-platform image
+          tags: type=sha,format=long,prefix=
+      - id: build
+        name: Build multi-platform OCI release artifact
         uses: docker/build-push-action@v6
         with:
           context: backend
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: false
           provenance: true
           sbom: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+          outputs: type=oci,dest=${{ runner.temp }}/amaris-backend.oci.tar
           cache-from: type=gha,scope=amaris-backend
           cache-to: type=gha,mode=max,scope=amaris-backend
-      - id: image
-        name: Record immutable image reference
-        run: echo "reference=${REGISTRY_IMAGE}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - id: identity
+        name: Record immutable build evidence
+        shell: bash
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          image_reference="${REGISTRY_IMAGE}:${GITHUB_SHA}"
+          artifact_name="amaris-release-image-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          archive_sha=$(sha256sum "$RUNNER_TEMP/amaris-backend.oci.tar" | awk '{print $1}')
+          jq -n \
+            --arg git_sha "$GITHUB_SHA" \
+            --arg image "$image_reference" \
+            --arg build_digest "$BUILD_DIGEST" \
+            --arg archive_sha256 "$archive_sha" \
+            '{git_sha: $git_sha, image: $image, build_digest: $build_digest,
+              archive_sha256: $archive_sha256}' \
+            > "$RUNNER_TEMP/release-image.json"
+          echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "reference=$image_reference" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Immutable build"
+            echo "- Git SHA: \`$GITHUB_SHA\`"
+            echo "- Docker image: \`$image_reference\`"
+            echo "- OCI digest: \`$BUILD_DIGEST\`"
+            echo "- Archive SHA-256: \`$archive_sha\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve the exact release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.identity.outputs.artifact }}
+          path: |
+            ${{ runner.temp }}/amaris-backend.oci.tar
+            ${{ runner.temp }}/release-image.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  push-image:
+    name: Push immutable Docker image
+    runs-on: ubuntu-latest
+    needs: [build-image]
+    permissions:
+      contents: read
+    outputs:
+      image: ${{ needs.build-image.outputs.image }}
+      registry_digest: ${{ steps.published.outputs.digest }}
+    steps:
+      - name: Restore the tested OCI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-image.outputs.artifact }}
+          path: ${{ runner.temp }}/amaris-release
+      - name: Verify artifact identity and checksum
+        shell: bash
+        env:
+          RELEASE_IMAGE: ${{ needs.build-image.outputs.image }}
+        run: |
+          record="$RUNNER_TEMP/amaris-release/release-image.json"
+          archive="$RUNNER_TEMP/amaris-release/amaris-backend.oci.tar"
+          jq -e --arg git_sha "$GITHUB_SHA" --arg image "$RELEASE_IMAGE" \
+            '.git_sha == $git_sha and .image == $image' "$record" >/dev/null
+          expected_sha=$(jq -r '.archive_sha256' "$record")
+          actual_sha=$(sha256sum "$archive" | awk '{print $1}')
+          [ "$actual_sha" = "$expected_sha" ] || {
+            echo "The restored OCI artifact checksum does not match the build record." >&2
+            exit 1
+          }
+      - name: Install OCI registry transport
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y skopeo
+      - name: Push the immutable full-SHA tag
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: bethuelm
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          RELEASE_IMAGE: ${{ needs.build-image.outputs.image }}
+        run: |
+          skopeo copy --all \
+            --dest-creds "$DOCKERHUB_USERNAME:$DOCKERHUB_TOKEN" \
+            "oci-archive:$RUNNER_TEMP/amaris-release/amaris-backend.oci.tar" \
+            "docker://$RELEASE_IMAGE"
+      - name: Update convenience latest tag
+        if: >-
+          github.ref == 'refs/heads/main' &&
+          !(github.event_name == 'workflow_dispatch' && inputs.rollback_test == true)
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: bethuelm
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          RELEASE_IMAGE: ${{ needs.build-image.outputs.image }}
+        run: |
+          skopeo copy --all \
+            --src-creds "$DOCKERHUB_USERNAME:$DOCKERHUB_TOKEN" \
+            --dest-creds "$DOCKERHUB_USERNAME:$DOCKERHUB_TOKEN" \
+            "docker://$RELEASE_IMAGE" \
+            "docker://${REGISTRY_IMAGE}:latest"
+      - id: published
+        name: Verify and record the registry digest
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: bethuelm
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          RELEASE_IMAGE: ${{ needs.build-image.outputs.image }}
+        run: |
+          manifest_sha=$(skopeo inspect --raw \
+            --creds "$DOCKERHUB_USERNAME:$DOCKERHUB_TOKEN" \
+            "docker://$RELEASE_IMAGE" | sha256sum | awk '{print $1}')
+          published_digest="sha256:$manifest_sha"
+          echo "digest=$published_digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Published release"
+            echo "- Git SHA: \`$GITHUB_SHA\`"
+            echo "- Docker image: \`$RELEASE_IMAGE\`"
+            echo "- Registry digest: \`$published_digest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-staging:
-    name: Deploy and verify staging
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    needs: [publish-image]
-    environment:
-      name: staging
-      url: ${{ vars.STAGING_URL }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Promote reversible staging release
-        env:
-          DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
-          DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
-          HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL }}
-        run: scripts/release/promote.sh staging "${{ needs.publish-image.outputs.image }}"
+    name: Deploy staging
+    needs: [push-image]
+    uses: ./.github/workflows/deploy-staging.yml
+    with:
+      image: ${{ needs.push-image.outputs.image }}
+      rollback_test: ${{ github.event_name == 'workflow_dispatch' && inputs.rollback_test }}
+
+  staging-e2e:
+    name: Staging E2E
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.rollback_test == true) }}
+    needs: [deploy-staging]
+    uses: ./.github/workflows/e2e.yml
+
+  staging-security:
+    name: Staging security verification
+    needs: [staging-e2e]
+    uses: ./.github/workflows/staging-security.yml
+
+  performance-smoke:
+    name: Performance smoke
+    needs: [staging-security]
+    uses: ./.github/workflows/performance-smoke.yml
+
+  post-deploy-health:
+    name: Health and readiness
+    needs: [push-image, performance-smoke]
+    uses: ./.github/workflows/post-deploy.yml
+    with:
+      image: ${{ needs.push-image.outputs.image }}
 
   deploy-production:
-    name: Approve, deploy, and verify production
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy_production == true
-    runs-on: ubuntu-latest
-    needs: [publish-image, deploy-staging]
-    environment:
-      name: production
-      url: ${{ vars.PRODUCTION_URL }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify all professional acceptance evidence
-        run: python scripts/release/verify_acceptance.py acceptance/criteria.json
-      - name: Create recovery point before high-risk migration
-        if: inputs.migration_risk == 'high'
-        env:
-          BACKUP_WEBHOOK_URL: ${{ secrets.PRODUCTION_BACKUP_WEBHOOK_URL }}
-          BACKUP_TOKEN: ${{ secrets.PRODUCTION_BACKUP_TOKEN }}
-        run: scripts/release/backup-before-migration.sh production
-      - name: Promote reversible production release
-        env:
-          DEPLOY_WEBHOOK_URL: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK_URL }}
-          DEPLOY_TOKEN: ${{ secrets.PRODUCTION_DEPLOY_TOKEN }}
-          HEALTHCHECK_URL: ${{ vars.PRODUCTION_HEALTHCHECK_URL }}
-        run: scripts/release/promote.sh production "${{ needs.publish-image.outputs.image }}"
+    name: Production approval gate
+    permissions:
+      contents: read
+      actions: read
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (
+        github.event_name == 'push' ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          inputs.deploy_production == true &&
+          inputs.rollback_test == false
+        )
+      )
+    needs: [push-image, post-deploy-health]
+    uses: ./.github/workflows/deploy-production.yml
+    with:
+      image: ${{ needs.push-image.outputs.image }}
+      registry_digest: ${{ needs.push-image.outputs.registry_digest }}
+      migration_risk: ${{ github.event_name == 'workflow_dispatch' && inputs.migration_risk || 'high' }}
+

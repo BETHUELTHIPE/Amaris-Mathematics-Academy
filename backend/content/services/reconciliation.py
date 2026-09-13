@@ -35,7 +35,7 @@ def reconcile_verified_payments() -> PaymentReconciliationRun:
         for payment_id in eligible_ids:
             with transaction.atomic():
                 payment = (
-                    Payment.objects.select_for_update(skip_locked=True)
+                    Payment.objects.select_for_update(skip_locked=True, of=("self",))
                     .select_related("enrollment")
                     .filter(
                         pk=payment_id,

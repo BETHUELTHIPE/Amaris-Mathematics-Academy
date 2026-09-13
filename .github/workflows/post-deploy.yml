@@ -1,0 +1,41 @@
+name: Post-deploy Health
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Immutable Docker image expected on staging
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  staging-health:
+    name: Final staging identity and readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release identity after staging tests
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+          HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL }}
+          RELEASE_IMAGE: ${{ inputs.image }}
+        run: sh scripts/release/verify-release.sh staging "$RELEASE_IMAGE" "$GITHUB_SHA" "$HEALTHCHECK_URL"
+      - name: Record final staging health gate
+        shell: bash
+        env:
+          RELEASE_IMAGE: ${{ inputs.image }}
+        run: |
+          {
+            echo "## Final staging gate"
+            echo "- Git SHA: \`$GITHUB_SHA\`"
+            echo "- Docker image: \`$RELEASE_IMAGE\`"
+            echo "- Deployment state and readiness: passed"
+          } >> "$GITHUB_STEP_SUMMARY"

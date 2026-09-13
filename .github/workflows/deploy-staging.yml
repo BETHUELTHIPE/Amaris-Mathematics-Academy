@@ -1,0 +1,45 @@
+name: Deploy Staging
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Immutable Docker image tagged with the full Git SHA
+        required: true
+        type: string
+      rollback_test:
+        description: Force the N+1 rollback path and verify N is restored
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-staging:
+    name: Deploy and verify staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Promote reversible staging release
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+          HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL }}
+          DEPLOYMENT_RECORD_PATH: staging-deployment-record.json
+          FORCE_ROLLBACK_TEST: ${{ inputs.rollback_test }}
+          RELEASE_IMAGE: ${{ inputs.image }}
+        run: scripts/release/promote.sh staging "$RELEASE_IMAGE"
+      - name: Preserve staging deployment record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-deployment-record-${{ github.run_id }}-${{ github.run_attempt }}
+          path: staging-deployment-record.json
+          if-no-files-found: warn
+          retention-days: 90

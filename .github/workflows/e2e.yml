@@ -1,0 +1,55 @@
+name: Staging E2E and Accessibility
+
+on:
+  workflow_call:
+    inputs:
+      target_url:
+        description: Optional staging base URL override
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  staging-browser-smoke:
+    name: Staging browser routes and WCAG checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    env:
+      CONFIGURED_TARGET_URL: ${{ inputs.target_url != '' && inputs.target_url || vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: browser-actions/setup-chrome@v1
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Validate staging target
+        shell: bash
+        run: |
+          case "$CONFIGURED_TARGET_URL" in
+            https://*) ;;
+            *) echo "STAGING_URL must be a non-empty HTTPS URL." >&2; exit 2 ;;
+          esac
+          echo "TARGET_URL=${CONFIGURED_TARGET_URL%/}" >> "$GITHUB_ENV"
+      - name: Verify critical staging routes
+        shell: bash
+        run: |
+          for route in / /courses /contact /login /register; do
+            curl --fail --silent --show-error --location --max-time 30 "$TARGET_URL$route" >/dev/null
+          done
+      - name: Run WCAG checks against staging
+        shell: bash
+        run: |
+          jq --arg base "$TARGET_URL" \
+            '.urls |= map(sub("^http://127[.]0[.]0[.]1:3000"; $base))' \
+            .pa11yci.json > /tmp/staging-pa11y.json
+          npx pa11y-ci --config /tmp/staging-pa11y.json

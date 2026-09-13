@@ -4,9 +4,15 @@ set -eu
 action=${1:?deployment action is required}
 environment_name=${2:?environment name is required}
 image_reference=${3:-}
+release_sha=${4:-}
 
 case "$action" in
-    deploy|rollback) ;;
+    status) ;;
+    deploy|rollback)
+        [ -n "$image_reference" ] || { echo "Immutable image reference is required." >&2; exit 2; }
+        release_sha=${release_sha:-${GITHUB_SHA:-}}
+        [ -n "$release_sha" ] || { echo "Release Git SHA is required." >&2; exit 2; }
+        ;;
     *) echo "Unsupported deployment action." >&2; exit 2 ;;
 esac
 
@@ -17,7 +23,7 @@ payload=$(jq -n \
     --arg action "$action" \
     --arg environment "$environment_name" \
     --arg image "$image_reference" \
-    --arg release_sha "${GITHUB_SHA:-unknown}" \
+    --arg release_sha "$release_sha" \
     '{action: $action, environment: $environment, image: $image, release_sha: $release_sha}')
 
 curl \
@@ -31,4 +37,4 @@ curl \
     --header "Authorization: Bearer $DEPLOY_TOKEN" \
     --header "Content-Type: application/json" \
     --data "$payload" \
-    "$DEPLOY_WEBHOOK_URL" >/dev/null
+    "$DEPLOY_WEBHOOK_URL"

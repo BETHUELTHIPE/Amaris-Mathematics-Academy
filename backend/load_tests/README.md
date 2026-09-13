@@ -55,10 +55,14 @@ LOADTEST_AUTH_BEARER=
 LOADTEST_COOKIE_HEADER=
 LOADTEST_SESSION_COOKIE_NAME=
 LOADTEST_SESSION_COOKIE_VALUE=
-LOADTEST_LOGIN_EMAIL=load-test-student@example.invalid
+LOADTEST_LOGIN_EMAIL=student-1475-0000000@amaris.test
 LOADTEST_LOGIN_PASSWORD=
 LOADTEST_REGISTRATION_PASSWORD=
-LOADTEST_REGISTRATION_EMAIL_DOMAIN=loadtest.staging.example
+LOADTEST_REGISTRATION_EMAIL_DOMAIN=amaris.test
+LOADTEST_DATA_MANIFEST=test_data/fixtures/smoke/manifest.json
+LOADTEST_PAYMENT_MODE=mock
+LOADTEST_IDENTITY_PATH=/api/test-support/identity/
+LOADTEST_WORKER_INDEX=0
 
 LOADTEST_REGISTRATION_SUBMIT_PATH=/api/test-support/registration/
 LOADTEST_LOGIN_SUBMIT_PATH=/api/test-support/login/
@@ -70,7 +74,11 @@ LOADTEST_COURSE_ID=load-test-course
 LOADTEST_LESSON_ID=load-test-lesson
 ```
 
-Supply either a short-lived bearer token, the complete staging cookie header, or a single test-session cookie through the protected staging secret store. Login and registration credentials must also be staging-only secrets. `LOADTEST_REGISTRATION_EMAIL_DOMAIN` must route to a non-delivering staging email sink or approved catch-all account. The application team must map the example paths to the deployed API before enabling `LOADTEST_REQUIRE_FULL_JOURNEY`; the run intentionally fails when any protected/write path or credential is missing.
+Supply either a short-lived bearer token, the complete staging cookie header, or a single test-session cookie through the protected staging secret store. Login and registration credentials must also be staging-only secrets. Registration is restricted to `amaris.test` and a non-delivering email sink. Real student data, production database copies, real payment references, outbound emails/SMS/WhatsApp and live payment adapters are prohibited for these tests.
+
+Before any authenticated/write traffic starts, the runner regenerates the expected factory hashes and verifies all eight fixture files. The configured login must be a student in that dataset. A bounded, non-redirecting GET to `LOADTEST_IDENTITY_PATH` must return the supplied session's server-verified `email`, `authenticated: true` and `emailVerified: true`. For write tests it must also confirm `environment: "staging"` (or local/ci), `syntheticOnly: true`, `paymentMode: "mock"` and `notifications: "sink"`. These fields must be derived from authenticated identity and server configuration, never echoed from client inputs. Missing evidence stops the runner before traffic generation. The present `/api/auth-state` response is insufficient for this staging contract; these example test-support paths are not implemented production endpoints. Keep authenticated/write load tests blocked until staging supplies the contract and real application endpoint mappings.
+
+Registration addresses are deterministic by seed, worker index and counter. Distributed write tests require a different explicit `LOADTEST_WORKER_INDEX` on every worker; start each run against a reset disposable dataset to avoid duplicate registrations. Use the streaming generator in [test_data/README.md](../test_data/README.md) for larger populations. Public read-only performance checks require no accounts or dataset files.
 
 Do not put tokens, passwords, cookies or student details in shell history, workflow variables, committed files, test names, report filenames or Locust request names. Rotate the test session after each run and remove generated accounts/orders according to the staging retention policy.
 
