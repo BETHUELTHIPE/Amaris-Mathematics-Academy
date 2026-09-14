@@ -3,8 +3,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from load_tests.capacity import CAPACITY_LEVELS, CapacityThresholds, progressive_levels, validate_capacity_level
-from load_tests.config import Endpoints, missing_full_journey_configuration, validate_target
+from load_tests.capacity import (
+    CAPACITY_LEVELS,
+    CapacityThresholds,
+    progressive_levels,
+    validate_capacity_level,
+)
+from load_tests.config import (
+    Endpoints,
+    missing_full_journey_configuration,
+    validate_target,
+)
 
 
 class LoadTestSafetyTests(unittest.TestCase):
@@ -39,7 +48,11 @@ class LoadTestSafetyTests(unittest.TestCase):
             )
 
     def test_external_endpoint_paths_are_rejected(self):
-        with patch.dict(os.environ, {"LOADTEST_CHECKOUT_PATH": "https://www.payfast.co.za/eng/process"}, clear=True):
+        with patch.dict(
+            os.environ,
+            {"LOADTEST_CHECKOUT_PATH": "https://www.payfast.co.za/eng/process"},
+            clear=True,
+        ):
             with self.assertRaisesRegex(ValueError, "relative application path"):
                 Endpoints.from_environment()
 
@@ -53,7 +66,12 @@ class LoadTestSafetyTests(unittest.TestCase):
 class CapacityContractTests(unittest.TestCase):
     @staticmethod
     def _workflow_text() -> str:
-        workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "capacity.yml"
+        workflow = (
+            Path(__file__).resolve().parents[2]
+            / ".github"
+            / "workflows"
+            / "capacity.yml"
+        )
         return workflow.read_text(encoding="utf-8")
 
     @staticmethod
@@ -62,8 +80,14 @@ class CapacityContractTests(unittest.TestCase):
         return path.read_text(encoding="utf-8")
 
     def test_capacity_levels_are_exact_progressive_sequence(self):
-        self.assertEqual(CAPACITY_LEVELS, (100, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000))
-        self.assertEqual(progressive_levels(5_000), (100, 500, 1_000, 2_500, 5_000))
+        self.assertEqual(
+            CAPACITY_LEVELS,
+            (100, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000),
+        )
+        self.assertEqual(
+            progressive_levels(5_000),
+            (100, 500, 1_000, 2_500, 5_000),
+        )
 
     def test_unapproved_capacity_level_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "Unsupported capacity level"):
@@ -89,8 +113,14 @@ class CapacityContractTests(unittest.TestCase):
             "CAPACITY_MAX_RAM_PCT": "90.1",
         }
         for name, value in weaker_values.items():
-            with self.subTest(name=name), patch.dict(os.environ, {name: value}, clear=True):
-                with self.assertRaisesRegex(ValueError, "would weaken the capacity gate"):
+            with (
+                self.subTest(name=name),
+                patch.dict(os.environ, {name: value}, clear=True),
+            ):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "would weaken the capacity gate",
+                ):
                     CapacityThresholds.from_environment()
 
     def test_stricter_capacity_thresholds_are_allowed(self):
@@ -123,14 +153,23 @@ class CapacityContractTests(unittest.TestCase):
 
     def test_capacity_workflow_contains_every_required_stage(self):
         text = self._workflow_text()
-        self.assertIn("stages=(100 500 1000 2500 5000 10000 25000 50000)", text)
+        self.assertIn(
+            "stages=(100 500 1000 2500 5000 10000 25000 50000)",
+            text,
+        )
         self.assertIn("50,000 CONCURRENT USERS VERIFIED:** NO", text)
 
-    def test_capacity_workflow_blocks_production_and_requires_dedicated_generator_for_high_stages(self):
+    def test_capacity_workflow_blocks_production_and_requires_dedicated_generator(
+        self,
+    ):
         text = self._workflow_text()
         self.assertIn('LOADTEST_ALLOW_PRODUCTION: "false"', text)
         self.assertNotIn("allow_production:", text)
-        self.assertIn("Capacity stages above 1,000 users require a dedicated self-hosted load generator.", text)
+        self.assertIn(
+            "Capacity stages above 1,000 users require a dedicated "
+            "self-hosted load generator.",
+            text,
+        )
         self.assertIn("inputs.load_generator == 'self-hosted'", text)
 
     def test_capacity_requires_sustained_hold_and_fast_http_users(self):
