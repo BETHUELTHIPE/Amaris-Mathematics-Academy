@@ -8,29 +8,25 @@ const LazyConnectionRecovery = lazy(() =>
   })),
 );
 
-type IdleWindow = Window & {
-  requestIdleCallback?: (
-    callback: () => void,
-    options?: { timeout: number },
-  ) => number;
-  cancelIdleCallback?: (handle: number) => void;
-};
-
 export function DeferredConnectionRecovery() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const idleWindow = window as IdleWindow;
+    const activateRecovery = () => setReady(true);
+    const protectOfflineSubmission = (event: SubmitEvent) => {
+      if (navigator.onLine) return;
+      event.preventDefault();
+      setReady(true);
+    };
 
-    if (idleWindow.requestIdleCallback) {
-      const handle = idleWindow.requestIdleCallback(() => setReady(true), {
-        timeout: 1500,
-      });
-      return () => idleWindow.cancelIdleCallback?.(handle);
-    }
+    if (!navigator.onLine) setReady(true);
+    window.addEventListener("offline", activateRecovery, { once: true });
+    document.addEventListener("submit", protectOfflineSubmission, true);
 
-    const handle = window.setTimeout(() => setReady(true), 250);
-    return () => window.clearTimeout(handle);
+    return () => {
+      window.removeEventListener("offline", activateRecovery);
+      document.removeEventListener("submit", protectOfflineSubmission, true);
+    };
   }, []);
 
   if (!ready) return null;
