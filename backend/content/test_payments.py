@@ -6,7 +6,12 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from content.models import Course, CourseCategory, Enrollment, Payment, StudentRecord
-from content.payment_models import Invoice, NotificationOutbox, PaymentWebhookEvent, ServiceTicket
+from content.payment_models import (
+    Invoice,
+    NotificationOutbox,
+    PaymentWebhookEvent,
+    ServiceTicket,
+)
 from content.services.payments import (
     PAYMENT_CANCELLED,
     PaymentSecurityError,
@@ -99,7 +104,9 @@ class PayFastPaymentAuthorityTests(TestCase):
         self.assertEqual(payment.amount, self.course.price)
         self.assertEqual(self.checkout.fields["amount"], "950.00")
         self.assertIn("sandbox.payfast.co.za", self.checkout.gateway_url)
-        self.assertEqual(self.checkout.fields["custom_str1"], str(self.student.supabase_user_id))
+        self.assertEqual(
+            self.checkout.fields["custom_str1"], str(self.student.supabase_user_id)
+        )
         self.assertEqual(self.checkout.fields["custom_str2"], self.course.slug)
         self.assert_no_fulfilment()
 
@@ -131,8 +138,12 @@ class PayFastPaymentAuthorityTests(TestCase):
         self.assertIsNotNone(payment.gateway_verified_at)
         self.assert_no_fulfilment()
 
-    def test_successful_verified_callback_atomically_activates_service_and_creates_artifacts(self):
-        result = process_payfast_notification(self.callback(), gateway=MockPayFastGateway(True))
+    def test_successful_verified_callback_atomically_activates_service_and_creates_artifacts(
+        self,
+    ):
+        result = process_payfast_notification(
+            self.callback(), gateway=MockPayFastGateway(True)
+        )
         self.assertTrue(result.accepted)
 
         payment = Payment.objects.get(reference=self.checkout.payment_reference)
@@ -174,7 +185,9 @@ class PayFastPaymentAuthorityTests(TestCase):
         self.assertEqual(payment.status, PAYMENT_CANCELLED)
         self.assert_no_fulfilment()
 
-    def test_duplicate_callback_is_idempotent_for_payment_enrollment_invoice_and_ticket(self):
+    def test_duplicate_callback_is_idempotent_for_payment_enrollment_invoice_and_ticket(
+        self,
+    ):
         gateway = MockPayFastGateway(True)
         first = process_payfast_notification(self.callback(), gateway=gateway)
         second = process_payfast_notification(self.callback(), gateway=gateway)
@@ -188,10 +201,16 @@ class PayFastPaymentAuthorityTests(TestCase):
         self.assertEqual(ServiceTicket.objects.count(), 1)
         self.assertEqual(NotificationOutbox.objects.count(), 1)
         self.assertEqual(PaymentWebhookEvent.objects.count(), 1)
-        self.assertEqual(gateway.calls, 1, "Processed duplicate callbacks must not re-contact the gateway.")
+        self.assertEqual(
+            gateway.calls,
+            1,
+            "Processed duplicate callbacks must not re-contact the gateway.",
+        )
 
     def test_invalid_callback_cannot_grant_access(self):
-        result = process_payfast_notification(self.callback(), gateway=MockPayFastGateway(False))
+        result = process_payfast_notification(
+            self.callback(), gateway=MockPayFastGateway(False)
+        )
         self.assertFalse(result.accepted)
         self.assertEqual(result.reason, "invalid_callback")
         self.assertEqual(Payment.objects.get().status, Payment.Status.PENDING)
@@ -225,9 +244,13 @@ class PayFastPaymentAuthorityTests(TestCase):
         self.assertEqual(result.reason, "wrong_service")
         self.assert_no_fulfilment()
 
-    def test_replayed_processed_webhook_cannot_create_new_objects_or_change_amount(self):
+    def test_replayed_processed_webhook_cannot_create_new_objects_or_change_amount(
+        self,
+    ):
         process_payfast_notification(self.callback(), gateway=MockPayFastGateway(True))
-        replay = self.callback(amount_gross="999999.00", signature="different-replay-signature")
+        replay = self.callback(
+            amount_gross="999999.00", signature="different-replay-signature"
+        )
         result = process_payfast_notification(replay, gateway=MockPayFastGateway(True))
 
         self.assertTrue(result.duplicate)
@@ -280,13 +303,21 @@ class PayFastPaymentAuthorityTests(TestCase):
     def test_browser_success_claim_is_not_authoritative(self):
         browser_claim = {"payment_status": "COMPLETE", "success": True}
         self.assertTrue(browser_claim["success"])
-        self.assertEqual(authoritative_payment_status(self.checkout.payment_reference), Payment.Status.PENDING)
+        self.assertEqual(
+            authoritative_payment_status(self.checkout.payment_reference),
+            Payment.Status.PENDING,
+        )
         self.assert_no_fulfilment()
 
     def test_fulfilment_error_rolls_back_paid_state_and_all_service_artifacts(self):
-        with patch("content.services.payments.Invoice.objects.get_or_create", side_effect=RuntimeError("synthetic db failure")):
+        with patch(
+            "content.services.payments.Invoice.objects.get_or_create",
+            side_effect=RuntimeError("synthetic db failure"),
+        ):
             with self.assertRaises(RuntimeError):
-                process_payfast_notification(self.callback(), gateway=MockPayFastGateway(True))
+                process_payfast_notification(
+                    self.callback(), gateway=MockPayFastGateway(True)
+                )
 
         payment = Payment.objects.get(reference=self.checkout.payment_reference)
         self.assertEqual(payment.status, Payment.Status.PENDING)
