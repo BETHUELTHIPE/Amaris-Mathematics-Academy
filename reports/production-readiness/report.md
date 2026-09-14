@@ -14,7 +14,7 @@
 
 **PRODUCTION READINESS:** **FAIL**
 
-**MAXIMUM VERIFIED CONCURRENT USERS:** **0**
+**MAXIMUM VERIFIED CONCURRENT USERS:** **NOT ESTABLISHED**
 
 **50,000 CONCURRENT USERS VERIFIED:** **NO**
 
@@ -24,7 +24,7 @@
 
 **TEST DURATION:** **NOT EXECUTED**
 
-**PEAK VERIFIED REQUEST RATE:** **0 requests/second**
+**PEAK VERIFIED REQUEST RATE:** **NOT AVAILABLE**
 
 **P95 RESPONSE TIME:** **NOT AVAILABLE**
 
@@ -34,7 +34,7 @@
 
 **CAPACITY EVIDENCE:** **NONE — no completed controlled capacity/load test report exists for this release candidate**
 
-`0` is a sentinel meaning that no controlled concurrency/capacity test has yet completed successfully with retained evidence for this release candidate. It is not an estimate of the platform's real capacity and must never be interpreted as a tested capacity result. Production readiness and capacity certification are intentionally reported as separate results. A future release may be production-ready without being verified for 50,000 concurrent users, but no positive concurrency claim may be made until an actual controlled test demonstrates it.
+No completed controlled capacity test has established a maximum concurrent-user count for this release candidate. Therefore the report deliberately uses `NOT ESTABLISHED` rather than inventing a numeric capacity result. Production readiness and capacity certification are separate conclusions. A future release may be production-ready without being verified for 50,000 concurrent users, but no positive concurrency claim may be made until an actual controlled test demonstrates it.
 
 A concurrency level only counts as verified when the applicable workload acceptance criteria pass together: HTTP/API error rate, response-time thresholds, database stability, Redis/cache stability, application-worker stability, CPU/memory utilisation, connection-pool health, queue backlog, crash/restart behavior, and critical student journeys. Payment-provider endpoints must remain excluded from unsafe load generation. If a higher stage fails, the report must retain the highest lower stage that actually passed all required criteria.
 
