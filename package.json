@@ -14,7 +14,7 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "test:unit": "node --test tests/*.test.mjs",
     "test:accessibility": "pa11y-ci --config .pa11yci.json",
-    "test:lighthouse": "lhci autorun --config=lighthouserc.json",
+    "test:lighthouse": "bash scripts/performance/run-lighthouse.sh",
     "check:performance": "node scripts/performance/check-budgets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
