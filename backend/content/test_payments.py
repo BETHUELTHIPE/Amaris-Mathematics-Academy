@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -59,7 +60,7 @@ class PayFastPaymentAuthorityTests(TestCase):
             description="No real student or payment data is used.",
             curriculum="Synthetic",
             academic_level="Test",
-            price="950.00",
+            price=Decimal("950.00"),
             status=Course.Status.PUBLISHED,
         )
         self.other_course = Course.objects.create(
@@ -70,7 +71,7 @@ class PayFastPaymentAuthorityTests(TestCase):
             description="No real student or payment data is used.",
             curriculum="Synthetic",
             academic_level="Test",
-            price="450.00",
+            price=Decimal("450.00"),
             status=Course.Status.PUBLISHED,
         )
         self.checkout = create_checkout(
@@ -104,9 +105,7 @@ class PayFastPaymentAuthorityTests(TestCase):
         self.assertEqual(payment.amount, self.course.price)
         self.assertEqual(self.checkout.fields["amount"], "950.00")
         self.assertIn("sandbox.payfast.co.za", self.checkout.gateway_url)
-        self.assertEqual(
-            self.checkout.fields["custom_str1"], str(self.student.supabase_user_id)
-        )
+        self.assertEqual(self.checkout.fields["custom_str1"], str(self.student.supabase_user_id))
         self.assertEqual(self.checkout.fields["custom_str2"], self.course.slug)
         self.assert_no_fulfilment()
 
@@ -141,9 +140,7 @@ class PayFastPaymentAuthorityTests(TestCase):
     def test_successful_verified_callback_atomically_activates_service_and_creates_artifacts(
         self,
     ):
-        result = process_payfast_notification(
-            self.callback(), gateway=MockPayFastGateway(True)
-        )
+        result = process_payfast_notification(self.callback(), gateway=MockPayFastGateway(True))
         self.assertTrue(result.accepted)
 
         payment = Payment.objects.get(reference=self.checkout.payment_reference)
@@ -208,9 +205,7 @@ class PayFastPaymentAuthorityTests(TestCase):
         )
 
     def test_invalid_callback_cannot_grant_access(self):
-        result = process_payfast_notification(
-            self.callback(), gateway=MockPayFastGateway(False)
-        )
+        result = process_payfast_notification(self.callback(), gateway=MockPayFastGateway(False))
         self.assertFalse(result.accepted)
         self.assertEqual(result.reason, "invalid_callback")
         self.assertEqual(Payment.objects.get().status, Payment.Status.PENDING)
@@ -248,9 +243,7 @@ class PayFastPaymentAuthorityTests(TestCase):
         self,
     ):
         process_payfast_notification(self.callback(), gateway=MockPayFastGateway(True))
-        replay = self.callback(
-            amount_gross="999999.00", signature="different-replay-signature"
-        )
+        replay = self.callback(amount_gross="999999.00", signature="different-replay-signature")
         result = process_payfast_notification(replay, gateway=MockPayFastGateway(True))
 
         self.assertTrue(result.duplicate)
@@ -315,9 +308,7 @@ class PayFastPaymentAuthorityTests(TestCase):
             side_effect=RuntimeError("synthetic db failure"),
         ):
             with self.assertRaises(RuntimeError):
-                process_payfast_notification(
-                    self.callback(), gateway=MockPayFastGateway(True)
-                )
+                process_payfast_notification(self.callback(), gateway=MockPayFastGateway(True))
 
         payment = Payment.objects.get(reference=self.checkout.payment_reference)
         self.assertEqual(payment.status, Payment.Status.PENDING)
