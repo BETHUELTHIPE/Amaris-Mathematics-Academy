@@ -36,3 +36,7 @@ Checkout references are unique. Enrollment already has a unique student/course c
 `content.test_payments` covers checkout creation and idempotency, pending, successful, failed and cancelled payments, duplicate callbacks, invalid callbacks, tampered amounts, wrong students, wrong services, replayed webhooks, verification timeouts, retries, network failures, browser success claims and transactional rollback.
 
 The existing reconciliation tests remain separate: reconciliation may repair service linkage only for records that were already marked paid by a server-verified gateway path; reconciliation never decides that a payment succeeded.
+
+## CI enforcement
+
+The `Payment tests` quality gate runs both `content.tests.PaymentReconciliationTests` and `content.test_payments` against the CI PostgreSQL database. The full Django regression suite runs afterward as an additional guard against cross-feature regressions. A payment gate failure blocks downstream image build and release jobs.
