@@ -2,7 +2,7 @@
   "ci": {
     "collect": {
       "startServerCommand": "npm run preview:ci",
-      "startServerReadyPattern": "http://127\\.0\\.0\\.1:3001",
+      "startServerReadyPattern": "Lighthouse compression proxy ready at",
       "startServerReadyTimeout": 90000,
       "numberOfRuns": 1,
       "url": [
