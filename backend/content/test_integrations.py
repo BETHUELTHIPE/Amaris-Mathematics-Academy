@@ -197,7 +197,7 @@ class FrontendApiContractIntegrationTests(TestCase):
         self.assertIn('cmsFetch<CmsBootstrap>("/bootstrap/")', source)
         self.assertIn('cmsFetch<Paginated<CmsCourse>>("/courses/?page_size=100")', source)
 
-        bootstrap = self.client.get(reverse("site-bootstrap"))
+        bootstrap = self.client.get(reverse("site-bootstrap"), secure=True)
         self.assertEqual(bootstrap.status_code, 200)
         bootstrap_payload = bootstrap.json()
         self.assertIn("settings", bootstrap_payload)
@@ -205,7 +205,7 @@ class FrontendApiContractIntegrationTests(TestCase):
         self.assertEqual(bootstrap_payload["settings"]["site_name"], "Amaris Mathematics Academy")
         self.assertEqual(bootstrap_payload["navigation"][0]["url"], "/courses")
 
-        courses = self.client.get(reverse("courses-list"), {"page_size": 100})
+        courses = self.client.get(reverse("courses-list"), {"page_size": 100}, secure=True)
         self.assertEqual(courses.status_code, 200)
         course_payload = courses.json()["results"][0]
         for field in (
