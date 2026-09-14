@@ -27,7 +27,10 @@ if (parsedTarget.username || parsedTarget.password) {
 if (allowedHosts.length && !allowedHosts.includes(parsedTarget.hostname.toLowerCase())) {
   throw new Error(`Target host ${parsedTarget.hostname} is not in CAPACITY_ALLOWED_HOSTS.`);
 }
-if ((environmentName === "production" || knownProductionHosts.has(parsedTarget.hostname.toLowerCase())) && !productionAllowed) {
+if (
+  (environmentName === "production" || knownProductionHosts.has(parsedTarget.hostname.toLowerCase())) &&
+  !productionAllowed
+) {
   throw new Error("Production capacity testing requires explicit authorisation.");
 }
 
@@ -42,7 +45,9 @@ const p99Ms = Number(__ENV.CAPACITY_P99_MS || 3000);
 
 const supportedSteps = new Set([100, 500, 1000, 2500, 5000, 10000, 25000, 50000]);
 if (!supportedSteps.has(vus)) {
-  throw new Error("CAPACITY_USERS must be one of: 100, 500, 1000, 2500, 5000, 10000, 25000, 50000.");
+  throw new Error(
+    "CAPACITY_USERS must be one of: 100, 500, 1000, 2500, 5000, 10000, 25000, 50000.",
+  );
 }
 
 export const failures = new Rate("amaris_failures");
@@ -96,12 +101,21 @@ export default function capacityJourney() {
   sleep(thinkSeconds);
 }
 
+function metricThresholdsPassed(metric) {
+  const thresholds = metric.thresholds || {};
+  const results = Object.values(thresholds);
+  return results.length > 0 && results.every((threshold) => threshold.ok === true);
+}
+
 export function handleSummary(data) {
   const metric = (name) => data.metrics[name] || {};
   const httpDuration = metric("http_req_duration").values || {};
   const requestRate = (metric("http_reqs").values || {}).rate || 0;
   const failureRate = (metric("amaris_failures").values || {}).rate || 0;
   const fiveXxRate = (metric("amaris_5xx").values || {}).rate || 0;
+  const thresholdsPassed = ["amaris_failures", "amaris_5xx", "http_req_duration"].every(
+    (name) => metricThresholdsPassed(metric(name)),
+  );
 
   const summary = {
     capacity_users: vus,
@@ -114,12 +128,30 @@ export function handleSummary(data) {
     p99_ms: httpDuration["p(99)"] ?? null,
     failure_percent: failureRate * 100,
     http_5xx_percent: fiveXxRate * 100,
-    thresholds_passed: Object.values(data.root_group?.checks || {}).every((value) => value.fails === 0),
-    note: "Infrastructure CPU/RAM/PostgreSQL/Redis/Gunicorn/Celery metrics must be captured from staging monitoring for the same test window.",
+    thresholds_passed: thresholdsPassed,
+    required_infrastructure_metrics: [
+      "cpu_peak_percent",
+      "ram_peak_percent",
+      "postgresql_pool_peak_percent",
+      "redis_memory_peak_percent",
+      "gunicorn_worker_utilization_peak_percent",
+      "celery_worker_utilization_peak_percent",
+      "celery_queue_backlog_peak",
+      "gunicorn_restarts",
+      "postgresql_errors",
+      "redis_errors",
+      "celery_errors",
+    ],
+    note:
+      "A capacity step is verified only when this HTTP gate and same-window staging infrastructure evidence both pass. A 50,000-user claim requires an actual successful 50,000-user run.",
   };
 
   return {
     stdout: `${JSON.stringify(summary, null, 2)}\n`,
-    [__ENV.CAPACITY_SUMMARY_FILE || `performance/reports/k6-${vus}.json`]: JSON.stringify(summary, null, 2),
+    [__ENV.CAPACITY_SUMMARY_FILE || `performance/reports/k6-${vus}.json`]: JSON.stringify(
+      summary,
+      null,
+      2,
+    ),
   };
 }
