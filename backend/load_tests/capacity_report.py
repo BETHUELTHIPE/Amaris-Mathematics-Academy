@@ -81,6 +81,16 @@ def container_ram_query(service: str, window: str) -> str:
     )
 
 
+def redis_memory_pct_query(job: str, window: str) -> str:
+    selector = f'job="{job}"'
+    return (
+        "max_over_time(("
+        f"100 * max(redis_memory_used_bytes{{{selector}}}) "
+        f"/ max(redis_memory_max_bytes{{{selector}}})"
+        f")[{window}:15s])"
+    )
+
+
 def metric_specs(window_seconds: int, thresholds: CapacityThresholds) -> tuple[MetricSpec, ...]:
     window = f"{max(window_seconds, 60)}s"
     cpu_max = thresholds.infrastructure_cpu_pct
@@ -115,7 +125,7 @@ def metric_specs(window_seconds: int, thresholds: CapacityThresholds) -> tuple[M
         MetricSpec("redis_up_min", f'min(min_over_time(up{{job="redis_exporter"}}[{window}]))', minimum=1),
         MetricSpec(
             "redis_memory_pct_max",
-            f'max_over_time((100 * max(redis_memory_used_bytes{{job="redis_exporter"}}) / max(redis_memory_max_bytes{{job="redis_exporter"}}))[{window}:15s])',
+            redis_memory_pct_query("redis_exporter", window),
             maximum=ram_max,
             unit="%",
         ),
@@ -139,7 +149,7 @@ def metric_specs(window_seconds: int, thresholds: CapacityThresholds) -> tuple[M
         ),
         MetricSpec(
             "redis_cache_memory_pct_max",
-            f'max_over_time((100 * max(redis_memory_used_bytes{{job="redis_cache_exporter"}}) / max(redis_memory_max_bytes{{job="redis_cache_exporter"}}))[{window}:15s])',
+            redis_memory_pct_query("redis_cache_exporter", window),
             maximum=ram_max,
             unit="%",
         ),
@@ -204,7 +214,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         [
             "",
             "> This stage verifies only the tested concurrency level and environment. "
-            "It does not prove any higher level. A 50,000-user claim is permitted only when the 50,000 stage itself passes.",
+            "It does not prove any higher level. "
+            "A 50,000-user claim is permitted only when the 50,000 stage itself passes.",
             "",
         ]
     )
