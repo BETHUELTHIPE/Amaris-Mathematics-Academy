@@ -20,14 +20,16 @@ class CapacityInfrastructureEvidenceTests(unittest.TestCase):
             "capacity_users": 500,
             "observation_seconds": 420,
             "cpu_peak_percent": 60,
-            "memory_peak_percent": 70,
-            "db_pool_peak_percent": 65,
+            "ram_peak_percent": 70,
+            "postgresql_pool_peak_percent": 65,
             "redis_memory_peak_percent": 50,
-            "queue_backlog_peak": 20,
-            "app_restarts": 0,
-            "db_errors": 0,
+            "gunicorn_worker_utilization_peak_percent": 55,
+            "celery_worker_utilization_peak_percent": 45,
+            "celery_queue_backlog_peak": 20,
+            "gunicorn_restarts": 0,
+            "postgresql_errors": 0,
             "redis_errors": 0,
-            "worker_errors": 0,
+            "celery_errors": 0,
         }
 
     def test_valid_evidence_passes(self) -> None:
@@ -38,6 +40,10 @@ class CapacityInfrastructureEvidenceTests(unittest.TestCase):
             minimum_window_seconds=420,
         )
         self.assertTrue(normalized["infrastructure_thresholds_passed"])
+        self.assertEqual(
+            normalized["components_measured"],
+            ["CPU", "RAM", "PostgreSQL", "Redis", "Gunicorn", "Celery"],
+        )
 
     def test_release_identity_mismatch_fails(self) -> None:
         with self.assertRaises(MODULE.EvidenceError):
@@ -71,7 +77,7 @@ class CapacityInfrastructureEvidenceTests(unittest.TestCase):
     def test_thresholds_fail_closed(self) -> None:
         payload = self._valid_payload()
         payload["cpu_peak_percent"] = 85.01
-        payload["db_errors"] = 1
+        payload["postgresql_errors"] = 1
         with self.assertRaises(MODULE.EvidenceError) as context:
             MODULE.validate(
                 payload,
@@ -80,21 +86,37 @@ class CapacityInfrastructureEvidenceTests(unittest.TestCase):
                 minimum_window_seconds=420,
             )
         self.assertIn("cpu_peak_percent", str(context.exception))
-        self.assertIn("db_errors", str(context.exception))
+        self.assertIn("postgresql_errors", str(context.exception))
 
-    def test_missing_or_boolean_metrics_are_rejected(self) -> None:
-        payload = self._valid_payload()
-        del payload["redis_errors"]
-        with self.assertRaises(MODULE.EvidenceError):
-            MODULE.validate(
-                payload,
-                expected_sha="b" * 40,
-                expected_users=500,
-                minimum_window_seconds=420,
-            )
+    def test_each_required_component_metric_is_fail_closed(self) -> None:
+        required_metrics = (
+            "cpu_peak_percent",
+            "ram_peak_percent",
+            "postgresql_pool_peak_percent",
+            "redis_memory_peak_percent",
+            "gunicorn_worker_utilization_peak_percent",
+            "celery_worker_utilization_peak_percent",
+            "celery_queue_backlog_peak",
+            "gunicorn_restarts",
+            "postgresql_errors",
+            "redis_errors",
+            "celery_errors",
+        )
+        for metric in required_metrics:
+            with self.subTest(metric=metric):
+                payload = self._valid_payload()
+                del payload[metric]
+                with self.assertRaises(MODULE.EvidenceError):
+                    MODULE.validate(
+                        payload,
+                        expected_sha="b" * 40,
+                        expected_users=500,
+                        minimum_window_seconds=420,
+                    )
 
+    def test_boolean_metrics_are_rejected(self) -> None:
         payload = self._valid_payload()
-        payload["app_restarts"] = False
+        payload["gunicorn_restarts"] = False
         with self.assertRaises(MODULE.EvidenceError):
             MODULE.validate(
                 payload,
