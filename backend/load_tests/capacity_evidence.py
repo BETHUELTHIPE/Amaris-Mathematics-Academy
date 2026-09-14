@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +65,8 @@ def read_history(history_path: Path) -> dict[str, Any]:
 
     with history_path.open(newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
+            if row.get("Name") not in (None, "", "Aggregated"):
+                continue
             timestamp = _float(row.get("Timestamp"))
             users = _int(row.get("User Count"))
             rps = _float(row.get("Requests/s"))
@@ -101,10 +102,14 @@ def build_capacity_evidence(
     history = read_history(results_dir / f"{profile}_stats_history.csv")
     observed_max_users = history.get("observed_max_users")
 
-    # Capacity is verified only from a successful run with recorded observed user
-    # count. The configured traffic shape is never treated as proof by itself.
-    maximum_verified_users = observed_max_users if passed and observed_max_users is not None else 0
-    fifty_thousand_verified = passed and maximum_verified_users >= FIFTY_THOUSAND_USERS
+    # A configured traffic shape is not proof. Verification requires both a
+    # successful run and an observed simultaneous-user count in Locust history.
+    maximum_verified_users = (
+        observed_max_users if passed and observed_max_users is not None else 0
+    )
+    fifty_thousand_verified = (
+        passed and maximum_verified_users >= FIFTY_THOUSAND_USERS
+    )
 
     return {
         "schema_version": 1,
@@ -118,7 +123,9 @@ def build_capacity_evidence(
         "maximum_verified_concurrent_users": maximum_verified_users,
         "fifty_thousand_concurrent_users_verified": fifty_thousand_verified,
         "test_duration_seconds": history.get("duration_seconds"),
-        "peak_verified_requests_per_second": history.get("peak_requests_per_second") if passed else None,
+        "peak_verified_requests_per_second": (
+            history.get("peak_requests_per_second") if passed else None
+        ),
         "p95_response_time_ms": stats.get("p95_ms") if passed else None,
         "p99_response_time_ms": stats.get("p99_ms") if passed else None,
         "error_rate": stats.get("error_rate") if stats else None,
@@ -126,8 +133,9 @@ def build_capacity_evidence(
         "failure_count": stats.get("failure_count") if stats else None,
         "capacity_evidence": run_reference,
         "verification_rule": (
-            "50,000 concurrent users may be marked verified only when a successful controlled run "
-            "records at least 50,000 observed simultaneous users and passes the configured acceptance thresholds."
+            "50,000 concurrent users may be marked verified only when a successful "
+            "controlled run records at least 50,000 observed simultaneous users and "
+            "passes the configured acceptance thresholds."
         ),
     }
 
@@ -139,14 +147,21 @@ def render_markdown(evidence: dict[str, Any]) -> str:
         return f"{value}{suffix}"
 
     error_rate = evidence.get("error_rate")
-    error_rate_text = "NOT ESTABLISHED" if error_rate is None else f"{float(error_rate) * 100:.4f}%"
-    verified_50k = "YES" if evidence["fifty_thousand_concurrent_users_verified"] else "NO"
+    error_rate_text = (
+        "NOT ESTABLISHED"
+        if error_rate is None
+        else f"{float(error_rate) * 100:.4f}%"
+    )
+    verified_50k = (
+        "YES" if evidence["fifty_thousand_concurrent_users_verified"] else "NO"
+    )
 
     return "\n".join(
         [
             "## Concurrent User Capacity Verification",
             "",
-            "Production readiness is assessed separately from capacity. This section must not be used to infer overall production readiness.",
+            "Production readiness is assessed separately from capacity. This section "
+            "must not be used to infer overall production readiness.",
             "",
             "**PRODUCTION READINESS:**",
             "REPORTED SEPARATELY BY THE PRODUCTION-READINESS GATES",
@@ -167,7 +182,9 @@ def render_markdown(evidence: dict[str, Any]) -> str:
             value_or_na(evidence.get("test_duration_seconds"), " seconds"),
             "",
             "**PEAK VERIFIED REQUEST RATE:**",
-            value_or_na(evidence.get("peak_verified_requests_per_second"), " requests/second"),
+            value_or_na(
+                evidence.get("peak_verified_requests_per_second"), " requests/second"
+            ),
             "",
             "**P95 RESPONSE TIME:**",
             value_or_na(evidence.get("p95_response_time_ms"), " ms"),
@@ -184,14 +201,17 @@ def render_markdown(evidence: dict[str, Any]) -> str:
             "**CONFIGURED PEAK USERS (NOT PROOF OF CAPACITY):**",
             str(evidence["configured_peak_users"]),
             "",
-            "Never infer or extrapolate a higher concurrency level than the successful observed test evidence.",
+            "Never infer or extrapolate a higher concurrency level than the successful "
+            "observed test evidence.",
             "",
         ]
     )
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate evidence-based concurrent-user capacity results.")
+    parser = argparse.ArgumentParser(
+        description="Generate evidence-based concurrent-user capacity results."
+    )
     parser.add_argument("--profile", required=True)
     parser.add_argument("--exit-code", required=True, type=int)
     parser.add_argument("--environment", default="unknown")
@@ -211,7 +231,9 @@ def main() -> int:
     (args.results_dir / "capacity-evidence.json").write_text(
         json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    (args.results_dir / "capacity-summary.md").write_text(render_markdown(evidence), encoding="utf-8")
+    (args.results_dir / "capacity-summary.md").write_text(
+        render_markdown(evidence), encoding="utf-8"
+    )
 
     print(render_markdown(evidence))
     return 0
