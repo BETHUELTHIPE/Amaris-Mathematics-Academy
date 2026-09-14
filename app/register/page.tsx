@@ -47,11 +47,11 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
           </div>
           <AuthField label="School, college or university" name="institution" autoComplete="organization" />
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="Password" name="password" type="password" autoComplete="new-password" /><AuthField label="Confirm password" name="confirmPassword" type="password" autoComplete="new-password" /></div>
-          <p className="-mt-2 text-xs leading-5 text-[#697890]">Use 12–72 characters with uppercase, lowercase, a number and a symbol.</p>
+          <p className="-mt-2 text-xs leading-5 text-[#60708a]">Use 12–72 characters with uppercase, lowercase, a number and a symbol.</p>
           <label className="flex items-start gap-3 rounded-xl bg-[#f5f7fb] p-4 text-sm leading-6 text-[#52617a]"><input name="terms" type="checkbox" required className="mt-1 size-4 accent-[#1f5bbd]" /><span>I accept the <Link href="/terms" className="font-semibold text-[#1f5bbd] underline">Terms</Link> and <Link href="/privacy" className="font-semibold text-[#1f5bbd] underline">Privacy Policy</Link>.</span></label>
           <button type="submit" className="min-h-12 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white transition hover:bg-[#123d79]">Create student profile</button>
         </form>
-        <p className="mt-6 text-center text-sm text-[#6a7890]">Already registered? <Link href="/login" className="font-bold text-[#1f5bbd]">Log in</Link></p>
+        <p className="mt-6 text-center text-sm text-[#60708a]">Already registered? <Link href="/login" className="font-bold text-[#1f5bbd]">Log in</Link></p>
       </div>
     </section>
     <Footer />
