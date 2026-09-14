@@ -9,7 +9,6 @@ from urllib.parse import urlsplit, urlunsplit
 from celery.contrib.testing.worker import start_worker
 from django.conf import settings
 from django.core import mail
-from django.core.cache import caches
 from django.core.files.base import ContentFile
 from django.core.files.storage import storages
 from django.core.mail import send_mail
@@ -19,6 +18,7 @@ from django.urls import reverse
 from redis import Redis
 from redis.exceptions import RedisError
 
+from amaris_cms.cache import ResilientRedisCache
 from amaris_cms.celery import app as celery_app
 from content.models import Course, CourseCategory, NavigationItem, SiteSettings
 
@@ -58,6 +58,17 @@ def _redis_client(test_case, url: str) -> Redis:
     return client
 
 
+def _django_redis_cache(location: str, key_prefix: str) -> ResilientRedisCache:
+    return ResilientRedisCache(
+        location,
+        {
+            "TIMEOUT": 60,
+            "KEY_PREFIX": key_prefix,
+            "OPTIONS": {"socket_connect_timeout": 2, "socket_timeout": 2},
+        },
+    )
+
+
 class PostgreSQLIntegrationTests(TestCase):
     def test_django_round_trips_data_through_real_postgresql(self):
         _require_or_skip(
@@ -85,38 +96,23 @@ class RedisIntegrationTests(SimpleTestCase):
         public_url = _redis_url(13)
         default_client = _redis_client(self, default_url)
         public_client = _redis_client(self, public_url)
+        default_cache = _django_redis_cache(default_url, "amaris-integration-default")
+        public_cache = _django_redis_cache(public_url, "amaris-integration-public")
         key = f"integration:{uuid.uuid4().hex}"
 
-        cache_settings = {
-            "default": {
-                "BACKEND": "amaris_cms.cache.ResilientRedisCache",
-                "LOCATION": default_url,
-                "KEY_PREFIX": "amaris-integration-default",
-                "TIMEOUT": 60,
-                "OPTIONS": {"socket_connect_timeout": 2, "socket_timeout": 2},
-            },
-            "public_content": {
-                "BACKEND": "amaris_cms.cache.ResilientRedisCache",
-                "LOCATION": public_url,
-                "KEY_PREFIX": "amaris-integration-public",
-                "TIMEOUT": 60,
-                "OPTIONS": {"socket_connect_timeout": 2, "socket_timeout": 2},
-            },
-        }
-
-        with override_settings(CACHES=cache_settings):
-            default_cache = caches["default"]
-            public_cache = caches["public_content"]
-
+        try:
             self.assertTrue(default_cache.set(key, "default-value", timeout=30))
             self.assertTrue(public_cache.set(key, "public-value", timeout=30))
             self.assertEqual(default_cache.get(key), "default-value")
             self.assertEqual(public_cache.get(key), "public-value")
-
+        finally:
             default_cache.delete(key)
             public_cache.delete(key)
+            default_cache.close()
+            public_cache.close()
 
-        # The direct clients are only used to prove that both Redis databases are reachable.
+        # The direct clients prove that both isolated Redis databases are reachable
+        # independently of Django's cache serialization and key-prefix behavior.
         self.assertTrue(default_client.ping())
         self.assertTrue(public_client.ping())
 
