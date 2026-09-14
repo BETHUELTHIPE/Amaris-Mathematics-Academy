@@ -224,5 +224,5 @@ jobs:
         with:
           name: capacity-evidence-${{ github.run_id }}
           path: backend/load_tests/results/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 90
