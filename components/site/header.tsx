@@ -10,7 +10,7 @@ export async function Header() {
     getManagedNavigation("header"),
   ]);
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07152d]/95 text-white backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07152d] text-white">
       <div className="border-b border-white/10 bg-[#041026]">
         <div className="mx-auto flex h-9 max-w-7xl items-center justify-between gap-4 px-5 text-xs text-white/70 lg:px-8">
           <div className="flex min-w-0 items-center gap-4 sm:gap-6">
@@ -23,7 +23,7 @@ export async function Header() {
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
         <Link href="/" className="relative z-10 flex shrink-0 items-center gap-3 font-semibold tracking-tight" aria-label="Amaris Mathematics Academy home">
           <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-white p-1 shadow-[0_8px_22px_rgba(0,0,0,.22)] ring-1 ring-[#ffcc66]/70 sm:size-14">
-            <Image src={academyBrand.logoPath} alt="" width={56} height={56} priority unoptimized className="size-full object-contain" />
+            <Image src={academyBrand.logoPath} alt="" width={56} height={56} unoptimized className="size-full object-contain" />
           </span>
           <span className="leading-tight">Amaris <span className="hidden text-white/60 sm:inline">Mathematics Academy</span></span>
         </Link>
