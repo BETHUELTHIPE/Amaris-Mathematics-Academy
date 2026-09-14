@@ -8,13 +8,7 @@ type NavigationLink = {
   open_in_new_tab: boolean;
 };
 
-type IdleWindow = Window & {
-  requestIdleCallback?: (
-    callback: () => void,
-    options?: { timeout: number },
-  ) => number;
-  cancelIdleCallback?: (handle: number) => void;
-};
+type AuthResult = { authenticated?: boolean };
 
 const LazyAuthControls = lazy(() =>
   import("@/components/site/auth-controls").then((module) => ({
@@ -22,39 +16,100 @@ const LazyAuthControls = lazy(() =>
   })),
 );
 
-function AuthControlsPlaceholder() {
+function AnonymousAuthControls({ links, checking = false }: { links: NavigationLink[]; checking?: boolean }) {
   return (
     <>
-      <div className="hidden min-w-[13rem] sm:block" aria-hidden="true" />
       <div
-        className="h-10 w-[4.25rem] rounded-lg border border-white/20 sm:hidden"
-        aria-hidden="true"
-      />
+        className="hidden min-w-[13rem] items-center justify-end gap-3 sm:flex"
+        aria-busy={checking}
+      >
+        <a href="/login" className="text-sm font-semibold text-white/80 hover:text-white">
+          Log in
+        </a>
+        <a
+          href="/register"
+          className="rounded-full bg-[#ffcc66] px-5 py-2.5 text-sm font-bold text-[#07152d] transition hover:bg-[#ffd780]"
+        >
+          Register
+        </a>
+      </div>
+
+      <details className="relative sm:hidden">
+        <summary className="cursor-pointer list-none rounded-lg border border-white/20 px-3 py-2 text-sm">
+          Menu
+        </summary>
+        <div className="absolute right-0 mt-3 w-64 rounded-2xl border border-white/10 bg-[#0c2042] p-3 shadow-2xl">
+          {links.map(({ label, url, open_in_new_tab }) => (
+            <a
+              key={url}
+              href={url}
+              target={open_in_new_tab ? "_blank" : undefined}
+              rel={open_in_new_tab ? "noreferrer" : undefined}
+              className="block rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/10"
+            >
+              {label}
+            </a>
+          ))}
+          <a
+            href="/register"
+            className="mt-2 block rounded-xl bg-[#ffcc66] px-3 py-2.5 text-center text-sm font-bold text-[#07152d]"
+          >
+            Register
+          </a>
+          <a
+            href="/login"
+            className="mt-2 block rounded-xl px-3 py-2.5 text-center text-sm text-white/80 hover:bg-white/10"
+          >
+            Log in
+          </a>
+        </div>
+      </details>
     </>
   );
 }
 
 export function DeferredAuthControls({ links }: { links: NavigationLink[] }) {
-  const [ready, setReady] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    const idleWindow = window as IdleWindow;
+    const controller = new AbortController();
+    let timeoutHandle: number | undefined;
 
-    if (idleWindow.requestIdleCallback) {
-      const handle = idleWindow.requestIdleCallback(() => setReady(true), {
-        timeout: 700,
-      });
-      return () => idleWindow.cancelIdleCallback?.(handle);
-    }
+    const checkAuth = () => {
+      fetch("/api/auth-state", {
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: controller.signal,
+      })
+        .then(async (response): Promise<AuthResult | null> =>
+          response.ok ? ((await response.json()) as AuthResult) : null,
+        )
+        .then((result) => setAuthenticated(result?.authenticated === true))
+        .catch(() => undefined)
+        .finally(() => {
+          if (!controller.signal.aborted) setChecking(false);
+        });
+    };
 
-    const handle = window.setTimeout(() => setReady(true), 120);
-    return () => window.clearTimeout(handle);
+    const scheduleCheck = () => {
+      timeoutHandle = window.setTimeout(checkAuth, 400);
+    };
+
+    if (document.readyState === "complete") scheduleCheck();
+    else window.addEventListener("load", scheduleCheck, { once: true });
+
+    return () => {
+      controller.abort();
+      window.removeEventListener("load", scheduleCheck);
+      if (timeoutHandle !== undefined) window.clearTimeout(timeoutHandle);
+    };
   }, []);
 
-  if (!ready) return <AuthControlsPlaceholder />;
+  if (!authenticated) return <AnonymousAuthControls links={links} checking={checking} />;
 
   return (
-    <Suspense fallback={<AuthControlsPlaceholder />}>
+    <Suspense fallback={<AnonymousAuthControls links={links} />}>
       <LazyAuthControls links={links} />
     </Suspense>
   );
