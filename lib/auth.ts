@@ -13,7 +13,23 @@ export type StudentIdentity = {
   emailVerified: boolean;
 };
 
+function getSyntheticE2EStudent(): StudentIdentity | null {
+  if (process.env.NODE_ENV !== "development" || process.env.E2E_SYNTHETIC_STUDENT !== "true") {
+    return null;
+  }
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    email: "responsive.student@example.test",
+    firstName: "Responsive",
+    lastName: "Student",
+    displayName: "Responsive Student",
+    emailVerified: true,
+  };
+}
+
 export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null> => {
+  const syntheticStudent = getSyntheticE2EStudent();
+  if (syntheticStudent) return syntheticStudent;
   if (!getSupabaseConfig()) return null;
 
   const supabase = await createSupabaseServerClient();
