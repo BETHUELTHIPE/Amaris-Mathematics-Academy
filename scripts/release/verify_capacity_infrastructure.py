@@ -9,16 +9,21 @@ import math
 from pathlib import Path
 from typing import Any
 
+# Capacity evidence is intentionally explicit by component. These limits preserve
+# the existing CPU/RAM/PostgreSQL/Redis/backlog/error ceilings and add required
+# Gunicorn/Celery saturation evidence without weakening any existing gate.
 LIMITS = {
     "cpu_peak_percent": 85.0,
-    "memory_peak_percent": 90.0,
-    "db_pool_peak_percent": 85.0,
+    "ram_peak_percent": 90.0,
+    "postgresql_pool_peak_percent": 85.0,
     "redis_memory_peak_percent": 85.0,
-    "queue_backlog_peak": 1000.0,
-    "app_restarts": 0.0,
-    "db_errors": 0.0,
+    "gunicorn_worker_utilization_peak_percent": 85.0,
+    "celery_worker_utilization_peak_percent": 85.0,
+    "celery_queue_backlog_peak": 1000.0,
+    "gunicorn_restarts": 0.0,
+    "postgresql_errors": 0.0,
     "redis_errors": 0.0,
-    "worker_errors": 0.0,
+    "celery_errors": 0.0,
 }
 
 
@@ -74,6 +79,14 @@ def validate(
         "observation_seconds": observed,
         "limits": LIMITS,
         "observed": normalized,
+        "components_measured": [
+            "CPU",
+            "RAM",
+            "PostgreSQL",
+            "Redis",
+            "Gunicorn",
+            "Celery",
+        ],
         "infrastructure_thresholds_passed": True,
     }
 
