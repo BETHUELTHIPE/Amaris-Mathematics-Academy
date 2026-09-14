@@ -1,0 +1,290 @@
+name: Production Evidence
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Run protected production-readiness evidence drills against staging
+        required: true
+        type: choice
+        options:
+          - DO_NOT_RUN
+          - RUN_STAGING_EVIDENCE
+        default: DO_NOT_RUN
+      rollback_baseline_image:
+        description: Previously verified staging image to restore during the rollback drill (full immutable image reference)
+        required: true
+        type: string
+      capacity_users:
+        description: Concurrent synthetic users for this controlled staging capacity step
+        required: true
+        type: choice
+        options:
+          - "100"
+          - "500"
+          - "1000"
+          - "2500"
+          - "5000"
+          - "10000"
+          - "25000"
+          - "50000"
+        default: "100"
+      capacity_duration:
+        description: Sustained capacity-test duration; thresholds remain fixed in performance/k6/capacity.js
+        required: true
+        type: choice
+        options:
+          - 5m
+          - 10m
+          - 15m
+        default: 5m
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY_IMAGE: docker.io/bethuelm/amaris-mathematics-academy
+
+jobs:
+  contract-validation:
+    name: Production evidence contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate evidence helpers and workflow safety contract
+        run: >-
+          python -m unittest
+          scripts.release.test_backup_restore_drill
+          scripts.release.test_verify_capacity_infrastructure
+          scripts.release.test_production_evidence_workflow_contract
+
+  staging-evidence:
+    name: Protected staging operational evidence
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.confirmation == 'RUN_STAGING_EVIDENCE'
+    needs: [contract-validation]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    env:
+      CANDIDATE_IMAGE: docker.io/bethuelm/amaris-mathematics-academy:${{ github.sha }}
+      ROLLBACK_BASELINE_IMAGE: ${{ inputs.rollback_baseline_image }}
+      STAGING_URL: ${{ vars.STAGING_URL }}
+      STAGING_HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL }}
+      CAPACITY_TARGET_URL: ${{ vars.STAGING_URL }}
+      CAPACITY_ALLOWED_HOSTS: ${{ vars.STAGING_CAPACITY_ALLOWED_HOSTS }}
+      CAPACITY_ALLOW_PRODUCTION: "false"
+      CAPACITY_ENVIRONMENT: staging
+      CAPACITY_USERS: ${{ inputs.capacity_users }}
+      CAPACITY_DURATION: ${{ inputs.capacity_duration }}
+      CAPACITY_RAMP: 1m
+      CAPACITY_THINK_SECONDS: "1"
+      CAPACITY_SUMMARY_FILE: performance/reports/capacity-http.json
+      CAPACITY_EVIDENCE_URL: ${{ vars.STAGING_CAPACITY_EVIDENCE_URL }}
+      PRODUCTION_EMAIL_DOMAIN: ${{ vars.PRODUCTION_EMAIL_DOMAIN }}
+      PRODUCTION_DKIM_SELECTOR: ${{ vars.PRODUCTION_DKIM_SELECTOR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate staging target and immutable release identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_URL"
+          test -n "$STAGING_HEALTHCHECK_URL"
+          test -n "$CAPACITY_ALLOWED_HOSTS"
+          case "$STAGING_URL" in https://*) ;; *) echo "STAGING_URL must use HTTPS" >&2; exit 1 ;; esac
+          case "$STAGING_HEALTHCHECK_URL" in https://*) ;; *) echo "STAGING_HEALTHCHECK_URL must use HTTPS" >&2; exit 1 ;; esac
+          image_regex='^docker\.io/bethuelm/amaris-mathematics-academy:[0-9a-f]{40}$'
+          printf '%s' "$CANDIDATE_IMAGE" | grep -Eq "$image_regex"
+          printf '%s' "$ROLLBACK_BASELINE_IMAGE" | grep -Eq "$image_regex"
+          test "$ROLLBACK_BASELINE_IMAGE" != "$CANDIDATE_IMAGE"
+
+      - name: Verify the candidate is the exact release currently deployed to staging
+        shell: bash
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+        run: |
+          set -euo pipefail
+          current="$(scripts/release/deploy-webhook.sh current-release staging)"
+          test "$(printf '%s' "$current" | jq -er '.image')" = "$CANDIDATE_IMAGE"
+          test "$(printf '%s' "$current" | jq -er '.release_sha')" = "$GITHUB_SHA"
+          scripts/release/verify-health.sh "$STAGING_HEALTHCHECK_URL"
+
+      - name: BACKUP RESTORE - isolated recovery drill
+        shell: bash
+        env:
+          BACKUP_WEBHOOK_URL: ${{ secrets.STAGING_BACKUP_WEBHOOK_URL }}
+          BACKUP_TOKEN: ${{ secrets.STAGING_BACKUP_TOKEN }}
+          RESTORE_EVIDENCE_FILE: production-evidence/backup-restore.json
+        run: sh scripts/release/backup-restore-drill.sh staging
+
+      - name: ROLLBACK - prove failed candidate returns to exact baseline
+        shell: bash
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p production-evidence
+
+          scripts/release/deploy-webhook.sh rollback staging "$ROLLBACK_BASELINE_IMAGE"
+          scripts/release/verify-health.sh "$STAGING_HEALTHCHECK_URL"
+
+          baseline="$(scripts/release/deploy-webhook.sh current-release staging)"
+          test "$(printf '%s' "$baseline" | jq -er '.image')" = "$ROLLBACK_BASELINE_IMAGE"
+
+          set +e
+          HEALTHCHECK_URL="${STAGING_HEALTHCHECK_URL%/}/__amaris_forced_rollback_probe__" \
+            scripts/release/promote.sh staging "$CANDIDATE_IMAGE"
+          promote_status=$?
+          set -e
+
+          # promote.sh returns 1 only when the candidate failed and rollback health passed.
+          test "$promote_status" -eq 1
+          restored="$(scripts/release/deploy-webhook.sh current-release staging)"
+          test "$(printf '%s' "$restored" | jq -er '.image')" = "$ROLLBACK_BASELINE_IMAGE"
+          scripts/release/verify-health.sh "$STAGING_HEALTHCHECK_URL"
+
+          # Leave staging on the tested candidate after the rollback proof.
+          scripts/release/deploy-webhook.sh deploy staging "$CANDIDATE_IMAGE"
+          scripts/release/verify-health.sh "$STAGING_HEALTHCHECK_URL"
+          final="$(scripts/release/deploy-webhook.sh current-release staging)"
+          test "$(printf '%s' "$final" | jq -er '.image')" = "$CANDIDATE_IMAGE"
+
+          jq -n \
+            --arg release_sha "$GITHUB_SHA" \
+            --arg baseline_image "$ROLLBACK_BASELINE_IMAGE" \
+            --arg candidate_image "$CANDIDATE_IMAGE" \
+            '{
+              environment: "staging",
+              release_sha: $release_sha,
+              baseline_image: $baseline_image,
+              candidate_image: $candidate_image,
+              forced_candidate_health_failure: true,
+              rollback_health_verified: true,
+              candidate_redeployed_after_drill: true
+            }' > production-evidence/rollback.json
+
+      - name: Install k6 for controlled staging capacity test
+        uses: grafana/setup-k6-action@v1
+
+      - name: CAPACITY - run public synthetic workload with fixed thresholds
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p performance/reports
+          k6 run performance/k6/capacity.js
+
+      - name: CAPACITY - retrieve and verify infrastructure evidence
+        shell: bash
+        env:
+          CAPACITY_EVIDENCE_TOKEN: ${{ secrets.STAGING_CAPACITY_EVIDENCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${CAPACITY_EVIDENCE_URL:?STAGING_CAPACITY_EVIDENCE_URL is required}"
+          : "${CAPACITY_EVIDENCE_TOKEN:?STAGING_CAPACITY_EVIDENCE_TOKEN is required}"
+
+          case "$CAPACITY_DURATION" in
+            5m) minimum_window_seconds=420 ;;
+            10m) minimum_window_seconds=720 ;;
+            15m) minimum_window_seconds=1020 ;;
+            *) echo "Unsupported capacity duration" >&2; exit 2 ;;
+          esac
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --retry 2 \
+            --connect-timeout 10 \
+            --max-time 60 \
+            --get \
+            --header "Authorization: Bearer $CAPACITY_EVIDENCE_TOKEN" \
+            --data-urlencode "release_sha=$GITHUB_SHA" \
+            --data-urlencode "capacity_users=$CAPACITY_USERS" \
+            --data-urlencode "minimum_window_seconds=$minimum_window_seconds" \
+            "$CAPACITY_EVIDENCE_URL" \
+            --output /tmp/capacity-infrastructure.json
+
+          python scripts/release/verify_capacity_infrastructure.py \
+            /tmp/capacity-infrastructure.json \
+            --expected-sha "$GITHUB_SHA" \
+            --expected-users "$CAPACITY_USERS" \
+            --minimum-window-seconds "$minimum_window_seconds" \
+            --sanitized-output production-evidence/capacity-infrastructure.json
+
+      - name: EMAIL DNS - SPF DKIM and DMARC evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${PRODUCTION_EMAIL_DOMAIN:?PRODUCTION_EMAIL_DOMAIN is required}"
+          : "${PRODUCTION_DKIM_SELECTOR:?PRODUCTION_DKIM_SELECTOR is required}"
+          if ! command -v dig >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq dnsutils
+          fi
+
+          mkdir -p production-evidence
+          spf="$(dig +short TXT "$PRODUCTION_EMAIL_DOMAIN" | tr -d '"' | grep -m1 'v=spf1')"
+          dmarc="$(dig +short TXT "_dmarc.$PRODUCTION_EMAIL_DOMAIN" | tr -d '"' | grep -m1 'v=DMARC1')"
+          dkim="$(dig +short TXT "$PRODUCTION_DKIM_SELECTOR._domainkey.$PRODUCTION_EMAIL_DOMAIN" | tr -d '"' | grep -m1 'v=DKIM1')"
+
+          test -n "$spf"
+          test -n "$dmarc"
+          test -n "$dkim"
+
+          jq -n \
+            --arg domain "$PRODUCTION_EMAIL_DOMAIN" \
+            --arg selector "$PRODUCTION_DKIM_SELECTOR" \
+            '{
+              domain: $domain,
+              dkim_selector: $selector,
+              spf_present: true,
+              dkim_present: true,
+              dmarc_present: true
+            }' > production-evidence/email-dns.json
+
+      - name: Write evidence manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg release_sha "$GITHUB_SHA" \
+            --arg capacity_users "$CAPACITY_USERS" \
+            '{
+              environment: "staging",
+              release_sha: $release_sha,
+              backup_restore_verified: true,
+              rollback_verified: true,
+              capacity_http_thresholds_passed: true,
+              capacity_infrastructure_thresholds_passed: true,
+              public_http_concurrent_users_tested: ($capacity_users | tonumber),
+              email_dns_verified: true,
+              payment_provider_sandbox_verified: false,
+              authenticated_email_delivery_verified: false,
+              production_deployment_performed: false,
+              fifty_thousand_users_verified: false
+            }' > production-evidence/manifest.json
+
+      - name: Preserve production-readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-evidence-${{ github.sha }}
+          path: |
+            production-evidence/
+            performance/reports/capacity-http.json
+          if-no-files-found: error
+          retention-days: 30
