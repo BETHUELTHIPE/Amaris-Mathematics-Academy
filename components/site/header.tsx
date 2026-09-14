@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Mail, MapPin, Phone } from "lucide-react";
-import { AuthControls } from "@/components/site/auth-controls";
+import { DeferredAuthControls } from "@/components/site/deferred-auth-controls";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
 
 export async function Header() {
@@ -30,7 +30,7 @@ export async function Header() {
         <nav className="hidden items-center gap-6 text-sm text-white/75 lg:flex" aria-label="Main navigation">
           {links.map(({ label, url, open_in_new_tab }) => <Link key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined} className="transition hover:text-white">{label}</Link>)}
         </nav>
-        <AuthControls links={links} />
+        <DeferredAuthControls links={links} />
       </div>
     </header>
   );
