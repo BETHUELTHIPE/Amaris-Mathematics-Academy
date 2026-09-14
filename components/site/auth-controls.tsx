@@ -40,7 +40,7 @@ export function AuthControls({ links }: { links: NavigationLink[] }) {
 
   return (
     <>
-      <div className="hidden min-w-[13rem] items-center justify-end gap-3 sm:flex" aria-busy={state === "loading"}>
+      <div className="hidden min-w-[13rem] items-center justify-end gap-3 lg:flex" aria-busy={state === "loading"}>
         {authenticated ? (
           <>
             {state === "verified" && <Link href="/documents" className="text-sm font-semibold text-white/70 hover:text-white">Documents</Link>}
@@ -55,7 +55,7 @@ export function AuthControls({ links }: { links: NavigationLink[] }) {
         )}
       </div>
 
-      <details className="relative sm:hidden">
+      <details className="relative lg:hidden">
         <summary className="cursor-pointer list-none rounded-lg border border-white/20 px-3 py-2 text-sm">Menu</summary>
         <div className="absolute right-0 mt-3 w-64 rounded-2xl border border-white/10 bg-[#0c2042] p-3 shadow-2xl">
           {links.map(({ label, url, open_in_new_tab }) => <Link key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined} className="block rounded-xl px-3 py-2.5 text-sm text-white/80 hover:bg-white/10">{label}</Link>)}
