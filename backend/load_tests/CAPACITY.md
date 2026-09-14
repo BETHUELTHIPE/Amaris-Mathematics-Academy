@@ -13,8 +13,14 @@ The workflow always executes the lower levels first and stops at the first faile
 The 50,000-user statement is locked to this rule:
 
 ```text
-MAXIMUM VERIFIED CONCURRENT USERS: <highest passing stage>
-50,000 CONCURRENT USERS VERIFIED: YES / NO
+PRODUCTION READINESS:
+NOT EVALUATED BY CAPACITY TESTING
+
+MAXIMUM VERIFIED CONCURRENT USERS:
+<highest contiguous passing stage, or 0 when no capacity stage has passed>
+
+50,000 CONCURRENT USERS VERIFIED:
+YES / NO
 ```
 
 `YES` is only produced when the 50,000-user stage itself runs, reaches at least 50,000 observed concurrent Locust users, sustains that target for essentially the configured hold period, and passes the request and infrastructure gates.
