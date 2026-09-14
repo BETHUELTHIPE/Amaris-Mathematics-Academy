@@ -105,7 +105,7 @@ jobs:
       - name: Permission tests
         run: python manage.py test content.tests.AdminRegistrationTests content.tests.PermissionTests
       - name: Payment tests
-        run: python manage.py test content.tests.PaymentReconciliationTests
+        run: python manage.py test content.tests.PaymentReconciliationTests content.test_payments
       - name: Full Django regression suite
         run: python manage.py test
       - name: Production-acceptance gate contract
