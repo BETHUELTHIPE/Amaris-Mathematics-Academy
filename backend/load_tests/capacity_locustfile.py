@@ -45,11 +45,7 @@ _STOP_SAMPLING = False
 
 
 def _auth_available() -> bool:
-    return bool(
-        AUTH_BEARER
-        or COOKIE_HEADER
-        or (SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE)
-    )
+    return bool(AUTH_BEARER or COOKIE_HEADER or (SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE))
 
 
 def _checked_get(
@@ -103,9 +99,7 @@ class CapacityStudentUser(FastHttpUser):
 
     def on_start(self) -> None:
         if AUTH_BEARER:
-            self.client.headers.update(
-                {"Authorization": f"Bearer {AUTH_BEARER}"}
-            )
+            self.client.headers.update({"Authorization": f"Bearer {AUTH_BEARER}"})
         elif COOKIE_HEADER:
             self.client.headers.update({"Cookie": COOKIE_HEADER})
         elif SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE:
@@ -247,8 +241,7 @@ def validate_capacity_run(
     if REQUIRE_AUTH:
         if not _auth_available():
             raise RuntimeError(
-                "Representative capacity testing requires a dedicated "
-                "synthetic authentication credential."
+                "Representative capacity testing requires a dedicated " "synthetic authentication credential."
             )
         missing = []
         if not ENDPOINTS.lesson:
@@ -257,9 +250,7 @@ def validate_capacity_run(
             missing.append("LOADTEST_PAYMENT_STATUS_PATH")
         if missing:
             joined = ", ".join(missing)
-            raise RuntimeError(
-                f"Representative capacity testing requires: {joined}"
-            )
+            raise RuntimeError(f"Representative capacity testing requires: {joined}")
 
     if not _is_worker(environment):
         _STARTED_AT = time.monotonic()
@@ -295,11 +286,7 @@ def write_capacity_evidence(
     request_count, server_5xx_count = _effective_counters(environment)
     duration_seconds = max(time.monotonic() - _STARTED_AT, 0.001)
     failure_pct = total.fail_ratio * 100.0
-    server_5xx_pct = (
-        server_5xx_count / request_count * 100.0
-        if request_count
-        else 0.0
-    )
+    server_5xx_pct = server_5xx_count / request_count * 100.0 if request_count else 0.0
     minimum_hold_seconds = max(1.0, HOLD_SECONDS - 15.0)
 
     evidence = {
@@ -311,9 +298,7 @@ def write_capacity_evidence(
             _TARGET_SECONDS_OBSERVED,
             3,
         ),
-        "target_hold_sustained": (
-            _TARGET_SECONDS_OBSERVED >= minimum_hold_seconds
-        ),
+        "target_hold_sustained": (_TARGET_SECONDS_OBSERVED >= minimum_hold_seconds),
         "duration_seconds": round(duration_seconds, 3),
         "requests": int(total.num_requests),
         "failures": int(total.num_failures),
@@ -321,26 +306,10 @@ def write_capacity_evidence(
         "server_5xx": int(server_5xx_count),
         "server_5xx_pct": round(server_5xx_pct, 6),
         "rps": round(total.num_requests / duration_seconds, 3),
-        "p50_ms": (
-            total.get_response_time_percentile(0.50)
-            if total.num_requests
-            else 0
-        ),
-        "p90_ms": (
-            total.get_response_time_percentile(0.90)
-            if total.num_requests
-            else 0
-        ),
-        "p95_ms": (
-            total.get_response_time_percentile(0.95)
-            if total.num_requests
-            else 0
-        ),
-        "p99_ms": (
-            total.get_response_time_percentile(0.99)
-            if total.num_requests
-            else 0
-        ),
+        "p50_ms": (total.get_response_time_percentile(0.50) if total.num_requests else 0),
+        "p90_ms": (total.get_response_time_percentile(0.90) if total.num_requests else 0),
+        "p95_ms": (total.get_response_time_percentile(0.95) if total.num_requests else 0),
+        "p99_ms": (total.get_response_time_percentile(0.99) if total.num_requests else 0),
         "thresholds": {
             "max_failure_pct": threshold.failure_pct,
             "max_5xx_pct": threshold.server_5xx_pct,
@@ -354,10 +323,7 @@ def write_capacity_evidence(
     if total.num_requests == 0:
         failures.append("no requests were recorded")
     if _MAX_USERS_OBSERVED < TARGET_USERS:
-        failures.append(
-            f"only {_MAX_USERS_OBSERVED:,} of "
-            f"{TARGET_USERS:,} target users were observed"
-        )
+        failures.append(f"only {_MAX_USERS_OBSERVED:,} of " f"{TARGET_USERS:,} target users were observed")
     if _TARGET_SECONDS_OBSERVED < minimum_hold_seconds:
         failures.append(
             f"target concurrency was sustained for only "
@@ -365,25 +331,13 @@ def write_capacity_evidence(
             f"{minimum_hold_seconds:.1f}s is required"
         )
     if failure_pct > threshold.failure_pct:
-        failures.append(
-            f"failure rate {failure_pct:.3f}% exceeded "
-            f"{threshold.failure_pct:.3f}%"
-        )
+        failures.append(f"failure rate {failure_pct:.3f}% exceeded " f"{threshold.failure_pct:.3f}%")
     if server_5xx_pct > threshold.server_5xx_pct:
-        failures.append(
-            f"5xx rate {server_5xx_pct:.3f}% exceeded "
-            f"{threshold.server_5xx_pct:.3f}%"
-        )
+        failures.append(f"5xx rate {server_5xx_pct:.3f}% exceeded " f"{threshold.server_5xx_pct:.3f}%")
     if evidence["p95_ms"] > threshold.p95_ms:
-        failures.append(
-            f"p95 {evidence['p95_ms']}ms exceeded "
-            f"{threshold.p95_ms}ms"
-        )
+        failures.append(f"p95 {evidence['p95_ms']}ms exceeded " f"{threshold.p95_ms}ms")
     if evidence["p99_ms"] > threshold.p99_ms:
-        failures.append(
-            f"p99 {evidence['p99_ms']}ms exceeded "
-            f"{threshold.p99_ms}ms"
-        )
+        failures.append(f"p99 {evidence['p99_ms']}ms exceeded " f"{threshold.p99_ms}ms")
 
     evidence["locust_gate_passed"] = not failures
     evidence["locust_gate_failures"] = failures
