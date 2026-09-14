@@ -3,9 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import Mapping, Protocol
+from typing import Protocol
 
 from django.db import transaction
 from django.utils import timezone
