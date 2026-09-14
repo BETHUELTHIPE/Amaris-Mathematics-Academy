@@ -1,0 +1,170 @@
+name: Capacity Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_users:
+        description: Highest progressive concurrency stage to attempt
+        required: true
+        type: choice
+        options: ["100", "500", "1000", "2500", "5000", "10000", "25000", "50000"]
+        default: "100"
+      ramp_seconds:
+        description: Ramp duration for each stage
+        required: true
+        type: choice
+        options: ["60", "120", "300"]
+        default: "120"
+      hold_seconds:
+        description: Hold duration at each target concurrency
+        required: true
+        type: choice
+        options: ["120", "300", "600", "900"]
+        default: "300"
+      locust_processes:
+        description: Local Locust worker processes on the load generator
+        required: true
+        type: choice
+        options: ["1", "2", "4", "8"]
+        default: "4"
+      allow_production:
+        description: Explicitly permit a production target. Leave false for dedicated capacity/staging environments.
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-capacity-verification
+  cancel-in-progress: false
+
+jobs:
+  progressive-capacity:
+    name: Progressive capacity verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    environment: capacity
+    env:
+      LOADTEST_ENVIRONMENT: capacity
+      LOADTEST_TARGET_URL: ${{ vars.CAPACITY_TARGET_URL }}
+      LOADTEST_ALLOWED_HOSTS: ${{ vars.CAPACITY_ALLOWED_HOSTS }}
+      LOADTEST_ALLOW_PRODUCTION: ${{ inputs.allow_production }}
+      LOADTEST_ALLOW_LIVE_PAYFAST: "false"
+      CAPACITY_PROMETHEUS_URL: ${{ vars.CAPACITY_PROMETHEUS_URL }}
+      CAPACITY_PROMETHEUS_BEARER: ${{ secrets.CAPACITY_PROMETHEUS_BEARER }}
+      CAPACITY_RAMP_SECONDS: ${{ inputs.ramp_seconds }}
+      CAPACITY_HOLD_SECONDS: ${{ inputs.hold_seconds }}
+      CAPACITY_LOCUST_PROCESSES: ${{ inputs.locust_processes }}
+      CAPACITY_REQUIRE_AUTH: "true"
+      CAPACITY_MAX_FAILURE_PCT: "1.0"
+      CAPACITY_MAX_5XX_PCT: "0.5"
+      CAPACITY_MAX_P95_MS: "2000"
+      CAPACITY_MAX_P99_MS: "4000"
+      CAPACITY_MAX_CPU_PCT: "90"
+      CAPACITY_MAX_RAM_PCT: "90"
+      LOADTEST_AUTH_BEARER: ${{ secrets.CAPACITY_AUTH_BEARER }}
+      LOADTEST_COOKIE_HEADER: ${{ secrets.CAPACITY_COOKIE_HEADER }}
+      LOADTEST_SESSION_COOKIE_NAME: ${{ secrets.CAPACITY_SESSION_COOKIE_NAME }}
+      LOADTEST_SESSION_COOKIE_VALUE: ${{ secrets.CAPACITY_SESSION_COOKIE_VALUE }}
+      LOADTEST_HOMEPAGE_PATH: ${{ vars.CAPACITY_HOMEPAGE_PATH || '/' }}
+      LOADTEST_CATALOGUE_PATH: ${{ vars.CAPACITY_CATALOGUE_PATH || '/courses' }}
+      LOADTEST_SEARCH_PATH: ${{ vars.CAPACITY_SEARCH_PATH || '/courses?search=algebra' }}
+      LOADTEST_COURSE_DETAIL_PATH: ${{ vars.CAPACITY_COURSE_DETAIL_PATH || '/courses/university-calculus-foundations' }}
+      LOADTEST_LOGIN_PAGE_PATH: ${{ vars.CAPACITY_LOGIN_PAGE_PATH || '/login' }}
+      LOADTEST_DASHBOARD_PATH: ${{ vars.CAPACITY_DASHBOARD_PATH || '/dashboard' }}
+      LOADTEST_LESSON_PATH: ${{ vars.CAPACITY_LESSON_PATH }}
+      LOADTEST_PAYMENT_STATUS_PATH: ${{ vars.CAPACITY_PAYMENT_STATUS_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-load.txt
+      - name: Install capacity-test dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && pip install -r requirements-load.txt
+      - name: Validate target and capacity configuration
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import os
+          from load_tests.capacity import progressive_levels, validate_capacity_level
+          from load_tests.config import env_bool, env_csv, validate_target
+
+          requested = validate_capacity_level(int("${{ inputs.max_users }}"))
+          print("Progressive stages:", ", ".join(f"{value:,}" for value in progressive_levels(requested)))
+          validate_target(
+              os.environ["LOADTEST_TARGET_URL"],
+              environment_name=os.environ["LOADTEST_ENVIRONMENT"],
+              allowed_hosts=env_csv("LOADTEST_ALLOWED_HOSTS"),
+              allow_production=env_bool("LOADTEST_ALLOW_PRODUCTION"),
+              allow_live_payfast=False,
+          )
+          if not os.environ.get("CAPACITY_PROMETHEUS_URL", "").strip():
+              raise SystemExit("CAPACITY_PROMETHEUS_URL is required; infrastructure metrics cannot be inferred.")
+          if not os.environ.get("LOADTEST_LESSON_PATH", "").strip():
+              raise SystemExit("CAPACITY_LESSON_PATH is required for representative authenticated capacity testing.")
+          if not os.environ.get("LOADTEST_PAYMENT_STATUS_PATH", "").strip():
+              raise SystemExit("CAPACITY_PAYMENT_STATUS_PATH is required for representative authenticated capacity testing.")
+          PY
+      - name: Run progressive capacity stages
+        id: capacity
+        working-directory: backend
+        shell: bash
+        run: |
+          set -uo pipefail
+          requested="${{ inputs.max_users }}"
+          stages=(100 500 1000 2500 5000 10000 25000 50000)
+          result=0
+
+          chmod +x load_tests/run-capacity-stage.sh
+          rm -rf load_tests/results
+          mkdir -p load_tests/results
+
+          for stage in "${stages[@]}"; do
+            if (( stage > requested )); then
+              break
+            fi
+            echo "::group::Capacity stage ${stage}"
+            if load_tests/run-capacity-stage.sh "$stage"; then
+              echo "Capacity stage ${stage}: PASS"
+            else
+              echo "Capacity stage ${stage}: FAIL / NOT VERIFIED"
+              result=1
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+          done
+
+          python -m load_tests.capacity_summary --requested "$requested"
+          exit "$result"
+      - name: Publish capacity summary to workflow run
+        if: always()
+        working-directory: backend
+        shell: bash
+        run: |
+          if [ -f load_tests/results/capacity-summary.md ]; then
+            cat load_tests/results/capacity-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "# Capacity test summary"
+              echo
+              echo "**MAXIMUM VERIFIED CONCURRENT USERS:** 0"
+              echo
+              echo "**50,000 CONCURRENT USERS VERIFIED:** NO"
+              echo
+              echo "No complete capacity summary was produced."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload capacity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capacity-evidence-${{ github.run_id }}
+          path: backend/load_tests/results/
+          if-no-files-found: error
+          retention-days: 90
