@@ -6,5 +6,9 @@ class ContentConfig(AppConfig):
     name = "content"
     verbose_name = "Academy content"
 
+    def import_models(self):
+        super().import_models()
+        from . import payment_models  # noqa: F401
+
     def ready(self):
-        from . import signals  # noqa: F401
+        from . import payment_admin, signals  # noqa: F401
