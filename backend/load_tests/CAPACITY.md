@@ -10,7 +10,7 @@ A run may target one of these maximum levels:
 
 The workflow always executes the lower levels first and stops at the first failed or unverifiable stage. The maximum verified capacity is therefore the highest **contiguous passing** level. Results are never extrapolated from a lower stage.
 
-The 50,000-user statement is locked to this rule:
+Capacity reporting remains separate from production readiness:
 
 ```text
 PRODUCTION READINESS:
