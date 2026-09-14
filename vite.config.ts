@@ -10,6 +10,8 @@ const { d1, r2 } = hostingConfig;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
+const syntheticE2EStudent =
+  process.env.NODE_ENV !== "production" && process.env.E2E_SYNTHETIC_STUDENT === "true";
 
 const localBindingConfig = {
   main: "./worker/index.ts",
@@ -44,6 +46,11 @@ export default defineConfig(async () => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    define: {
+      // Cloudflare worker modules do not inherit arbitrary Node process.env values.
+      // Compile this non-secret test switch into development E2E builds only.
+      __E2E_SYNTHETIC_STUDENT__: JSON.stringify(syntheticE2EStudent),
+    },
     server: {
       host: "0.0.0.0",
       allowedHosts: ["terminal.local"],
