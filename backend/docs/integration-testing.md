@@ -9,7 +9,7 @@ The suite must exercise these with real test infrastructure:
 - Django ↔ PostgreSQL
 - Django ↔ Redis through the Django cache backend
 - Django ↔ Celery through a real Redis broker/result backend and an in-process Celery worker
-- Django ↔ frontend CMS API contract (`lib/cms.ts` ↔ Django `/bootstrap/` and `/courses/` payloads)
+- Django ↔ frontend CMS API contract (`frontend/lib/cms.ts` ↔ Django `/bootstrap/` and `/courses/` payloads)
 - Django ↔ storage abstraction using an isolated local filesystem adapter in CI
 
 GitHub Actions already provides PostgreSQL and Redis service containers for the backend quality job. When those services are expected in CI, an unavailable dependency is a failure, not a skipped pass. Local runs without the optional infrastructure may skip the relevant real-infrastructure checks.
