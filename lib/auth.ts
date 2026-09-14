@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { getSupabaseConfig } from "@/lib/supabase/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+declare const __E2E_SYNTHETIC_STUDENT__: boolean;
+
 export type StudentIdentity = {
   id: string;
   email: string;
@@ -14,9 +16,7 @@ export type StudentIdentity = {
 };
 
 function getSyntheticE2EStudent(): StudentIdentity | null {
-  if (process.env.NODE_ENV !== "development" || process.env.E2E_SYNTHETIC_STUDENT !== "true") {
-    return null;
-  }
+  if (!__E2E_SYNTHETIC_STUDENT__) return null;
   return {
     id: "00000000-0000-4000-8000-000000000001",
     email: "responsive.student@example.test",
