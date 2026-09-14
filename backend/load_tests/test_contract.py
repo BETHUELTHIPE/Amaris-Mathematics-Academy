@@ -51,6 +51,16 @@ class LoadTestSafetyTests(unittest.TestCase):
 
 
 class CapacityContractTests(unittest.TestCase):
+    @staticmethod
+    def _workflow_text() -> str:
+        workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "capacity.yml"
+        return workflow.read_text(encoding="utf-8")
+
+    @staticmethod
+    def _capacity_locust_text() -> str:
+        path = Path(__file__).resolve().parent / "capacity_locustfile.py"
+        return path.read_text(encoding="utf-8")
+
     def test_capacity_levels_are_exact_progressive_sequence(self):
         self.assertEqual(CAPACITY_LEVELS, (100, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000))
         self.assertEqual(progressive_levels(5_000), (100, 500, 1_000, 2_500, 5_000))
@@ -59,29 +69,76 @@ class CapacityContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsupported capacity level"):
             validate_capacity_level(49_999)
 
-    def test_capacity_thresholds_are_not_silently_weakened(self):
+    def test_capacity_thresholds_match_or_exceed_normal_release_gate(self):
         with patch.dict(os.environ, {}, clear=True):
             thresholds = CapacityThresholds.from_environment()
         self.assertEqual(thresholds.failure_pct, 1.0)
-        self.assertEqual(thresholds.server_5xx_pct, 0.5)
-        self.assertEqual(thresholds.p95_ms, 2_000)
-        self.assertEqual(thresholds.p99_ms, 4_000)
+        self.assertEqual(thresholds.server_5xx_pct, 0.1)
+        self.assertEqual(thresholds.p95_ms, 1_000)
+        self.assertEqual(thresholds.p99_ms, 2_000)
         self.assertEqual(thresholds.infrastructure_cpu_pct, 90.0)
         self.assertEqual(thresholds.infrastructure_ram_pct, 90.0)
 
+    def test_capacity_thresholds_cannot_be_weakened_by_environment(self):
+        weaker_values = {
+            "CAPACITY_MAX_FAILURE_PCT": "1.01",
+            "CAPACITY_MAX_5XX_PCT": "0.11",
+            "CAPACITY_MAX_P95_MS": "1001",
+            "CAPACITY_MAX_P99_MS": "2001",
+            "CAPACITY_MAX_CPU_PCT": "90.1",
+            "CAPACITY_MAX_RAM_PCT": "90.1",
+        }
+        for name, value in weaker_values.items():
+            with self.subTest(name=name), patch.dict(os.environ, {name: value}, clear=True):
+                with self.assertRaisesRegex(ValueError, "would weaken the capacity gate"):
+                    CapacityThresholds.from_environment()
+
+    def test_stricter_capacity_thresholds_are_allowed(self):
+        with patch.dict(
+            os.environ,
+            {
+                "CAPACITY_MAX_FAILURE_PCT": "0.5",
+                "CAPACITY_MAX_5XX_PCT": "0.05",
+                "CAPACITY_MAX_P95_MS": "800",
+                "CAPACITY_MAX_P99_MS": "1500",
+                "CAPACITY_MAX_CPU_PCT": "85",
+                "CAPACITY_MAX_RAM_PCT": "85",
+            },
+            clear=True,
+        ):
+            thresholds = CapacityThresholds.from_environment()
+        self.assertEqual(thresholds.failure_pct, 0.5)
+        self.assertEqual(thresholds.server_5xx_pct, 0.05)
+        self.assertEqual(thresholds.p95_ms, 800)
+        self.assertEqual(thresholds.p99_ms, 1_500)
+        self.assertEqual(thresholds.infrastructure_cpu_pct, 85.0)
+        self.assertEqual(thresholds.infrastructure_ram_pct, 85.0)
+
     def test_capacity_workflow_is_manual_only(self):
-        workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "capacity.yml"
-        text = workflow.read_text(encoding="utf-8")
+        text = self._workflow_text()
         self.assertIn("workflow_dispatch:", text)
         self.assertNotIn("pull_request:", text)
         self.assertNotIn("push:", text)
         self.assertNotIn("schedule:", text)
 
     def test_capacity_workflow_contains_every_required_stage(self):
-        workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "capacity.yml"
-        text = workflow.read_text(encoding="utf-8")
+        text = self._workflow_text()
         self.assertIn("stages=(100 500 1000 2500 5000 10000 25000 50000)", text)
         self.assertIn("50,000 CONCURRENT USERS VERIFIED:** NO", text)
+
+    def test_capacity_workflow_blocks_production_and_requires_dedicated_generator_for_high_stages(self):
+        text = self._workflow_text()
+        self.assertIn('LOADTEST_ALLOW_PRODUCTION: "false"', text)
+        self.assertNotIn("allow_production:", text)
+        self.assertIn("Capacity stages above 1,000 users require a dedicated self-hosted load generator.", text)
+        self.assertIn("inputs.load_generator == 'self-hosted'", text)
+
+    def test_capacity_requires_sustained_hold_and_fast_http_users(self):
+        text = self._capacity_locust_text()
+        self.assertIn("FastHttpUser", text)
+        self.assertIn("target_hold_seconds_observed", text)
+        self.assertIn("target_hold_sustained", text)
+        self.assertIn("HOLD_SECONDS - 15.0", text)
 
 
 if __name__ == "__main__":
