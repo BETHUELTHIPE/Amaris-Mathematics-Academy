@@ -82,7 +82,8 @@ def main() -> int:
     lines.extend(
         [
             "",
-            "Capacity is verified only through the highest contiguous passing stage. No higher capacity is inferred or extrapolated.",
+            "Capacity is verified only through the highest contiguous passing stage. "
+            "No higher capacity is inferred or extrapolated.",
             "",
         ]
     )
