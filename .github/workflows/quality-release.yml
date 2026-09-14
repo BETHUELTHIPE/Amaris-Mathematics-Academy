@@ -97,7 +97,9 @@ jobs:
       - name: Integration tests
         run: python manage.py test content.tests.PublicContentApiTests content.test_integrations
       - name: Load/capacity harness contract (no traffic)
-        run: python -m unittest load_tests.test_contract
+        run: |
+          python -m unittest load_tests.test_contract
+          python -m compileall -q load_tests
       - name: Permission tests
         run: python manage.py test content.tests.AdminRegistrationTests content.tests.PermissionTests
       - name: Payment tests
