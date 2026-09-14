@@ -44,7 +44,7 @@ concurrency:
 jobs:
   progressive-capacity:
     name: Progressive capacity verification
-    runs-on: ${{ inputs.load_generator == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.load_generator == 'self-hosted' && 'capacity-load-generator' || 'ubuntu-latest' }}
     timeout-minutes: 240
     environment: capacity
     env:
@@ -53,6 +53,8 @@ jobs:
       LOADTEST_ALLOWED_HOSTS: ${{ vars.CAPACITY_ALLOWED_HOSTS }}
       LOADTEST_ALLOW_PRODUCTION: "false"
       LOADTEST_ALLOW_LIVE_PAYFAST: "false"
+      CAPACITY_TARGET_GIT_SHA: ${{ vars.CAPACITY_TARGET_GIT_SHA }}
+      CAPACITY_TARGET_IMAGE: ${{ vars.CAPACITY_TARGET_IMAGE }}
       CAPACITY_PROMETHEUS_URL: ${{ vars.CAPACITY_PROMETHEUS_URL }}
       CAPACITY_PROMETHEUS_BEARER: ${{ secrets.CAPACITY_PROMETHEUS_BEARER }}
       CAPACITY_RAMP_SECONDS: ${{ inputs.ramp_seconds }}
@@ -95,6 +97,10 @@ jobs:
         run: |
           mkdir -p backend/load_tests/results
           {
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
+            echo "capacity_harness_git_sha=${GITHUB_SHA}"
+            echo "target_git_sha=${CAPACITY_TARGET_GIT_SHA}"
+            echo "target_image=${CAPACITY_TARGET_IMAGE}"
             echo "runner=${RUNNER_NAME}"
             echo "os=${RUNNER_OS}"
             echo "arch=${RUNNER_ARCH}"
@@ -122,6 +128,18 @@ jobs:
           fi
           if (( ${{ inputs.max_users }} > 1000 )) && [[ "${{ inputs.load_generator }}" != "self-hosted" ]]; then
             echo "Capacity stages above 1,000 users require a dedicated self-hosted load generator." >&2
+            exit 1
+          fi
+          if [[ -z "${CAPACITY_TARGET_GIT_SHA:-}" || ! "${CAPACITY_TARGET_GIT_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "CAPACITY_TARGET_GIT_SHA must identify the exact deployed 40-character Git SHA." >&2
+            exit 1
+          fi
+          if [[ -z "${CAPACITY_TARGET_IMAGE:-}" ]]; then
+            echo "CAPACITY_TARGET_IMAGE must identify the exact immutable deployed image." >&2
+            exit 1
+          fi
+          if [[ "${CAPACITY_TARGET_IMAGE}" == *":latest" ]]; then
+            echo "CAPACITY_TARGET_IMAGE must be immutable; :latest is not accepted as capacity evidence." >&2
             exit 1
           fi
           python - <<'PY'
@@ -189,6 +207,8 @@ jobs:
           else
             {
               echo "# Capacity test summary"
+              echo
+              echo "**PRODUCTION READINESS:** NOT EVALUATED BY CAPACITY TESTING"
               echo
               echo "**MAXIMUM VERIFIED CONCURRENT USERS:** 0"
               echo
