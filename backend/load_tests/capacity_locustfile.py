@@ -172,7 +172,9 @@ def validate_capacity_run(environment: Environment, **_kwargs: Any) -> None:
 
     if REQUIRE_AUTH:
         if not _auth_available():
-            raise RuntimeError("Representative capacity testing requires a dedicated synthetic authentication credential.")
+            raise RuntimeError(
+                "Representative capacity testing requires a dedicated synthetic authentication credential."
+            )
         missing = []
         if not ENDPOINTS.lesson:
             missing.append("LOADTEST_LESSON_PATH")
