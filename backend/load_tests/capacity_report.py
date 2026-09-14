@@ -296,11 +296,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     ]
     for metric in report["infrastructure"]:
         value = metric.get("value")
-        display = (
-            "MISSING"
-            if value is None
-            else f"{value:.3f}{metric.get('unit', '')}"
-        )
+        display = "MISSING" if value is None else f"{value:.3f}{metric.get('unit', '')}"
         gate = "PASS" if metric["passed"] else "FAIL"
         lines.append(f"| {metric['name']} | {display} | {gate} |")
 
@@ -360,9 +356,7 @@ def main() -> int:
     target_git_sha = os.getenv("CAPACITY_TARGET_GIT_SHA", "").strip()
     target_image = os.getenv("CAPACITY_TARGET_IMAGE", "").strip()
     if not re.fullmatch(r"[0-9a-fA-F]{40}", target_git_sha):
-        failures.append(
-            "CAPACITY_TARGET_GIT_SHA must identify the exact 40-character deployed Git SHA."
-        )
+        failures.append("CAPACITY_TARGET_GIT_SHA must identify the exact 40-character deployed Git SHA.")
     if not target_image:
         failures.append("CAPACITY_TARGET_IMAGE is required for reproducible capacity evidence.")
     elif target_image.endswith(":latest"):
@@ -410,9 +404,7 @@ def main() -> int:
             if value is None:
                 failures.append(f"{spec.name} was not measurable: {error}")
             else:
-                failures.append(
-                    f"{spec.name}={value:.3f}{spec.unit} breached its capacity gate."
-                )
+                failures.append(f"{spec.name}={value:.3f}{spec.unit} breached its capacity gate.")
 
         infrastructure.append(
             {
