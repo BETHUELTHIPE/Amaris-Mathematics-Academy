@@ -24,3 +24,10 @@ test("connection notice can be closed and blocks offline submissions", async () 
   assert.match(source, /document\.addEventListener\("submit", preventOfflineSubmission, true\)/);
   assert.match(source, /event\.key === "Escape"/);
 });
+
+test("synthetic browser-test identity is development-only", async () => {
+  const source = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
+  assert.match(source, /process\.env\.NODE_ENV !== "development"/);
+  assert.match(source, /process\.env\.E2E_SYNTHETIC_STUDENT !== "true"/);
+  assert.match(source, /responsive\.student@example\.test/);
+});
