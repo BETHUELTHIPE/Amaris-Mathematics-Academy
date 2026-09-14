@@ -96,14 +96,14 @@ jobs:
         run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests
       - name: Integration tests
         run: python manage.py test content.tests.PublicContentApiTests content.test_integrations
+      - name: Load/capacity harness contract (no traffic)
+        run: python -m unittest load_tests.test_contract
       - name: Permission tests
         run: python manage.py test content.tests.AdminRegistrationTests content.tests.PermissionTests
       - name: Payment tests
         run: python manage.py test content.tests.PaymentReconciliationTests
       - name: Full Django regression suite
         run: python manage.py test
-      - name: Load-test safety contract
-        run: python -m unittest load_tests.test_contract
       - name: Production-acceptance gate contract
         working-directory: .
         run: python -m unittest discover -s scripts/release -p 'test_*.py'
