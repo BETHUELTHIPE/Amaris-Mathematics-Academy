@@ -1,0 +1,31 @@
+name: Capacity Harness Contract Verification
+
+on:
+  push:
+    branches:
+      - test/real-integration-boundaries-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  capacity-contract:
+    name: Capacity harness contract (no traffic)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Verify capacity safety and evidence contract
+        run: python -m unittest load_tests.test_contract
+      - name: Compile capacity harness modules
+        run: >-
+          python -m py_compile
+          load_tests/capacity.py
+          load_tests/capacity_locustfile.py
+          load_tests/capacity_report.py
+          load_tests/capacity_summary.py
