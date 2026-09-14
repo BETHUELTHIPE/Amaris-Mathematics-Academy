@@ -7,8 +7,14 @@
       "numberOfRuns": 1,
       "url": [
         "http://127.0.0.1:4180/",
+        "http://127.0.0.1:4180/about",
         "http://127.0.0.1:4180/courses",
-        "http://127.0.0.1:4180/contact"
+        "http://127.0.0.1:4180/courses/caps-grade-12-mathematics",
+        "http://127.0.0.1:4180/how-it-works",
+        "http://127.0.0.1:4180/contact",
+        "http://127.0.0.1:4180/login",
+        "http://127.0.0.1:4180/register",
+        "http://127.0.0.1:4180/forgot-password"
       ],
       "settings": {
         "chromeFlags": "--headless --no-sandbox --disable-dev-shm-usage"
