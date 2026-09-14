@@ -50,7 +50,7 @@ class CapacityThresholds:
     infrastructure_ram_pct: float
 
     @classmethod
-    def from_environment(cls) -> "CapacityThresholds":
+    def from_environment(cls) -> CapacityThresholds:
         return cls(
             failure_pct=env_float("CAPACITY_MAX_FAILURE_PCT", 1.0),
             server_5xx_pct=env_float("CAPACITY_MAX_5XX_PCT", 0.5),
