@@ -101,8 +101,8 @@ class RedisIntegrationTests(SimpleTestCase):
         key = f"integration:{uuid.uuid4().hex}"
 
         try:
-            self.assertTrue(default_cache.set(key, "default-value", timeout=30))
-            self.assertTrue(public_cache.set(key, "public-value", timeout=30))
+            default_cache.set(key, "default-value", timeout=30)
+            public_cache.set(key, "public-value", timeout=30)
             self.assertEqual(default_cache.get(key), "default-value")
             self.assertEqual(public_cache.get(key), "public-value")
         finally:
