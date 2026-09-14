@@ -26,8 +26,12 @@ test("connection notice can be closed and blocks offline submissions", async () 
 });
 
 test("synthetic browser-test identity is development-only", async () => {
-  const source = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
-  assert.match(source, /process\.env\.NODE_ENV !== "development"/);
-  assert.match(source, /process\.env\.E2E_SYNTHETIC_STUDENT !== "true"/);
-  assert.match(source, /responsive\.student@example\.test/);
+  const authSource = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
+  const viteSource = await readFile(new URL("../vite.config.ts", import.meta.url), "utf8");
+
+  assert.match(authSource, /__E2E_SYNTHETIC_STUDENT__/);
+  assert.match(authSource, /responsive\.student@example\.test/);
+  assert.match(viteSource, /process\.env\.NODE_ENV !== "production"/);
+  assert.match(viteSource, /process\.env\.E2E_SYNTHETIC_STUDENT === "true"/);
+  assert.match(viteSource, /__E2E_SYNTHETIC_STUDENT__:\s*JSON\.stringify\(syntheticE2EStudent\)/);
 });
