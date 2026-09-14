@@ -66,12 +66,22 @@ class LoadTestSafetyTests(unittest.TestCase):
 class CapacityContractTests(unittest.TestCase):
     @staticmethod
     def _workflow_text() -> str:
-        workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "capacity.yml"
+        workflow = (
+            Path(__file__).resolve().parents[2]
+            / ".github"
+            / "workflows"
+            / "capacity.yml"
+        )
         return workflow.read_text(encoding="utf-8")
 
     @staticmethod
     def _capacity_locust_text() -> str:
         path = Path(__file__).resolve().parent / "capacity_locustfile.py"
+        return path.read_text(encoding="utf-8")
+
+    @staticmethod
+    def _capacity_report_text() -> str:
+        path = Path(__file__).resolve().parent / "capacity_report.py"
         return path.read_text(encoding="utf-8")
 
     def test_capacity_levels_are_exact_progressive_sequence(self):
@@ -161,10 +171,27 @@ class CapacityContractTests(unittest.TestCase):
         self.assertIn('LOADTEST_ALLOW_PRODUCTION: "false"', text)
         self.assertNotIn("allow_production:", text)
         self.assertIn(
-            "Capacity stages above 1,000 users require a dedicated " "self-hosted load generator.",
+            "Capacity stages above 1,000 users require a dedicated "
+            "self-hosted load generator.",
             text,
         )
         self.assertIn("inputs.load_generator == 'self-hosted'", text)
+        self.assertIn("capacity-load-generator", text)
+
+    def test_capacity_workflow_requires_immutable_target_identity(self):
+        text = self._workflow_text()
+        self.assertIn("CAPACITY_TARGET_GIT_SHA", text)
+        self.assertIn("CAPACITY_TARGET_IMAGE", text)
+        self.assertIn("40-character Git SHA", text)
+        self.assertIn(":latest is not accepted", text)
+
+    def test_capacity_report_records_reproducible_provenance(self):
+        text = self._capacity_report_text()
+        self.assertIn('"target_git_sha"', text)
+        self.assertIn('"target_image"', text)
+        self.assertIn('"capacity_harness_git_sha"', text)
+        self.assertIn('"locust_version"', text)
+        self.assertIn('"tested_at_utc"', text)
 
     def test_capacity_requires_sustained_hold_and_fast_http_users(self):
         text = self._capacity_locust_text()
