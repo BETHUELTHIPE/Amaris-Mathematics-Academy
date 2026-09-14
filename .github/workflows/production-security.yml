@@ -85,6 +85,10 @@ jobs:
         working-directory: backend
         run: python manage.py migrate --noinput
 
+      - name: Collect production static assets
+        working-directory: backend
+        run: python manage.py collectstatic --noinput
+
       - name: Security-sensitive Django regression tests
         working-directory: backend
         run: |
