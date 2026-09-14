@@ -6,7 +6,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from playwright.sync_api import Browser, Page, sync_playwright
+from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 BASE_URL = os.getenv("E2E_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
 ARTIFACT_DIR = Path(os.getenv("E2E_ARTIFACT_DIR", "artifacts/e2e"))
@@ -77,7 +77,7 @@ def check_form(page: Page) -> None:
     require(page.locator("#fullName").input_value() == "Responsive Test Student", "Full-name field did not retain its value")
     require(page.locator("#email").input_value() == "responsive.student@example.test", "Email field did not retain its value")
     require(page.locator("#enquiryType").input_value() == "technical-support", "Enquiry type was not selected")
-    require(checkbox.get_attribute("aria-checked") == "true", "Consent checkbox was not selected")
+    expect(checkbox).to_have_attribute("aria-checked", "true", timeout=3_000)
     require(page.get_by_role("button", name=re.compile("Send enquiry")).is_visible(), "Enquiry submit button is not visible")
     assert_no_horizontal_overflow(page, "enquiry form")
 

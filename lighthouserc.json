@@ -1,8 +1,8 @@
 {
   "ci": {
     "collect": {
-      "startServerCommand": "npm run start -- --hostname 127.0.0.1 --port 3001",
-      "startServerReadyPattern": "\\[vinext\\] Production server running at",
+      "startServerCommand": "npm run preview:ci",
+      "startServerReadyPattern": "Lighthouse compression proxy ready at",
       "startServerReadyTimeout": 90000,
       "numberOfRuns": 1,
       "url": [

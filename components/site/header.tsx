@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Mail, MapPin, Phone } from "lucide-react";
 import { AuthControls } from "@/components/site/auth-controls";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
@@ -23,7 +22,9 @@ export async function Header() {
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
         <Link href="/" className="relative z-10 flex shrink-0 items-center gap-3 font-semibold tracking-tight" aria-label="Amaris Mathematics Academy home">
           <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-white p-1 shadow-[0_8px_22px_rgba(0,0,0,.22)] ring-1 ring-[#ffcc66]/70 sm:size-14">
-            <Image src={academyBrand.logoPath} alt="" width={56} height={56} priority unoptimized className="size-full object-contain" />
+            {/* The logo is already a small static asset; direct delivery avoids shipping the Next/Vinext image runtime on every page. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={academyBrand.logoPath} alt="" width={56} height={56} fetchPriority="high" className="size-full object-contain" />
           </span>
           <span className="leading-tight">Amaris <span className="hidden text-white/60 sm:inline">Mathematics Academy</span></span>
         </Link>
