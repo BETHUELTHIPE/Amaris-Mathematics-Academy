@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ConnectionRecovery } from "@/components/site/connection-recovery";
+import { DeferredConnectionRecovery } from "@/components/site/deferred-connection-recovery";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,7 +19,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en-ZA">
-      <body className="antialiased">{children}<ConnectionRecovery /></body>
+      <body className="antialiased">
+        {children}
+        <DeferredConnectionRecovery />
+      </body>
     </html>
   );
 }
