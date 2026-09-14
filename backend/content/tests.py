@@ -37,7 +37,7 @@ class AdminRegistrationTests(TestCase):
             password="Strong-Test-Password-123!",
         )
         self.client.force_login(user)
-        response = self.client.get(reverse("admin:index"))
+        response = self.client.get(reverse("admin:index"), secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Amaris Academy")
 
@@ -69,14 +69,14 @@ class PublicContentApiTests(TestCase):
             price=950,
             status=Course.Status.PUBLISHED,
         )
-        response = self.client.get(reverse("courses-list"))
+        response = self.client.get(reverse("courses-list"), secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["count"], 1)
         self.assertEqual(response.json()["results"][0]["slug"], "published-course")
 
     def test_site_settings_endpoint(self):
         SiteSettings.objects.create()
-        response = self.client.get(reverse("site-settings"))
+        response = self.client.get(reverse("site-settings"), secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["site_name"], "Amaris Mathematics Academy")
 
@@ -104,20 +104,20 @@ class PublicContentApiTests(TestCase):
         CourseModule.objects.create(course=course, title="Algebra", order=1, is_published=True)
         caches["public_content"].clear()
 
-        first = self.client.get(reverse("courses-list"))
+        first = self.client.get(reverse("courses-list"), secure=True)
         payload = first.json()["results"][0]
         self.assertNotIn("modules", payload)
         self.assertNotIn("outcomes", payload)
         self.assertNotIn("description", payload)
 
         with self.assertNumQueries(0):
-            second = self.client.get(reverse("courses-list"))
+            second = self.client.get(reverse("courses-list"), secure=True)
         self.assertEqual(second.content, first.content)
 
 
 class PermissionTests(TestCase):
     def test_anonymous_and_non_staff_users_cannot_enter_admin(self):
-        anonymous = self.client.get(reverse("admin:index"))
+        anonymous = self.client.get(reverse("admin:index"), secure=True)
         self.assertEqual(anonymous.status_code, 302)
         self.assertIn("/admin/login/", anonymous.headers["Location"])
 
@@ -127,7 +127,7 @@ class PermissionTests(TestCase):
             password="Strong-Test-Password-123!",
         )
         self.client.force_login(user)
-        non_staff = self.client.get(reverse("admin:index"))
+        non_staff = self.client.get(reverse("admin:index"), secure=True)
         self.assertEqual(non_staff.status_code, 302)
         self.assertIn("/admin/login/", non_staff.headers["Location"])
 
@@ -160,7 +160,7 @@ class PermissionTests(TestCase):
             is_published=True,
         )
 
-        response = self.client.get(reverse("courses-detail", kwargs={"slug": course.slug}))
+        response = self.client.get(reverse("courses-detail", kwargs={"slug": course.slug}), secure=True)
         body = response.content.decode()
 
         self.assertEqual(response.status_code, 200)
@@ -171,8 +171,8 @@ class PermissionTests(TestCase):
 
 class HealthAndMetricsTests(TestCase):
     def test_liveness_and_readiness_do_not_disclose_infrastructure(self):
-        live = self.client.get(reverse("health-live"))
-        ready = self.client.get(reverse("health-ready"))
+        live = self.client.get(reverse("health-live"), secure=True)
+        ready = self.client.get(reverse("health-ready"), secure=True)
 
         self.assertEqual(live.status_code, 200)
         self.assertEqual(live.json(), {"status": "ok"})
@@ -183,8 +183,8 @@ class HealthAndMetricsTests(TestCase):
 
     @patch("amaris_cms.urls.Redis.from_url", side_effect=ConnectionError)
     def test_redis_failure_degrades_dependencies_but_not_readiness(self, _redis):
-        ready = self.client.get(reverse("health-ready"))
-        dependencies = self.client.get(reverse("health-dependencies"))
+        ready = self.client.get(reverse("health-ready"), secure=True)
+        dependencies = self.client.get(reverse("health-dependencies"), secure=True)
 
         self.assertEqual(ready.status_code, 200)
         self.assertEqual(dependencies.status_code, 200)
@@ -193,7 +193,7 @@ class HealthAndMetricsTests(TestCase):
         self.assertFalse(dependencies.json()["dependencies"]["redis"])
 
     def test_prometheus_metrics_endpoint_is_available_to_private_scraper(self):
-        response = self.client.get("/metrics")
+        response = self.client.get("/metrics", secure=True)
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/plain", response.headers["Content-Type"])
@@ -203,7 +203,7 @@ class ErrorRecoveryTests(TestCase):
     def test_branded_error_pages_are_safe_and_traceable(self):
         for status in (400, 403, 404, 429, 500):
             with self.subTest(status=status):
-                response = self.client.get(reverse(f"error-{status}"))
+                response = self.client.get(reverse(f"error-{status}"), secure=True)
                 self.assertEqual(response.status_code, status)
                 self.assertContains(response, "Amaris Mathematics Academy", status_code=status)
                 self.assertContains(response, "Support reference", status_code=status)
