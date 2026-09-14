@@ -46,8 +46,13 @@ class ProductionEvidenceWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("CAPACITY_MAX_5XX_RATE", self.source)
         self.assertNotIn("CAPACITY_P95_MS", self.source)
         self.assertNotIn("CAPACITY_P99_MS", self.source)
-        self.assertIn('          - "50000"', self.source)
         self.assertIn("public_http_concurrent_users_tested", self.source)
+
+    def test_capacity_progression_supports_only_approved_steps(self) -> None:
+        for users in (100, 500, 1000, 2500, 5000, 10000, 25000, 50000):
+            with self.subTest(users=users):
+                self.assertIn(f'          - "{users}"', self.source)
+        self.assertEqual(self.source.count('          - "50000"'), 1)
 
     def test_payment_and_email_delivery_are_not_falsely_certified(self) -> None:
         self.assertIn("payment_provider_sandbox_verified: false", self.source)
