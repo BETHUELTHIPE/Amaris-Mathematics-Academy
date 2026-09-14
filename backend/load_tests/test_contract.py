@@ -66,12 +66,7 @@ class LoadTestSafetyTests(unittest.TestCase):
 class CapacityContractTests(unittest.TestCase):
     @staticmethod
     def _workflow_text() -> str:
-        workflow = (
-            Path(__file__).resolve().parents[2]
-            / ".github"
-            / "workflows"
-            / "capacity.yml"
-        )
+        workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "capacity.yml"
         return workflow.read_text(encoding="utf-8")
 
     @staticmethod
@@ -171,8 +166,7 @@ class CapacityContractTests(unittest.TestCase):
         self.assertIn('LOADTEST_ALLOW_PRODUCTION: "false"', text)
         self.assertNotIn("allow_production:", text)
         self.assertIn(
-            "Capacity stages above 1,000 users require a dedicated "
-            "self-hosted load generator.",
+            "Capacity stages above 1,000 users require a dedicated " "self-hosted load generator.",
             text,
         )
         self.assertIn("inputs.load_generator == 'self-hosted'", text)
