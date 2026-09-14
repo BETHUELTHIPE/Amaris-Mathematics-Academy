@@ -2,7 +2,14 @@ import os
 import unittest
 from unittest.mock import patch
 
-from load_tests.config import Endpoints, missing_full_journey_configuration, validate_target
+from load_tests.config import (
+    THRESHOLDS,
+    TRAFFIC_STAGES,
+    Endpoints,
+    Thresholds,
+    missing_full_journey_configuration,
+    validate_target,
+)
 
 
 class LoadTestSafetyTests(unittest.TestCase):
@@ -37,7 +44,11 @@ class LoadTestSafetyTests(unittest.TestCase):
             )
 
     def test_external_endpoint_paths_are_rejected(self):
-        with patch.dict(os.environ, {"LOADTEST_CHECKOUT_PATH": "https://www.payfast.co.za/eng/process"}, clear=True):
+        with patch.dict(
+            os.environ,
+            {"LOADTEST_CHECKOUT_PATH": "https://www.payfast.co.za/eng/process"},
+            clear=True,
+        ):
             with self.assertRaisesRegex(ValueError, "relative application path"):
                 Endpoints.from_environment()
 
@@ -46,6 +57,23 @@ class LoadTestSafetyTests(unittest.TestCase):
         self.assertIn("LOADTEST_LESSON_PATH", missing)
         self.assertIn("LOADTEST_CHECKOUT_PATH", missing)
         self.assertIn("LOADTEST_PAYMENT_STATUS_PATH", missing)
+
+    def test_all_existing_amaris_profiles_remain_available(self):
+        expected = {"smoke", "normal", "peak", "spike", "degraded"}
+        self.assertEqual(set(THRESHOLDS), expected)
+        self.assertEqual(set(TRAFFIC_STAGES), expected)
+
+    def test_existing_profile_thresholds_are_locked(self):
+        self.assertEqual(
+            THRESHOLDS,
+            {
+                "smoke": Thresholds(0.01, 1000, 2000, 750, 1000, 1500),
+                "normal": Thresholds(0.01, 1000, 2000, 750, 1000, 1500),
+                "peak": Thresholds(0.02, 1500, 3000, 1000, 1500, 2000),
+                "spike": Thresholds(0.03, 2000, 4000, 1500, 2000, 2500),
+                "degraded": Thresholds(0.05, 3000, 6000, 2500, 3000, 4000),
+            },
+        )
 
 
 if __name__ == "__main__":
