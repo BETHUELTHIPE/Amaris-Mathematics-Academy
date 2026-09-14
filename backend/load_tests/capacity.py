@@ -47,9 +47,7 @@ def env_float(name: str, default: float, *, minimum: float = 0.0) -> float:
 def validate_capacity_level(users: int) -> int:
     if users not in CAPACITY_LEVELS:
         supported = ", ".join(f"{level:,}" for level in CAPACITY_LEVELS)
-        raise ValueError(
-            f"Unsupported capacity level {users:,}. Supported levels: {supported}."
-        )
+        raise ValueError(f"Unsupported capacity level {users:,}. Supported levels: {supported}.")
     return users
 
 
@@ -64,10 +62,7 @@ def _reject_weaker_threshold(
     maximum_allowed: float,
 ) -> float:
     if value > maximum_allowed:
-        raise ValueError(
-            f"{name}={value} would weaken the capacity gate; "
-            f"it must be <= {maximum_allowed}."
-        )
+        raise ValueError(f"{name}={value} would weaken the capacity gate; " f"it must be <= {maximum_allowed}.")
     return value
 
 
