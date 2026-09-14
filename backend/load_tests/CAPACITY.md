@@ -1,6 +1,6 @@
 # Capacity verification
 
-Capacity verification is deliberately separate from normal pull-request CI. The only trigger for `.github/workflows/capacity.yml` is `workflow_dispatch`.
+Capacity verification is deliberately separate from normal pull-request CI. The only trigger for `.github/workflows/capacity.yml` is `workflow_dispatch`. Normal PR CI may run the lightweight harness contract tests, but it never launches a real capacity workload.
 
 ## Progressive stages
 
@@ -31,6 +31,7 @@ Each stage records:
 
 - actual maximum concurrent users observed
 - target hold seconds required and actually sustained
+- test duration
 - requests per second (RPS)
 - p50, p90, p95 and p99 response times
 - overall failure percentage
@@ -65,12 +66,25 @@ A required Prometheus metric that cannot be measured makes the capacity stage **
 
 The infrastructure resource gate is capped at 90% CPU/RAM utilisation. Environment values may make that gate stricter but cannot raise it above 90%. Redis rejected connections and PostgreSQL deadlocks must remain at zero during the measured window.
 
-## Safety
+## Reproducible build identity
+
+A capacity number is valid only for the exact deployment that was tested. Configure the protected GitHub `capacity` environment with both:
+
+- `CAPACITY_TARGET_GIT_SHA`: the deployed 40-character Git commit SHA
+- `CAPACITY_TARGET_IMAGE`: the exact immutable Docker image reference used by the capacity environment
+
+The workflow rejects a missing build identity and rejects an image ending in `:latest`. Each stage report also records the capacity-harness Git SHA, workflow run ID, UTC test time, target host, Locust version, Python version, runner identity and target deployment identity.
+
+When the application is changed or infrastructure is materially resized, the previous capacity result remains historical evidence for the old deployment; rerun the progressive stages before making a capacity claim about the new deployment.
+
+## Safety and environment configuration
 
 Use a dedicated production-like capacity environment with synthetic data. Configure the protected GitHub `capacity` environment with:
 
 - `CAPACITY_TARGET_URL`
 - `CAPACITY_ALLOWED_HOSTS`
+- `CAPACITY_TARGET_GIT_SHA`
+- `CAPACITY_TARGET_IMAGE`
 - `CAPACITY_PROMETHEUS_URL`
 - representative endpoint paths, including `CAPACITY_LESSON_PATH` and `CAPACITY_PAYMENT_STATUS_PATH`
 - a dedicated synthetic authentication credential in capacity-only secrets
@@ -84,6 +98,8 @@ Production targeting is disabled in the workflow. Capacity verification must use
 
 Capacity runs up to 1,000 users may use the GitHub-hosted generator for exploratory/low-stage verification. Any requested maximum above 1,000 users requires the `self-hosted` load-generator option and therefore a dedicated runner with sufficient CPU, RAM, file descriptors and network capacity.
 
+High-stage self-hosted execution is pinned to the custom runner label `capacity-load-generator`; selecting the generic `self-hosted` pool is not enough. Configure only purpose-built load-generator machines with that label.
+
 The workflow records the selected runner, CPU count, total memory, open-file limit and Locust worker-process count as evidence. Locust uses `FastHttpUser` for the capacity workload and can use multiple local worker processes through the `locust_processes` input.
 
-A high stage is still **not** considered verified merely because a self-hosted runner was selected. The test must actually reach and sustain the requested concurrency, pass the HTTP/error gates, and retain complete PostgreSQL, Redis, Gunicorn/Django, Celery and system telemetry.
+A high stage is still **not** considered verified merely because a dedicated runner was selected. The test must actually reach and sustain the requested concurrency, pass the HTTP/error gates, and retain complete PostgreSQL, Redis, Gunicorn/Django, Celery and system telemetry.
