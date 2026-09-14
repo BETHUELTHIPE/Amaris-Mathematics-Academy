@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       profile:
-        description: Staging traffic profile
+        description: Staging traffic profile (degraded uses the existing degraded thresholds; inject dependency faults only through the controlled fault runner)
         required: true
         type: choice
-        options: [normal, peak, spike]
+        options: [smoke, normal, peak, spike, degraded]
         default: normal
       full_journey:
         description: Include protected and write operations using staging fixtures
