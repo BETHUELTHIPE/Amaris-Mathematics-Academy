@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 import gevent
-from locust import HttpUser, LoadTestShape, between, events, task
+from locust import LoadTestShape, between, events, task
+from locust.contrib.fasthttp import FastHttpUser
 from locust.env import Environment
 from locust.runners import MasterRunner, WorkerRunner
 
@@ -31,6 +32,7 @@ SESSION_COOKIE_VALUE = os.getenv("LOADTEST_SESSION_COOKIE_VALUE", "").strip()
 
 _STARTED_AT = 0.0
 _MAX_USERS_OBSERVED = 0
+_TARGET_SECONDS_OBSERVED = 0.0
 _LOCAL_REQUESTS = 0
 _LOCAL_5XX = 0
 _WORKER_COUNTERS: dict[str, tuple[int, int]] = {}
@@ -41,7 +43,7 @@ def _auth_available() -> bool:
     return bool(AUTH_BEARER or COOKIE_HEADER or (SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE))
 
 
-def _checked_get(user: HttpUser, path: str, name: str, *, protected: bool = False) -> None:
+def _checked_get(user: Any, path: str, name: str, *, protected: bool = False) -> None:
     if not path:
         return
     with user.client.get(path, name=name, catch_response=True, allow_redirects=not protected) as response:
@@ -50,7 +52,7 @@ def _checked_get(user: HttpUser, path: str, name: str, *, protected: bool = Fals
             response.failure(f"unexpected status {response.status_code}")
 
 
-class CapacityPublicUser(HttpUser):
+class CapacityPublicUser(FastHttpUser):
     weight = 6
     wait_time = between(1.0, 2.5)
 
@@ -75,7 +77,7 @@ class CapacityPublicUser(HttpUser):
         _checked_get(self, ENDPOINTS.login_page, "06a Login page")
 
 
-class CapacityStudentUser(HttpUser):
+class CapacityStudentUser(FastHttpUser):
     weight = 4 if REQUIRE_AUTH else 0
     wait_time = between(1.0, 2.0)
 
@@ -117,11 +119,20 @@ def _is_worker(environment: Environment) -> bool:
 
 
 def _sample_users(environment: Environment) -> None:
-    global _MAX_USERS_OBSERVED
+    global _MAX_USERS_OBSERVED, _TARGET_SECONDS_OBSERVED
+
+    previous_sample_at = time.monotonic()
     while not _STOP_SAMPLING:
+        now = time.monotonic()
+        elapsed = max(0.0, min(now - previous_sample_at, 2.0))
+        previous_sample_at = now
+
         runner = environment.runner
         if runner is not None and not isinstance(runner, WorkerRunner):
-            _MAX_USERS_OBSERVED = max(_MAX_USERS_OBSERVED, int(getattr(runner, "user_count", 0)))
+            user_count = int(getattr(runner, "user_count", 0))
+            _MAX_USERS_OBSERVED = max(_MAX_USERS_OBSERVED, user_count)
+            if user_count >= TARGET_USERS:
+                _TARGET_SECONDS_OBSERVED += elapsed
         gevent.sleep(1)
 
 
@@ -160,7 +171,8 @@ def receive_capacity_counters(client_id: str, data: dict[str, Any], **_kwargs: A
 
 @events.test_start.add_listener
 def validate_capacity_run(environment: Environment, **_kwargs: Any) -> None:
-    global _STARTED_AT, _STOP_SAMPLING
+    global _STARTED_AT, _MAX_USERS_OBSERVED, _TARGET_SECONDS_OBSERVED, _STOP_SAMPLING
+
     target_url = environment.host or os.getenv("LOADTEST_TARGET_URL", "")
     validate_target(
         target_url,
@@ -185,6 +197,8 @@ def validate_capacity_run(environment: Environment, **_kwargs: Any) -> None:
 
     if not _is_worker(environment):
         _STARTED_AT = time.monotonic()
+        _MAX_USERS_OBSERVED = 0
+        _TARGET_SECONDS_OBSERVED = 0.0
         _STOP_SAMPLING = False
         gevent.spawn(_sample_users, environment)
 
@@ -213,11 +227,15 @@ def write_capacity_evidence(environment: Environment, **_kwargs: Any) -> None:
     duration_seconds = max(time.monotonic() - _STARTED_AT, 0.001)
     failure_pct = total.fail_ratio * 100.0
     server_5xx_pct = (server_5xx_count / request_count * 100.0) if request_count else 0.0
+    minimum_hold_seconds = max(1.0, HOLD_SECONDS - 15.0)
 
     evidence = {
         "target_users": TARGET_USERS,
         "max_users_observed": _MAX_USERS_OBSERVED,
         "target_reached": _MAX_USERS_OBSERVED >= TARGET_USERS,
+        "target_hold_seconds_required": HOLD_SECONDS,
+        "target_hold_seconds_observed": round(_TARGET_SECONDS_OBSERVED, 3),
+        "target_hold_sustained": _TARGET_SECONDS_OBSERVED >= minimum_hold_seconds,
         "duration_seconds": round(duration_seconds, 3),
         "requests": int(total.num_requests),
         "failures": int(total.num_failures),
@@ -234,6 +252,7 @@ def write_capacity_evidence(environment: Environment, **_kwargs: Any) -> None:
             "max_5xx_pct": threshold.server_5xx_pct,
             "max_p95_ms": threshold.p95_ms,
             "max_p99_ms": threshold.p99_ms,
+            "minimum_target_hold_seconds": minimum_hold_seconds,
         },
     }
 
@@ -242,6 +261,11 @@ def write_capacity_evidence(environment: Environment, **_kwargs: Any) -> None:
         failures.append("no requests were recorded")
     if _MAX_USERS_OBSERVED < TARGET_USERS:
         failures.append(f"only {_MAX_USERS_OBSERVED:,} of {TARGET_USERS:,} target users were observed")
+    if _TARGET_SECONDS_OBSERVED < minimum_hold_seconds:
+        failures.append(
+            f"target concurrency was sustained for only {_TARGET_SECONDS_OBSERVED:.1f}s; "
+            f"at least {minimum_hold_seconds:.1f}s is required"
+        )
     if failure_pct > threshold.failure_pct:
         failures.append(f"failure rate {failure_pct:.3f}% exceeded {threshold.failure_pct:.3f}%")
     if server_5xx_pct > threshold.server_5xx_pct:
