@@ -20,8 +20,8 @@ jobs:
       DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
       DJANGO_CSRF_TRUSTED_ORIGINS: "http://localhost,http://127.0.0.1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Install backend dependencies
@@ -40,14 +40,19 @@ jobs:
         working-directory: backend
     env:
       DJANGO_DEBUG: "false"
-      DJANGO_SECRET_KEY: "ci-only-not-a-production-secret-change-me"
       DJANGO_ALLOWED_HOSTS: "example.com"
       DJANGO_CSRF_TRUSTED_ORIGINS: "https://example.com"
       DATABASE_URL: "sqlite:///db.sqlite3"
       DATABASE_SSL_REQUIRED: "false"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - name: Generate an ephemeral Django secret
+        shell: bash
+        run: |
+          secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$secret"
+          printf 'DJANGO_SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Install backend dependencies
@@ -63,8 +68,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Audit Python dependencies
@@ -75,8 +80,8 @@ jobs:
   javascript-dependency-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -88,7 +93,7 @@ jobs:
   secret-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Gitleaks
@@ -99,7 +104,7 @@ jobs:
   container-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build backend image
         run: docker build -t amaris-backend-security-scan ./backend
       - name: Install Trivy
