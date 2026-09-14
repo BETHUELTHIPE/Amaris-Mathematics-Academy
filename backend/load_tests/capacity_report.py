@@ -9,7 +9,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -365,7 +365,7 @@ def main() -> int:
     target_url = os.getenv("LOADTEST_TARGET_URL", "")
     target_host = (urllib.parse.urlparse(target_url).hostname or "").lower()
     provenance = {
-        "tested_at_utc": datetime.now(timezone.utc).isoformat(),
+        "tested_at_utc": datetime.now(UTC).isoformat(),
         "target_host": target_host,
         "target_git_sha": target_git_sha,
         "target_image": target_image,
