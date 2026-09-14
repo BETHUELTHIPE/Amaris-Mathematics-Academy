@@ -92,6 +92,8 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
       - name: Apply migrations in CI
         run: python manage.py migrate --noinput
+      - name: Collect production static assets
+        run: python manage.py collectstatic --noinput
       - name: Unit tests
         run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests
       - name: Integration tests
