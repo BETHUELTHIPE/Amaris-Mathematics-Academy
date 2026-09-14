@@ -12,26 +12,52 @@ type NavigationLink = {
 
 type AuthState = "loading" | "anonymous" | "unverified" | "verified";
 type AuthResult = { authenticated?: boolean; emailVerified?: boolean };
+type IdleWindow = Window & {
+  requestIdleCallback?: (
+    callback: () => void,
+    options?: { timeout: number },
+  ) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
 
 export function AuthControls({ links }: { links: NavigationLink[] }) {
   const [state, setState] = useState<AuthState>("loading");
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/auth-state", {
-      cache: "no-store",
-      credentials: "same-origin",
-      signal: controller.signal,
-    })
-      .then(async (response): Promise<AuthResult | null> => (response.ok ? (await response.json()) as AuthResult : null))
-      .then((result) => {
-        if (!result?.authenticated) setState("anonymous");
-        else setState(result.emailVerified ? "verified" : "unverified");
+    const idleWindow = window as IdleWindow;
+    let idleHandle: number | undefined;
+    let timeoutHandle: number | undefined;
+
+    const loadAuthState = () => {
+      fetch("/api/auth-state", {
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: controller.signal,
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setState("anonymous");
-      });
-    return () => controller.abort();
+        .then(async (response): Promise<AuthResult | null> =>
+          response.ok ? ((await response.json()) as AuthResult) : null,
+        )
+        .then((result) => {
+          if (!result?.authenticated) setState("anonymous");
+          else setState(result.emailVerified ? "verified" : "unverified");
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setState("anonymous");
+        });
+    };
+
+    if (idleWindow.requestIdleCallback) {
+      idleHandle = idleWindow.requestIdleCallback(loadAuthState, { timeout: 750 });
+    } else {
+      timeoutHandle = window.setTimeout(loadAuthState, 150);
+    }
+
+    return () => {
+      controller.abort();
+      if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
+      if (timeoutHandle !== undefined) window.clearTimeout(timeoutHandle);
+    };
   }, []);
 
   const authenticated = state === "verified" || state === "unverified";
