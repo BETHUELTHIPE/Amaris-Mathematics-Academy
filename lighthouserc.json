@@ -2,7 +2,7 @@
   "ci": {
     "collect": {
       "startServerCommand": "npm run start -- --hostname 127.0.0.1 --port 3001",
-      "startServerReadyPattern": "Local|localhost|127.0.0.1|Listening|ready",
+      "startServerReadyPattern": "\\[vinext\\] Production server running at",
       "startServerReadyTimeout": 90000,
       "numberOfRuns": 1,
       "url": [
