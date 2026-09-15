@@ -16,13 +16,16 @@ test("all requested recovery states are configured", async () => {
   }
 });
 
-test("connection notice can be closed and blocks offline submissions", async () => {
+test("connection notice is hydration-free, closable, and blocks offline submissions", async () => {
   const source = await readFile(new URL("../components/site/connection-recovery.tsx", import.meta.url), "utf8");
-  assert.match(source, /onClick=\{\(\) => setDismissed\(true\)\}/);
+  assert.doesNotMatch(source, /["']use client["']/);
+  assert.doesNotMatch(source, /useState|useEffect/);
   assert.match(source, /aria-label="Close connection notice"/);
   assert.match(source, /event\.preventDefault\(\)/);
   assert.match(source, /document\.addEventListener\("submit", preventOfflineSubmission, true\)/);
   assert.match(source, /event\.key === "Escape"/);
+  assert.match(source, /data-recovery-close/);
+  assert.match(source, /window\.addEventListener\("offline", showOffline\)/);
 });
 
 test("synthetic browser-test identity is development-only", async () => {
