@@ -6,9 +6,8 @@ export const metadata: Metadata = {
   title: { default: "Amaris Mathematics Academy", template: "%s | Amaris Mathematics Academy" },
   description: "Structured online mathematics courses for South African school, TVET and university students.",
   icons: {
-    icon: "/brand/amaris-academy-icon-192.png",
-    shortcut: "/brand/amaris-academy-icon-192.png",
-    apple: "/brand/amaris-academy-icon-192.png",
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
   },
 };
 
