@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- intentional full-page fallback navigation avoids loading the client Link runtime */
 "use client";
 
 export default function ErrorPage({ error }: { error: Error & { digest?: string }; reset: () => void }) {

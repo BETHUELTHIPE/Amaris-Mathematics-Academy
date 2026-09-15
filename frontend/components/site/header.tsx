@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- header uses intentional full-page anchors to avoid public-route Link hydration */
 import { Mail, MapPin, Phone } from "lucide-react";
 import { AuthControls } from "@/components/site/auth-controls";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
