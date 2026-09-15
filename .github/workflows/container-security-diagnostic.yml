@@ -1,0 +1,26 @@
+name: Container Security Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-container:
+    name: Print critical container findings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build --tag amaris-backend:diagnostic backend
+      - name: Print fixed critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: amaris-backend:diagnostic
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          scanners: vuln
+          exit-code: "0"

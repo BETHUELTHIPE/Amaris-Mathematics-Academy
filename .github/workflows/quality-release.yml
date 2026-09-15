@@ -126,6 +126,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
       - name: Install locked frontend dependencies
         run: npm ci
       - name: Frontend linting
@@ -258,7 +260,7 @@ jobs:
   container-security:
     name: Docker, Compose, image scan, and SBOM
     runs-on: ubuntu-latest
-    needs: [backend-quality, frontend-quality, responsive-browser, dependency-security, secret-security]
+    needs: [backend-quality, dependency-security, secret-security]
     permissions:
       contents: read
       security-events: write
@@ -278,7 +280,7 @@ jobs:
           format: cyclonedx-json
           output-file: amaris-backend-sbom.cdx.json
       - name: Scan container for critical vulnerabilities
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: amaris-backend:${{ github.sha }}
           format: sarif
@@ -304,7 +306,7 @@ jobs:
     name: Publish release image to Docker Hub
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    needs: [container-security]
+    needs: [container-security, frontend-quality, responsive-browser, backend-quality, dependency-security, secret-security]
     permissions:
       contents: read
     outputs:
