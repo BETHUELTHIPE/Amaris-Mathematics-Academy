@@ -55,7 +55,7 @@ jobs:
       LOADTEST_COURSE_ID: ${{ vars.LOADTEST_COURSE_ID }}
       LOADTEST_LESSON_ID: ${{ vars.LOADTEST_LESSON_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
