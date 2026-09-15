@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
-    "@cloudflare/workers-types": "4.20260702.1",
+    "@cloudflare/workers-types": "5.20260911.1",
     "@lhci/cli": "0.15.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
