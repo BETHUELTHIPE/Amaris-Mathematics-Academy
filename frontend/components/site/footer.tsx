@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Clock3, Mail, MapPin, Phone } from "lucide-react";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
 
@@ -13,9 +12,11 @@ export async function Footer() {
       <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-[1.35fr_.7fr_1.15fr] lg:px-8">
         <div className="max-w-md">
           <div className="flex items-center gap-3 font-semibold">
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white p-1">
-              <Image src={academyBrand.logoPath} alt={`${academyBrand.name} logo`} width={44} height={44} unoptimized className="size-full object-contain" />
-            </span>
+            <span
+              aria-hidden="true"
+              className="size-11 shrink-0 rounded-xl bg-white bg-contain bg-center bg-no-repeat p-1"
+              style={{ backgroundImage: `url(${academyBrand.logoPath})` }}
+            />
             <span>{academyBrand.name}</span>
           </div>
           <p className="mt-5 text-sm leading-7 text-white/58">Structured mathematics courses for South African school, TVET and university students. Learn clearly, practise deliberately and track real progress.</p>
