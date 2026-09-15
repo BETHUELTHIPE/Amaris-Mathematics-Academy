@@ -1,0 +1,19 @@
+name: Payment formatting diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  black-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install black==26.5.1
+      - run: black --diff --check backend/content/services/payfast_security.py
