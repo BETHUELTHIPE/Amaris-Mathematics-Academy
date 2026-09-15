@@ -394,7 +394,7 @@ class ContactEnquiry(TimeStampedModel):
         SPAM = "spam", "Spam"
 
     name = models.CharField(max_length=120)
-    email = models.EmailField()
+    email = models.EmailField(unique=False)
     phone = models.CharField(max_length=30, blank=True)
     subject = models.CharField(max_length=180)
     message = models.TextField()
@@ -468,6 +468,7 @@ class Payment(TimeStampedModel):
         PENDING = "pending", "Pending"
         PAID = "paid", "Paid"
         FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
         REFUNDED = "refunded", "Refunded"
 
     reference = models.CharField(max_length=100, unique=True)
