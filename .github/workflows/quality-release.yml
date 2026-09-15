@@ -154,7 +154,7 @@ jobs:
         run: npm run test:lighthouse
       - name: Preserve Lighthouse reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse-reports
           path: frontend/.lighthouseci/
@@ -205,7 +205,7 @@ jobs:
           python e2e/responsive_browser.py
       - name: Preserve responsive-browser evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: responsive-browser-evidence
           path: |
@@ -293,7 +293,7 @@ jobs:
           sarif_file: trivy-results.sarif
       - name: Upload software bill of materials
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: amaris-backend-sbom
           path: amaris-backend-sbom.cdx.json
