@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, BarChart3, BookOpenCheck, Check, CirclePlay, GraduationCap, ShieldCheck, Sigma, Target } from "lucide-react";
 import { Header } from "@/components/site/header";
@@ -13,7 +12,9 @@ export default async function Home() {
     <main className="min-h-screen bg-[#f5f7fb] text-[#0a1b36]">
       <Header />
       <section className="relative isolate overflow-hidden bg-[#07152d] text-white">
-        <Image src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" fill priority quality={90} unoptimized={process.env.NODE_ENV !== "production"} className="object-cover object-[62%_center] opacity-90" sizes="100vw" />
+        {/* This WebP is already optimized to ~57 KiB. Direct delivery avoids the Vinext image optimizer, which returned HTTP 500 in the production preview. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[62%_center] opacity-90" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,#07152d_0%,rgba(7,21,45,.95)_34%,rgba(7,21,45,.66)_54%,rgba(7,21,45,.04)_100%)]" />
         <div className="graph-paper absolute inset-0 opacity-15" />
         <div className="relative mx-auto grid min-h-[690px] max-w-7xl items-center px-5 py-20 lg:px-8">
@@ -29,7 +30,7 @@ export default async function Home() {
 
       <section className="relative z-10 mx-auto -mt-9 max-w-7xl px-5 lg:px-8" aria-label="Platform highlights">
         <div className="grid divide-y divide-[#dce4ef] overflow-hidden rounded-3xl border border-[#dce4ef] bg-white shadow-[0_22px_70px_rgba(7,21,45,.12)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          {[['6','focused programmes','A concise catalogue without distractions'],['220+','guided lessons','Clear explanations and deliberate practice'],['3','learning pathways','School, TVET and university mathematics']].map(([value,label,description]) => <div key={label} className="p-6 sm:p-7"><div className="text-3xl font-bold tracking-tight text-[#0b2a5b]">{value}</div><div className="mt-1 font-semibold">{label}</div><div className="mt-2 text-sm leading-6 text-[#60708a]">{description}</div></div>)}
+          {[["6","focused programmes","A concise catalogue without distractions"],["220+","guided lessons","Clear explanations and deliberate practice"],["3","learning pathways","School, TVET and university mathematics"]].map(([value,label,description]) => <div key={label} className="p-6 sm:p-7"><div className="text-3xl font-bold tracking-tight text-[#0b2a5b]">{value}</div><div className="mt-1 font-semibold">{label}</div><div className="mt-2 text-sm leading-6 text-[#60708a]">{description}</div></div>)}
         </div>
       </section>
 
@@ -47,7 +48,7 @@ export default async function Home() {
 
       <section className="mx-auto max-w-7xl px-5 py-24 lg:px-8">
         <div className="text-center"><p className="eyebrow">A clearer way to learn</p><h2 className="section-title mt-3">From registration to real progress.</h2></div>
-        <div className="mt-14 grid gap-5 md:grid-cols-3">{[[GraduationCap,'01','Choose your level','Find the mathematics pathway that matches your curriculum, grade and goal.'],[ShieldCheck,'02','Enrol securely','Create your profile first, then complete payment through PayFast or Google Pay.'],[BookOpenCheck,'03','Learn and measure','Continue from where you stopped, complete practice and see your progress grow.']].map(([Icon,number,title,copy]) => {const C = Icon as typeof GraduationCap; return <div key={title as string} className="rounded-3xl border border-[#dce4ef] bg-white p-7"><div className="flex items-center justify-between"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><C className="size-6" /></span><span className="font-mono text-sm text-[#60708a]">{number as string}</span></div><h3 className="mt-8 text-2xl font-semibold">{title as string}</h3><p className="mt-3 text-sm leading-7 text-[#60708a]">{copy as string}</p></div>})}</div>
+        <div className="mt-14 grid gap-5 md:grid-cols-3">{[[GraduationCap,"01","Choose your level","Find the mathematics pathway that matches your curriculum, grade and goal."],[ShieldCheck,"02","Enrol securely","Create your profile first, then complete payment through PayFast or Google Pay."],[BookOpenCheck,"03","Learn and measure","Continue from where you stopped, complete practice and see your progress grow."]].map(([Icon,number,title,copy]) => {const C = Icon as typeof GraduationCap; return <div key={title as string} className="rounded-3xl border border-[#dce4ef] bg-white p-7"><div className="flex items-center justify-between"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><C className="size-6" /></span><span className="font-mono text-sm text-[#60708a]">{number as string}</span></div><h3 className="mt-8 text-2xl font-semibold">{title as string}</h3><p className="mt-3 text-sm leading-7 text-[#60708a]">{copy as string}</p></div>})}</div>
       </section>
 
       <section className="px-5 pb-24 lg:px-8"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-8 overflow-hidden rounded-[2rem] bg-[#ffcc66] p-8 sm:p-12 lg:flex-row lg:items-center"><div><p className="text-sm font-bold uppercase tracking-[.16em] text-[#0b2a5b]">Start where you are</p><h2 className="mt-3 max-w-2xl text-4xl font-semibold leading-tight tracking-[-.04em] text-[#07152d] sm:text-5xl">Your next mathematics breakthrough starts with one lesson.</h2></div><Link href="/courses" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[#07152d] px-7 py-4 font-bold text-white">Explore courses <ArrowRight className="size-4" /></Link></div></section>
