@@ -41,9 +41,7 @@ class PayFastSandboxConfig:
         }
         missing = [name for name, value in required.items() if not str(value).strip()]
         if missing:
-            raise PayFastConfigurationError(
-                f"Missing PayFast sandbox configuration: {', '.join(sorted(missing))}."
-            )
+            raise PayFastConfigurationError(f"Missing PayFast sandbox configuration: {', '.join(sorted(missing))}.")
 
 
 def _encoded(value: object) -> str:
@@ -150,13 +148,9 @@ class PayFastSandboxVerifier:
         self.allowed_sources = tuple(allowed_sources)
         self.valid_data_checker = valid_data_checker
         if not self.merchant_id or not self.passphrase:
-            raise PayFastConfigurationError(
-                "PayFast sandbox merchant ID and passphrase are required."
-            )
+            raise PayFastConfigurationError("PayFast sandbox merchant ID and passphrase are required.")
         if not self.source_ip or not self.allowed_sources:
-            raise PayFastConfigurationError(
-                "PayFast callback source IP and allowed source networks are required."
-            )
+            raise PayFastConfigurationError("PayFast callback source IP and allowed source networks are required.")
 
     def verify_notification(self, payload: Mapping[str, str]) -> bool:
         if str(payload.get("merchant_id", "")).strip() != self.merchant_id:
