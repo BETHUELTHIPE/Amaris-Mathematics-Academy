@@ -4,7 +4,7 @@
       "startServerCommand": "bash scripts/performance/start-lighthouse-server.sh",
       "startServerReadyPattern": "Lighthouse production-like server ready",
       "startServerReadyTimeout": 90000,
-      "numberOfRuns": 1,
+      "numberOfRuns": 3,
       "url": [
         "http://127.0.0.1:4180/",
         "http://127.0.0.1:4180/about",
