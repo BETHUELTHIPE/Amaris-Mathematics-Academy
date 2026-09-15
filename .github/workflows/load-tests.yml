@@ -72,7 +72,7 @@ jobs:
         run: load_tests/run.sh
       - name: Upload load-test evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: load-test-${{ github.run_id }}
           path: backend/load_tests/results/
