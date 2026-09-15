@@ -260,7 +260,7 @@ jobs:
   container-security:
     name: Docker, Compose, image scan, and SBOM
     runs-on: ubuntu-latest
-    needs: [backend-quality, frontend-quality, responsive-browser, dependency-security, secret-security]
+    needs: [backend-quality, dependency-security, secret-security]
     permissions:
       contents: read
       security-events: write
@@ -306,7 +306,7 @@ jobs:
     name: Publish release image to Docker Hub
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    needs: [container-security]
+    needs: [container-security, frontend-quality, responsive-browser, backend-quality, dependency-security, secret-security]
     permissions:
       contents: read
     outputs:
