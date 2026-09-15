@@ -187,8 +187,12 @@ class FrontendApiContractIntegrationTests(TestCase):
         )
 
     def test_frontend_cms_contract_matches_live_django_api_payloads(self):
-        frontend_contract = Path(settings.BASE_DIR).parent / "lib" / "cms.ts"
-        self.assertTrue(frontend_contract.exists(), "Frontend CMS client lib/cms.ts is missing.")
+        repository_root = Path(settings.BASE_DIR).parent
+        frontend_contract = repository_root / "frontend" / "lib" / "cms.ts"
+        self.assertTrue(
+            frontend_contract.exists(),
+            "Frontend CMS client frontend/lib/cms.ts is missing.",
+        )
         source = frontend_contract.read_text(encoding="utf-8")
         self.assertIn('cmsFetch<CmsBootstrap>("/bootstrap/")', source)
         self.assertIn('cmsFetch<Paginated<CmsCourse>>("/courses/?page_size=100")', source)

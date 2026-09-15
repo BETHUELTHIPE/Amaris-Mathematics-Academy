@@ -2,6 +2,22 @@
 
 Online mathematics course platform for South African school, TVET, college and university students.
 
+## Repository structure
+
+The project is deliberately split into two application folders so frontend and backend work stay separate and easy to maintain:
+
+```text
+Amaris-Mathematics-Academy/
+├── frontend/              # Web UI, frontend code, assets, tests and frontend scripts
+├── backend/               # Django API/CMS, Celery, data services, Docker and monitoring
+├── .github/               # GitHub Actions and dependency automation
+├── acceptance/            # Shared production-acceptance evidence configuration
+├── docs/                  # Shared architecture, CI/CD and performance documentation
+└── scripts/release/       # Shared deployment, health-check and rollback automation
+```
+
+Frontend-specific tools and code must stay in `frontend/`. Backend-specific tools and code must stay in `backend/`. Only repository-wide CI, documentation, acceptance and release automation belongs at the root.
+
 ## Current features
 
 - Public course catalogue, pricing, academy information and enquiry form
@@ -18,18 +34,26 @@ Online mathematics course platform for South African school, TVET, college and u
 
 ## Technology
 
+### Frontend
+
 - Next.js 16, React 19 and Vinext
 - TypeScript and Tailwind CSS
 - Supabase Auth and PostgreSQL
 - Cloudflare Workers, D1 and Sites hosting
-- Django 5.2, Django REST Framework, Jazzmin, Gunicorn with Uvicorn workers, Celery and Redis
-- AWS-ready PostgreSQL, S3, NGINX and Docker services
-- One Flower instance for Celery monitoring, plus Prometheus, Grafana and cAdvisor
-- Six-hour encrypted PostgreSQL/media backups with weekly isolated restoration tests
+- Vite, Lighthouse, Pa11y and Playwright browser testing
 
-## Environment
+### Backend
 
-Copy `.env.example` to `.env.local` and set:
+- Django 5.2, Django REST Framework and Jazzmin
+- Gunicorn with Uvicorn workers
+- PostgreSQL, Redis and Celery
+- NGINX and Docker
+- Prometheus, Grafana, Flower and cAdvisor
+- Encrypted backup and restoration tooling
+
+## Frontend environment
+
+Copy `frontend/.env.example` to `frontend/.env.local` and set:
 
 ```env
 SUPABASE_URL=https://your-project-ref.supabase.co
@@ -42,7 +66,7 @@ Never commit a Supabase secret or service-role key. The website uses only a publ
 
 ## Supabase setup
 
-Apply the SQL files in `supabase/migrations/` in timestamp order. In Supabase Auth:
+Apply the SQL files in `frontend/supabase/migrations/` in timestamp order. In Supabase Auth:
 
 1. Enable email and password authentication.
 2. Keep email confirmation required.
@@ -50,14 +74,21 @@ Apply the SQL files in `supabase/migrations/` in timestamp order. In Supabase Au
 4. Configure custom SMTP for delivery to external student email addresses.
 5. Use `{{ .Token }}` in the confirmation email template when six-digit codes are required. The secure confirmation link is also supported.
 
-## Development
+## Frontend development
 
 ```bash
+cd frontend
 npm ci
 npm run build
 ```
 
-The production bundle targets Cloudflare Workers. Hosted environment values are managed by the Sites platform and are not committed to Git.
+Other frontend quality commands are documented in [`frontend/README.md`](frontend/README.md). The production bundle targets Cloudflare Workers.
+
+## Backend development
+
+The Django administration/API service is in [`backend/`](backend/). Its setup and deployment instructions are in [`backend/README.md`](backend/README.md). The public website falls back to its bundled content until `CMS_API_URL` points to a deployed HTTPS Django service.
+
+The backend disaster-recovery policy and operator runbook are in [`backend/docs/DISASTER_RECOVERY.md`](backend/docs/DISASTER_RECOVERY.md). Monitoring remains observational: Prometheus, Grafana, Flower, exporters or pgAdmin can fail without stopping the student platform.
 
 ## Error recovery
 
@@ -65,22 +96,16 @@ The public site includes branded recovery routes for HTTP 400, 403, 404, 429, 50
 
 Registration and enquiry drafts use short-lived `sessionStorage` entries in the current tab. Only explicitly allowed text and select fields are retained. Passwords, OTPs, tokens, consent controls, payment fields and uploads are excluded and successful submissions clear their drafts.
 
-## Django administration
+## Load and capacity testing
 
-The AWS-ready administration service is in [`backend/`](backend/). Its setup and deployment instructions are in [`backend/README.md`](backend/README.md). The public website falls back to its bundled content until `CMS_API_URL` points to a deployed HTTPS Django service.
-
-The backend disaster-recovery policy and operator runbook are in [`backend/docs/DISASTER_RECOVERY.md`](backend/docs/DISASTER_RECOVERY.md). Monitoring remains observational: Prometheus, Grafana, Flower, exporters or pgAdmin can fail without stopping the student platform.
-
-## Load testing
-
-The staging-only Locust suite covers public course discovery, account entry points, authenticated learning, progress, application checkout creation and payment-status polling. It includes normal, peak, sudden-spike, database-delay, Redis-loss, Celery-backlog and monitoring-outage scenarios with enforceable response-time and failure-rate limits. Direct PayFast traffic and the live Amaris hostname are blocked by default. See [`backend/load_tests/README.md`](backend/load_tests/README.md).
+The staging-only Locust suite is kept under `backend/load_tests/`. It covers public course discovery, account entry points, authenticated learning, progress, application checkout creation and payment-status polling. Direct PayFast traffic and the live Amaris hostname are blocked by default. See [`backend/load_tests/README.md`](backend/load_tests/README.md) and [`backend/load_tests/CAPACITY.md`](backend/load_tests/CAPACITY.md).
 
 ## Performance
 
-Public page rendering no longer waits for authentication, global CMS content is fetched once per render, course lists use summary payloads, Django public reads use a failure-tolerant cache, and Celery's durable broker is isolated from the eviction-based response cache. Gunicorn, PostgreSQL, Redis, NGINX and container resource defaults are explicitly bounded and observable. Targets, sizing guidance and the measurement loop are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+Frontend performance tooling and browser evidence live with the frontend. Backend performance, database, Redis, Celery and infrastructure tuning live with the backend. Shared performance policy and targets remain in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 ## Quality gates and releases
 
-GitHub Actions now blocks releases on Python, Django, frontend, accessibility, Lighthouse, dependency, secret, Docker and container-security checks. Successful `main` builds promote an immutable backend image to staging; production requires a manual run, a protected GitHub environment approval, a pre-migration backup for high-risk changes and a successful post-deployment readiness check. See [`docs/CI_CD.md`](docs/CI_CD.md) for repository settings, protected secrets and webhook contracts.
+GitHub Actions remains at repository level in `.github/` and runs frontend commands from `frontend/` and backend commands from `backend/`. Successful `main` builds promote an immutable backend image to staging; production requires the configured approval and release safeguards. See [`docs/CI_CD.md`](docs/CI_CD.md).
 
-Amaris remains **pre-production** until every professional acceptance criterion has approved evidence. The production workflow enforces the 20-item gate covering performance, WCAG 2.2 AA, mobile and no-JavaScript journeys, learning continuity, payments, permissions, caching, restoration, load capacity, email authentication, monitoring and cross-device quality. See [`docs/ACCEPTANCE_CRITERIA.md`](docs/ACCEPTANCE_CRITERIA.md).
+Amaris remains **pre-production** until every professional acceptance criterion has approved evidence. See [`docs/ACCEPTANCE_CRITERIA.md`](docs/ACCEPTANCE_CRITERIA.md).
