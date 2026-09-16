@@ -32,7 +32,17 @@ jobs:
       - name: Resolve patched dependency graph
         run: npm install --package-lock-only --ignore-scripts
       - name: Apply non-breaking security fixes
-        run: npm audit fix --package-lock-only --ignore-scripts
+        shell: bash
+        run: |
+          set +e
+          npm audit fix --package-lock-only --ignore-scripts
+          status=$?
+          set -e
+          # npm audit fix returns 1 when lower-severity findings remain. The
+          # next step is the authoritative fail-closed HIGH/CRITICAL gate.
+          if [ "$status" -gt 1 ]; then
+            exit "$status"
+          fi
       - name: Confirm no HIGH or CRITICAL npm advisories
         run: npm audit --audit-level=high
       - name: Commit verified lockfile if changed
