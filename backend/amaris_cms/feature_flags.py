@@ -10,11 +10,7 @@ def enabled(name: str, *, default: bool = False) -> bool:
     disabled by default and explicitly enabled after staging acceptance.
     """
 
-    configured = {
-        value.strip().lower()
-        for value in os.getenv("AMARIS_FEATURE_FLAGS", "").split(",")
-        if value.strip()
-    }
+    configured = {value.strip().lower() for value in os.getenv("AMARIS_FEATURE_FLAGS", "").split(",") if value.strip()}
     normalized = name.strip().lower()
     if normalized in configured:
         return True
