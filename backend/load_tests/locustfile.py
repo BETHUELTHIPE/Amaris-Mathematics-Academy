@@ -194,9 +194,9 @@ def validate_run(environment: Environment, **_kwargs) -> None:
             raise RuntimeError("Full journey requires the staging registration password and email sink domain.")
 
 
-def request_p95(environment: Environment, request_name: str) -> int:
+def request_percentile(environment: Environment, request_name: str, percentile: float) -> int:
     values = [
-        entry.get_response_time_percentile(0.95)
+        entry.get_response_time_percentile(percentile)
         for (name, _method), entry in environment.stats.entries.items()
         if name == request_name and entry.num_requests
     ]
@@ -220,15 +220,20 @@ def enforce_service_levels(environment: Environment, **_kwargs) -> None:
     if p99 > threshold.overall_p99_ms:
         failures.append(f"overall p99 {p99}ms exceeded {threshold.overall_p99_ms}ms")
 
-    request_limits = {
+    p95_limits = {
         **{name: threshold.public_p95_ms for name in PUBLIC_REQUESTS},
         **{name: threshold.authenticated_p95_ms for name in AUTHENTICATED_REQUESTS},
         **{name: threshold.write_p95_ms for name in WRITE_REQUESTS},
     }
-    for request_name, limit in request_limits.items():
-        observed = request_p95(environment, request_name)
+    for request_name, limit in p95_limits.items():
+        observed = request_percentile(environment, request_name, 0.95)
         if observed and observed > limit:
             failures.append(f"{request_name} p95 {observed}ms exceeded {limit}ms")
+
+    for request_name in PUBLIC_REQUESTS:
+        observed = request_percentile(environment, request_name, 0.99)
+        if observed and observed > threshold.public_p99_ms:
+            failures.append(f"{request_name} p99 {observed}ms exceeded {threshold.public_p99_ms}ms")
 
     if REQUIRE_FULL_JOURNEY:
         recorded = {name for name, _method in environment.stats.entries}
