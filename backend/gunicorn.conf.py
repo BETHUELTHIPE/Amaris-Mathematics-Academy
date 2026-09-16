@@ -1,4 +1,3 @@
-import multiprocessing
 import os
 
 
@@ -8,7 +7,7 @@ def env_int(name: str, default: int) -> int:
 
 bind = os.getenv("GUNICORN_BIND", "0.0.0.0:8000")
 worker_class = "uvicorn_worker.UvicornWorker"
-workers = env_int("WEB_CONCURRENCY", max(2, min(4, multiprocessing.cpu_count())))
+workers = env_int("WEB_CONCURRENCY", 3)
 timeout = env_int("GUNICORN_TIMEOUT", 60)
 graceful_timeout = env_int("GUNICORN_GRACEFUL_TIMEOUT", 30)
 keepalive = env_int("GUNICORN_KEEPALIVE", 5)
