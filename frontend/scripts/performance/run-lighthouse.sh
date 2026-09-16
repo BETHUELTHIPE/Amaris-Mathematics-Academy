@@ -53,16 +53,18 @@ run_perfect_profile() {
 }
 
 run_mobile_profile() {
-  echo "Running realistic Lighthouse mobile profile..."
+  echo "Running strict Lighthouse 100% mobile profile..."
   for entry in "${urls[@]}"; do
     slug="${entry%%|*}"
     url="${entry#*|}"
-    npx --no-install lighthouse "$url" \
-      --quiet \
-      --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
-      --output=json \
-      --output=html \
-      --output-path=".lighthouseci/mobile/${slug}"
+    for run in 1 2 3; do
+      npx --no-install lighthouse "$url" \
+        --quiet \
+        --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+        --output=json \
+        --output=html \
+        --output-path=".lighthouseci/mobile/${slug}-${run}"
+    done
   done
 
   mapfile -t reports < <(find .lighthouseci/mobile -type f -name '*.json' | sort)
