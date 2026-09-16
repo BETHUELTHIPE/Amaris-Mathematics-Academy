@@ -32,6 +32,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible 
 .graph-paper { background-image:linear-gradient(rgba(255,255,255,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.12) 1px,transparent 1px); background-size:42px 42px; mask-image:linear-gradient(90deg,black,transparent 72%); }
 .eyebrow { color:#1f5bbd; font-size:.78rem; font-weight:800; letter-spacing:.18em; text-transform:uppercase; }
 .section-title { color:#0a1b36; font-size:clamp(2.3rem,5vw,4.4rem); font-weight:650; letter-spacing:-.05em; line-height:1.02; }
+.home-shell > section:nth-of-type(n+3) { content-visibility:auto; contain-intrinsic-size:auto 800px; }
 ::selection { background:#ffcc66; color:#07152d; }
 .letterhead-accent { height:.45rem; background:linear-gradient(90deg,#07152d 0 58%,#1f5bbd 58% 82%,#ffcc66 82% 100%); }
 @page { size:A4; margin:0; }
