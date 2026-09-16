@@ -113,8 +113,10 @@ jobs:
         run: python -m unittest discover -s scripts/release -p 'test_*.py'
 
   frontend-quality:
-    name: Frontend, accessibility, and Lighthouse
+    name: Frontend, accessibility, Lighthouse, and SBOM
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: frontend
@@ -126,6 +128,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
       - name: Install locked frontend dependencies
         run: npm ci
       - name: Frontend linting
@@ -152,15 +156,23 @@ jobs:
           npm run test:accessibility
       - name: Lighthouse CI
         run: npm run test:lighthouse
-      - name: Preserve Lighthouse reports
+      - name: Generate frontend CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: frontend
+          format: cyclonedx-json
+          output-file: frontend-sbom.cdx.json
+      - name: Preserve frontend evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lighthouse-reports
-          path: frontend/.lighthouseci/
+          name: frontend-quality-evidence
+          path: |
+            frontend/.lighthouseci/
+            frontend-sbom.cdx.json
           if-no-files-found: warn
           include-hidden-files: true
-          retention-days: 14
+          retention-days: 30
 
   responsive-browser:
     name: Responsive browser E2E
@@ -212,7 +224,7 @@ jobs:
             frontend/artifacts/e2e/
             /tmp/amaris-e2e-server.log
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 30
 
   dependency-security:
     name: Dependency vulnerability gates
@@ -239,7 +251,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Audit Node dependencies
         working-directory: frontend
-        run: npm audit --audit-level=critical
+        run: npm audit --audit-level=high
 
   secret-security:
     name: Repository secret scan
@@ -256,7 +268,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   container-security:
-    name: Docker, Compose, image scan, and SBOM
+    name: Docker, Compose, HIGH/CRITICAL image scan, and SBOM
     runs-on: ubuntu-latest
     needs: [backend-quality, frontend-quality, responsive-browser, dependency-security, secret-security]
     permissions:
@@ -277,13 +289,13 @@ jobs:
           image: amaris-backend:${{ github.sha }}
           format: cyclonedx-json
           output-file: amaris-backend-sbom.cdx.json
-      - name: Scan container for critical vulnerabilities
-        uses: aquasecurity/trivy-action@0.33.1
+      - name: Scan container for fixable HIGH and CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: amaris-backend:${{ github.sha }}
           format: sarif
           output: trivy-results.sarif
-          severity: CRITICAL
+          severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
       - name: Upload container scan results
@@ -298,13 +310,13 @@ jobs:
           name: amaris-backend-sbom
           path: amaris-backend-sbom.cdx.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
 
   publish-image:
     name: Publish release image to Docker Hub
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    needs: [container-security]
+    needs: [container-security, frontend-quality, responsive-browser, backend-quality, dependency-security, secret-security]
     permissions:
       contents: read
     outputs:
