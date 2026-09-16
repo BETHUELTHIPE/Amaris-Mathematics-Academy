@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from celery.signals import task_failure
 from django.conf import settings
@@ -27,7 +27,7 @@ def park_failed_task(sender=None, task_id=None, exception=None, **_kwargs) -> No
         "task_id": str(task_id or ""),
         "task": getattr(sender, "name", "unknown"),
         "error_type": exception.__class__.__name__ if exception is not None else "UnknownError",
-        "failed_at": datetime.now(timezone.utc).isoformat(),
+        "failed_at": datetime.now(UTC).isoformat(),
     }
     try:
         client = Redis.from_url(settings.CELERY_BROKER_URL, socket_connect_timeout=2, socket_timeout=2)
