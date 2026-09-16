@@ -11,6 +11,7 @@ from typing import Protocol
 from django.db import transaction
 from django.utils import timezone
 
+from content.metrics import observe_payment_webhook
 from content.models import Course, Enrollment, Payment, StudentRecord
 from content.payment_models import Invoice, NotificationOutbox, PaymentWebhookEvent, ServiceTicket
 
@@ -189,6 +190,7 @@ def _fulfill_verified_payment(payment: Payment) -> None:
     )
 
 
+@observe_payment_webhook("payfast")
 def process_payfast_notification(
     payload: Mapping[str, str],
     *,
