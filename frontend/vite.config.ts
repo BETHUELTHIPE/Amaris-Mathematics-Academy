@@ -20,10 +20,10 @@ const localBindingConfig = {
     CSP_REPORT_ONLY: process.env.CSP_REPORT_ONLY ?? "false",
   },
   ratelimits: [
-    { name: "AUTH_RATE_LIMITER", namespace_id: "41001", simple: { limit: 10, period: 60 } },
-    { name: "REGISTER_RATE_LIMITER", namespace_id: "41002", simple: { limit: 5, period: 60 } },
-    { name: "PASSWORD_RESET_RATE_LIMITER", namespace_id: "41003", simple: { limit: 5, period: 60 } },
-    { name: "CHECKOUT_RATE_LIMITER", namespace_id: "41004", simple: { limit: 30, period: 60 } },
+    { name: "AUTH_RATE_LIMITER", namespace_id: "41001", simple: { limit: 10, period: 60 as const } },
+    { name: "REGISTER_RATE_LIMITER", namespace_id: "41002", simple: { limit: 5, period: 60 as const } },
+    { name: "PASSWORD_RESET_RATE_LIMITER", namespace_id: "41003", simple: { limit: 5, period: 60 as const } },
+    { name: "CHECKOUT_RATE_LIMITER", namespace_id: "41004", simple: { limit: 30, period: 60 as const } },
   ],
   d1_databases: d1
     ? [
