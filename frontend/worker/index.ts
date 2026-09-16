@@ -88,6 +88,13 @@ function secureResponse(response: Response, pathname: string, env: Env): Respons
     secured.headers.set("Content-Security-Policy", csp);
   }
 
+  if (pathname === "/") {
+    secured.headers.append(
+      "Link",
+      '</amaris-math-hero.webp>; rel=preload; as=image; type="image/webp"; fetchpriority=high',
+    );
+  }
+
   if (protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     secured.headers.set("Cache-Control", "private, no-store, max-age=0");
     secured.headers.append("Vary", "Cookie");
