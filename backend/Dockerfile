@@ -15,6 +15,14 @@ RUN apt-get update \
          "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic-${RESTIC_VERSION}.tar.gz" \
     && echo "${RESTIC_SOURCE_SHA256}  /tmp/restic.tar.gz" | sha256sum --check --strict \
     && tar -xzf /tmp/restic.tar.gz --strip-components=1 \
+    && go get golang.org/x/crypto@v0.55.0 \
+              golang.org/x/net@v0.56.0 \
+              golang.org/x/text@v0.39.0 \
+              google.golang.org/grpc@v1.83.2 \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/crypto)" = "v0.55.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/net)" = "v0.56.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/text)" = "v0.39.0" \
+    && test "$(go list -m -f '{{.Version}}' google.golang.org/grpc)" = "v1.83.2" \
     && mkdir -p /out \
     && go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/restic ./cmd/restic \
     && /out/restic version \
