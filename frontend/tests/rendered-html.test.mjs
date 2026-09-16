@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
@@ -23,7 +24,7 @@ async function readTextTree(directory) {
 }
 
 async function assertBuiltOutputHasNoDevelopmentPreviewMarker() {
-  const dist = new URL("../dist", import.meta.url);
+  const dist = fileURLToPath(new URL("../dist", import.meta.url));
   const builtOutput = await readTextTree(dist);
   assert.doesNotMatch(builtOutput, /codex-preview/i);
 }
