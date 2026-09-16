@@ -8,26 +8,44 @@ const budgets = {
 };
 
 async function filesUnder(directory) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const nested = await Promise.all(
-    entries.map(async (entry) => {
-      const path = join(directory, entry.name);
-      return entry.isDirectory() ? filesUnder(path) : [path];
-    }),
-  );
-  return nested.flat();
+  try {
+    const entries = await readdir(directory, { withFileTypes: true });
+    const nested = await Promise.all(
+      entries.map(async (entry) => {
+        const path = join(directory, entry.name);
+        return entry.isDirectory() ? filesUnder(path) : [path];
+      }),
+    );
+    return nested.flat();
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
 }
 
 async function largest(paths, extension) {
   const matches = paths.filter((path) => path.endsWith(extension));
   const sized = await Promise.all(matches.map(async (path) => ({ path, size: (await stat(path)).size })));
-  return sized.sort((left, right) => right.size - left.size)[0] ?? { path: extension, size: 0 };
+  return sized.sort((left, right) => right.size - left.size)[0] ?? null;
 }
 
-const assets = await filesUnder("dist/client/assets");
+const buildRoots = ["dist", ".vinext", ".next", ".output"];
+const assets = (await Promise.all(buildRoots.map(filesUnder))).flat();
+const largestJavaScript = await largest(assets, ".js");
+const largestStylesheet = await largest(assets, ".css");
+
+if (!largestJavaScript) {
+  console.error(`FAIL no built JavaScript assets found under ${buildRoots.join(", ")}`);
+  process.exit(1);
+}
+if (!largestStylesheet) {
+  console.error(`FAIL no built stylesheet assets found under ${buildRoots.join(", ")}`);
+  process.exit(1);
+}
+
 const checks = [
-  ["largest JavaScript chunk", await largest(assets, ".js"), budgets.maxJavaScriptChunk],
-  ["largest stylesheet", await largest(assets, ".css"), budgets.maxStylesheet],
+  ["largest JavaScript chunk", largestJavaScript, budgets.maxJavaScriptChunk],
+  ["largest stylesheet", largestStylesheet, budgets.maxStylesheet],
   [
     "homepage hero image",
     { path: "public/amaris-math-hero.webp", size: (await stat("public/amaris-math-hero.webp")).size },
@@ -42,9 +60,8 @@ for (const [label, asset, limit] of checks) {
     failed = true;
     console.error(`FAIL ${result} (${asset.path})`);
   } else {
-    console.log(`PASS ${result}`);
+    console.log(`PASS ${result} (${asset.path})`);
   }
 }
 
 if (failed) process.exit(1);
-
