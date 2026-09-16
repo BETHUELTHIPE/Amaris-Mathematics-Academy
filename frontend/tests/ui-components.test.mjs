@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
-import path from "node:path";
+import { readFile } from "node:fs/promises";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -21,24 +20,13 @@ after(async () => {
   await vite.close();
 });
 
-async function readCssTree(directory) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const contents = await Promise.all(
-    entries.map(async (entry) => {
-      const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        return readCssTree(entryPath);
-      }
-      return entry.name.endsWith(".css") ? readFile(entryPath, "utf8") : "";
-    }),
-  );
-  return contents.join("\n");
-}
+test("keeps the catalog animation and scrolling utility sources in the inlined CSS pipeline", async () => {
+  const globalCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const vendorCss = await readFile(new URL("../vendor/shadcn-tailwind-4.13.0.css", import.meta.url), "utf8");
+  const css = `${globalCss}\n${vendorCss}`;
 
-test("emits the catalog's animation and scrolling utilities", async () => {
-  const css = await readCssTree(path.join(root, "dist"));
-
-  assert.match(css, /--tw-enter-opacity/);
+  assert.match(globalCss, /@import\s+["']tw-animate-css["']/);
+  assert.match(globalCss, /@source\s+inline\(["'][^"']*animate-in[^"']*["']\)/);
   assert.match(css, /scrollbar-width:\s*thin/);
   assert.match(css, /scrollbar-width:\s*none/);
   assert.match(css, /scrollbar-gutter:\s*stable/);
