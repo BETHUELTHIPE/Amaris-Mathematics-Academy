@@ -9,7 +9,7 @@ if (!files.length) throw new Error("At least one Lighthouse JSON report is requi
 
 const limits = profile === "perfect"
   ? {
-      performance: 0.995,
+      performance: 1,
       accessibility: 0.95,
       "best-practices": 0.9,
       seo: 0.9,
@@ -20,7 +20,7 @@ const limits = profile === "perfect"
       "speed-index": 1000,
     }
   : {
-      performance: 0.95,
+      performance: 1,
       accessibility: 0.95,
       "best-practices": 0.9,
       seo: 0.9,
@@ -50,10 +50,12 @@ for (const file of files) {
 
   const performanceScore = report.categories?.performance?.score ?? 0;
   const displayedPerformance = Math.round(performanceScore * 100);
-  if (profile === "perfect" && displayedPerformance !== 100) {
+  if (displayedPerformance !== 100 || performanceScore < 1) {
     failed = true;
     reportFailed = true;
-    console.error(`Lighthouse FAIL ${url}: displayed performance ${displayedPerformance} != 100`);
+    console.error(
+      `Lighthouse FAIL ${url}: performance ${(performanceScore * 100).toFixed(1)}%, displayed ${displayedPerformance}% — 100% is required`,
+    );
   }
 
   for (const key of categoryChecks) {
@@ -93,14 +95,16 @@ for (const file of files) {
   });
 
   if (!reportFailed) {
-    console.log(`Lighthouse PASS ${url}: Performance ${displayedPerformance}/100`);
+    console.log(`Lighthouse PASS ${url}: Performance 100/100`);
   }
 }
 
 const outputDir = path.join(".lighthouseci", profile);
 await mkdir(outputDir, { recursive: true });
 const lines = [
-  `# Lighthouse ${profile === "perfect" ? "100% Performance" : "Mobile"} Report`,
+  `# Lighthouse ${profile === "perfect" ? "Desktop" : "Mobile"} 100% Performance Report`,
+  "",
+  "Performance is PASS only when Lighthouse reports an exact score of 1.00 (100/100) for every tested URL.",
   "",
   "| URL | Performance | Accessibility | Best Practices | SEO | FCP ms | LCP ms | TBT ms | CLS | Speed Index ms | Result |",
   "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
