@@ -25,7 +25,9 @@ for (const url of urls) {
       failed = true;
       console.error(`Accessibility FAIL ${url}: ${errors.length} error(s)`);
       for (const issue of errors.slice(0, 20)) {
-        console.error(`- ${issue.code}: ${issue.message}`);
+        const selector = issue.selector ? ` selector=${issue.selector}` : "";
+        const context = issue.context ? ` context=${String(issue.context).replace(/\s+/g, " ").slice(0, 240)}` : "";
+        console.error(`- ${issue.code}: ${issue.message}${selector}${context}`);
       }
     } else {
       console.log(`Accessibility PASS ${url}`);
