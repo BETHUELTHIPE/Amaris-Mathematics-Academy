@@ -31,11 +31,15 @@ jobs:
           node-version: "24"
       - name: Resolve patched dependency graph
         run: npm install --package-lock-only --ignore-scripts
-      - name: Commit lockfile if changed
+      - name: Apply non-breaking security fixes
+        run: npm audit fix --package-lock-only --ignore-scripts
+      - name: Confirm no HIGH or CRITICAL npm advisories
+        run: npm audit --audit-level=high
+      - name: Commit verified lockfile if changed
         shell: bash
         run: |
           if git diff --quiet -- package.json package-lock.json; then
-            echo "Lockfile is already current."
+            echo "Lockfile is already current and verified."
             exit 0
           fi
           git config user.name "github-actions[bot]"
@@ -43,5 +47,3 @@ jobs:
           git add package.json package-lock.json
           git commit -m "security: refresh patched frontend lockfile"
           git push origin HEAD:fix/production-readiness-all-20260916
-      - name: Confirm no HIGH or CRITICAL npm advisories
-        run: npm audit --audit-level=high
