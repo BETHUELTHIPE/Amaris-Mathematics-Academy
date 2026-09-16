@@ -31,19 +31,21 @@ async function largest(paths, extension) {
 
 const buildRoots = ["dist", ".vinext", ".next", ".output"];
 const assets = (await Promise.all(buildRoots.map(filesUnder))).flat();
-const largestJavaScript = await largest(assets, ".js");
-const largestStylesheet = (await largest(assets, ".css")) ?? {
+const isServerOnly = (path) => /(^|[\\/])(server|ssr)([\\/]|$)/i.test(path);
+const clientAssets = assets.filter((path) => !isServerOnly(path));
+const largestJavaScript = await largest(clientAssets, ".js");
+const largestStylesheet = (await largest(clientAssets, ".css")) ?? {
   path: "inlined/no-external-stylesheet",
   size: 0,
 };
 
 if (!largestJavaScript) {
-  console.error(`FAIL no built JavaScript assets found under ${buildRoots.join(", ")}`);
+  console.error(`FAIL no client JavaScript assets found under ${buildRoots.join(", ")}`);
   process.exit(1);
 }
 
 const checks = [
-  ["largest JavaScript chunk", largestJavaScript, budgets.maxJavaScriptChunk],
+  ["largest client JavaScript chunk", largestJavaScript, budgets.maxJavaScriptChunk],
   ["largest external stylesheet", largestStylesheet, budgets.maxStylesheet],
   [
     "homepage hero image",
