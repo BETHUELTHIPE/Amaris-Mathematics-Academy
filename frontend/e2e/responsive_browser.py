@@ -72,12 +72,12 @@ def check_form(page: Page) -> None:
     page.locator("#enquiryType").select_option("technical-support")
     page.locator("#message").fill("Synthetic responsive browser test message with sufficient safe detail.")
     checkbox = page.locator("#consent")
-    checkbox.click()
+    checkbox.check()
 
     require(page.locator("#fullName").input_value() == "Responsive Test Student", "Full-name field did not retain its value")
     require(page.locator("#email").input_value() == "responsive.student@example.test", "Email field did not retain its value")
     require(page.locator("#enquiryType").input_value() == "technical-support", "Enquiry type was not selected")
-    require(checkbox.get_attribute("aria-checked") == "true", "Consent checkbox was not selected")
+    require(checkbox.is_checked(), "Consent checkbox was not selected")
     require(page.get_by_role("button", name=re.compile("Send enquiry")).is_visible(), "Enquiry submit button is not visible")
     assert_no_horizontal_overflow(page, "enquiry form")
 
