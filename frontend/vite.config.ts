@@ -16,6 +16,15 @@ const syntheticE2EStudent =
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
+  vars: {
+    CSP_REPORT_ONLY: process.env.CSP_REPORT_ONLY ?? "false",
+  },
+  ratelimits: [
+    { name: "AUTH_RATE_LIMITER", namespace_id: "41001", simple: { limit: 10, period: 60 } },
+    { name: "REGISTER_RATE_LIMITER", namespace_id: "41002", simple: { limit: 5, period: 60 } },
+    { name: "PASSWORD_RESET_RATE_LIMITER", namespace_id: "41003", simple: { limit: 5, period: 60 } },
+    { name: "CHECKOUT_RATE_LIMITER", namespace_id: "41004", simple: { limit: 30, period: 60 } },
+  ],
   d1_databases: d1
     ? [
         {
