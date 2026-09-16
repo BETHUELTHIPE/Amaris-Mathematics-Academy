@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from content.payment_models import Invoice, NotificationOutbox, PaymentWebhookEv
 
 PAYFAST_SANDBOX_URL = "https://sandbox.payfast.co.za/eng/process"
 PAYMENT_CANCELLED = "cancelled"
+PAYMENT_WEBHOOK_MAX_AGE_HOURS = int(os.getenv("PAYMENT_WEBHOOK_MAX_AGE_HOURS", "168"))
 
 
 class PaymentSecurityError(ValueError):
@@ -200,7 +202,8 @@ def process_payfast_notification(
 
     This is the only path in the payment service that can mark a payment paid
     and activate a service. A browser redirect or client-supplied success flag
-    is deliberately insufficient.
+    is deliberately insufficient. Unsettled checkout sessions also have a
+    bounded callback acceptance window so very old references cannot be replayed.
     """
 
     local_reference = str(payload.get("m_payment_id", "")).strip()
@@ -229,6 +232,11 @@ def process_payfast_notification(
         if event.payment_id == payment.pk:
             return NotificationResult(True, payment.status, reason="duplicate_callback", duplicate=True)
         return NotificationResult(False, payment.status, reason="provider_reference_replay", duplicate=True)
+
+    if payment.status != Payment.Status.PAID:
+        callback_age_seconds = max(0.0, (timezone.now() - payment.created_at).total_seconds())
+        if callback_age_seconds > PAYMENT_WEBHOOK_MAX_AGE_HOURS * 3600:
+            return _reject_event(event, "callback_window_expired")
 
     try:
         verified = gateway.verify_notification(payload)
