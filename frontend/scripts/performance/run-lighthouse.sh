@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p .lighthouseci
+profile="${1:-all}"
+if [[ "$profile" != "all" && "$profile" != "perfect" && "$profile" != "mobile" ]]; then
+  echo "Usage: $0 [all|perfect|mobile]" >&2
+  exit 2
+fi
+
+rm -rf .lighthouseci/perfect .lighthouseci/mobile
+mkdir -p .lighthouseci/perfect .lighthouseci/mobile
 
 bash scripts/performance/start-lighthouse-server.sh > /tmp/amaris-lighthouse-server.log 2>&1 &
 server_pid=$!
@@ -19,19 +26,52 @@ for attempt in {1..45}; do
 done
 
 urls=(
-  "http://127.0.0.1:4180/"
-  "http://127.0.0.1:4180/courses"
-  "http://127.0.0.1:4180/contact"
+  "home|http://127.0.0.1:4180/"
+  "courses|http://127.0.0.1:4180/courses"
+  "contact|http://127.0.0.1:4180/contact"
 )
 
-index=0
-for url in "${urls[@]}"; do
-  index=$((index + 1))
-  npx --no-install lighthouse "$url" \
-    --quiet \
-    --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
-    --output=json \
-    --output-path=".lighthouseci/run-${index}.json"
-done
+run_perfect_profile() {
+  echo "Running strict Lighthouse 100% desktop profile..."
+  for entry in "${urls[@]}"; do
+    slug="${entry%%|*}"
+    url="${entry#*|}"
+    for run in 1 2 3; do
+      npx --no-install lighthouse "$url" \
+        --quiet \
+        --preset=desktop \
+        --throttling-method=provided \
+        --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+        --output=json \
+        --output=html \
+        --output-path=".lighthouseci/perfect/${slug}-${run}"
+    done
+  done
 
-node scripts/performance/verify-lighthouse.mjs .lighthouseci/run-1.json .lighthouseci/run-2.json .lighthouseci/run-3.json
+  mapfile -t reports < <(find .lighthouseci/perfect -type f -name '*.json' | sort)
+  node scripts/performance/verify-lighthouse.mjs perfect "${reports[@]}"
+}
+
+run_mobile_profile() {
+  echo "Running realistic Lighthouse mobile profile..."
+  for entry in "${urls[@]}"; do
+    slug="${entry%%|*}"
+    url="${entry#*|}"
+    npx --no-install lighthouse "$url" \
+      --quiet \
+      --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+      --output=json \
+      --output=html \
+      --output-path=".lighthouseci/mobile/${slug}"
+  done
+
+  mapfile -t reports < <(find .lighthouseci/mobile -type f -name '*.json' | sort)
+  node scripts/performance/verify-lighthouse.mjs mobile "${reports[@]}"
+}
+
+if [[ "$profile" == "all" || "$profile" == "perfect" ]]; then
+  run_perfect_profile
+fi
+if [[ "$profile" == "all" || "$profile" == "mobile" ]]; then
+  run_mobile_profile
+fi
