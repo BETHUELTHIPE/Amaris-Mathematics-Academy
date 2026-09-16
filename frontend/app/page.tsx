@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- public homepage CTAs intentionally use full-page anchors to avoid Link hydration and prefetch work */
 import { ArrowRight, BarChart3, BookOpenCheck, Check, CirclePlay, GraduationCap, ShieldCheck, Sigma, Target } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
