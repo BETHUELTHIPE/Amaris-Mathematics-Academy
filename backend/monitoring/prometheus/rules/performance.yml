@@ -1,0 +1,82 @@
+groups:
+  - name: amaris-performance-slos
+    rules:
+      - alert: AmarisPublicApiP99LatencyHigh
+        expr: histogram_quantile(0.99, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m]))) > 1
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: Public/API p99 latency is above the 1 second production budget
+
+      - alert: AmarisHttp5xxRateHigh
+        expr: sum(rate(django_http_responses_total_by_status_total{status=~"5.."}[5m])) / clamp_min(sum(rate(django_http_responses_total_by_status_total[5m])), 0.001) > 0.02
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: Server error rate has exceeded 2 percent for five minutes
+
+      - alert: AmarisPostgresConnectionsHigh
+        expr: sum(pg_stat_database_numbackends{datname!~"template.*"}) / clamp_min(max(pg_settings_max_connections), 1) > 0.80
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: PostgreSQL connections are above 80 percent of the configured maximum
+
+      - alert: AmarisCacheHitRatioDropped
+        expr: |
+          (
+            sum(rate(redis_keyspace_hits_total{job="redis_cache_exporter"}[5m] offset 30m))
+            / clamp_min(
+                sum(rate(redis_keyspace_hits_total{job="redis_cache_exporter"}[5m] offset 30m))
+                + sum(rate(redis_keyspace_misses_total{job="redis_cache_exporter"}[5m] offset 30m)),
+                0.001
+              )
+          )
+          -
+          (
+            sum(rate(redis_keyspace_hits_total{job="redis_cache_exporter"}[5m]))
+            / clamp_min(
+                sum(rate(redis_keyspace_hits_total{job="redis_cache_exporter"}[5m]))
+                + sum(rate(redis_keyspace_misses_total{job="redis_cache_exporter"}[5m])),
+                0.001
+              )
+          ) > 0.20
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: Public cache hit ratio has fallen by more than 20 percentage points
+
+      - alert: AmarisCeleryQueueAgeHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(flower_task_prefetch_time_seconds_bucket[5m]))) > 30
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Celery p95 task waiting time is above 30 seconds
+
+      - alert: AmarisCacheRedisMemoryHigh
+        expr: redis_memory_used_bytes{job="redis_cache_exporter"} / clamp_min(redis_memory_max_bytes{job="redis_cache_exporter"}, 1) > 0.90
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Response-cache Redis is above 90 percent of configured memory
+
+      - alert: AmarisTLSCertificateExpiring
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox_http", instance=~"https://.*"} - time() < 1209600
+        for: 30m
+        labels: {severity: critical}
+        annotations:
+          summary: A public TLS certificate expires in less than 14 days
+
+      - alert: AmarisPaymentWebhookFailureRateHigh
+        expr: sum(rate(amaris_payment_webhook_events_total{provider="payfast",outcome=~"rejected|retryable|exception"}[15m])) / clamp_min(sum(rate(amaris_payment_webhook_events_total{provider="payfast"}[15m])), 0.001) > 0.01
+        for: 15m
+        labels: {severity: critical}
+        annotations:
+          summary: PayFast webhook failures exceed 1 percent over 15 minutes
+
+      - alert: AmarisPaymentWebhookP95LatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(amaris_payment_webhook_duration_seconds_bucket{provider="payfast"}[5m]))) > 2
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: PayFast server-side webhook verification p95 latency exceeds 2 seconds
