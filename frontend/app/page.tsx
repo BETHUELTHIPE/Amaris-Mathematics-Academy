@@ -12,9 +12,9 @@ export default async function Home() {
     <main className="min-h-screen bg-[#f5f7fb] text-[#0a1b36]">
       <Header />
       <section className="relative isolate overflow-hidden bg-[#07152d] text-white">
-        {/* This WebP is already optimized to ~57 KiB. Direct delivery avoids the Vinext image optimizer, which returned HTTP 500 in the production preview. */}
+        {/* Direct delivery avoids the Vinext image optimizer path while keeping the LCP image discoverable in the initial HTML. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[62%_center] opacity-90" />
+        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="sync" className="absolute inset-0 h-full w-full object-cover object-[62%_center] opacity-90" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,#07152d_0%,rgba(7,21,45,.95)_34%,rgba(7,21,45,.66)_54%,rgba(7,21,45,.04)_100%)]" />
         <div className="graph-paper absolute inset-0 opacity-15" />
         <div className="relative mx-auto grid min-h-[690px] max-w-7xl items-center px-5 py-20 lg:px-8">
