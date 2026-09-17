@@ -12,5 +12,10 @@ import { defineConfig } from "vite";
  * Cloudflare Vite adapter when building a standalone Node server.
  */
 export default defineConfig({
+  // The Node build uses Tailwind's Vite integration directly. This keeps the
+  // repository's existing PostCSS pipeline untouched for the Cloudflare build.
+  css: {
+    postcss: { plugins: [] },
+  },
   plugins: [tailwindcss(), vinext(), nitro()],
 });
