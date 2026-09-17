@@ -26,7 +26,10 @@ class OpenAIContactAutoReplyTests(TestCase):
         )
         FAQ.objects.create(
             question="Do you support Grade 12 matric Mathematics?",
-            answer="Yes. Published Grade 12 Mathematics support is available through Amaris.",
+            answer=(
+                "Yes. Published Grade 12 Mathematics support is available through "
+                "Amaris."
+            ),
             category="Grade 12",
             is_published=True,
         )
@@ -35,14 +38,19 @@ class OpenAIContactAutoReplyTests(TestCase):
             email="student@example.test",
             phone="0710000000",
             subject="Grade 12 matric Mathematics",
-            message="Please tell me about your Grade 12 matric Mathematics support options.",
+            message=(
+                "Please tell me about your Grade 12 matric Mathematics support "
+                "options."
+            ),
         )
         cache.clear()
 
     def tearDown(self):
         cache.clear()
 
-    def test_generate_reply_uses_responses_api_without_storing_and_omits_contact_fields(self):
+    def test_generate_reply_uses_responses_api_without_storing_and_omits_contact_fields(
+        self,
+    ):
         client = Mock()
         client.responses.create.return_value = SimpleNamespace(
             output_text="We provide published Grade 12 Mathematics support."
@@ -59,7 +67,9 @@ class OpenAIContactAutoReplyTests(TestCase):
         ):
             result = generate_enquiry_ai_reply(self.enquiry, context, client=client)
 
-        self.assertEqual(result, "We provide published Grade 12 Mathematics support.")
+        self.assertEqual(
+            result, "We provide published Grade 12 Mathematics support."
+        )
         call = client.responses.create.call_args.kwargs
         self.assertEqual(call["model"], "gpt-5.6-luna")
         self.assertFalse(call["store"])
@@ -111,10 +121,16 @@ class OpenAIContactAutoReplyTests(TestCase):
             is_published=False,
         )
         client = Mock()
-        client.responses.create.return_value = SimpleNamespace(output_text="Published answer only.")
+        client.responses.create.return_value = SimpleNamespace(
+            output_text="Published answer only."
+        )
         context = build_enquiry_reply_context(self.enquiry)
 
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-openai-key-not-real"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"OPENAI_API_KEY": "test-openai-key-not-real"},
+            clear=False,
+        ):
             generate_enquiry_ai_reply(self.enquiry, context, client=client)
 
         prompt = client.responses.create.call_args.kwargs["input"]
