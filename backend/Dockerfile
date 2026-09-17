@@ -30,7 +30,7 @@ RUN apt-get update \
     && rm -f /tmp/restic.tar.gz \
     && rm -rf /var/lib/apt/lists/*
 
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
