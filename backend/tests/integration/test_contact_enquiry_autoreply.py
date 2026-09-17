@@ -5,7 +5,7 @@ from django.core import mail
 from django.core.cache import cache
 from django.test import TestCase
 
-from content.models import ContactEnquiry, Course, CourseCategory, FAQ, PricingPlan, SiteSettings
+from content.models import FAQ, ContactEnquiry, Course, CourseCategory, PricingPlan, SiteSettings
 from content.services.enquiry_autoreply import build_enquiry_reply_context
 from content.tasks import send_contact_enquiry_auto_reply
 
