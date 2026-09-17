@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import vinext from "vinext";
 import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
@@ -11,5 +12,5 @@ import { defineConfig } from "vite";
  * Cloudflare Vite adapter when building a standalone Node server.
  */
 export default defineConfig({
-  plugins: [vinext(), nitro()],
+  plugins: [tailwindcss(), vinext(), nitro()],
 });
