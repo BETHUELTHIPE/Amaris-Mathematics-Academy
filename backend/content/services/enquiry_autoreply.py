@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Iterable
 from urllib.parse import urljoin
 
 from django.conf import settings
@@ -15,9 +15,9 @@ from django.utils import timezone
 from openai import OpenAI
 
 from content.models import (
+    FAQ,
     ContactEnquiry,
     Course,
-    FAQ,
     Page,
     PageSection,
     PricingPlan,
