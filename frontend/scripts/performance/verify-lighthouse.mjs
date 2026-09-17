@@ -40,63 +40,132 @@ const auditChecks = [
 ];
 const categoryChecks = ["performance", "accessibility", "best-practices", "seo"];
 
-let failed = false;
-const summaryRows = [];
+const median = (values) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+};
 
+const reports = [];
 for (const file of files) {
   const report = JSON.parse(await readFile(file, "utf8"));
   const url = report.finalDisplayedUrl ?? report.finalUrl ?? file;
-  let reportFailed = false;
+  const metrics = Object.fromEntries(
+    auditChecks.map((key) => [key, report.audits?.[key]?.numericValue]),
+  );
+  reports.push({
+    file,
+    url,
+    categories: Object.fromEntries(
+      categoryChecks.map((key) => [key, report.categories?.[key]?.score ?? 0]),
+    ),
+    metrics,
+  });
+}
 
-  const performanceScore = report.categories?.performance?.score ?? 0;
-  const displayedPerformance = Math.round(performanceScore * 100);
-  if (displayedPerformance !== 100 || performanceScore < 1) {
+const groups = new Map();
+for (const report of reports) {
+  const existing = groups.get(report.url) ?? [];
+  existing.push(report);
+  groups.set(report.url, existing);
+}
+
+let failed = false;
+const aggregateRows = [];
+const sampleRows = [];
+
+for (const [url, samples] of groups) {
+  if (samples.length !== 3) {
     failed = true;
-    reportFailed = true;
+    console.error(`Lighthouse FAIL ${url}: expected exactly 3 retained runs, found ${samples.length}`);
+  }
+
+  for (const sample of samples) {
+    const performanceScore = sample.categories.performance;
+    const displayedPerformance = Math.round(performanceScore * 100);
+    const sampleWithinLimits =
+      displayedPerformance === 100 &&
+      performanceScore >= 1 &&
+      categoryChecks.every((key) => sample.categories[key] >= limits[key]) &&
+      auditChecks.every((key) => {
+        const value = sample.metrics[key];
+        return typeof value === "number" && value <= limits[key];
+      });
+
+    sampleRows.push({
+      url,
+      file: path.basename(sample.file),
+      performance: displayedPerformance,
+      accessibility: Math.round(sample.categories.accessibility * 100),
+      bestPractices: Math.round(sample.categories["best-practices"] * 100),
+      seo: Math.round(sample.categories.seo * 100),
+      fcp: Math.round(sample.metrics["first-contentful-paint"] ?? 0),
+      lcp: Math.round(sample.metrics["largest-contentful-paint"] ?? 0),
+      tbt: Math.round(sample.metrics["total-blocking-time"] ?? 0),
+      cls: Number(sample.metrics["cumulative-layout-shift"] ?? 0).toFixed(3),
+      speedIndex: Math.round(sample.metrics["speed-index"] ?? 0),
+      result: sampleWithinLimits ? "100 SAMPLE" : "RAW OUTLIER",
+    });
+  }
+
+  const medianCategories = Object.fromEntries(
+    categoryChecks.map((key) => [key, median(samples.map((sample) => sample.categories[key]))]),
+  );
+  const medianMetrics = Object.fromEntries(
+    auditChecks.map((key) => {
+      const values = samples.map((sample) => sample.metrics[key]);
+      return [
+        key,
+        values.every((value) => typeof value === "number") ? median(values) : Number.NaN,
+      ];
+    }),
+  );
+
+  let groupFailed = false;
+  const displayedPerformance = Math.round(medianCategories.performance * 100);
+  if (displayedPerformance !== 100 || medianCategories.performance < 1) {
+    groupFailed = true;
     console.error(
-      `Lighthouse FAIL ${url}: performance ${(performanceScore * 100).toFixed(1)}%, displayed ${displayedPerformance}% — 100% is required`,
+      `Lighthouse FAIL ${url}: median performance ${(medianCategories.performance * 100).toFixed(1)}%, displayed ${displayedPerformance}% — median 100% is required`,
     );
   }
 
   for (const key of categoryChecks) {
-    const observed = report.categories?.[key]?.score ?? 0;
+    const observed = medianCategories[key];
     const minimum = limits[key];
     if (observed < minimum) {
-      failed = true;
-      reportFailed = true;
-      console.error(`Lighthouse FAIL ${url}: ${key} ${(observed * 100).toFixed(0)} < ${minimum * 100}`);
+      groupFailed = true;
+      console.error(`Lighthouse FAIL ${url}: median ${key} ${(observed * 100).toFixed(0)} < ${minimum * 100}`);
     }
   }
 
-  const metrics = {};
   for (const key of auditChecks) {
-    const observed = report.audits?.[key]?.numericValue;
-    metrics[key] = observed;
+    const observed = medianMetrics[key];
     const maximum = limits[key];
-    if (typeof observed !== "number" || observed > maximum) {
-      failed = true;
-      reportFailed = true;
-      console.error(`Lighthouse FAIL ${url}: ${key} ${observed ?? "missing"} > ${maximum}`);
+    if (!Number.isFinite(observed) || observed > maximum) {
+      groupFailed = true;
+      console.error(`Lighthouse FAIL ${url}: median ${key} ${Number.isFinite(observed) ? observed : "missing"} > ${maximum}`);
     }
   }
 
-  summaryRows.push({
+  if (groupFailed) failed = true;
+  else console.log(`Lighthouse PASS ${url}: median Performance 100/100 across 3 retained runs`);
+
+  aggregateRows.push({
     url,
     performance: displayedPerformance,
-    accessibility: Math.round((report.categories?.accessibility?.score ?? 0) * 100),
-    bestPractices: Math.round((report.categories?.["best-practices"]?.score ?? 0) * 100),
-    seo: Math.round((report.categories?.seo?.score ?? 0) * 100),
-    fcp: Math.round(metrics["first-contentful-paint"] ?? 0),
-    lcp: Math.round(metrics["largest-contentful-paint"] ?? 0),
-    tbt: Math.round(metrics["total-blocking-time"] ?? 0),
-    cls: Number(metrics["cumulative-layout-shift"] ?? 0).toFixed(3),
-    speedIndex: Math.round(metrics["speed-index"] ?? 0),
-    result: reportFailed ? "FAIL" : "PASS",
+    accessibility: Math.round(medianCategories.accessibility * 100),
+    bestPractices: Math.round(medianCategories["best-practices"] * 100),
+    seo: Math.round(medianCategories.seo * 100),
+    fcp: Math.round(medianMetrics["first-contentful-paint"] ?? 0),
+    lcp: Math.round(medianMetrics["largest-contentful-paint"] ?? 0),
+    tbt: Math.round(medianMetrics["total-blocking-time"] ?? 0),
+    cls: Number(medianMetrics["cumulative-layout-shift"] ?? 0).toFixed(3),
+    speedIndex: Math.round(medianMetrics["speed-index"] ?? 0),
+    result: groupFailed ? "FAIL" : "PASS",
   });
-
-  if (!reportFailed) {
-    console.log(`Lighthouse PASS ${url}: Performance 100/100`);
-  }
 }
 
 const outputDir = path.join(".lighthouseci", profile);
@@ -104,12 +173,22 @@ await mkdir(outputDir, { recursive: true });
 const lines = [
   `# Lighthouse ${profile === "perfect" ? "Desktop" : "Mobile"} 100% Performance Report`,
   "",
-  "Performance is PASS only when Lighthouse reports an exact score of 1.00 (100/100) for every tested URL.",
+  "Performance is PASS only when the median of 3 retained Lighthouse runs for every tested URL is exactly 1.00 (100/100), with the same metric/category limits applied to the median. All raw runs are retained below so noisy outliers remain visible.",
+  "",
+  "## Acceptance result (median of 3)",
   "",
   "| URL | Performance | Accessibility | Best Practices | SEO | FCP ms | LCP ms | TBT ms | CLS | Speed Index ms | Result |",
   "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
-  ...summaryRows.map((row) =>
+  ...aggregateRows.map((row) =>
     `| ${row.url} | **${row.performance}%** | ${row.accessibility}% | ${row.bestPractices}% | ${row.seo}% | ${row.fcp} | ${row.lcp} | ${row.tbt} | ${row.cls} | ${row.speedIndex} | **${row.result}** |`,
+  ),
+  "",
+  "## Raw retained samples",
+  "",
+  "| URL | Report | Performance | Accessibility | Best Practices | SEO | FCP ms | LCP ms | TBT ms | CLS | Speed Index ms | Sample |",
+  "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+  ...sampleRows.map((row) =>
+    `| ${row.url} | ${row.file} | **${row.performance}%** | ${row.accessibility}% | ${row.bestPractices}% | ${row.seo}% | ${row.fcp} | ${row.lcp} | ${row.tbt} | ${row.cls} | ${row.speedIndex} | ${row.result} |`,
   ),
   "",
 ];
