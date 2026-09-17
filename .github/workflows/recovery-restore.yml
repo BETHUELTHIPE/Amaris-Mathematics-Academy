@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --user 0:0 --network amaris-recovery \
-            -v "$RUNNER_TEMP/restic:/restic:ro" \
+            -v "$RUNNER_TEMP/restic:/restic" \
             -v "$RUNNER_TEMP/reliability:/var/lib/amaris-reliability" \
             -v "$RUNNER_TEMP/restic-password:/run/secrets/restic_password:ro" \
             -e RESTIC_REPOSITORY=/restic \
