@@ -1,4 +1,5 @@
 from smtplib import SMTPException
+from urllib.parse import urljoin
 
 from celery import shared_task
 from django.apps import apps
@@ -18,6 +19,36 @@ from content.services.enquiry_autoreply import (
     generate_enquiry_ai_reply,
 )
 from content.services.reconciliation import reconcile_verified_payments
+
+
+def _build_letterhead_context(context: dict) -> dict[str, str]:
+    """Freeze the current company letterhead values into the outgoing message context."""
+
+    site = context.get("site")
+    website_url = (context.get("website_url") or "").rstrip("/")
+    logo_url = ""
+
+    if site and site.logo:
+        try:
+            logo_url = site.logo.url
+        except ValueError:
+            logo_url = ""
+
+    if logo_url and not logo_url.startswith(("http://", "https://", "cid:", "data:")):
+        logo_url = urljoin(f"{website_url}/", logo_url.lstrip("/")) if website_url else logo_url
+    elif not logo_url and website_url:
+        logo_url = urljoin(f"{website_url}/", "brand/amaris-academy-icon-192.png")
+
+    return {
+        "site_name": context.get("site_name") or "Amaris Mathematics Academy",
+        "logo_url": logo_url,
+        "managing_director": site.managing_director if site else "",
+        "phone": site.phone if site else "",
+        "email": site.email if site else "",
+        "website_url": website_url,
+        "address": site.address if site else "",
+        "business_hours": site.business_hours if site else "",
+    }
 
 
 @shared_task(
@@ -79,7 +110,8 @@ def send_contact_enquiry_auto_reply(self, enquiry_id: int) -> dict[str, str]:
     OpenAI receives the enquiry subject/message plus selected published website
     content; the dedicated email and phone fields are not included in the model
     prompt. OpenAI/SMTP failures retry with exponential backoff. A cache lock
-    prevents concurrent duplicate sends.
+    prevents concurrent duplicate sends. The rendered text and HTML versions
+    both receive the same frozen company letterhead context.
     """
 
     if not contact_auto_reply_enabled():
@@ -96,6 +128,7 @@ def send_contact_enquiry_auto_reply(self, enquiry_id: int) -> dict[str, str]:
         enquiry = ContactEnquiry.objects.get(pk=enquiry_id)
         context = build_enquiry_reply_context(enquiry)
         context["ai_reply"] = generate_enquiry_ai_reply(enquiry, context)
+        context["letterhead"] = _build_letterhead_context(context)
         site = context["site"]
         sender = default_from_email(site)
         if not sender:
