@@ -14,7 +14,15 @@ from django.db.models import Q
 from django.utils import timezone
 from openai import OpenAI
 
-from content.models import ContactEnquiry, Course, FAQ, PricingPlan, SiteSettings
+from content.models import (
+    ContactEnquiry,
+    Course,
+    FAQ,
+    Page,
+    PageSection,
+    PricingPlan,
+    SiteSettings,
+)
 
 STOP_WORDS = {
     "about",
@@ -106,7 +114,7 @@ def _rank(items: Iterable[ReplyItem], limit: int) -> list[ReplyItem]:
     return relevant[:limit]
 
 
-def build_enquiry_reply_context(enquiry: ContactEnquiry, *, max_items: int = 4) -> dict:
+def build_enquiry_reply_context(enquiry: ContactEnquiry, *, max_items: int = 6) -> dict:
     """Build a reply context exclusively from currently published website content."""
 
     now = timezone.now()
@@ -126,6 +134,49 @@ def build_enquiry_reply_context(enquiry: ContactEnquiry, *, max_items: int = 4) 
                 score=_score(query_tokens, faq.question, faq.answer, faq.category),
             )
         )
+
+    live_pages = Page.objects.filter(_live_q(now)).order_by("title")[:60]
+    for page in live_pages:
+        page_body = _trim(" ".join(filter(None, [page.summary, page.meta_description])))
+        if page_body:
+            items.append(
+                ReplyItem(
+                    kind="Website page",
+                    title=page.title,
+                    body=page_body,
+                    url=_absolute_url(website_url, f"/{page.slug}"),
+                    score=_score(
+                        query_tokens,
+                        page.title,
+                        page.summary,
+                        page.meta_title,
+                        page.meta_description,
+                    ),
+                )
+            )
+
+    for section in (
+        PageSection.objects.filter(_live_q(now), page__in=live_pages)
+        .select_related("page")
+        .order_by("page__title", "order")[:120]
+    ):
+        section_body = _trim(f"{section.body} {section.content}")
+        if section_body:
+            items.append(
+                ReplyItem(
+                    kind="Website section",
+                    title=f"{section.page.title}: {section.heading}",
+                    body=section_body,
+                    url=_absolute_url(website_url, f"/{section.page.slug}"),
+                    score=_score(
+                        query_tokens,
+                        section.eyebrow,
+                        section.heading,
+                        section.body,
+                        section.content,
+                    ),
+                )
+            )
 
     for course in (
         Course.objects.filter(_live_q(now), status=Course.Status.PUBLISHED)
@@ -212,7 +263,7 @@ def _website_context_for_openai(context: dict) -> str:
             if item.url:
                 lines.append(f"   URL: {item.url}")
     else:
-        lines.append("No sufficiently relevant published FAQ, course, or pricing item was matched.")
+        lines.append("No sufficiently relevant published website content was matched.")
 
     return "\n".join(lines)
 
