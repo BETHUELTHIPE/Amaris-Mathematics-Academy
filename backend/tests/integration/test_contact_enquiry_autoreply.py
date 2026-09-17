@@ -98,9 +98,12 @@ class ContactEnquiryAutoReplyTests(TestCase):
     )
     def test_task_sends_text_and_html_email_without_external_services(self):
         enquiry = self._enquiry()
+        ai_body = "Grade 12 Calculus Mastery is available for structured calculus revision."
 
-        result = send_contact_enquiry_auto_reply.run(enquiry.id)
+        with patch("content.tasks.generate_enquiry_ai_reply", return_value=ai_body) as generate_reply:
+            result = send_contact_enquiry_auto_reply.run(enquiry.id)
 
+        generate_reply.assert_called_once()
         self.assertEqual(result, {"status": "sent"})
         self.assertEqual(len(mail.outbox), 1)
         message = mail.outbox[0]
@@ -108,10 +111,10 @@ class ContactEnquiryAutoReplyTests(TestCase):
         self.assertEqual(message.reply_to, ["support@example.com"])
         self.assertIn("Amaris Mathematics Academy", message.subject)
         self.assertIn("OFFICIAL STUDENT ENQUIRY RESPONSE", message.body)
-        self.assertIn("Grade 12 Calculus Mastery", message.body)
+        self.assertIn(ai_body, message.body)
         self.assertLess(
             message.body.index("OFFICIAL STUDENT ENQUIRY RESPONSE"),
-            message.body.index("Grade 12 Calculus Mastery"),
+            message.body.index(ai_body),
         )
         self.assertIn("OFFICIAL CORRESPONDENCE — Amaris Mathematics Academy", message.body)
         self.assertIn("support@example.com", message.body)
@@ -122,7 +125,7 @@ class ContactEnquiryAutoReplyTests(TestCase):
         self.assertIn('data-company-letterhead="true"', html)
         self.assertIn('data-company-logo="true"', html)
         self.assertIn('data-ai-response-body="true"', html)
-        self.assertIn("Grade 12 Calculus Mastery", html)
+        self.assertIn(ai_body, html)
         self.assertIn("Official Student Enquiry Response", html)
         self.assertIn("branding/new-company-letterhead-logo.png", html)
         self.assertNotIn("/brand/amaris-academy-icon-192.png", html)
@@ -141,11 +144,16 @@ class ContactEnquiryAutoReplyTests(TestCase):
     def test_task_is_idempotent_and_does_not_send_duplicate_reply(self):
         enquiry = self._enquiry()
 
-        first = send_contact_enquiry_auto_reply.run(enquiry.id)
-        second = send_contact_enquiry_auto_reply.run(enquiry.id)
+        with patch(
+            "content.tasks.generate_enquiry_ai_reply",
+            return_value="A safe test response based on published website content.",
+        ) as generate_reply:
+            first = send_contact_enquiry_auto_reply.run(enquiry.id)
+            second = send_contact_enquiry_auto_reply.run(enquiry.id)
 
         self.assertEqual(first, {"status": "sent"})
         self.assertEqual(second, {"status": "already-sent"})
+        self.assertEqual(generate_reply.call_count, 1)
         self.assertEqual(len(mail.outbox), 1)
 
     @patch.dict(os.environ, {"CONTACT_AUTO_REPLY_ENABLED": "false"}, clear=False)
