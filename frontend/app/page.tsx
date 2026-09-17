@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- public homepage CTAs intentionally use full-page anchors to avoid Link hydration and prefetch work */
+import { preload } from "react-dom";
 import { ArrowRight, BarChart3, BookOpenCheck, Check, CirclePlay, GraduationCap, ShieldCheck, Sigma, Target } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
@@ -6,6 +7,7 @@ import { formatRand } from "@/lib/courses";
 import { getManagedCourses } from "@/lib/cms";
 
 export default async function Home() {
+  preload("/amaris-math-hero.webp", { as: "image", fetchPriority: "high" });
   const courses = await getManagedCourses();
   const featured = courses.filter((course) => course.featured);
   return (
