@@ -1,0 +1,59 @@
+name: Refresh Production Lockfile
+
+on:
+  push:
+    branches: [fix/production-readiness-all-20260916]
+    paths:
+      - frontend/package.json
+      - .github/workflows/refresh-production-lock.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-production-lock
+  cancel-in-progress: true
+
+jobs:
+  refresh-lock:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/production-readiness-all-20260916
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Resolve patched dependency graph
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Apply non-breaking security fixes
+        shell: bash
+        run: |
+          set +e
+          npm audit fix --package-lock-only --ignore-scripts
+          status=$?
+          set -e
+          # npm audit fix returns 1 when lower-severity findings remain. The
+          # next step is the authoritative fail-closed HIGH/CRITICAL gate.
+          if [ "$status" -gt 1 ]; then
+            exit "$status"
+          fi
+      - name: Confirm no HIGH or CRITICAL npm advisories
+        run: npm audit --audit-level=high
+      - name: Commit verified lockfile if changed
+        shell: bash
+        run: |
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "Lockfile is already current and verified."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "security: refresh patched frontend lockfile"
+          git push origin HEAD:fix/production-readiness-all-20260916

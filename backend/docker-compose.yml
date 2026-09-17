@@ -119,7 +119,7 @@ services:
     init: true
     env_file: .env
     environment: {SERVICE_ROLE: celery-worker}
-    command: celery -A amaris_cms worker --loglevel=INFO --concurrency=${CELERY_WORKER_CONCURRENCY:-2} --events
+    command: celery -A amaris_cms worker --loglevel=INFO --queues=critical,default --concurrency=${CELERY_WORKER_CONCURRENCY:-2} --events
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -136,6 +136,30 @@ services:
     stop_grace_period: 10m
     mem_limit: ${CELERY_MEMORY_LIMIT:-1g}
     cpus: ${CELERY_CPU_LIMIT:-1.5}
+
+  celery_notifications:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment: {SERVICE_ROLE: celery-notifications}
+    command: celery -A amaris_cms worker --loglevel=INFO --queues=notifications --concurrency=${CELERY_NOTIFICATION_CONCURRENCY:-2} --events --hostname=notifications@%h
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks: [backend_network, monitoring_network]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A amaris_cms inspect ping --timeout=5 | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    stop_signal: SIGTERM
+    stop_grace_period: 2m
+    mem_limit: ${CELERY_NOTIFICATION_MEMORY_LIMIT:-512m}
+    cpus: ${CELERY_NOTIFICATION_CPU_LIMIT:-0.75}
 
   celery_beat:
     build: .
@@ -278,6 +302,23 @@ services:
       retries: 3
       start_period: 30s
 
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    secrets: [alertmanager_webhook_url]
+    networks: [monitoring_network]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   prometheus:
     image: prom/prometheus:v3.5.0
     restart: unless-stopped
@@ -293,6 +334,9 @@ services:
       - ./monitoring/prometheus/entrypoint.sh:/etc/prometheus/amaris-entrypoint.sh:ro
       - prometheus_data:/prometheus
     secrets: [flower_basic_auth]
+    depends_on:
+      alertmanager:
+        condition: service_healthy
     networks: [backend_network, monitoring_network]
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9090/-/healthy"]
@@ -307,8 +351,8 @@ services:
       GRAFANA_PORT: ${GRAFANA_PORT:-3000}
       GRAFANA_URL: ${GRAFANA_URL:-http://grafana:3000}
       GF_SERVER_HTTP_PORT: ${GRAFANA_PORT:-3000}
-      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://localhost:8080/monitoring/grafana/}
-      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://grafana:3000/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
       GF_AUTH_ANONYMOUS_ENABLED: ${GF_AUTH_ANONYMOUS_ENABLED:-false}
@@ -402,7 +446,6 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-      SCRIPT_NAME: /monitoring/pgadmin
     volumes: [pgadmin_data:/var/lib/pgadmin]
     depends_on:
       db:
@@ -423,6 +466,8 @@ secrets:
     environment: GF_SECURITY_ADMIN_PASSWORD
   restic_password:
     environment: RESTIC_PASSWORD
+  alertmanager_webhook_url:
+    environment: ALERTMANAGER_WEBHOOK_URL
 
 volumes:
   postgres_data:
@@ -431,6 +476,7 @@ volumes:
   media_data:
   flower_data:
   prometheus_data:
+  alertmanager_data:
   grafana_data:
   pgadmin_data:
   backup_metrics:

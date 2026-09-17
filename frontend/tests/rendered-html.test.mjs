@@ -1,45 +1,65 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
 
-test("renders development preview metadata", async (t) => {
+async function readTextTree(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const contents = await Promise.all(
+    entries.map(async (entry) => {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) return readTextTree(path);
+      try {
+        return await readFile(path, "utf8");
+      } catch {
+        return "";
+      }
+    }),
+  );
+  return contents.join("\n");
+}
+
+async function assertBuiltOutputHasNoDevelopmentPreviewMarker() {
+  const dist = fileURLToPath(new URL("../dist", import.meta.url));
+  const builtOutput = await readTextTree(dist);
+  assert.doesNotMatch(builtOutput, /codex-preview/i);
+}
+
+test("does not leak development preview metadata in the production render", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  let worker;
+
   try {
-    ({ default: worker } = await import(workerUrl.href));
-  } catch (error) {
-    if (error?.code === "ERR_UNSUPPORTED_ESM_URL_SCHEME") {
-      t.skip("The plain Node test runner cannot load the Cloudflare runtime module.");
-      return;
-    }
-    throw error;
-  }
-
-  const response = await worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
+    const { default: worker } = await import(workerUrl.href);
+    const response = await worker.fetch(
+      new Request("http://localhost/", {
+        headers: { accept: "text/html" },
+      }),
+      {
+        ASSETS: {
+          fetch: async () => new Response("Not found", { status: 404 }),
+        },
       },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+      {
+        waitUntil() {},
+        passThroughOnException() {},
+      },
+    );
 
-  assert.equal(response.status, 200);
-  assert.match(
-    response.headers.get("content-type") ?? "",
-    /^text\/html\b/i,
-  );
-  assert.match(await response.text(), developmentPreviewMeta);
+    assert.equal(response.status, 200);
+    assert.match(
+      response.headers.get("content-type") ?? "",
+      /^text\/html\b/i,
+    );
+    assert.doesNotMatch(await response.text(), developmentPreviewMeta);
+  } catch (error) {
+    if (error?.code !== "ERR_UNSUPPORTED_ESM_URL_SCHEME") throw error;
+    await assertBuiltOutputHasNoDevelopmentPreviewMarker();
+  }
 });
 
 test("renders branded recovery pages without technical details", async () => {

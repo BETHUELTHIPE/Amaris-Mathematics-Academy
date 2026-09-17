@@ -61,23 +61,31 @@ class Thresholds:
     overall_p95_ms: int
     overall_p99_ms: int
     public_p95_ms: int
+    public_p99_ms: int
     authenticated_p95_ms: int
     write_p95_ms: int
 
 
+# Production gates mirror the signed performance architecture: public reads p95
+# <=500 ms and p99 <=1 s, authenticated reads p95 <=750 ms, checkout/writes
+# p95 <=1 s, normal errors strictly below 1%, and peak errors strictly below 2%.
 THRESHOLDS: dict[str, Thresholds] = {
-    "smoke": Thresholds(0.01, 1000, 2000, 750, 1000, 1500),
-    "normal": Thresholds(0.01, 1000, 2000, 750, 1000, 1500),
-    "peak": Thresholds(0.02, 1500, 3000, 1000, 1500, 2000),
-    "spike": Thresholds(0.03, 2000, 4000, 1500, 2000, 2500),
-    "degraded": Thresholds(0.05, 3000, 6000, 2500, 3000, 4000),
+    "smoke": Thresholds(0.009, 750, 1500, 500, 1000, 750, 1000),
+    "normal": Thresholds(0.009, 750, 1500, 500, 1000, 750, 1000),
+    "elevated": Thresholds(0.019, 1000, 2000, 500, 1000, 750, 1000),
+    "peak": Thresholds(0.019, 1000, 2000, 500, 1000, 750, 1000),
+    "spike": Thresholds(0.019, 1250, 2500, 500, 1000, 750, 1000),
+    "degraded": Thresholds(0.05, 3000, 6000, 2500, 4000, 3000, 4000),
 }
 
+# Capacity scenarios are intentionally representative, not token CI traffic.
+# Manual normal/elevated/peak/spike runs must use the dedicated load generator.
 TRAFFIC_STAGES: dict[str, tuple[tuple[int, int, int], ...]] = {
     "smoke": ((5, 5, 2), (35, 5, 2)),
-    "normal": ((60, 20, 2), (660, 20, 2), (720, 0, 5)),
-    "peak": ((60, 50, 5), (180, 100, 10), (1080, 100, 10), (1200, 0, 10)),
-    "spike": ((30, 20, 5), (45, 200, 100), (180, 200, 20), (240, 20, 20), (300, 0, 20)),
+    "normal": ((300, 2500, 50), (600, 5000, 100), (1200, 5000, 100), (1320, 0, 100)),
+    "elevated": ((300, 5000, 100), (600, 7500, 150), (1200, 10000, 200), (1320, 0, 200)),
+    "peak": ((300, 10000, 200), (600, 15000, 300), (1200, 25000, 500), (1320, 0, 500)),
+    "spike": ((60, 2500, 100), (180, 25000, 1000), (480, 25000, 500), (600, 5000, 500), (720, 0, 500)),
     "degraded": ((15, 10, 5), (90, 10, 2), (105, 0, 5)),
 }
 

@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { getD1 } from "@/db";
+import type { EnquiryState } from "@/app/contact/state";
 
 const enquirySchema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name.").max(80, "Keep your name under 80 characters."),
@@ -12,14 +13,6 @@ const enquirySchema = z.object({
   consent: z.literal("on", { message: "Please agree so that we may respond to your enquiry." }),
   website: z.string().max(0).optional(),
 });
-
-export type EnquiryState = {
-  status: "idle" | "success" | "error";
-  message?: string;
-  errors?: Record<string, string>;
-};
-
-export const initialEnquiryState: EnquiryState = { status: "idle" };
 
 export async function submitEnquiry(_previousState: EnquiryState, formData: FormData): Promise<EnquiryState> {
   const parsed = enquirySchema.safeParse({

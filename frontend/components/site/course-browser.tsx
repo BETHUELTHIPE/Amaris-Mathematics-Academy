@@ -19,7 +19,7 @@ export function CourseBrowser({ courses }: { courses: Course[] }) {
     <>
       <div className="flex flex-col gap-4 rounded-2xl border border-[#dce4ef] bg-white p-4 shadow-[0_18px_60px_rgba(7,21,45,.06)] sm:flex-row sm:items-center sm:justify-between">
         <label className="relative block flex-1"><span className="sr-only">Search mathematics courses</span><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#61708a]" /><input value={query} onChange={(e) => setQuery(e.target.value)} className="h-12 w-full rounded-xl border border-[#d7e0ec] bg-[#f7f9fc] pl-11 pr-4 text-base outline-none transition focus:border-[#2767d8] focus:ring-4 focus:ring-[#2767d8]/10" placeholder="Search algebra, calculus, Grade 12…" /></label>
-        <div className="flex gap-2 overflow-x-auto" aria-label="Course filters">{filters.map((item) => <button key={item} onClick={() => setFilter(item)} className={`whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition ${filter === item ? "bg-[#0b2a5b] text-white" : "bg-[#edf2f8] text-[#38465e] hover:bg-[#dfe8f3]"}`}>{item}</button>)}</div>
+        <div className="flex gap-2 overflow-x-auto" role="group" aria-label="Course filters">{filters.map((item) => <button key={item} onClick={() => setFilter(item)} className={`whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition ${filter === item ? "bg-[#0b2a5b] text-white" : "bg-[#edf2f8] text-[#38465e] hover:bg-[#dfe8f3]"}`}>{item}</button>)}</div>
       </div>
       <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {visible.map((course, index) => (

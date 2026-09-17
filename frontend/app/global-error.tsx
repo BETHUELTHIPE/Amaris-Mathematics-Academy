@@ -1,10 +1,17 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- intentional full-page fallback navigation avoids loading the client Link runtime */
 "use client";
 
+import { useEffect } from "react";
+import { reportClientError } from "@/lib/client-error-reporting";
+
 export default function GlobalError({ error }: { error: Error & { digest?: string }; reset: () => void }) {
   const reference = error.digest
     ? `AMR-${error.digest.replace(/[^A-Za-z0-9-]/g, "").slice(0, 48).toUpperCase()}`
     : undefined;
+
+  useEffect(() => {
+    reportClientError(reference);
+  }, [reference]);
 
   return (
     <html lang="en-ZA">
