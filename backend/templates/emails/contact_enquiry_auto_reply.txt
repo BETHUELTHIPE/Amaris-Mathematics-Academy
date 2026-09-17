@@ -1,14 +1,27 @@
+============================================================
+{{ site_name|upper }}
+OFFICIAL STUDENT ENQUIRY RESPONSE
+{% if site and site.managing_director %}Managing Director: {{ site.managing_director }}
+{% endif %}{% if site and site.phone %}Tel: {{ site.phone }}
+{% endif %}{% if site and site.email %}Email: {{ site.email }}
+{% endif %}{% if website_url %}Website: {{ website_url }}
+{% endif %}{% if site and site.address %}Address: {{ site.address }}
+{% endif %}{% if site and site.business_hours %}Support hours: {{ site.business_hours }}
+{% endif %}============================================================
+
 Hello {{ enquiry.name }},
 
 {{ ai_reply }}
 
-{% if website_url %}Website: {{ website_url }}
-{% endif %}{% if site and site.email %}Email: {{ site.email }}
-{% endif %}{% if site and site.phone %}Phone: {{ site.phone }}
-{% endif %}{% if site and site.business_hours %}Support hours: {{ site.business_hours }}
-{% endif %}{% if site and site.address %}Address: {{ site.address }}
-{% endif %}
-This reply was drafted by OpenAI GPT using current published website content. Please do not reply with passwords, card details or one-time PINs.
-
 Regards,
 {{ site_name }}
+
+------------------------------------------------------------
+OFFICIAL CORRESPONDENCE — {{ site_name }}
+{% if site and site.phone %}Phone: {{ site.phone }}
+{% endif %}{% if site and site.email %}Email: {{ site.email }}
+{% endif %}{% if website_url %}Website: {{ website_url }}
+{% endif %}{% if site and site.address %}Address: {{ site.address }}
+{% endif %}
+This official response was drafted by OpenAI GPT using current published {{ site_name }} website content. Please do not reply with passwords, card details or one-time PINs.
+============================================================
