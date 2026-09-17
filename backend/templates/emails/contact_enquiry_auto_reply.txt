@@ -1,12 +1,12 @@
 ============================================================
-{{ site_name|upper }}
+{{ letterhead.site_name|upper }}
 OFFICIAL STUDENT ENQUIRY RESPONSE
-{% if site and site.managing_director %}Managing Director: {{ site.managing_director }}
-{% endif %}{% if site and site.phone %}Tel: {{ site.phone }}
-{% endif %}{% if site and site.email %}Email: {{ site.email }}
-{% endif %}{% if website_url %}Website: {{ website_url }}
-{% endif %}{% if site and site.address %}Address: {{ site.address }}
-{% endif %}{% if site and site.business_hours %}Support hours: {{ site.business_hours }}
+{% if letterhead.managing_director %}Managing Director: {{ letterhead.managing_director }}
+{% endif %}{% if letterhead.phone %}Tel: {{ letterhead.phone }}
+{% endif %}{% if letterhead.email %}Email: {{ letterhead.email }}
+{% endif %}{% if letterhead.website_url %}Website: {{ letterhead.website_url }}
+{% endif %}{% if letterhead.address %}Address: {{ letterhead.address }}
+{% endif %}{% if letterhead.business_hours %}Support hours: {{ letterhead.business_hours }}
 {% endif %}============================================================
 
 Hello {{ enquiry.name }},
@@ -14,14 +14,14 @@ Hello {{ enquiry.name }},
 {{ ai_reply }}
 
 Regards,
-{{ site_name }}
+{{ letterhead.site_name }}
 
 ------------------------------------------------------------
-OFFICIAL CORRESPONDENCE — {{ site_name }}
-{% if site and site.phone %}Phone: {{ site.phone }}
-{% endif %}{% if site and site.email %}Email: {{ site.email }}
-{% endif %}{% if website_url %}Website: {{ website_url }}
-{% endif %}{% if site and site.address %}Address: {{ site.address }}
+OFFICIAL CORRESPONDENCE — {{ letterhead.site_name }}
+{% if letterhead.phone %}Phone: {{ letterhead.phone }}
+{% endif %}{% if letterhead.email %}Email: {{ letterhead.email }}
+{% endif %}{% if letterhead.website_url %}Website: {{ letterhead.website_url }}
+{% endif %}{% if letterhead.address %}Address: {{ letterhead.address }}
 {% endif %}
-This official response was drafted by OpenAI GPT using current published {{ site_name }} website content. Please do not reply with passwords, card details or one-time PINs.
+This official response was drafted by OpenAI GPT using current published {{ letterhead.site_name }} website content. Please do not reply with passwords, card details or one-time PINs.
 ============================================================
