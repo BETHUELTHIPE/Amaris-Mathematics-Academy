@@ -32,10 +32,10 @@ urls=(
 )
 
 # The production worker and Chrome both have one-time JIT/disk-cache startup work.
-# Warm every audited route plus one disposable Lighthouse navigation before the
-# recorded runs so the strict 100/100 gate measures steady-state production
-# performance rather than runner/process cold-start variance. No recorded score
-# is discarded or averaged: every retained report below must still score 100.
+# Warm every audited route with ordinary requests and one disposable Lighthouse
+# audit before the recorded runs. The disposable audits are never included in
+# verification; every retained report below must still independently score 100
+# and meet the same strict metric budgets.
 warm_routes() {
   echo "Warming production routes before recorded Lighthouse measurements..."
   for pass in 1 2 3; do
@@ -47,25 +47,33 @@ warm_routes() {
 }
 
 warm_lighthouse_desktop() {
-  echo "Warming desktop Chrome/Lighthouse execution path..."
-  npx --no-install lighthouse http://127.0.0.1:4180/ \
-    --quiet \
-    --preset=desktop \
-    --throttling-method=provided \
-    --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
-    --output=json \
-    --output-path=/tmp/amaris-lighthouse-desktop-warmup.json
-  rm -f /tmp/amaris-lighthouse-desktop-warmup.json
+  echo "Warming each audited route with desktop Chrome/Lighthouse..."
+  for entry in "${urls[@]}"; do
+    slug="${entry%%|*}"
+    url="${entry#*|}"
+    npx --no-install lighthouse "$url" \
+      --quiet \
+      --preset=desktop \
+      --throttling-method=provided \
+      --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+      --output=json \
+      --output-path="/tmp/amaris-lighthouse-desktop-${slug}-warmup.json"
+    rm -f "/tmp/amaris-lighthouse-desktop-${slug}-warmup.json"
+  done
 }
 
 warm_lighthouse_mobile() {
-  echo "Warming mobile Chrome/Lighthouse execution path..."
-  npx --no-install lighthouse http://127.0.0.1:4180/ \
-    --quiet \
-    --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
-    --output=json \
-    --output-path=/tmp/amaris-lighthouse-mobile-warmup.json
-  rm -f /tmp/amaris-lighthouse-mobile-warmup.json
+  echo "Warming each audited route with mobile Chrome/Lighthouse..."
+  for entry in "${urls[@]}"; do
+    slug="${entry%%|*}"
+    url="${entry#*|}"
+    npx --no-install lighthouse "$url" \
+      --quiet \
+      --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+      --output=json \
+      --output-path="/tmp/amaris-lighthouse-mobile-${slug}-warmup.json"
+    rm -f "/tmp/amaris-lighthouse-mobile-${slug}-warmup.json"
+  done
 }
 
 run_perfect_profile() {
