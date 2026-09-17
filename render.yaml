@@ -177,9 +177,7 @@ services:
     region: frankfurt
     maxmemoryPolicy: noeviction
     persistenceMode: journal-snapshot
-    ipAllowList:
-      - source: 0.0.0.0/0
-        description: required by Render Blueprint schema; service access remains credential-protected
+    ipAllowList: []
 
   - type: keyvalue
     name: amaris-production-cache
@@ -187,9 +185,7 @@ services:
     region: frankfurt
     maxmemoryPolicy: allkeys-lru
     persistenceMode: off
-    ipAllowList:
-      - source: 0.0.0.0/0
-        description: required by Render Blueprint schema; service access remains credential-protected
+    ipAllowList: []
 
 databases:
   - name: amaris-production-postgres
