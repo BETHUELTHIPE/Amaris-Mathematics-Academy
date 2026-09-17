@@ -1,0 +1,172 @@
+name: Supply Chain Image
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: supply-chain-image-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY_IMAGE: docker.io/bethuelm/amaris-mathematics-academy
+
+jobs:
+  verify-image:
+    name: Build, SBOM, store, and scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build production image candidate
+        run: docker build --tag amaris-backend:${{ github.sha }} backend
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: amaris-backend:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: amaris-backend-sbom.cdx.json
+
+      - name: Store SBOM as immutable workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-backend-sbom-${{ github.sha }}
+          path: amaris-backend-sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Scan candidate image for HIGH and CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: amaris-backend:${{ github.sha }}
+          format: sarif
+          output: trivy-supply-chain-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Upload vulnerability scan results
+        if: always() && hashFiles('trivy-supply-chain-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-supply-chain-results.sarif
+          category: trivy-supply-chain-image
+
+  publish-sign-verify:
+    name: Push immutable image, sign digest, and attach SBOM
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [verify-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download verified SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: amaris-backend-sbom-${{ github.sha }}
+          path: supply-chain
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: bethuelm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push immutable multi-platform SHA image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ env.REGISTRY_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=amaris-backend-supply-chain
+          cache-to: type=gha,mode=max,scope=amaris-backend-supply-chain
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.0
+        with:
+          cosign-release: v3.1.3
+
+      - name: Record immutable digest reference
+        id: image
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          test -n "$IMAGE_DIGEST"
+          case "$IMAGE_DIGEST" in
+            sha256:*) ;;
+            *) echo "Unexpected image digest: $IMAGE_DIGEST" >&2; exit 1 ;;
+          esac
+          printf 'reference=%s@%s\n' "$REGISTRY_IMAGE" "$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+          printf 'tagged_reference=%s:%s\n' "$REGISTRY_IMAGE" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Sign immutable image digest with GitHub OIDC
+        env:
+          IMAGE: ${{ steps.image.outputs.reference }}
+        run: cosign sign --yes "$IMAGE"
+
+      - name: Attach verified CycloneDX SBOM as signed attestation
+        env:
+          IMAGE: ${{ steps.image.outputs.reference }}
+        run: cosign attest --yes --predicate supply-chain/amaris-backend-sbom.cdx.json --type cyclonedx "$IMAGE"
+
+      - name: Verify image signature
+        shell: bash
+        env:
+          IMAGE: ${{ steps.image.outputs.reference }}
+          EXPECTED_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/supply-chain-image.yml@refs/heads/main
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity "$EXPECTED_IDENTITY" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$IMAGE" >/dev/null
+
+      - name: Verify SBOM attestation
+        shell: bash
+        env:
+          IMAGE: ${{ steps.image.outputs.reference }}
+          EXPECTED_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/supply-chain-image.yml@refs/heads/main
+        run: |
+          set -euo pipefail
+          cosign verify-attestation \
+            --type cyclonedx \
+            --certificate-identity "$EXPECTED_IDENTITY" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$IMAGE" >/dev/null
+
+      - name: Verify immutable SHA tag resolves to signed digest
+        shell: bash
+        env:
+          IMAGE: ${{ steps.image.outputs.reference }}
+          TAGGED_IMAGE: ${{ steps.image.outputs.tagged_reference }}
+        run: |
+          set -euo pipefail
+          tagged_digest="$(docker buildx imagetools inspect "$TAGGED_IMAGE" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          signed_digest="${IMAGE##*@}"
+          test "$tagged_digest" = "$signed_digest"
+          echo "Verified immutable image: $TAGGED_IMAGE -> $signed_digest"
