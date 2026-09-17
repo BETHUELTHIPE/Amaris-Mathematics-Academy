@@ -74,7 +74,9 @@ class ReplyItem:
 
 def _live_q(now=None) -> Q:
     now = now or timezone.now()
-    return Q(is_published=True) & (Q(publish_at__isnull=True) | Q(publish_at__lte=now))
+    return Q(is_published=True) & (
+        Q(publish_at__isnull=True) | Q(publish_at__lte=now)
+    )
 
 
 def _tokens(value: str) -> set[str]:
@@ -114,7 +116,9 @@ def _rank(items: Iterable[ReplyItem], limit: int) -> list[ReplyItem]:
     return relevant[:limit]
 
 
-def build_enquiry_reply_context(enquiry: ContactEnquiry, *, max_items: int = 6) -> dict:
+def build_enquiry_reply_context(
+    enquiry: ContactEnquiry, *, max_items: int = 6
+) -> dict:
     """Build a reply context exclusively from currently published website content."""
 
     now = timezone.now()
@@ -217,7 +221,9 @@ def build_enquiry_reply_context(enquiry: ContactEnquiry, *, max_items: int = 6) 
                 kind="Pricing",
                 title=plan.name,
                 body=body,
-                url=_absolute_url(website_url, plan.call_to_action_url or "/pricing"),
+                url=_absolute_url(
+                    website_url, plan.call_to_action_url or "/pricing"
+                ),
                 score=_score(
                     query_tokens,
                     plan.name,
@@ -284,7 +290,10 @@ or HTML. Return only the plain-text email body. Keep the response under 350 word
 
 
 def openai_contact_model() -> str:
-    return os.getenv("OPENAI_CONTACT_MODEL", DEFAULT_OPENAI_CONTACT_MODEL).strip() or DEFAULT_OPENAI_CONTACT_MODEL
+    return (
+        os.getenv("OPENAI_CONTACT_MODEL", DEFAULT_OPENAI_CONTACT_MODEL).strip()
+        or DEFAULT_OPENAI_CONTACT_MODEL
+    )
 
 
 def generate_enquiry_ai_reply(
@@ -302,15 +311,22 @@ def generate_enquiry_ai_reply(
 
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
-        raise ImproperlyConfigured("OPENAI_API_KEY is required for GPT contact-form auto-replies.")
+        raise ImproperlyConfigured(
+            "OPENAI_API_KEY is required for GPT contact-form auto-replies."
+        )
 
     context = context or build_enquiry_reply_context(enquiry)
     website_context = _website_context_for_openai(context)
     timeout = float(os.getenv("OPENAI_CONTACT_TIMEOUT_SECONDS", "20"))
     max_output_tokens = int(
-        os.getenv("OPENAI_CONTACT_MAX_OUTPUT_TOKENS", str(DEFAULT_OPENAI_MAX_OUTPUT_TOKENS))
+        os.getenv(
+            "OPENAI_CONTACT_MAX_OUTPUT_TOKENS",
+            str(DEFAULT_OPENAI_MAX_OUTPUT_TOKENS),
+        )
     )
-    openai_client = client or OpenAI(api_key=api_key, timeout=timeout, max_retries=0)
+    openai_client = client or OpenAI(
+        api_key=api_key, timeout=timeout, max_retries=0
+    )
 
     response = openai_client.responses.create(
         model=openai_contact_model(),
@@ -364,7 +380,8 @@ def build_email_connection():
     password = os.getenv("EMAIL_HOST_PASSWORD", "")
     if not host or not username or not password:
         raise ImproperlyConfigured(
-            "SMTP auto-replies require EMAIL_HOST, EMAIL_HOST_USER, and EMAIL_HOST_PASSWORD."
+            "SMTP auto-replies require EMAIL_HOST, EMAIL_HOST_USER, and "
+            "EMAIL_HOST_PASSWORD."
         )
 
     return get_connection(
@@ -373,8 +390,10 @@ def build_email_connection():
         port=int(os.getenv("EMAIL_PORT", "587")),
         username=username,
         password=password,
-        use_tls=os.getenv("EMAIL_USE_TLS", "true").strip().lower() in {"1", "true", "yes", "on"},
-        use_ssl=os.getenv("EMAIL_USE_SSL", "false").strip().lower() in {"1", "true", "yes", "on"},
+        use_tls=os.getenv("EMAIL_USE_TLS", "true").strip().lower()
+        in {"1", "true", "yes", "on"},
+        use_ssl=os.getenv("EMAIL_USE_SSL", "false").strip().lower()
+        in {"1", "true", "yes", "on"},
         timeout=int(os.getenv("EMAIL_TIMEOUT_SECONDS", "20")),
     )
 
