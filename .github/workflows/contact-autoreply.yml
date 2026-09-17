@@ -1,0 +1,96 @@
+name: Contact Auto Reply
+
+on:
+  push:
+    paths:
+      - "backend/content/services/enquiry_autoreply.py"
+      - "backend/content/tasks.py"
+      - "backend/content/signals.py"
+      - "backend/templates/emails/contact_enquiry_auto_reply.*"
+      - "backend/tests/unit/test_enquiry_ai_autoreply.py"
+      - "backend/requirements*.txt"
+      - ".github/workflows/contact-autoreply.yml"
+  pull_request:
+    paths:
+      - "backend/content/services/enquiry_autoreply.py"
+      - "backend/content/tasks.py"
+      - "backend/content/signals.py"
+      - "backend/templates/emails/contact_enquiry_auto_reply.*"
+      - "backend/tests/unit/test_enquiry_ai_autoreply.py"
+      - "backend/requirements*.txt"
+      - ".github/workflows/contact-autoreply.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contact-autoreply-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mocked-openai-email:
+    name: Mocked OpenAI GPT contact email
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_ci
+          POSTGRES_USER: amaris_ci
+          POSTGRES_PASSWORD: amaris_ci_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U amaris_ci -d amaris_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      DATABASE_URL: postgresql://amaris_ci:amaris_ci_password@127.0.0.1:5432/amaris_ci
+      DATABASE_SSL_REQUIRED: "false"
+      DJANGO_CACHE_URL: redis://127.0.0.1:6379/2
+      DJANGO_PUBLIC_CACHE_URL: redis://127.0.0.1:6379/3
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+      CONTACT_AUTO_REPLY_ENABLED: "true"
+      OPENAI_API_KEY: ""
+      EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
+      DEFAULT_FROM_EMAIL: noreply@example.test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate an ephemeral Django secret
+        shell: bash
+        run: |
+          secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$secret"
+          printf 'DJANGO_SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
+      - name: Check formatting
+        run: black --check content/services/enquiry_autoreply.py content/tasks.py tests/unit/test_enquiry_ai_autoreply.py
+      - name: Check linting
+        run: ruff check content/services/enquiry_autoreply.py content/tasks.py tests/unit/test_enquiry_ai_autoreply.py
+      - name: Apply test migrations
+        run: python manage.py migrate --noinput
+      - name: Run mocked OpenAI auto-reply tests
+        run: python manage.py test tests.unit.test_enquiry_ai_autoreply --verbosity 2
