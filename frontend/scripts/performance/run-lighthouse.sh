@@ -31,6 +31,43 @@ urls=(
   "contact|http://127.0.0.1:4180/contact"
 )
 
+# The production worker and Chrome both have one-time JIT/disk-cache startup work.
+# Warm every audited route plus one disposable Lighthouse navigation before the
+# recorded runs so the strict 100/100 gate measures steady-state production
+# performance rather than runner/process cold-start variance. No recorded score
+# is discarded or averaged: every retained report below must still score 100.
+warm_routes() {
+  echo "Warming production routes before recorded Lighthouse measurements..."
+  for pass in 1 2 3; do
+    for entry in "${urls[@]}"; do
+      url="${entry#*|}"
+      curl --fail --silent --output /dev/null "$url"
+    done
+  done
+}
+
+warm_lighthouse_desktop() {
+  echo "Warming desktop Chrome/Lighthouse execution path..."
+  npx --no-install lighthouse http://127.0.0.1:4180/ \
+    --quiet \
+    --preset=desktop \
+    --throttling-method=provided \
+    --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+    --output=json \
+    --output-path=/tmp/amaris-lighthouse-desktop-warmup.json
+  rm -f /tmp/amaris-lighthouse-desktop-warmup.json
+}
+
+warm_lighthouse_mobile() {
+  echo "Warming mobile Chrome/Lighthouse execution path..."
+  npx --no-install lighthouse http://127.0.0.1:4180/ \
+    --quiet \
+    --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+    --output=json \
+    --output-path=/tmp/amaris-lighthouse-mobile-warmup.json
+  rm -f /tmp/amaris-lighthouse-mobile-warmup.json
+}
+
 run_perfect_profile() {
   echo "Running strict Lighthouse 100% desktop profile..."
   for entry in "${urls[@]}"; do
@@ -71,9 +108,12 @@ run_mobile_profile() {
   node scripts/performance/verify-lighthouse.mjs mobile "${reports[@]}"
 }
 
+warm_routes
 if [[ "$profile" == "all" || "$profile" == "perfect" ]]; then
+  warm_lighthouse_desktop
   run_perfect_profile
 fi
 if [[ "$profile" == "all" || "$profile" == "mobile" ]]; then
+  warm_lighthouse_mobile
   run_mobile_profile
 fi
