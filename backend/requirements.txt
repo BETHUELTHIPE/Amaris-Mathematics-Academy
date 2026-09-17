@@ -16,5 +16,5 @@ redis==6.4.0
 django-prometheus>=2.3,<3.0
 boto3==1.40.43
 Pillow==12.3.0
-whitenoise==6.9.0
 msgpack>=1.2.1,<2.0
+openai==3.14.1
