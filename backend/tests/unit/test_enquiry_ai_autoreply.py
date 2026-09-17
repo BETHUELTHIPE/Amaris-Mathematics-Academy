@@ -26,10 +26,7 @@ class OpenAIContactAutoReplyTests(TestCase):
         )
         FAQ.objects.create(
             question="Do you support Grade 12 matric Mathematics?",
-            answer=(
-                "Yes. Published Grade 12 Mathematics support is available through "
-                "Amaris."
-            ),
+            answer=("Yes. Published Grade 12 Mathematics support is available through " "Amaris."),
             category="Grade 12",
             is_published=True,
         )
@@ -38,10 +35,7 @@ class OpenAIContactAutoReplyTests(TestCase):
             email="student@example.test",
             phone="0710000000",
             subject="Grade 12 matric Mathematics",
-            message=(
-                "Please tell me about your Grade 12 matric Mathematics support "
-                "options."
-            ),
+            message=("Please tell me about your Grade 12 matric Mathematics support " "options."),
         )
         cache.clear()
 
@@ -67,9 +61,7 @@ class OpenAIContactAutoReplyTests(TestCase):
         ):
             result = generate_enquiry_ai_reply(self.enquiry, context, client=client)
 
-        self.assertEqual(
-            result, "We provide published Grade 12 Mathematics support."
-        )
+        self.assertEqual(result, "We provide published Grade 12 Mathematics support.")
         call = client.responses.create.call_args.kwargs
         self.assertEqual(call["model"], "gpt-5.6-luna")
         self.assertFalse(call["store"])
@@ -98,9 +90,10 @@ class OpenAIContactAutoReplyTests(TestCase):
             "OPENAI_API_KEY": "test-openai-key-not-real",
         }
 
-        with patch.dict(os.environ, env, clear=False), patch(
-            "content.tasks.generate_enquiry_ai_reply", return_value=generated_reply
-        ) as generate_reply:
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch("content.tasks.generate_enquiry_ai_reply", return_value=generated_reply) as generate_reply,
+        ):
             result = send_contact_enquiry_auto_reply.run(self.enquiry.pk)
 
         self.assertEqual(result, {"status": "sent"})
@@ -121,9 +114,7 @@ class OpenAIContactAutoReplyTests(TestCase):
             is_published=False,
         )
         client = Mock()
-        client.responses.create.return_value = SimpleNamespace(
-            output_text="Published answer only."
-        )
+        client.responses.create.return_value = SimpleNamespace(output_text="Published answer only.")
         context = build_enquiry_reply_context(self.enquiry)
 
         with patch.dict(
