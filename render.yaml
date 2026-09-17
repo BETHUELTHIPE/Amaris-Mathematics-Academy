@@ -176,14 +176,20 @@ services:
     plan: starter
     region: frankfurt
     maxmemoryPolicy: noeviction
-    persistenceMode: journal_snapshot
+    persistenceMode: journal-snapshot
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: required by Render Blueprint schema; service access remains credential-protected
 
   - type: keyvalue
     name: amaris-production-cache
     plan: starter
     region: frankfurt
-    maxmemoryPolicy: allkeys_lru
+    maxmemoryPolicy: allkeys-lru
     persistenceMode: off
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: required by Render Blueprint schema; service access remains credential-protected
 
 databases:
   - name: amaris-production-postgres
