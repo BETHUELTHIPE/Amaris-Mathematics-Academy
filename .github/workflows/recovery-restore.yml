@@ -1,0 +1,105 @@
+name: Backup Restore Verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/recovery-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build exact recovery image
+        run: docker build -t amaris-recovery:${GITHUB_SHA} backend
+
+      - name: Start isolated source and restore PostgreSQL 17 databases
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker network create amaris-recovery
+          docker run -d --name source-db --network amaris-recovery \
+            -e POSTGRES_DB=amaris \
+            -e POSTGRES_USER=amaris \
+            -e POSTGRES_PASSWORD=source-test-password \
+            postgres:17-alpine
+          docker run -d --name restore-db --network amaris-recovery \
+            -e POSTGRES_DB=amaris_restore \
+            -e POSTGRES_USER=restore \
+            -e POSTGRES_PASSWORD=restore-test-password \
+            postgres:17-alpine
+          for db in source-db restore-db; do
+            for attempt in $(seq 1 30); do
+              docker exec "$db" pg_isready && break
+              test "$attempt" -lt 30
+              sleep 2
+            done
+          done
+
+      - name: Migrate and seed deterministic synthetic recovery marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network amaris-recovery \
+            -e DJANGO_DEBUG=true \
+            -e DATABASE_URL=postgresql://amaris:source-test-password@source-db:5432/amaris \
+            amaris-recovery:${GITHUB_SHA} python manage.py migrate --noinput
+          docker exec source-db psql -U amaris -d amaris -v ON_ERROR_STOP=1 -c \
+            "CREATE TABLE recovery_marker (id integer primary key, marker text not null); INSERT INTO recovery_marker VALUES (1, 'AMARIS-RECOVERY-VERIFIED');"
+
+      - name: Run encrypted repository backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/restic" "$RUNNER_TEMP/reliability" "$RUNNER_TEMP/media"
+          printf '%s\n' 'ci-ephemeral-restic-password' > "$RUNNER_TEMP/restic-password"
+          chmod 600 "$RUNNER_TEMP/restic-password"
+          docker run --rm --user 0:0 --network amaris-recovery \
+            -v "$RUNNER_TEMP/restic:/restic" \
+            -v "$RUNNER_TEMP/reliability:/var/lib/amaris-reliability" \
+            -v "$RUNNER_TEMP/media:/backup-source/media:ro" \
+            -v "$RUNNER_TEMP/restic-password:/run/secrets/restic_password:ro" \
+            -e RESTIC_REPOSITORY=/restic \
+            -e RESTIC_PASSWORD_FILE=/run/secrets/restic_password \
+            -e POSTGRES_HOST=source-db \
+            -e POSTGRES_DB=amaris \
+            -e POSTGRES_USER=amaris \
+            -e POSTGRES_PASSWORD=source-test-password \
+            -e BACKUP_TAG=automated \
+            amaris-recovery:${GITHUB_SHA} /app/ops/backup.sh
+          test -f "$RUNNER_TEMP/reliability/backup-success"
+
+      - name: Restore into isolated database and verify integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --user 0:0 --network amaris-recovery \
+            -v "$RUNNER_TEMP/restic:/restic:ro" \
+            -v "$RUNNER_TEMP/reliability:/var/lib/amaris-reliability" \
+            -v "$RUNNER_TEMP/restic-password:/run/secrets/restic_password:ro" \
+            -e RESTIC_REPOSITORY=/restic \
+            -e RESTIC_PASSWORD_FILE=/run/secrets/restic_password \
+            -e POSTGRES_HOST=source-db \
+            -e RESTORE_TEST_POSTGRES_HOST=restore-db \
+            -e RESTORE_TEST_POSTGRES_DB=amaris_restore \
+            -e RESTORE_TEST_POSTGRES_USER=restore \
+            -e RESTORE_TEST_POSTGRES_PASSWORD=restore-test-password \
+            amaris-recovery:${GITHUB_SHA} /app/ops/restore-test.sh
+          test -f "$RUNNER_TEMP/reliability/restore-test-success"
+          marker=$(docker exec restore-db psql -U restore -d amaris_restore -Atc \
+            "SELECT marker FROM recovery_marker WHERE id=1;")
+          test "$marker" = 'AMARIS-RECOVERY-VERIFIED'
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f source-db restore-db 2>/dev/null || true
+          docker network rm amaris-recovery 2>/dev/null || true
