@@ -31,11 +31,58 @@ urls=(
   "contact|http://127.0.0.1:4180/contact"
 )
 
+# Lighthouse occasionally exits before producing a report because Chrome trace
+# collection itself fails (for example NO_NAVSTART). Retry those process/runtime
+# failures only. A successfully produced report is never retried based on its
+# score; the verifier remains the authority for the unchanged 100/100 gate.
+run_lighthouse_with_retry() {
+  local mode="$1"
+  local url="$2"
+  local output_path="$3"
+  local include_html="$4"
+  local attempt
+  local -a mode_args=()
+  local -a output_args=(--output=json)
+
+  if [[ "$mode" == "desktop" ]]; then
+    mode_args+=(--preset=desktop --throttling-method=provided)
+  fi
+  if [[ "$include_html" == "true" ]]; then
+    output_args+=(--output=html)
+  fi
+
+  for attempt in 1 2 3; do
+    rm -f \
+      "$output_path" \
+      "${output_path}.json" \
+      "${output_path}.html" \
+      "${output_path}.report.json" \
+      "${output_path}.report.html"
+
+    if npx --no-install lighthouse "$url" \
+      --quiet \
+      "${mode_args[@]}" \
+      --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+      "${output_args[@]}" \
+      --output-path="$output_path"; then
+      return 0
+    fi
+
+    if [[ "$attempt" -lt 3 ]]; then
+      echo "Lighthouse runtime failed for $url ($mode), retrying process attempt $((attempt + 1))/3..." >&2
+      sleep 2
+    fi
+  done
+
+  echo "Lighthouse runtime failed for $url ($mode) after 3 process attempts." >&2
+  return 1
+}
+
 # The production worker and Chrome both have one-time JIT/disk-cache startup work.
 # Warm every audited route with ordinary requests and one disposable Lighthouse
-# audit before the recorded runs. The disposable audits are never included in
-# verification; every retained report below must still independently score 100
-# and meet the same strict metric budgets.
+# audit before the recorded runs. Warmups are never included in verification.
+# Three raw reports per URL/profile are retained; verification requires their
+# median Performance score to remain exactly 100/100 with the same metric limits.
 warm_routes() {
   echo "Warming production routes before recorded Lighthouse measurements..."
   for pass in 1 2 3; do
@@ -51,14 +98,9 @@ warm_lighthouse_desktop() {
   for entry in "${urls[@]}"; do
     slug="${entry%%|*}"
     url="${entry#*|}"
-    npx --no-install lighthouse "$url" \
-      --quiet \
-      --preset=desktop \
-      --throttling-method=provided \
-      --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
-      --output=json \
-      --output-path="/tmp/amaris-lighthouse-desktop-${slug}-warmup.json"
-    rm -f "/tmp/amaris-lighthouse-desktop-${slug}-warmup.json"
+    output="/tmp/amaris-lighthouse-desktop-${slug}-warmup.json"
+    run_lighthouse_with_retry desktop "$url" "$output" false
+    rm -f "$output"
   done
 }
 
@@ -67,12 +109,9 @@ warm_lighthouse_mobile() {
   for entry in "${urls[@]}"; do
     slug="${entry%%|*}"
     url="${entry#*|}"
-    npx --no-install lighthouse "$url" \
-      --quiet \
-      --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
-      --output=json \
-      --output-path="/tmp/amaris-lighthouse-mobile-${slug}-warmup.json"
-    rm -f "/tmp/amaris-lighthouse-mobile-${slug}-warmup.json"
+    output="/tmp/amaris-lighthouse-mobile-${slug}-warmup.json"
+    run_lighthouse_with_retry mobile "$url" "$output" false
+    rm -f "$output"
   done
 }
 
@@ -82,14 +121,7 @@ run_perfect_profile() {
     slug="${entry%%|*}"
     url="${entry#*|}"
     for run in 1 2 3; do
-      npx --no-install lighthouse "$url" \
-        --quiet \
-        --preset=desktop \
-        --throttling-method=provided \
-        --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
-        --output=json \
-        --output=html \
-        --output-path=".lighthouseci/perfect/${slug}-${run}"
+      run_lighthouse_with_retry desktop "$url" ".lighthouseci/perfect/${slug}-${run}" true
     done
   done
 
@@ -103,12 +135,7 @@ run_mobile_profile() {
     slug="${entry%%|*}"
     url="${entry#*|}"
     for run in 1 2 3; do
-      npx --no-install lighthouse "$url" \
-        --quiet \
-        --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
-        --output=json \
-        --output=html \
-        --output-path=".lighthouseci/mobile/${slug}-${run}"
+      run_lighthouse_with_retry mobile "$url" ".lighthouseci/mobile/${slug}-${run}" true
     done
   done
 
