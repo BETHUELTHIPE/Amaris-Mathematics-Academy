@@ -66,7 +66,7 @@ class OpenAIContactAutoReplyTests(TestCase):
         self.assertEqual(call["model"], "gpt-5.6-luna")
         self.assertFalse(call["store"])
         self.assertIn("Grade 12 matric Mathematics", call["input"])
-        self.assertIn("published Grade 12 Mathematics support", call["input"])
+        self.assertIn("Published Grade 12 Mathematics support", call["input"])
         self.assertIn("support@amaris.example", call["input"])
         self.assertNotIn(self.enquiry.email, call["input"])
         self.assertNotIn(self.enquiry.phone, call["input"])
