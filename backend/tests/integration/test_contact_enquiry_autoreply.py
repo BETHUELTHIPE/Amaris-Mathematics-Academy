@@ -20,6 +20,8 @@ class ContactEnquiryAutoReplyTests(TestCase):
             phone="071 000 0000",
             website_url="https://example.com",
             business_hours="Mon-Sun, 07:00-20:00",
+            managing_director="Test Managing Director",
+            address="27 Example Street, Pretoria",
         )
         self.site.logo.name = "branding/new-company-letterhead-logo.png"
         self.site.save(update_fields=["logo"])
@@ -117,20 +119,32 @@ class ContactEnquiryAutoReplyTests(TestCase):
             message.body.index(ai_body),
         )
         self.assertIn("OFFICIAL CORRESPONDENCE — Amaris Mathematics Academy", message.body)
+        self.assertIn("Test Managing Director", message.body)
+        self.assertIn("27 Example Street, Pretoria", message.body)
         self.assertIn("support@example.com", message.body)
         self.assertIn("071 000 0000", message.body)
+        self.assertNotIn("<table", message.body.lower())
         self.assertEqual(len(message.alternatives), 1)
         self.assertEqual(message.alternatives[0].mimetype, "text/html")
         html = message.alternatives[0].content
         self.assertIn('data-company-letterhead="true"', html)
         self.assertIn('data-company-logo="true"', html)
         self.assertIn('data-ai-response-body="true"', html)
+        self.assertIn('role="presentation"', html)
+        self.assertIn("max-width:720px", html)
         self.assertIn(ai_body, html)
         self.assertIn("Official Student Enquiry Response", html)
+        self.assertIn("Test Managing Director", html)
+        self.assertIn("27 Example Street, Pretoria", html)
         self.assertIn("branding/new-company-letterhead-logo.png", html)
+        self.assertIn('src="https://example.com/', html)
+        self.assertIn('alt="Amaris Mathematics Academy logo"', html)
         self.assertNotIn("/brand/amaris-academy-icon-192.png", html)
         self.assertIn("support@example.com", html)
         self.assertIn("071 000 0000", html)
+        self.assertNotIn("<script", html.lower())
+        self.assertNotIn("<link", html.lower())
+        self.assertNotIn("<style", html.lower())
 
     @patch.dict(
         os.environ,
