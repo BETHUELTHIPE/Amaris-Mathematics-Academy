@@ -7,7 +7,7 @@ from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase
 
-from content.models import ContactEnquiry, FAQ, SiteSettings
+from content.models import FAQ, ContactEnquiry, SiteSettings
 from content.services.enquiry_autoreply import (
     build_enquiry_reply_context,
     generate_enquiry_ai_reply,
