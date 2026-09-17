@@ -1,0 +1,23 @@
+Hello {{ enquiry.name }},
+
+Thank you for contacting {{ site_name }} about “{{ enquiry.subject }}”.
+
+{% if has_answer %}Based on the current published information on our website, these items may help:
+{% for item in matched_items %}
+{{ item.kind }}: {{ item.title }}
+{{ item.body }}{% if item.url %}
+{{ item.url }}{% endif %}
+{% endfor %}
+{% else %}We could not find a sufficiently close published website answer for your enquiry, so we have not guessed. A member of the Amaris team will follow up with you.
+{% endif %}
+
+{% if website_url %}Website: {{ website_url }}
+{% endif %}{% if site and site.email %}Email: {{ site.email }}
+{% endif %}{% if site and site.phone %}Phone: {{ site.phone }}
+{% endif %}{% if site and site.business_hours %}Support hours: {{ site.business_hours }}
+{% endif %}{% if site and site.address %}Address: {{ site.address }}
+{% endif %}
+This automatic acknowledgement uses current published website content. Please do not reply with passwords, card details or one-time PINs.
+
+Regards,
+{{ site_name }}
