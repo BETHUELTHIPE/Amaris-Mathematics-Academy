@@ -105,10 +105,23 @@ class ContactEnquiryAutoReplyTests(TestCase):
         self.assertEqual(message.to, ["student@example.com"])
         self.assertEqual(message.reply_to, ["support@example.com"])
         self.assertIn("Amaris Mathematics Academy", message.subject)
+        self.assertIn("OFFICIAL STUDENT ENQUIRY RESPONSE", message.body)
         self.assertIn("Grade 12 Calculus Mastery", message.body)
+        self.assertLess(
+            message.body.index("OFFICIAL STUDENT ENQUIRY RESPONSE"),
+            message.body.index("Grade 12 Calculus Mastery"),
+        )
+        self.assertIn("OFFICIAL CORRESPONDENCE — Amaris Mathematics Academy", message.body)
         self.assertEqual(len(message.alternatives), 1)
         self.assertEqual(message.alternatives[0].mimetype, "text/html")
-        self.assertIn("Grade 12 Calculus Mastery", message.alternatives[0].content)
+        html = message.alternatives[0].content
+        self.assertIn('data-company-letterhead="true"', html)
+        self.assertIn('data-ai-response-body="true"', html)
+        self.assertIn("Grade 12 Calculus Mastery", html)
+        self.assertIn("Official Student Enquiry Response", html)
+        self.assertIn("https://example.com/brand/amaris-academy-icon-192.png", html)
+        self.assertIn("support@example.com", html)
+        self.assertIn("071 000 0000", html)
 
     @patch.dict(
         os.environ,
