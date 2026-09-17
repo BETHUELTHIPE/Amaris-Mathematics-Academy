@@ -87,7 +87,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
       - name: Check formatting
-        run: black --check content/services/enquiry_autoreply.py content/tasks.py tests/unit/test_enquiry_ai_autoreply.py
+        run: black --diff --check content/services/enquiry_autoreply.py content/tasks.py tests/unit/test_enquiry_ai_autoreply.py
       - name: Check linting
         run: ruff check content/services/enquiry_autoreply.py content/tasks.py tests/unit/test_enquiry_ai_autoreply.py
       - name: Apply test migrations
