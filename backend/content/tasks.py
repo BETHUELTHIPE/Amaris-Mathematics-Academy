@@ -121,6 +121,6 @@ def send_contact_enquiry_auto_reply(self, enquiry_id: int) -> dict[str, str]:
     except (OpenAIError, SMTPException, OSError) as exc:
         cache.delete(lock_key)
         countdown = min(300, 5 * (2**self.request.retries))
-        raise self.retry(exc=exc, countdown=countdown)
+        raise self.retry(exc=exc, countdown=countdown) from exc
     finally:
         cache.delete(lock_key)
