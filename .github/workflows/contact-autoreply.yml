@@ -2,25 +2,12 @@ name: Contact Auto Reply
 
 on:
   push:
-    paths:
-      - "backend/content/services/enquiry_autoreply.py"
-      - "backend/content/tasks.py"
-      - "backend/content/signals.py"
-      - "backend/templates/emails/contact_enquiry_auto_reply.*"
-      - "backend/tests/unit/test_enquiry_ai_autoreply.py"
-      - "backend/tests/integration/test_contact_enquiry_autoreply.py"
-      - "backend/requirements*.txt"
-      - ".github/workflows/contact-autoreply.yml"
+    branches:
+      - main
+      - security/owasp-test-suite
   pull_request:
-    paths:
-      - "backend/content/services/enquiry_autoreply.py"
-      - "backend/content/tasks.py"
-      - "backend/content/signals.py"
-      - "backend/templates/emails/contact_enquiry_auto_reply.*"
-      - "backend/tests/unit/test_enquiry_ai_autoreply.py"
-      - "backend/tests/integration/test_contact_enquiry_autoreply.py"
-      - "backend/requirements*.txt"
-      - ".github/workflows/contact-autoreply.yml"
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
