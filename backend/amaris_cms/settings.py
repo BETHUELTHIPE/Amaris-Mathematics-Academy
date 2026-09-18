@@ -3,8 +3,36 @@ import secrets
 from pathlib import Path
 
 import dj_database_url
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _load_render_secret_env_files() -> None:
+    candidates = [
+        Path("/etc/secrets/.env"),
+        Path("/etc/secrets/env"),
+        BASE_DIR / ".env",
+        BASE_DIR.parent / ".env",
+    ]
+    secret_dir = Path("/etc/secrets")
+    if secret_dir.is_dir():
+        candidates.extend(sorted(secret_dir.glob(".env*")))
+        candidates.extend(sorted(secret_dir.glob("*.env")))
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate
+        if resolved in seen or not candidate.is_file():
+            continue
+        seen.add(resolved)
+        load_dotenv(candidate, override=False)
+
+
+_load_render_secret_env_files()
 
 
 def env_bool(name: str, default: bool = False) -> bool:
