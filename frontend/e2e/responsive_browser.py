@@ -233,10 +233,14 @@ def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: s
         page.locator("#enquiryType").select_option("course-guidance")
         page.locator("#message").fill("Synthetic no JavaScript enquiry used only for progressive enhancement verification.")
         page.locator("#consent").check(force=True)
-        page.get_by_role("button", name=re.compile("Send enquiry")).click(force=True)
+        submit = page.get_by_role("button", name=re.compile("Send enquiry"))
+        submit.focus()
+        page.keyboard.press("Enter")
         page.wait_for_load_state("domcontentloaded")
+        success = page.get_by_text("Enquiry received", exact=True)
+        success.wait_for(state="visible", timeout=15_000)
         require(
-            page.get_by_text("Enquiry received", exact=True).is_visible(),
+            success.is_visible(),
             "Contact form did not submit successfully without JavaScript",
         )
         print(f"PASS {engine_name:8} no-js   navigation-and-form")
