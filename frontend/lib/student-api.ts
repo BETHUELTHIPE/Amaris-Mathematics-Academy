@@ -1,3 +1,5 @@
+declare const __E2E_SYNTHETIC_STUDENT__: boolean;
+
 import { env } from "cloudflare:workers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireVerifiedStudent } from "@/lib/auth";
@@ -103,6 +105,7 @@ export async function createStudentCheckout(courseSlug: string): Promise<Checkou
 }
 
 export async function getStudentCourses(): Promise<StudentCourse[]> {
+  if (__E2E_SYNTHETIC_STUDENT__) return [];
   return studentFetch<StudentCourse[]>("/student/courses/");
 }
 
