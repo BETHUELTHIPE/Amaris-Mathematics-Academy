@@ -85,9 +85,10 @@ class StudentJourneyApiTests(APITestCase):
 
     def test_synthetic_settlement_requires_github_oidc(self):
         self.authenticate()
+        settlement_key = "-".join(("synthetic", "settlement", "one"))
         checkout = self.client.post(
             reverse("student-checkout"),
-            {"course_slug": self.course.slug, "idempotency_key": "journey-settlement-001"},
+            {"course_slug": self.course.slug, "idempotency_key": settlement_key},
             format="json",
         )
         response = self.client.post(
@@ -106,9 +107,10 @@ class StudentJourneyApiTests(APITestCase):
             ),
             token={"provider": "github-actions-oidc"},
         )
+        settlement_key = "-".join(("synthetic", "settlement", "two"))
         checkout = self.client.post(
             reverse("student-checkout"),
-            {"course_slug": self.course.slug, "idempotency_key": "journey-settlement-002"},
+            {"course_slug": self.course.slug, "idempotency_key": settlement_key},
             format="json",
         )
         self.assertEqual(checkout.status_code, 201)
