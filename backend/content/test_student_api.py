@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 
 from content.authentication import SupabaseStudentPrincipal
 from content.models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment, StudentRecord
+from content.payment_models import Invoice, NotificationOutbox
 
 
 class StudentJourneyApiTests(APITestCase):
@@ -81,6 +82,51 @@ class StudentJourneyApiTests(APITestCase):
         self.authenticate(self.other)
         cross_user = self.client.get(reverse("student-payment-status", args=[reference]), secure=True)
         self.assertEqual(cross_user.status_code, 404)
+
+    def test_synthetic_settlement_requires_github_oidc(self):
+        self.authenticate()
+        settlement_key = "-".join(("synthetic", "settlement", "one"))
+        checkout = self.client.post(
+            reverse("student-checkout"),
+            {"course_slug": self.course.slug, "idempotency_key": settlement_key},
+            format="json",
+        )
+        response = self.client.post(
+            reverse("student-acceptance-settle-payment"),
+            {"payment_reference": checkout.data["payment_reference"]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_github_oidc_settlement_exercises_real_fulfillment_path(self):
+        self.client.force_authenticate(
+            user=SupabaseStudentPrincipal(
+                student=self.student,
+                supabase_user_id=str(self.student.supabase_user_id),
+                email=self.student.email,
+            ),
+            token={"provider": "github-actions-oidc"},
+        )
+        settlement_key = "-".join(("synthetic", "settlement", "two"))
+        checkout = self.client.post(
+            reverse("student-checkout"),
+            {"course_slug": self.course.slug, "idempotency_key": settlement_key},
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201)
+        self.assertEqual(checkout.data["status"], Payment.Status.PENDING)
+
+        settled = self.client.post(
+            reverse("student-acceptance-settle-payment"),
+            {"payment_reference": checkout.data["payment_reference"]},
+            format="json",
+        )
+        self.assertEqual(settled.status_code, 200)
+        self.assertEqual(settled.data["status"], Payment.Status.PAID)
+        self.assertEqual(settled.data["enrollment_status"], Enrollment.Status.ACTIVE)
+        self.assertEqual(settled.data["notification_status"], NotificationOutbox.Status.QUEUED)
+        self.assertTrue(settled.data["invoice_number"].startswith("INV-PF-"))
+        self.assertEqual(Invoice.objects.filter(payment__reference=checkout.data["payment_reference"]).count(), 1)
 
     def test_last_lesson_resume_persists_and_is_student_scoped(self):
         self.authenticate()
