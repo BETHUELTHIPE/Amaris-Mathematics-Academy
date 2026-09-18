@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { env } from "cloudflare:workers";
 import { getD1 } from "@/db";
 import type { EnquiryState } from "@/app/contact/state";
 
@@ -31,7 +32,8 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
   }
 
   try {
-    const cmsBaseUrl = process.env.CMS_API_URL?.replace(/\/$/, "");
+    const workerBindings = env as unknown as { CMS_API_URL?: string };
+    const cmsBaseUrl = (workerBindings.CMS_API_URL || process.env.CMS_API_URL)?.replace(/\/$/, "");
     if (cmsBaseUrl) {
       try {
         const cmsResponse = await fetch(`${cmsBaseUrl}/enquiries/`, {
