@@ -141,12 +141,12 @@ export async function verifyEmailAction(formData: FormData) {
   const { error } = await supabase.auth.verifyOtp({
     email,
     token,
-    type: "signup",
+    type: "email",
   });
 
   if (error) {
     redirect(
-      `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("That code is invalid or has expired. Request a new code and try again.")}`,
+      `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("That code is invalid or has expired. Request a new code and verification link and try again.")}`,
     );
   }
 
