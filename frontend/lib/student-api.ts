@@ -31,6 +31,14 @@ export type CheckoutSession = {
   course: { slug: string; title: string };
 };
 
+export type StudentPaymentStatus = {
+  payment_reference: string;
+  status: "pending" | "paid" | "failed" | "cancelled" | "refunded";
+  course_slug: string;
+  paid_at: string | null;
+  enrollment_status: string | null;
+};
+
 export type ProtectedLesson = {
   course_slug: string;
   course_title: string;
@@ -102,6 +110,15 @@ export async function createStudentCheckout(courseSlug: string): Promise<Checkou
       idempotency_key: await checkoutKey(courseSlug),
     }),
   });
+}
+
+export async function getStudentPaymentStatus(reference: string): Promise<StudentPaymentStatus> {
+  if (!/^PF-[A-Za-z0-9_-]{8,80}$/.test(reference)) {
+    throw new Error("The payment reference is invalid.");
+  }
+  return studentFetch<StudentPaymentStatus>(
+    `/student/payments/${encodeURIComponent(reference)}/`,
+  );
 }
 
 export async function getStudentCourses(): Promise<StudentCourse[]> {

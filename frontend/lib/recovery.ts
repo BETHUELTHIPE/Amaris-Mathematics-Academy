@@ -122,6 +122,18 @@ export const httpRecoveryDefinitions = {
 } satisfies Record<string, RecoveryDefinition>;
 
 export const experienceRecoveryDefinitions = {
+  "payment-confirmed": {
+    eyebrow: "Payment confirmed",
+    title: "Your payment is confirmed.",
+    message:
+      "PayFast verification has completed and your Amaris course access is active.",
+    reassurance:
+      "Your invoice and service record have been created. Continue from your student dashboard.",
+    kind: "payment",
+    primaryAction: { label: "Continue learning", href: "/dashboard" },
+    secondaryAction: { label: "Browse courses", href: "/courses" },
+    showSupport: true,
+  },
   "payment-pending": {
     eyebrow: "Payment processing",
     title: "Your payment is still being confirmed.",

@@ -63,6 +63,37 @@ class LoadTestSafetyTests(unittest.TestCase):
         self.assertIn("LOADTEST_PAYMENT_STATUS_PATH", missing)
 
 
+class OptionalServiceIsolationContractTests(unittest.TestCase):
+    def test_web_request_path_does_not_depend_on_monitoring_or_admin_services(self):
+        compose = (Path(__file__).resolve().parents[1] / "docker-compose.yml").read_text(encoding="utf-8")
+        web = compose.split("\n  web:\n", 1)[1].split("\n  celery_worker:\n", 1)[0]
+        nginx = compose.split("\n  nginx:\n", 1)[1].split("\n  pgadmin:\n", 1)[0]
+
+        for optional_service in (
+            "flower",
+            "prometheus",
+            "grafana",
+            "alertmanager",
+            "cadvisor",
+            "postgres_exporter",
+            "redis_exporter",
+            "redis_cache_exporter",
+            "node_exporter",
+            "blackbox_exporter",
+            "pgadmin",
+        ):
+            self.assertNotIn(
+                f"{optional_service}:",
+                web,
+                f"web must not depend on optional service {optional_service}",
+            )
+        self.assertIn("migrate:", web)
+        self.assertIn("web:", nginx)
+        self.assertNotIn("prometheus:", nginx)
+        self.assertNotIn("grafana:", nginx)
+        self.assertNotIn("pgadmin:", nginx)
+
+
 class CapacityContractTests(unittest.TestCase):
     @staticmethod
     def _workflow_text() -> str:
