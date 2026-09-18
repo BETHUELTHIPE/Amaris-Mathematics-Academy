@@ -48,6 +48,17 @@ def build_website_context() -> str:
                 f"About: {_clean(site.footer_description, 500)}",
             ]
         )
+    else:
+        lines.extend(
+            [
+                "Academy: Amaris Mathematics Academy",
+                "Phone: 071 415 6665",
+                "Email: bethuelmoukangwe8@gmail.com",
+                "Address: 27 Tshivhase Street, Atteridgeville, Pretoria, Gauteng, 0008",
+                "Support hours: Mon-Sun, 07:00-20:00",
+                f"Website: {_clean(getattr(settings, 'PUBLIC_SITE_URL', ''), 260)}",
+            ]
+        )
 
     courses = Course.objects.filter(_live_filter(), status=Course.Status.PUBLISHED).order_by("order", "title")[:24]
     if courses:
