@@ -122,6 +122,18 @@ export const httpRecoveryDefinitions = {
 } satisfies Record<string, RecoveryDefinition>;
 
 export const experienceRecoveryDefinitions = {
+  "payment-confirmed": {
+    eyebrow: "Payment confirmed",
+    title: "Your course access is active.",
+    message:
+      "The academy has received and verified the PayFast payment confirmation.",
+    reassurance:
+      "Your enrollment is active. Continue from your student dashboard and resume from your latest saved lesson.",
+    kind: "payment",
+    primaryAction: { label: "Continue learning", href: "/dashboard" },
+    secondaryAction: { label: "View all courses", href: "/courses" },
+    showSupport: false,
+  },
   "payment-pending": {
     eyebrow: "Payment processing",
     title: "Your payment is still being confirmed.",
