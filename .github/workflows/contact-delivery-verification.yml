@@ -1,0 +1,55 @@
+name: Contact Delivery Verification
+
+on:
+  push:
+    branches: [live-smoke-20260918]
+    paths:
+      - ".github/workflows/contact-delivery-verification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-delivery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit controlled enquiry to published Amaris mailbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://amaris-mathematics-academy-staging.onrender.com"
+
+          settings=$(mktemp)
+          code=$(curl --silent --show-error --output "$settings" --write-out '%{http_code}' --max-time 45 "$api/api/v1/settings/")
+          test "$code" = "200"
+
+          recipient=$(python - "$settings" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              payload = json.load(fh)
+          email = (payload or {}).get("email") or ""
+          if not email or "@" not in email:
+              raise SystemExit(2)
+          print(email)
+          PY
+          )
+
+          payload=$(python - "$recipient" <<'PY'
+          import json, sys
+          recipient = sys.argv[1]
+          print(json.dumps({
+              "name": "Amaris Delivery Verification",
+              "email": recipient,
+              "phone": "",
+              "subject": "technical support",
+              "message": "Controlled delivery verification: please explain how a prospective student can contact Amaris Mathematics Academy for help using the current website information."
+          }))
+          PY
+          )
+
+          result=$(mktemp)
+          status=$(curl --silent --show-error --output "$result" --write-out '%{http_code}' --max-time 60             -H 'Content-Type: application/json'             -d "$payload"             "$api/api/v1/enquiries/")
+          test "$status" = "201"
+          echo "Controlled enquiry accepted by production contact API."
