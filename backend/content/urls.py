@@ -40,9 +40,17 @@ router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 urlpatterns = [
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
-    path("student/acceptance/settle-payment/", AcceptanceSettlePaymentView.as_view(), name="student-acceptance-settle-payment"),
+    path(
+        "student/acceptance/settle-payment/",
+        AcceptanceSettlePaymentView.as_view(),
+        name="student-acceptance-settle-payment",
+    ),
     path("student/courses/", StudentCoursesView.as_view(), name="student-courses"),
-    path("student/lessons/<slug:course_slug>/<slug:lesson_slug>/", StudentLessonView.as_view(), name="student-lesson"),
+    path(
+        "student/lessons/<slug:course_slug>/<slug:lesson_slug>/",
+        StudentLessonView.as_view(),
+        name="student-lesson",
+    ),
     path("student/checkout/", CheckoutView.as_view(), name="student-checkout"),
     path("student/payments/<str:reference>/", PaymentStatusView.as_view(), name="student-payment-status"),
     path("student/progress/", ProgressView.as_view(), name="student-progress"),
