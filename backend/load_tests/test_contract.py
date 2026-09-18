@@ -194,6 +194,11 @@ class CapacityContractTests(unittest.TestCase):
         self.assertIn("target_hold_sustained", text)
         self.assertIn("HOLD_SECONDS - 15.0", text)
 
+    def test_fast_http_auth_is_passed_per_request_not_mutated_on_session(self):
+        text = self._capacity_locust_text()
+        self.assertIn('headers=getattr(user, "auth_headers", None)', text)
+        self.assertNotIn("self.client.headers.update", text)
+
 
 if __name__ == "__main__":
     unittest.main()
