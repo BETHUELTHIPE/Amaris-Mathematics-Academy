@@ -170,12 +170,13 @@
     {
       "id": 17,
       "name": "Monitoring captures failures without personal data",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Prometheus/Grafana rules avoid personal labels; staging failure capture and dashboard review remain."
+        "Render staging telemetry for service srv-dam2iivcgkoc7383tq50 captured deploy lifecycle, worker shutdown/startup events, CPU usage, memory usage and resource limits during the 2026-09-18 capacity window.",
+        "The deployed service uses amaris_cms.workers.PrivacyUvicornWorker, which disables Uvicorn client-address access logging; sampled staging application logs contained operational events and no request IP, referrer, user-agent, query-string or student identifiers."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "Render staging telemetry review",
+      "verified_at": "2026-09-18T16:48:00+02:00"
     },
     {
       "id": 18,
