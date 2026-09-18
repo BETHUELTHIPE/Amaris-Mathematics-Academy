@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { RecoveryPage } from "@/components/site/recovery-page";
 import { experienceRecoveryDefinitions } from "@/lib/recovery";
-import { getStudentPaymentStatus } from "@/lib/student-api";
+import {
+  getStudentPaymentStatus,
+  type StudentPaymentStatus,
+} from "@/lib/student-api";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -21,22 +24,26 @@ export default async function PaymentPendingPage({
   searchParams: Promise<{ reference?: string }>;
 }) {
   const reference = validReference((await searchParams).reference);
+  let payment: StudentPaymentStatus | null = null;
 
   if (reference) {
     try {
-      const payment = await getStudentPaymentStatus(reference);
-      if (payment.status === "paid" && payment.enrollment_status === "active") {
-        redirect(`/payments/confirmed?reference=${encodeURIComponent(reference)}`);
-      }
-      if (payment.status === "failed") {
-        redirect(`/payments/failed?reference=${encodeURIComponent(reference)}`);
-      }
-      if (payment.status === "cancelled" || payment.status === "refunded") {
-        redirect(`/payments/cancelled?reference=${encodeURIComponent(reference)}`);
-      }
+      payment = await getStudentPaymentStatus(reference);
     } catch {
       // Keep the student in the safe pending state if the status service is
       // temporarily unavailable. Never infer success from the browser return.
+    }
+  }
+
+  if (reference && payment) {
+    if (payment.status === "paid" && payment.enrollment_status === "active") {
+      redirect(`/payments/confirmed?reference=${encodeURIComponent(reference)}`);
+    }
+    if (payment.status === "failed") {
+      redirect(`/payments/failed?reference=${encodeURIComponent(reference)}`);
+    }
+    if (payment.status === "cancelled" || payment.status === "refunded") {
+      redirect(`/payments/cancelled?reference=${encodeURIComponent(reference)}`);
     }
   }
 
