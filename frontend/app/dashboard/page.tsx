@@ -28,7 +28,7 @@ export default async function DashboardPage() {
   const profileSaved = user.emailVerified;
   const recommended = courses.slice(0, 2);
 
-  let enrolledCourses = [];
+  let enrolledCourses: Awaited<ReturnType<typeof getStudentCourses>> = [];
   let courseServiceAvailable = true;
   try {
     enrolledCourses = await getStudentCourses();
