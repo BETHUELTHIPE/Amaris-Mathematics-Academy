@@ -256,6 +256,10 @@ def run_context(browser: Browser, engine_name: str, viewport_name: str, viewport
         ):
             try:
                 goto(page, route)
+                if route == "/":
+                    page.add_style_tag(
+                        content=".home-shell > section { content-visibility: visible !important; contain-intrinsic-size: auto !important; }"
+                    )
                 page.evaluate(
                     """async () => {
                       const step = Math.max(320, Math.floor(window.innerHeight * 0.75));
@@ -322,6 +326,10 @@ def run_named_device(playwright, device_name: str) -> list[str]:
         ):
             try:
                 goto(page, route)
+                if route == "/":
+                    page.add_style_tag(
+                        content=".home-shell > section { content-visibility: visible !important; contain-intrinsic-size: auto !important; }"
+                    )
                 # content-visibility:auto deliberately defers off-screen homepage work.
                 # Walk the page before capturing evidence so the screenshot represents
                 # the content a real user sees while scrolling, without disabling the
