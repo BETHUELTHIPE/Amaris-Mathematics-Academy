@@ -72,8 +72,22 @@ jobs:
                       failures.append(f"{path}: recovery screen rendered")
                   if page_errors:
                       failures.append(f"{path}: browser page error: {page_errors[0]}")
+                  if console_errors:
+                      failures.append(f"{path}: browser console error: {console_errors[0]}")
 
                   page.close()
+
+              api = browser.new_page()
+              auth_response = api.goto(
+                  f"{base}/api/auth-state",
+                  wait_until="networkidle",
+                  timeout=120_000,
+              )
+              auth_status = auth_response.status if auth_response else 0
+              print(f"PATH /api/auth-state STATUS {auth_status}")
+              if not auth_response or auth_status != 200:
+                  failures.append(f"/api/auth-state: HTTP {auth_status}")
+              api.close()
               browser.close()
 
           if failures:
