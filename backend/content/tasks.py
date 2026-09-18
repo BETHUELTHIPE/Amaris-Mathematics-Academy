@@ -10,6 +10,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from openai import OpenAIError
 
+from amaris_cms.incidents import dispatch_incident_to_github
 from content.models import ContactEnquiry
 from content.services.enquiry_autoreply import (
     build_email_connection,
@@ -101,6 +102,22 @@ def publish_scheduled_content(_self) -> dict[str, int]:
 )
 def reconcile_payments(_self) -> None:
     reconcile_verified_payments()
+
+
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    autoretry_for=(OSError, RuntimeError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 6},
+)
+def dispatch_production_incident(_self, incident: dict) -> dict[str, str]:
+    """Forward only a pre-sanitized incident to the GitHub response workflow."""
+
+    dispatch_incident_to_github(incident)
+    return {"status": "dispatched"}
 
 
 @shared_task(bind=True, ignore_result=True, max_retries=5)
