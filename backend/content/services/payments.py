@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -170,7 +171,7 @@ class HttpPayFastVerificationGateway:
         if not supplied_signature:
             return False
         expected_signature = generate_payfast_signature(payload, passphrase)
-        if not hashlib.compare_digest(supplied_signature, expected_signature):
+        if not hmac.compare_digest(supplied_signature, expected_signature):
             return False
 
         encoded = urlencode(
