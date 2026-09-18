@@ -9,7 +9,6 @@ from rest_framework.views import APIView
 
 from .services.payments import HttpPayFastVerificationGateway, process_payfast_notification
 
-
 DEFAULT_PAYFAST_NETWORKS = (
     "197.97.145.144/28",
     "41.74.179.192/27",
@@ -21,7 +20,11 @@ DEFAULT_PAYFAST_NETWORKS = (
 
 def _allowed_networks():
     configured = os.getenv("PAYFAST_ALLOWED_NETWORKS", "").strip()
-    values = [item.strip() for item in configured.split(",") if item.strip()] if configured else list(DEFAULT_PAYFAST_NETWORKS)
+    values = (
+        [item.strip() for item in configured.split(",") if item.strip()]
+        if configured
+        else list(DEFAULT_PAYFAST_NETWORKS)
+    )
     return tuple(ipaddress.ip_network(value, strict=False) for value in values)
 
 

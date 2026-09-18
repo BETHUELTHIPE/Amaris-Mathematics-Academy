@@ -92,7 +92,9 @@ class StudentLessonView(StudentAPIView):
                     "video": (
                         {
                             "provider": video.provider,
-                            "youtube_video_id": video.youtube_video_id if video.provider == video.Provider.YOUTUBE else "",
+                            "youtube_video_id": (
+                                video.youtube_video_id if video.provider == video.Provider.YOUTUBE else ""
+                            ),
                             "duration_seconds": video.duration_seconds,
                         }
                         if video

@@ -17,7 +17,6 @@ from jwt.exceptions import PyJWTError
 
 from .models import StudentRecord
 
-
 GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 GITHUB_OIDC_JWKS = "https://token.actions.githubusercontent.com/.well-known/jwks"
 GITHUB_ACCEPTANCE_STUDENT_ID = uuid.UUID("00000000-0000-4000-8000-000000009001")

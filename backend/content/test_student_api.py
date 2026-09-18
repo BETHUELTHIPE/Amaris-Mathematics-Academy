@@ -36,9 +36,7 @@ class StudentJourneyApiTests(APITestCase):
             price=Decimal("950.00"),
             status=Course.Status.PUBLISHED,
         )
-        module = CourseModule.objects.create(
-            course=self.course, title="Module 1", order=1, is_published=True
-        )
+        module = CourseModule.objects.create(course=self.course, title="Module 1", order=1, is_published=True)
         self.lesson = Lesson.objects.create(
             module=module,
             title="Algebra foundations",
