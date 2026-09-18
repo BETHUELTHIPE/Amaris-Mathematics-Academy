@@ -74,7 +74,7 @@ export async function registerAction(formData: FormData) {
     email: values.email,
     password: values.password,
     options: {
-      emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
+      emailRedirectTo: `${getSiteUrl()}/login?verified=1`,
       data: {
         first_name: values.firstName,
         last_name: values.lastName,
@@ -168,7 +168,7 @@ export async function resendVerificationAction(formData: FormData) {
     type: "signup",
     email,
     options: {
-      emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
+      emailRedirectTo: `${getSiteUrl()}/login?verified=1`,
     },
   });
 
