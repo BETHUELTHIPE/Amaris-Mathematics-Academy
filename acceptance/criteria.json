@@ -39,11 +39,11 @@
       "name": "Student resumes the last lesson",
       "status": "passed",
       "evidence": [
-        "GitHub Actions Quality Gates and Release run 35354817117 deployed exact main SHA 0345bfe99ce1f5a06068842c7c7c45fe6ea624a4 to Render staging.",
-        "The staging acceptance step persisted synthetic student progress at lesson acceptance-algebra, position 347 seconds and 42%, then fetched the resume and protected lesson endpoints and verified the same persisted state."
+        "Quality Gates and Release run 35354817117 promoted main commit 0345bfe99ce1f5a06068842c7c7c45fe6ea624a4 to Render staging and verified the exact deployed SHA before the journey.",
+        "The real staging journey persisted lesson acceptance-algebra at position 347 seconds with 42% progress, then fetched the resume endpoint and protected lesson endpoint and confirmed the same saved state."
       ],
-      "verified_by": "GitHub Actions",
-      "verified_at": "2026-09-18T16:34:00+02:00"
+      "verified_by": "GitHub Actions + Render staging",
+      "verified_at": "2026-09-18T16:36:00+02:00"
     },
     {
       "id": 5,
@@ -123,10 +123,12 @@
       "name": "Load tests meet agreed thresholds",
       "status": "partial",
       "evidence": [
-        "Normal, peak, spike and degraded Locust gates are implemented; staging results remain."
+        "Quality Gates and Release run 35354817117 executed a controlled 100-user staging capacity attempt for 361.886 seconds with 1,905 requests, 0 request failures, and 0 server 5xx responses.",
+        "The strict capacity gate FAILED: p95 was 15,000 ms versus the 1,000 ms limit and p99 was 21,000 ms versus the 2,000 ms limit. Render metrics showed the free staging instance repeatedly reached its full 0.15 CPU limit while memory stayed below its 512 MB limit.",
+        "The same artifact exposed a distributed harness defect: target hold time was recorded as only 1.0 second and authenticated request classes were absent from the aggregated samples. A follow-up hardening change requires distributed user-count aggregation and authenticated dashboard/lesson/payment-status samples before future capacity evidence can pass."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "GitHub Actions + Render metrics",
+      "verified_at": "2026-09-18T16:36:00+02:00"
     },
     {
       "id": 13,
@@ -172,11 +174,11 @@
       "name": "Monitoring captures failures without personal data",
       "status": "passed",
       "evidence": [
-        "Render staging telemetry for service srv-dam2iivcgkoc7383tq50 captured deploy lifecycle, worker shutdown/startup events, CPU usage, memory usage and resource limits during the 2026-09-18 capacity window.",
-        "The deployed service uses amaris_cms.workers.PrivacyUvicornWorker, which disables Uvicorn client-address access logging; sampled staging application logs contained operational events and no request IP, referrer, user-agent, query-string or student identifiers."
+        "Render staging for commit 0345bfe99ce1f5a06068842c7c7c45fe6ea624a4 started with amaris_cms.workers.PrivacyUvicornWorker, which disables Uvicorn client-address access logging.",
+        "After the privacy worker became live, Render application logs captured cache failures, worker recycling, and a saturation-time CancelledError traceback without client IP addresses, query strings, authorization tokens, student email addresses, or other student identifiers."
       ],
-      "verified_by": "Render staging telemetry review",
-      "verified_at": "2026-09-18T16:48:00+02:00"
+      "verified_by": "Render staging logs",
+      "verified_at": "2026-09-18T16:36:00+02:00"
     },
     {
       "id": 18,
