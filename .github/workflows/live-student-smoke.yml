@@ -59,6 +59,10 @@ jobs:
           body=$(mktemp)
           code=$(curl --silent --show-error --output "$body" --dump-header "$headers" --write-out '%{http_code}' --max-time 30 "$site/dashboard")
           cat "$headers"
+          echo "----- dashboard body preview -----"
+          head -c 6000 "$body" || true
+          echo
+          echo "----- end preview -----"
           if [[ "$code" =~ ^30[12378]$ ]]; then
             grep -qi '^location: .*login' "$headers"
           elif [ "$code" = "200" ]; then
