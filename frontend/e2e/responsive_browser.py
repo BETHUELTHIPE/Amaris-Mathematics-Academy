@@ -19,6 +19,9 @@ VIEWPORTS = {
 }
 
 COURSE_PATH = "/courses/caps-grade-12-mathematics"
+AXE_CORE_PATH = Path(__file__).resolve().parents[1] / "node_modules" / "axe-core" / "axe.min.js"
+WCAG22_PATHS = ("/", "/courses", "/contact", "/login", "/register")
+NAMED_DEVICES = ("Pixel 7", "iPhone 13")
 
 
 def require(condition: bool, message: str) -> None:
@@ -220,6 +223,107 @@ def run_context(browser: Browser, engine_name: str, viewport_name: str, viewport
 
 
 
+def run_named_device(playwright, device_name: str) -> list[str]:
+    failures: list[str] = []
+    descriptor = dict(playwright.devices[device_name])
+    engine_name = descriptor.pop("default_browser_type")
+    browser_type = getattr(playwright, engine_name)
+    browser = browser_type.launch(headless=True)
+    safe_name = device_name.lower().replace(" ", "-")
+    context = browser.new_context(
+        **descriptor,
+        locale="en-ZA",
+        timezone_id="Africa/Johannesburg",
+        reduced_motion="reduce",
+    )
+    page = context.new_page()
+    page.set_default_timeout(15_000)
+
+    try:
+        for check_name, check in CHECKS:
+            try:
+                if check_name == "navigation":
+                    check(page, "mobile")
+                else:
+                    check(page)
+                print(f"PASS {engine_name:8} {safe_name:14} {check_name}")
+            except Exception as exc:  # noqa: BLE001
+                screenshot = ARTIFACT_DIR / f"{safe_name}-{check_name}-failure.png"
+                try:
+                    page.screenshot(path=str(screenshot), full_page=True)
+                except Exception:
+                    pass
+                failures.append(f"{device_name}/{check_name}: {exc}")
+                print(f"FAIL {engine_name:8} {safe_name:14} {check_name}: {exc}", file=sys.stderr)
+                traceback.print_exc()
+
+        for route, slug in (
+            ("/", "home"),
+            ("/courses", "courses"),
+            ("/contact", "contact"),
+            ("/dashboard", "dashboard"),
+        ):
+            try:
+                goto(page, route)
+                page.screenshot(path=str(ARTIFACT_DIR / f"{safe_name}-{slug}.png"), full_page=True)
+            except Exception:
+                pass
+    finally:
+        context.close()
+        browser.close()
+    return failures
+
+
+def check_wcag22_aa(browser: Browser, engine_name: str) -> list[str]:
+    failures: list[str] = []
+    if not AXE_CORE_PATH.exists():
+        return [f"{engine_name}/wcag22: axe-core bundle is missing at {AXE_CORE_PATH}"]
+
+    axe_source = AXE_CORE_PATH.read_text(encoding="utf-8")
+    context = browser.new_context(
+        viewport=VIEWPORTS["desktop"],
+        locale="en-ZA",
+        timezone_id="Africa/Johannesburg",
+        reduced_motion="reduce",
+    )
+    page = context.new_page()
+    page.set_default_timeout(15_000)
+    try:
+        for path in WCAG22_PATHS:
+            try:
+                goto(page, path)
+                page.add_script_tag(content=axe_source)
+                result = page.evaluate(
+                    """async () => await axe.run(document, {
+                      runOnly: {
+                        type: 'tag',
+                        values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'],
+                      },
+                      resultTypes: ['violations'],
+                    })"""
+                )
+                violations = result.get("violations", [])
+                if violations:
+                    details = ", ".join(
+                        f"{item.get('id')}({len(item.get('nodes', []))})" for item in violations[:12]
+                    )
+                    raise AssertionError(f"WCAG 2.2 A/AA violations: {details}")
+                print(f"PASS {engine_name:8} wcag22  {path}")
+            except Exception as exc:  # noqa: BLE001
+                screenshot = ARTIFACT_DIR / f"{engine_name}-wcag22-{path.strip('/').replace('/', '-') or 'home'}.png"
+                try:
+                    page.screenshot(path=str(screenshot), full_page=True)
+                except Exception:
+                    pass
+                failures.append(f"{engine_name}/wcag22/{path}: {exc}")
+                print(f"FAIL {engine_name:8} wcag22  {path}: {exc}", file=sys.stderr)
+                traceback.print_exc()
+    finally:
+        context.close()
+    return failures
+
+
+
 def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: str) -> list[str]:
     failures: list[str] = []
     context = browser.new_context(
@@ -282,10 +386,17 @@ def main() -> int:
                 for viewport_name, viewport in VIEWPORTS.items():
                     failures.extend(run_context(browser, engine_name, viewport_name, viewport))
                 failures.extend(check_no_javascript_progressive_enhancement(browser, engine_name))
+                if engine_name == "chromium":
+                    failures.extend(check_wcag22_aa(browser, engine_name))
             finally:
                 browser.close()
 
+        for device_name in NAMED_DEVICES:
+            failures.extend(run_named_device(playwright, device_name))
+
     total = 3 * (len(VIEWPORTS) * len(CHECKS) + 1)
+    total += len(WCAG22_PATHS)
+    total += len(NAMED_DEVICES) * len(CHECKS)
     passed = total - len(failures)
     print(f"\nResponsive/browser checks: {passed}/{total} passed")
     if failures:
