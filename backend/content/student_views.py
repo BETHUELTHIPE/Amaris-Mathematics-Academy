@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -12,7 +15,12 @@ from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
 from .models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment
-from .services.payments import PaymentSecurityError, create_checkout
+from .payment_models import Invoice, NotificationOutbox
+from .services.payments import (
+    PaymentSecurityError,
+    create_checkout,
+    process_payfast_notification,
+)
 
 
 class CheckoutRequestSerializer(serializers.Serializer):
@@ -136,6 +144,20 @@ class AcceptanceSeedView(StudentAPIView):
                 "featured": False,
             },
         )
+        checkout_course, _ = Course.objects.update_or_create(
+            slug="acceptance-checkout-mathematics",
+            defaults={
+                "category": category,
+                "title": "Synthetic Acceptance Checkout",
+                "short_description": "Synthetic no-charge checkout acceptance course.",
+                "description": "No real student, payment, or academic data is used.",
+                "curriculum": "Synthetic",
+                "academic_level": "Acceptance",
+                "price": "1.00",
+                "status": Course.Status.PUBLISHED,
+                "featured": False,
+            },
+        )
         module, _ = CourseModule.objects.update_or_create(
             course=course,
             order=1,
@@ -167,10 +189,15 @@ class AcceptanceSeedView(StudentAPIView):
             enrollment.status = Enrollment.Status.ACTIVE
             enrollment.save(update_fields=["status", "updated_at"])
 
+        # Payment acceptance uses a separate course so the checkout journey can
+        # prove that no enrollment exists before a verified server-side settlement.
+        Enrollment.objects.filter(
+            student=request.user.student,
+            course=checkout_course,
+        ).delete()
         Payment.objects.filter(
             student=request.user.student,
-            course=course,
-            status=Payment.Status.PENDING,
+            course__in=[course, checkout_course],
             reference__startswith="PF-acceptance-",
         ).delete()
 
@@ -178,8 +205,74 @@ class AcceptanceSeedView(StudentAPIView):
             {
                 "student": "synthetic",
                 "course_slug": course.slug,
+                "checkout_course_slug": checkout_course.slug,
                 "lesson_slug": lesson.slug,
                 "enrollment_status": enrollment.status,
+            }
+        )
+
+
+class _SyntheticAcceptanceGateway:
+    def verify_notification(self, _payload):
+        return True
+
+
+class AcceptanceSettlePaymentView(StudentAPIView):
+    """Settle one synthetic sandbox payment without contacting PayFast.
+
+    This endpoint is unreachable for normal Supabase users. It additionally
+    requires staging-only GitHub Actions OIDC acceptance mode and PayFast
+    sandbox mode, so it cannot become a production payment authority.
+    """
+
+    def post(self, request, reference: str):
+        auth = request.auth if isinstance(request.auth, dict) else {}
+        if auth.get("provider") != "github-actions-oidc":
+            raise PermissionDenied("Synthetic payment settlement is restricted to GitHub Actions OIDC.")
+        if not settings.ACCEPTANCE_GITHUB_OIDC_ENABLED:
+            raise PermissionDenied("Synthetic acceptance mode is disabled.")
+        if settings.ACCEPTANCE_GITHUB_ENVIRONMENT != "staging":
+            raise PermissionDenied("Synthetic payment settlement is staging-only.")
+        if os.getenv("PAYFAST_MODE", "sandbox").strip().lower() != "sandbox":
+            raise PermissionDenied("Synthetic payment settlement requires PayFast sandbox mode.")
+
+        payment = get_object_or_404(
+            Payment.objects.select_related("student", "course"),
+            reference=reference,
+            student=request.user.student,
+            course__slug="acceptance-checkout-mathematics",
+            status=Payment.Status.PENDING,
+        )
+        if payment.enrollment_id is not None:
+            raise PermissionDenied("Synthetic checkout already has an enrollment before settlement.")
+
+        provider_reference = f"PF-ACCEPT-{payment.reference}"[:160]
+        result = process_payfast_notification(
+            {
+                "m_payment_id": payment.reference,
+                "pf_payment_id": provider_reference,
+                "payment_status": "COMPLETE",
+                "amount_gross": f"{payment.amount:.2f}",
+                "custom_str1": str(payment.student.supabase_user_id),
+                "custom_str2": payment.course.slug,
+                "signature": "synthetic-staging-only",
+            },
+            gateway=_SyntheticAcceptanceGateway(),
+        )
+        if not result.accepted:
+            return Response({"detail": result.reason}, status=status.HTTP_400_BAD_REQUEST)
+
+        payment.refresh_from_db()
+        invoice = Invoice.objects.filter(payment=payment).first()
+        outbox = NotificationOutbox.objects.filter(payment=payment).first()
+        return Response(
+            {
+                "payment_reference": payment.reference,
+                "status": payment.status,
+                "enrollment_status": payment.enrollment.status if payment.enrollment_id else None,
+                "invoice_number": invoice.invoice_number if invoice else None,
+                "notification_status": outbox.status if outbox else None,
+                "external_gateway_contacted": False,
             }
         )
 
