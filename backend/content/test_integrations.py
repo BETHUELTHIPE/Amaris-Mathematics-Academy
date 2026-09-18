@@ -223,6 +223,45 @@ class FrontendApiContractIntegrationTests(TestCase):
         self.assertEqual(course_payload["slug"], "integration-calculus")
 
 
+class OptionalCacheOutageIntegrationTests(TestCase):
+    @override_settings(
+        CACHES={
+            "default": {
+                "BACKEND": "amaris_cms.cache.ResilientRedisCache",
+                "LOCATION": "redis://127.0.0.1:63999/14",
+                "TIMEOUT": 30,
+                "KEY_PREFIX": "outage-default",
+                "OPTIONS": {"socket_connect_timeout": 0.05, "socket_timeout": 0.05},
+            },
+            "public_content": {
+                "BACKEND": "amaris_cms.cache.ResilientRedisCache",
+                "LOCATION": "redis://127.0.0.1:63999/15",
+                "TIMEOUT": 30,
+                "KEY_PREFIX": "outage-public",
+                "OPTIONS": {"socket_connect_timeout": 0.05, "socket_timeout": 0.05},
+            },
+        }
+    )
+    def test_public_course_requests_continue_when_optional_cache_is_down(self):
+        category = CourseCategory.objects.create(name="Outage", slug="outage")
+        Course.objects.create(
+            category=category,
+            title="Outage-safe Mathematics",
+            slug="outage-safe-mathematics",
+            short_description="Synthetic cache outage fixture",
+            description="The public catalogue must remain available without Redis cache.",
+            curriculum="Synthetic",
+            academic_level="Acceptance",
+            price=1,
+            status=Course.Status.PUBLISHED,
+        )
+
+        response = self.client.get(reverse("courses-list"), {"search": "Outage-safe"}, secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"][0]["slug"], "outage-safe-mathematics")
+
+
 class ExternalProviderIsolationTests(SimpleTestCase):
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_email_uses_in_memory_adapter_in_tests(self):
