@@ -7,11 +7,15 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { ClearSafeFormDraft } from "@/components/site/safe-form-draft";
+import { getStudentIdentity } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Verify Email" };
 
 export default async function VerifyEmailPage({ searchParams }: { searchParams: Promise<{ email?: string; error?: string; registered?: string; resent?: string }> }) {
+  const student = await getStudentIdentity();
+  if (student?.emailVerified) redirect("/dashboard?verified=1");
   const params = await searchParams;
   const email = params.email ?? "";
   const notice = params.resent ? "A new verification email has been sent. Please check your inbox and spam folder." : params.registered ? "Your profile was created. Check your email to verify it before logging in." : null;
