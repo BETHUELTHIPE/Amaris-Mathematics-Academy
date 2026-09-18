@@ -37,12 +37,13 @@
     {
       "id": 4,
       "name": "Student resumes the last lesson",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Progress schema stores last_lesson; enrolled lesson resume journey still requires staging proof."
+        "GitHub Actions Quality Gates and Release run 35354817117 deployed exact main SHA 0345bfe99ce1f5a06068842c7c7c45fe6ea624a4 to Render staging.",
+        "The staging acceptance step persisted synthetic student progress at lesson acceptance-algebra, position 347 seconds and 42%, then fetched the resume and protected lesson endpoints and verified the same persisted state."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "GitHub Actions",
+      "verified_at": "2026-09-18T16:34:00+02:00"
     },
     {
       "id": 5,
