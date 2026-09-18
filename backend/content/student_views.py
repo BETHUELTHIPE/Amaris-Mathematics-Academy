@@ -12,12 +12,17 @@ from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
 from .models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment
-from .services.payments import PaymentSecurityError, create_checkout
+from .payment_models import NotificationOutbox
+from .services.payments import PaymentSecurityError, create_checkout, process_payfast_notification
 
 
 class CheckoutRequestSerializer(serializers.Serializer):
     course_slug = serializers.SlugField(max_length=200)
     idempotency_key = serializers.RegexField(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+class AcceptanceSettlePaymentSerializer(serializers.Serializer):
+    payment_reference = serializers.RegexField(r"^PF-[A-Za-z0-9_-]{8,80}$")
 
 
 class ProgressRequestSerializer(serializers.Serializer):
@@ -180,6 +185,58 @@ class AcceptanceSeedView(StudentAPIView):
                 "course_slug": course.slug,
                 "lesson_slug": lesson.slug,
                 "enrollment_status": enrollment.status,
+            }
+        )
+
+
+class _AcceptanceVerifiedGateway:
+    def verify_notification(self, payload):
+        return True
+
+
+class AcceptanceSettlePaymentView(StudentAPIView):
+    """Exercise the real fulfillment path with a synthetic verified ITN on staging only."""
+
+    def post(self, request):
+        auth = request.auth if isinstance(request.auth, dict) else {}
+        if auth.get("provider") != "github-actions-oidc":
+            raise PermissionDenied("Synthetic payment settlement is restricted to GitHub Actions OIDC.")
+
+        serializer = AcceptanceSettlePaymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        reference = serializer.validated_data["payment_reference"]
+        payment = get_object_or_404(
+            Payment.objects.select_related("student", "course"),
+            reference=reference,
+            student=request.user.student,
+        )
+        payload = {
+            "m_payment_id": payment.reference,
+            "pf_payment_id": f"PF-ACCEPTANCE-{payment.pk}",
+            "payment_status": "COMPLETE",
+            "amount_gross": f"{payment.amount:.2f}",
+            "custom_str1": str(payment.student.supabase_user_id),
+            "custom_str2": payment.course.slug,
+            "signature": "synthetic-staging-signature",
+        }
+        result = process_payfast_notification(payload, gateway=_AcceptanceVerifiedGateway())
+        if not result.accepted:
+            return Response(
+                {"detail": result.reason, "retryable": result.retryable},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        payment.refresh_from_db()
+        outbox = NotificationOutbox.objects.get(payment=payment)
+        invoice = payment.invoice
+        return Response(
+            {
+                "payment_reference": payment.reference,
+                "status": payment.status,
+                "enrollment_status": payment.enrollment.status if payment.enrollment_id else None,
+                "invoice_number": invoice.invoice_number,
+                "notification_status": outbox.status,
+                "synthetic": True,
             }
         )
 
