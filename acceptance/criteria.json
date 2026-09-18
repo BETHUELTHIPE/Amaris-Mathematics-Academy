@@ -48,32 +48,35 @@
     {
       "id": 5,
       "name": "Slow and interrupted connections recover gracefully",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Branded connection recovery and safe form drafts are implemented; mobile network testing remains."
+        "Quality Gates and Release run 35366356403 passed the responsive-browser matrix on PR #56, which adds a deterministic two-second delayed contact-form submission alongside the existing offline/reconnect test.",
+        "The slow-network and interruption checks run across Chromium, Firefox, and WebKit at mobile, tablet, and desktop sizes, plus named Pixel 7 and iPhone 13 device profiles, and verify recovery without form-data loss."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "GitHub Actions",
+      "verified_at": "2026-09-18T18:05:17+02:00"
     },
     {
       "id": 6,
       "name": "Course search returns useful results",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Topic, title, curriculum and level filtering is implemented; representative search relevance sign-off remains."
+        "Quality Gates and Release run 35365728267 successfully verified live Render staging search before the later capacity stage failed.",
+        "The staging journey queried /api/v1/courses/?search=acceptance and asserted that the representative acceptance-capacity-mathematics course was returned; the backend regression suite also verifies relevant published search/filter results."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "GitHub Actions + Render staging",
+      "verified_at": "2026-09-18T18:13:40+02:00"
     },
     {
       "id": 7,
       "name": "Checkout communicates every state",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Pending, cancelled and failed payment pages are implemented; paid and delayed confirmation journey requires staging proof."
+        "Quality Gates and Release run 35365728267 completed the real staging checkout/status journey before the later capacity gate failed.",
+        "The staging-only OIDC acceptance flow created a pending PayFast sandbox checkout, verified pending status with no enrollment, completed a synthetic verified payment without a real charge, then verified paid status, active enrollment, and a populated paid_at timestamp."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "GitHub Actions + Render staging",
+      "verified_at": "2026-09-18T18:13:40+02:00"
     },
     {
       "id": 8,
