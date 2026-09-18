@@ -1,6 +1,8 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .student_views import CheckoutView, PaymentStatusView, ProgressView, ResumeView
+
 from .views import (
     AnnouncementViewSet,
     ContactEnquiryViewSet,
@@ -27,6 +29,10 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("student/checkout/", CheckoutView.as_view(), name="student-checkout"),
+    path("student/payments/<str:reference>/", PaymentStatusView.as_view(), name="student-payment-status"),
+    path("student/progress/", ProgressView.as_view(), name="student-progress"),
+    path("student/resume/<slug:course_slug>/", ResumeView.as_view(), name="student-resume"),
     path("bootstrap/", SiteBootstrapView.as_view(), name="site-bootstrap"),
     path("settings/", SiteSettingsView.as_view(), name="site-settings"),
     path("", include(router.urls)),
