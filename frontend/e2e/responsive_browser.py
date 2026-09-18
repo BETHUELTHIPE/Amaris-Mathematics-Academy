@@ -239,6 +239,8 @@ def check_checkout(page: Page) -> None:
             page.get_by_role("heading", name=heading).is_visible(),
             f"Checkout state {path} is not clearly communicated",
         )
+        state_slug = path.rsplit("/", 1)[-1]
+        page.screenshot(path=str(ARTIFACT_DIR / f"payment-state-{state_slug}.png"), full_page=True)
         assert_no_horizontal_overflow(page, f"checkout state {path}")
 
     goto(page, "/payments/pending")
