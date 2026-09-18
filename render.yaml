@@ -9,7 +9,7 @@ services:
     plan: standard
     region: frankfurt
     image:
-      url: docker.io/bethuelm/amaris-mathematics-academy:8bfaa4af91adbf260811a882eacce03938a1df38
+      url: docker.io/bethuelm/amaris-mathematics-academy:82a873b7ac8cd34fce82bd4df5b09b72f0636d78
     autoDeployTrigger: off
     healthCheckPath: /health/ready/
     scaling:
@@ -73,7 +73,7 @@ services:
     plan: standard
     region: frankfurt
     image:
-      url: docker.io/bethuelm/amaris-mathematics-academy:8bfaa4af91adbf260811a882eacce03938a1df38
+      url: docker.io/bethuelm/amaris-mathematics-academy:82a873b7ac8cd34fce82bd4df5b09b72f0636d78
     autoDeployTrigger: off
     dockerCommand: celery -A amaris_cms worker --loglevel=INFO --queues=critical,default --concurrency=2 --events --hostname=critical@%h
     envVars:
@@ -111,7 +111,7 @@ services:
     plan: starter
     region: frankfurt
     image:
-      url: docker.io/bethuelm/amaris-mathematics-academy:8bfaa4af91adbf260811a882eacce03938a1df38
+      url: docker.io/bethuelm/amaris-mathematics-academy:82a873b7ac8cd34fce82bd4df5b09b72f0636d78
     autoDeployTrigger: off
     dockerCommand: celery -A amaris_cms worker --loglevel=INFO --queues=notifications --concurrency=2 --events --hostname=notifications@%h
     envVars:
@@ -144,7 +144,7 @@ services:
     plan: starter
     region: frankfurt
     image:
-      url: docker.io/bethuelm/amaris-mathematics-academy:8bfaa4af91adbf260811a882eacce03938a1df38
+      url: docker.io/bethuelm/amaris-mathematics-academy:82a873b7ac8cd34fce82bd4df5b09b72f0636d78
     autoDeployTrigger: off
     dockerCommand: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
     envVars:
