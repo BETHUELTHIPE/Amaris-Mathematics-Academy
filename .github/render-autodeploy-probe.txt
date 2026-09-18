@@ -1,3 +1,3 @@
 Render auto-deploy verification probe
-Updated: 2026-09-19T01:24:00+02:00
-Purpose: harmless commit-only deployment trigger verification.
+Updated: 2026-09-19T01:35:00+02:00
+Purpose: verify service-level Git credential auto-deploy.
