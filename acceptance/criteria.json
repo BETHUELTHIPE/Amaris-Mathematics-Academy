@@ -16,12 +16,13 @@
     {
       "id": 2,
       "name": "WCAG 2.2 AA checks pass",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Pa11y and Lighthouse accessibility gates are configured; WCAG 2.2 manual review remains."
+        "PR #60 Quality Gates and Release run 35370530916 completed successfully after the WCAG 2.2 AA hardening; its responsive-browser, accessibility, Lighthouse, dependency, secret, backend, and container gates passed.",
+        "The browser suite runs axe-core WCAG 2.2 A/AA checks on the homepage, courses, contact, login, and registration routes, and docs/WCAG22_AA_REVIEW.md records the manual source/interaction review covering focus visibility and obscuring, target size, form semantics, authentication, OTP entry, consistent help, status messaging, responsive reflow, and non-JavaScript fallback."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "GitHub Actions + internal WCAG 2.2 AA review",
+      "verified_at": "2026-09-18T18:57:00+02:00"
     },
     {
       "id": 3,
