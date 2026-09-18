@@ -91,10 +91,19 @@ def check_offline_recovery(page: Page) -> None:
     page.locator("#message").fill("Synthetic offline submission check with enough safe detail.")
     page.locator("#consent").check()
 
+    submit_button = page.get_by_role("button", name=re.compile("Send enquiry"))
+    require(submit_button.is_visible(), "Offline recovery submit button is not visible")
+    require(submit_button.is_enabled(), "Offline recovery submit button is disabled before disconnect")
+
     page.context.set_offline(True)
     try:
-        page.get_by_role("button", name=re.compile("Send enquiry")).click()
+        # Firefox mobile emulation can hold pointer-actionability checks while
+        # the browser is offline. Native keyboard activation still exercises
+        # the real form submit handler without bypassing the application logic.
+        submit_button.focus()
+        page.keyboard.press("Enter")
         notice = page.locator("#connection-recovery")
+        notice.wait_for(state="visible", timeout=5_000)
         require(notice.is_visible(), "Connection recovery notice did not appear while offline")
         require(
             notice.locator("[data-recovery-title]").inner_text() == "Connection lost",
@@ -108,9 +117,14 @@ def check_offline_recovery(page: Page) -> None:
     finally:
         page.context.set_offline(False)
 
-    page.wait_for_timeout(100)
+    restored_title = page.locator("#connection-recovery [data-recovery-title]")
+    restored_title.wait_for(state="visible", timeout=5_000)
+    page.wait_for_function(
+        "() => document.querySelector('#connection-recovery [data-recovery-title]')?.textContent === 'Connection restored'",
+        timeout=5_000,
+    )
     require(
-        page.locator("#connection-recovery [data-recovery-title]").inner_text() == "Connection restored",
+        restored_title.inner_text() == "Connection restored",
         "Connection-restored state did not appear after reconnecting",
     )
 

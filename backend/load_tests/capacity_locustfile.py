@@ -63,6 +63,7 @@ def _checked_get(
         name=name,
         catch_response=True,
         allow_redirects=not protected,
+        headers=getattr(user, "auth_headers", None),
     ) as response:
         expected = {200} if protected else {200, 301, 302, 303, 307, 308}
         if response.status_code not in expected:
@@ -99,17 +100,15 @@ class CapacityStudentUser(FastHttpUser):
     wait_time = between(1.0, 2.0)
 
     def on_start(self) -> None:
+        self.auth_headers: dict[str, str] = {}
         if AUTH_BEARER:
-            self.client.headers.update({"Authorization": f"Bearer {AUTH_BEARER}"})
+            self.auth_headers["Authorization"] = f"Bearer {AUTH_BEARER}"
             if ACCEPTANCE_HEADER:
-                self.client.headers.update({"X-Amaris-Acceptance": "github-actions"})
+                self.auth_headers["X-Amaris-Acceptance"] = "github-actions"
         elif COOKIE_HEADER:
-            self.client.headers.update({"Cookie": COOKIE_HEADER})
+            self.auth_headers["Cookie"] = COOKIE_HEADER
         elif SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE:
-            self.client.cookies.set(
-                SESSION_COOKIE_NAME,
-                SESSION_COOKIE_VALUE,
-            )
+            self.auth_headers["Cookie"] = f"{SESSION_COOKIE_NAME}={SESSION_COOKIE_VALUE}"
 
     @task(5)
     def dashboard(self) -> None:

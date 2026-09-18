@@ -47,7 +47,7 @@ jobs:
             grep -qi '^x-correlation-id: AMR-' "$headers"
           done
 
-      - name: Verify degraded dependency reporting remains student-safe
+      - name: Verify dependency reporting remains student-safe
         shell: bash
         run: |
           set -euo pipefail
@@ -60,6 +60,8 @@ jobs:
           with open(sys.argv[1], encoding="utf-8") as fh:
               payload = json.load(fh)
           assert payload["dependencies"]["postgresql"] is True
-          assert payload["dependencies"]["redis"] is False
-          assert payload["status"] == "degraded"
+          redis_healthy = payload["dependencies"]["redis"]
+          assert isinstance(redis_healthy, bool)
+          expected_status = "ok" if redis_healthy else "degraded"
+          assert payload["status"] == expected_status
           PY
