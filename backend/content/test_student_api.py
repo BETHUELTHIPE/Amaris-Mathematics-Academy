@@ -79,7 +79,7 @@ class StudentJourneyApiTests(APITestCase):
         self.assertEqual(status_response.data["status"], Payment.Status.PENDING)
 
         self.authenticate(self.other)
-        cross_user = self.client.get(reverse("student-payment-status", args=[reference]))
+        cross_user = self.client.get(reverse("student-payment-status", args=[reference]), secure=True)
         self.assertEqual(cross_user.status_code, 404)
 
     def test_last_lesson_resume_persists_and_is_student_scoped(self):
@@ -93,6 +93,7 @@ class StudentJourneyApiTests(APITestCase):
                 "progress_percent": 42,
             },
             format="json",
+            secure=True,
         )
         self.assertEqual(update.status_code, 200)
         self.assertEqual(update.data["last_lesson"]["slug"], self.lesson.slug)
@@ -105,7 +106,7 @@ class StudentJourneyApiTests(APITestCase):
         self.assertEqual(resumed.data["last_position_seconds"], 347)
 
         self.authenticate(self.other)
-        cross_user = self.client.get(reverse("student-resume", args=[self.course.slug]))
+        cross_user = self.client.get(reverse("student-resume", args=[self.course.slug]), secure=True)
         self.assertEqual(cross_user.status_code, 404)
 
     def test_anonymous_student_journey_is_rejected(self):
@@ -114,5 +115,6 @@ class StudentJourneyApiTests(APITestCase):
             reverse("student-checkout"),
             {"course_slug": self.course.slug, "idempotency_key": "anonymous-checkout"},
             format="json",
+            secure=True,
         )
         self.assertEqual(response.status_code, 401)
