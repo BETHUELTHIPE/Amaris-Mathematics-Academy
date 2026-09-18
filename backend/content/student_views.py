@@ -5,12 +5,13 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import serializers, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
-from .models import Course, Enrollment, Lesson, Payment
+from .models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment
 from .services.payments import PaymentSecurityError, create_checkout
 
 
@@ -99,6 +100,84 @@ class StudentLessonView(StudentAPIView):
                     ),
                 },
                 "resume": _resume_payload(enrollment),
+            }
+        )
+
+
+class AcceptanceSeedView(StudentAPIView):
+    """Create deterministic synthetic staging data for protected release checks only."""
+
+    def post(self, request):
+        auth = request.auth if isinstance(request.auth, dict) else {}
+        if auth.get("provider") != "github-actions-oidc":
+            raise PermissionDenied("Synthetic acceptance seeding is restricted to GitHub Actions OIDC.")
+
+        category, _ = CourseCategory.objects.get_or_create(
+            slug="acceptance-testing",
+            defaults={
+                "name": "Acceptance Testing",
+                "description": "Synthetic release-acceptance fixtures only.",
+                "is_active": True,
+            },
+        )
+        course, _ = Course.objects.update_or_create(
+            slug="acceptance-capacity-mathematics",
+            defaults={
+                "category": category,
+                "title": "Synthetic Acceptance Mathematics",
+                "short_description": "Synthetic release-acceptance course.",
+                "description": "No real student, payment, or academic data is used.",
+                "curriculum": "Synthetic",
+                "academic_level": "Acceptance",
+                "price": "1.00",
+                "status": Course.Status.PUBLISHED,
+                "featured": False,
+            },
+        )
+        module, _ = CourseModule.objects.update_or_create(
+            course=course,
+            order=1,
+            defaults={
+                "title": "Acceptance Algebra",
+                "description": "Synthetic module.",
+                "is_published": True,
+            },
+        )
+        lesson, _ = Lesson.objects.update_or_create(
+            module=module,
+            order=1,
+            defaults={
+                "slug": "acceptance-algebra",
+                "title": "Acceptance Algebra",
+                "summary": "Synthetic lesson used only for release verification.",
+                "lesson_body": "Synthetic lesson content. No real student data.",
+                "duration_minutes": 20,
+                "is_published": True,
+                "is_free_preview": False,
+            },
+        )
+        enrollment, _ = Enrollment.objects.update_or_create(
+            student=request.user.student,
+            course=course,
+            defaults={"status": Enrollment.Status.ACTIVE},
+        )
+        if enrollment.status != Enrollment.Status.ACTIVE:
+            enrollment.status = Enrollment.Status.ACTIVE
+            enrollment.save(update_fields=["status", "updated_at"])
+
+        Payment.objects.filter(
+            student=request.user.student,
+            course=course,
+            status=Payment.Status.PENDING,
+            reference__startswith="PF-acceptance-",
+        ).delete()
+
+        return Response(
+            {
+                "student": "synthetic",
+                "course_slug": course.slug,
+                "lesson_slug": lesson.slug,
+                "enrollment_status": enrollment.status,
             }
         )
 
