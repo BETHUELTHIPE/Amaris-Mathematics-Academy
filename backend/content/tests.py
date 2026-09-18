@@ -74,6 +74,53 @@ class PublicContentApiTests(TestCase):
         self.assertEqual(response.json()["count"], 1)
         self.assertEqual(response.json()["results"][0]["slug"], "published-course")
 
+    def test_course_search_and_filters_return_relevant_published_results(self):
+        Course.objects.create(
+            category=self.category,
+            title="Grade 12 Differential Calculus",
+            slug="grade-12-differential-calculus",
+            short_description="Derivatives and rates of change",
+            description="CAPS calculus with exam-standard derivative problems.",
+            curriculum="CAPS",
+            academic_level="Grade 12",
+            price=950,
+            status=Course.Status.PUBLISHED,
+        )
+        Course.objects.create(
+            category=self.category,
+            title="University Linear Algebra",
+            slug="university-linear-algebra",
+            short_description="Vectors, matrices and linear systems",
+            description="First-year linear algebra foundations.",
+            curriculum="Higher Education",
+            academic_level="First year",
+            price=1200,
+            status=Course.Status.PUBLISHED,
+        )
+        Course.objects.create(
+            category=self.category,
+            title="Draft Differential Calculus Notes",
+            slug="draft-differential-calculus-notes",
+            short_description="Not public",
+            description="Draft only.",
+            curriculum="CAPS",
+            academic_level="Grade 12",
+            price=0,
+            status=Course.Status.DRAFT,
+        )
+
+        search = self.client.get(reverse("courses-list"), {"search": "derivative"}, secure=True)
+        self.assertEqual(search.status_code, 200)
+        self.assertEqual([item["slug"] for item in search.json()["results"]], ["grade-12-differential-calculus"])
+
+        curriculum = self.client.get(reverse("courses-list"), {"curriculum": "Higher Education"}, secure=True)
+        self.assertEqual(curriculum.status_code, 200)
+        self.assertEqual([item["slug"] for item in curriculum.json()["results"]], ["university-linear-algebra"])
+
+        level = self.client.get(reverse("courses-list"), {"academic_level": "Grade 12"}, secure=True)
+        self.assertEqual(level.status_code, 200)
+        self.assertEqual([item["slug"] for item in level.json()["results"]], ["grade-12-differential-calculus"])
+
     def test_site_settings_endpoint(self):
         SiteSettings.objects.create()
         response = self.client.get(reverse("site-settings"), secure=True)

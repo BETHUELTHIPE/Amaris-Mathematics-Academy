@@ -82,6 +82,38 @@ def check_form(page: Page) -> None:
     assert_no_horizontal_overflow(page, "enquiry form")
 
 
+
+def check_offline_recovery(page: Page) -> None:
+    goto(page, "/contact")
+    page.locator("#fullName").fill("Offline Synthetic Student")
+    page.locator("#email").fill("offline.student@example.test")
+    page.locator("#enquiryType").select_option("technical-support")
+    page.locator("#message").fill("Synthetic offline submission check with enough safe detail.")
+    page.locator("#consent").check()
+
+    page.context.set_offline(True)
+    try:
+        page.get_by_role("button", name=re.compile("Send enquiry")).click()
+        notice = page.locator("#connection-recovery")
+        require(notice.is_visible(), "Connection recovery notice did not appear while offline")
+        require(
+            notice.locator("[data-recovery-title]").inner_text() == "Connection lost",
+            "Offline recovery title is incorrect",
+        )
+        require(
+            "Nothing will be submitted until you reconnect." in notice.locator("[data-recovery-message]").inner_text(),
+            "Offline submission protection message is missing",
+        )
+        require(page.url.endswith("/contact"), "Offline form submission unexpectedly navigated away")
+    finally:
+        page.context.set_offline(False)
+
+    page.wait_for_timeout(100)
+    require(
+        page.locator("#connection-recovery [data-recovery-title]").inner_text() == "Connection restored",
+        "Connection-restored state did not appear after reconnecting",
+    )
+
 def check_dashboard(page: Page) -> None:
     goto(page, "/dashboard")
     require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
@@ -132,6 +164,7 @@ def check_lesson_interface(page: Page) -> None:
 CHECKS = (
     ("navigation", check_navigation),
     ("forms", check_form),
+    ("offline-recovery", check_offline_recovery),
     ("dashboard", check_dashboard),
     ("tables", check_table),
     ("checkout", check_checkout),
@@ -171,6 +204,59 @@ def run_context(browser: Browser, engine_name: str, viewport_name: str, viewport
     return failures
 
 
+
+def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: str) -> list[str]:
+    failures: list[str] = []
+    context = browser.new_context(
+        viewport=VIEWPORTS["mobile"],
+        locale="en-ZA",
+        timezone_id="Africa/Johannesburg",
+        java_script_enabled=False,
+    )
+    page = context.new_page()
+    page.set_default_timeout(15_000)
+    try:
+        goto(page, "/")
+        menu = page.locator("summary").filter(has_text="Menu")
+        require(menu.is_visible(), "No-JavaScript compact navigation menu is missing")
+        menu.click()
+        courses_link = page.locator('details a[href="/courses"]').first
+        require(courses_link.is_visible(), "Courses link is unavailable without JavaScript")
+        courses_link.focus()
+        page.keyboard.press("Enter")
+        page.wait_for_url("**/courses*", wait_until="domcontentloaded")
+        require("/courses" in page.url, "Navigation to courses failed without JavaScript")
+
+        goto(page, "/contact")
+        page.locator("#fullName").fill("No JS Synthetic Student")
+        page.locator("#email").fill("nojs.student@example.test")
+        page.locator("#enquiryType").select_option("course-guidance")
+        page.locator("#message").fill("Synthetic no JavaScript enquiry used only for progressive enhancement verification.")
+        page.locator("#consent").check(force=True)
+        submit = page.get_by_role("button", name=re.compile("Send enquiry"))
+        submit.focus()
+        page.keyboard.press("Enter")
+        page.wait_for_load_state("domcontentloaded")
+        success = page.get_by_text("Enquiry received", exact=True)
+        success.wait_for(state="visible", timeout=15_000)
+        require(
+            success.is_visible(),
+            "Contact form did not submit successfully without JavaScript",
+        )
+        print(f"PASS {engine_name:8} no-js   navigation-and-form")
+    except Exception as exc:  # noqa: BLE001
+        screenshot = ARTIFACT_DIR / f"{engine_name}-no-js-progressive-enhancement.png"
+        try:
+            page.screenshot(path=str(screenshot), full_page=True)
+        except Exception:
+            pass
+        failures.append(f"{engine_name}/no-js/navigation-and-form: {exc}")
+        print(f"FAIL {engine_name:8} no-js   navigation-and-form: {exc}", file=sys.stderr)
+        traceback.print_exc()
+    finally:
+        context.close()
+    return failures
+
 def main() -> int:
     failures: list[str] = []
     with sync_playwright() as playwright:
@@ -180,10 +266,11 @@ def main() -> int:
             try:
                 for viewport_name, viewport in VIEWPORTS.items():
                     failures.extend(run_context(browser, engine_name, viewport_name, viewport))
+                failures.extend(check_no_javascript_progressive_enhancement(browser, engine_name))
             finally:
                 browser.close()
 
-    total = 3 * len(VIEWPORTS) * len(CHECKS)
+    total = 3 * (len(VIEWPORTS) * len(CHECKS) + 1)
     passed = total - len(failures)
     print(f"\nResponsive/browser checks: {passed}/{total} passed")
     if failures:

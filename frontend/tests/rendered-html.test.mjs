@@ -90,3 +90,35 @@ test("keeps the optimized hero background photo visible on the homepage", async 
   assert.match(homepageSource, /src="\/amaris-math-hero\.webp"/);
   assert.match(homepageSource, /opacity-90/);
 });
+
+test("protected application responses are never publicly cacheable", async () => {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("cache-test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+
+  const response = await worker.fetch(
+    new Request("http://localhost/checkout", {
+      method: "POST",
+      headers: { "cf-connecting-ip": "203.0.113.10" },
+    }),
+    {
+      CHECKOUT_RATE_LIMITER: {
+        limit: async () => ({ success: false }),
+      },
+    },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+    },
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
+  assert.match(response.headers.get("vary") ?? "", /Cookie/i);
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+
+  const workerSource = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  for (const prefix of ["/dashboard", "/documents", "/checkout", "/api/auth-state"]) {
+    assert.ok(workerSource.includes(prefix), `Missing protected prefix ${prefix}`);
+  }
+});

@@ -1,0 +1,65 @@
+name: Live Staging Acceptance
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify staging readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://amaris-mathematics-academy-staging.onrender.com"
+          for attempt in $(seq 1 30); do
+            live=$(curl --silent --show-error --output /tmp/live.json --write-out '%{http_code}' --max-time 15 "$base/health/live/" || true)
+            ready=$(curl --silent --show-error --output /tmp/ready.json --write-out '%{http_code}' --max-time 15 "$base/health/ready/" || true)
+            if [ "$live" = "200" ] && [ "$ready" = "200" ]; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "staging readiness failed live=$live ready=$ready" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Verify safe branded error responses
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://amaris-mathematics-academy-staging.onrender.com"
+          for status in 400 403 404 429 500; do
+            body=$(mktemp)
+            headers=$(mktemp)
+            code=$(curl --silent --show-error --dump-header "$headers" --output "$body" --write-out '%{http_code}' --max-time 15 "$base/errors/$status/")
+            test "$code" = "$status"
+            grep -qi "Amaris Mathematics Academy" "$body"
+            grep -qi "Support reference" "$body"
+            ! grep -Eqi "traceback|DJANGO_SECRET_KEY|database_url|postgresql://" "$body"
+            grep -qi '^x-correlation-id: AMR-' "$headers"
+          done
+
+      - name: Verify degraded dependency reporting remains student-safe
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://amaris-mathematics-academy-staging.onrender.com"
+          body=$(mktemp)
+          code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --max-time 15 "$base/health/dependencies/")
+          test "$code" = "200"
+          python - "$body" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              payload = json.load(fh)
+          assert payload["dependencies"]["postgresql"] is True
+          assert payload["dependencies"]["redis"] is False
+          assert payload["status"] == "degraded"
+          PY

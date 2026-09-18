@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.utils import timezone
 
 from content.models import Course, CourseCategory, Enrollment, Payment, StudentRecord
 from content.payment_models import (
@@ -180,6 +182,29 @@ class PayFastPaymentAuthorityTests(TestCase):
         self.assertTrue(result.accepted)
         payment = Payment.objects.get(reference=self.checkout.payment_reference)
         self.assertEqual(payment.status, PAYMENT_CANCELLED)
+        self.assert_no_fulfilment()
+
+    def test_delayed_callback_within_replay_window_is_accepted(self):
+        payment = Payment.objects.get(reference=self.checkout.payment_reference)
+        Payment.objects.filter(pk=payment.pk).update(created_at=timezone.now() - timedelta(hours=6))
+
+        result = process_payfast_notification(self.callback(), gateway=MockPayFastGateway(True))
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(Payment.objects.get(pk=payment.pk).status, Payment.Status.PAID)
+        self.assertEqual(Enrollment.objects.filter(student=self.student, course=self.course).count(), 1)
+
+    def test_callback_outside_replay_window_is_rejected_without_gateway_call(self):
+        payment = Payment.objects.get(reference=self.checkout.payment_reference)
+        Payment.objects.filter(pk=payment.pk).update(created_at=timezone.now() - timedelta(days=8))
+        gateway = MockPayFastGateway(True)
+
+        result = process_payfast_notification(self.callback(), gateway=gateway)
+
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.reason, "callback_window_expired")
+        self.assertEqual(gateway.calls, 0)
+        self.assertEqual(Payment.objects.get(pk=payment.pk).status, Payment.Status.PENDING)
         self.assert_no_fulfilment()
 
     def test_duplicate_callback_is_idempotent_for_payment_enrollment_invoice_and_ticket(

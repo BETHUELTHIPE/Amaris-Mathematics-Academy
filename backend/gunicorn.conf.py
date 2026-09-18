@@ -15,5 +15,7 @@ max_requests = env_int("GUNICORN_MAX_REQUESTS", 1000)
 max_requests_jitter = env_int("GUNICORN_MAX_REQUESTS_JITTER", 100)
 worker_tmp_dir = "/dev/shm"
 accesslog = "-"
+# Privacy-preserving access log: omit client IP, query strings, referrer and user-agent.
+access_log_format = '%(t)s "%(m)s %(U)s" %(s)s %(b)s %(L)s'
 errorlog = "-"
 capture_output = True
