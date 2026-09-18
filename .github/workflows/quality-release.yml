@@ -489,6 +489,69 @@ PY
 
           echo "Real staging checkout/status/progress/resume/lesson journey passed without contacting PayFast."
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-load.txt
+
+      - name: Install controlled capacity dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && pip install -r requirements-load.txt
+
+      - name: Run controlled 100-user staging capacity gate
+        working-directory: backend
+        shell: bash
+        env:
+          LOADTEST_TARGET_URL: https://amaris-mathematics-academy-staging.onrender.com
+          LOADTEST_ENVIRONMENT: capacity
+          LOADTEST_ALLOWED_HOSTS: amaris-mathematics-academy-staging.onrender.com
+          LOADTEST_ALLOW_PRODUCTION: "false"
+          LOADTEST_ALLOW_LIVE_PAYFAST: "false"
+          CAPACITY_USERS: "100"
+          CAPACITY_RAMP_SECONDS: "60"
+          CAPACITY_HOLD_SECONDS: "300"
+          CAPACITY_REQUIRE_AUTH: "true"
+          CAPACITY_MAX_FAILURE_PCT: "1.0"
+          CAPACITY_MAX_5XX_PCT: "0.1"
+          CAPACITY_MAX_P95_MS: "1000"
+          CAPACITY_MAX_P99_MS: "2000"
+          LOADTEST_ACCEPTANCE_HEADER: "true"
+          LOADTEST_HOMEPAGE_PATH: /api/v1/bootstrap/
+          LOADTEST_CATALOGUE_PATH: /api/v1/courses/
+          LOADTEST_SEARCH_PATH: /api/v1/courses/?search=algebra
+          LOADTEST_COURSE_DETAIL_PATH: /api/v1/courses/acceptance-capacity-mathematics/
+          LOADTEST_LOGIN_PAGE_PATH: /api/v1/bootstrap/
+          LOADTEST_DASHBOARD_PATH: /api/v1/student/courses/
+          LOADTEST_LESSON_PATH: /api/v1/student/lessons/acceptance-capacity-mathematics/acceptance-algebra/
+        run: |
+          set -euo pipefail
+          mkdir -p load_tests/results
+          oidc_response=$(curl --fail --silent --show-error             -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=amaris-staging")
+          oidc_token=$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$oidc_response")
+          echo "::add-mask::$oidc_token"
+          export LOADTEST_AUTH_BEARER="$oidc_token"
+
+          auth=(-H "Authorization: Bearer $oidc_token" -H "X-Amaris-Acceptance: github-actions")
+          seed=$(curl --fail --silent --show-error "${auth[@]}"             -H "Content-Type: application/json"             -X POST "$LOADTEST_TARGET_URL/api/v1/student/acceptance/seed/" -d '{}')
+          course_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["course_slug"])' <<<"$seed")
+          key="acceptance-${GITHUB_SHA:0:32}"
+          checkout=$(curl --fail --silent --show-error "${auth[@]}"             -H "Content-Type: application/json"             -X POST "$LOADTEST_TARGET_URL/api/v1/student/checkout/"             -d "{"course_slug":"$course_slug","idempotency_key":"$key"}")
+          reference=$(python -c 'import json,sys; print(json.load(sys.stdin)["payment_reference"])' <<<"$checkout")
+          export LOADTEST_PAYMENT_STATUS_PATH="/api/v1/student/payments/$reference/"
+          export CAPACITY_LOCUST_RESULT="load_tests/results/capacity-100-locust.json"
+
+          python -m locust             -f load_tests/capacity_locustfile.py             --headless             --host "$LOADTEST_TARGET_URL"             --processes 4             --csv load_tests/results/locust-100             --csv-full-history             --html load_tests/results/locust-100.html
+
+      - name: Publish 100-user capacity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-capacity-100-${{ github.run_id }}
+          path: backend/load_tests/results/
+          if-no-files-found: error
+          retention-days: 90
+
   deploy-production:
     name: Approve, deploy, and verify production
     if: github.event_name == 'workflow_dispatch' && inputs.deploy_production == true
