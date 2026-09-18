@@ -1,0 +1,26 @@
+$company_name
+PRODUCTION INCIDENT NOTIFICATION
+
+Fingerprint: $fingerprint
+Severity: $severity
+Environment: $environment
+Source: $source
+Release SHA: $release_sha
+Occurred at: $occurred_at
+HTTP: $method $path -> $status_code
+Exception type: $exception_type
+Correlation reference: $correlation_reference
+GitHub incident: $issue_url
+
+Sanitized stack metadata:
+$frames
+
+Privacy boundary:
+Request bodies, query strings, cookies, authorization headers, user objects,
+exception messages, local variables and source lines are intentionally excluded.
+
+Company contact
+Phone: $company_phone
+Email: $company_email
+Website: $company_website
+Address: $company_address
