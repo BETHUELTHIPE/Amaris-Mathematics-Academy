@@ -35,6 +35,74 @@ class StudentAPIView(APIView):
         return self.request.user.student
 
 
+class StudentCoursesView(StudentAPIView):
+    def get(self, request):
+        enrollments = (
+            Enrollment.objects.filter(
+                student=request.user.student,
+                status__in=[Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED],
+            )
+            .select_related("course", "last_lesson", "last_lesson__module")
+            .order_by("-enrolled_at")
+        )
+        return Response(
+            [
+                {
+                    "course": {
+                        "slug": enrollment.course.slug,
+                        "title": enrollment.course.title,
+                    },
+                    "resume": _resume_payload(enrollment),
+                }
+                for enrollment in enrollments
+            ]
+        )
+
+
+class StudentLessonView(StudentAPIView):
+    def get(self, request, course_slug: str, lesson_slug: str):
+        enrollment = get_object_or_404(
+            Enrollment.objects.select_related("course"),
+            student=request.user.student,
+            course__slug=course_slug,
+            status__in=[Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED],
+        )
+        lesson = get_object_or_404(
+            Lesson.objects.select_related("module", "video"),
+            Q(publish_at__isnull=True) | Q(publish_at__lte=timezone.now()),
+            module__course=enrollment.course,
+            module__is_published=True,
+            slug=lesson_slug,
+            is_published=True,
+        )
+        video = lesson.video
+        return Response(
+            {
+                "course_slug": enrollment.course.slug,
+                "course_title": enrollment.course.title,
+                "lesson": {
+                    "id": lesson.pk,
+                    "slug": lesson.slug,
+                    "title": lesson.title,
+                    "summary": lesson.summary,
+                    "lesson_body": lesson.lesson_body,
+                    "duration_minutes": lesson.duration_minutes,
+                    "module": lesson.module.title,
+                    "video": (
+                        {
+                            "provider": video.provider,
+                            "youtube_video_id": video.youtube_video_id if video.provider == video.Provider.YOUTUBE else "",
+                            "duration_seconds": video.duration_seconds,
+                        }
+                        if video
+                        else None
+                    ),
+                },
+                "resume": _resume_payload(enrollment),
+            }
+        )
+
+
 class CheckoutView(StudentAPIView):
     def post(self, request):
         serializer = CheckoutRequestSerializer(data=request.data)
