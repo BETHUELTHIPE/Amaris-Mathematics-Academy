@@ -20,7 +20,7 @@ export default async function LessonPage({
   await requireVerifiedStudent("/dashboard");
   const { courseSlug, lessonSlug } = await params;
   const query = await searchParams;
-  let data;
+  let data: Awaited<ReturnType<typeof getProtectedLesson>>;
   try {
     data = await getProtectedLesson(courseSlug, lessonSlug);
   } catch {
