@@ -131,6 +131,15 @@ SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 SUPABASE_AUTH_TIMEOUT_SECONDS = float(os.getenv("SUPABASE_AUTH_TIMEOUT_SECONDS", "4"))
 SUPABASE_AUTH_CACHE_SECONDS = int(os.getenv("SUPABASE_AUTH_CACHE_SECONDS", "15"))
 
+ACCEPTANCE_GITHUB_OIDC_ENABLED = env_bool("ACCEPTANCE_GITHUB_OIDC_ENABLED", False)
+ACCEPTANCE_GITHUB_AUDIENCE = os.getenv("ACCEPTANCE_GITHUB_AUDIENCE", "amaris-staging")
+ACCEPTANCE_GITHUB_REPOSITORY = os.getenv(
+    "ACCEPTANCE_GITHUB_REPOSITORY",
+    "BETHUELTHIPE/Amaris-Mathematics-Academy",
+)
+ACCEPTANCE_GITHUB_ENVIRONMENT = os.getenv("ACCEPTANCE_GITHUB_ENVIRONMENT", "staging")
+ACCEPTANCE_GITHUB_REF = os.getenv("ACCEPTANCE_GITHUB_REF", "refs/heads/main")
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
