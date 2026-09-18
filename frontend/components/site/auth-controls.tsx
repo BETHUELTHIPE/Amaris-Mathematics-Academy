@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-html-link-for-pages -- public header auth controls intentionally use full-page anchors to avoid public-route prefetch work */
 "use client";
 
 import { useEffect, useState } from "react";
