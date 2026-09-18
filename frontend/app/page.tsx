@@ -21,7 +21,7 @@ export default async function Home() {
         <div className="graph-paper absolute inset-0 opacity-[0.08]" />
         <div className="relative mx-auto grid min-h-[690px] max-w-7xl items-center px-5 py-20 lg:px-8">
           <div className="max-w-2xl rounded-[2rem] border border-white/10 bg-[#07152d]/92 p-6 shadow-[0_28px_90px_rgba(0,0,0,.24)] backdrop-blur-[2px] sm:p-9">
-            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 py-2 text-sm text-white/80 backdrop-blur"><span className="size-2 rounded-full bg-[#ffcc66]" /> Mathematics for school, TVET & university</div>
+            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 py-2 text-sm text-white/80 backdrop-blur"><span className="size-2 rounded-full bg-[#ffcc66]" /> CAPS, IEB, TVET & university mathematics</div>
             <h1 className="text-5xl font-semibold leading-[1.02] tracking-[-0.055em] sm:text-6xl lg:text-[5.4rem]">Master mathematics,<br /><span className="text-[#ffcc66]">one clear step</span> at a time.</h1>
             <p className="mt-7 max-w-xl text-lg leading-8 text-white/70">Structured lessons, worked examples and deliberate practice—built to turn uncertainty into confident problem-solving.</p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -35,7 +35,7 @@ export default async function Home() {
 
       <section className="relative z-10 mx-auto -mt-9 max-w-7xl px-5 lg:px-8" aria-label="Platform highlights">
         <div className="grid divide-y divide-[#dce4ef] overflow-hidden rounded-3xl border border-[#dce4ef] bg-white shadow-[0_22px_70px_rgba(7,21,45,.12)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          {[["6","focused programmes","A concise catalogue without distractions"],["220+","guided lessons","Clear explanations and deliberate practice"],["3","learning pathways","School, TVET and university mathematics"]].map(([value,label,description]) => <div key={label} className="p-6 sm:p-7"><div className="text-3xl font-bold tracking-tight text-[#0b2a5b]">{value}</div><div className="mt-1 font-semibold">{label}</div><div className="mt-2 text-sm leading-6 text-[#60708a]">{description}</div></div>)}
+          {[["6","focused programmes","A concise catalogue without distractions"],["220+","guided lessons","Clear explanations and deliberate practice"],["4","learning pathways","CAPS, IEB, TVET and University Modules"]].map(([value,label,description]) => <div key={label} className="p-6 sm:p-7"><div className="text-3xl font-bold tracking-tight text-[#0b2a5b]">{value}</div><div className="mt-1 font-semibold">{label}</div><div className="mt-2 text-sm leading-6 text-[#60708a]">{description}</div></div>)}
         </div>
       </section>
 
