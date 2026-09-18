@@ -18,6 +18,7 @@ const localBindingConfig = {
   compatibility_flags: ["nodejs_compat"],
   vars: {
     CSP_REPORT_ONLY: process.env.CSP_REPORT_ONLY ?? "false",
+    CMS_API_URL: process.env.CMS_API_URL ?? "",
   },
   ratelimits: [
     { name: "AUTH_RATE_LIMITER", namespace_id: "41001", simple: { limit: 10, period: 60 as const } },
