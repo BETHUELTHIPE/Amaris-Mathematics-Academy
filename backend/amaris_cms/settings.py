@@ -45,6 +45,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "amaris_cms.middleware.CorrelationReferenceMiddleware",
+    "amaris_cms.middleware.ProductionIncidentMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -196,6 +197,14 @@ CORS_ALLOWED_ORIGINS = env_list(
 )
 CORS_ALLOW_CREDENTIALS = False
 
+APP_ENVIRONMENT = os.getenv(
+    "APP_ENVIRONMENT",
+    "development" if DEBUG else "production",
+).strip().lower()
+INCIDENT_AUTOMATION_ENABLED = env_bool("INCIDENT_AUTOMATION_ENABLED", False)
+INCIDENT_DEDUP_SECONDS = int(os.getenv("INCIDENT_DEDUP_SECONDS", "600"))
+
+
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1")
 CELERY_TASK_SERIALIZER = "json"
@@ -270,6 +279,23 @@ CSRF_FAILURE_VIEW = "amaris_cms.error_views.error_403"
 SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        }
+    },
+    "loggers": {
+        "amaris.incident": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        }
+    },
+}
 
 JAZZMIN_SETTINGS = {
     "site_title": "Amaris Academy Admin",
