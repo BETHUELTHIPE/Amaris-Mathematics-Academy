@@ -20,6 +20,27 @@ def _load_render_secret_env_files() -> None:
         candidates.extend(sorted(secret_dir.glob(".env*")))
         candidates.extend(sorted(secret_dir.glob("*.env")))
 
+        expected_markers = (
+            "OPENAI_API_KEY=",
+            "OPENAI_KEY=",
+            "OPENAI_APIKEY=",
+            "EMAIL_HOST_USER=",
+            "EMAIL_HOST_PASSWORD=",
+            "GMAIL_USER=",
+            "GMAIL_EMAIL=",
+            "GMAIL_APP_PASSWORD=",
+            "DEFAULT_FROM_EMAIL=",
+        )
+        for secret_file in sorted(secret_dir.iterdir()):
+            if not secret_file.is_file() or secret_file in candidates:
+                continue
+            try:
+                preview = secret_file.read_text(encoding="utf-8", errors="ignore")[:8192]
+            except OSError:
+                continue
+            if any(marker in preview for marker in expected_markers):
+                candidates.append(secret_file)
+
     seen: set[Path] = set()
     for candidate in candidates:
         try:
