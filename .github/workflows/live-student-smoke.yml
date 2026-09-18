@@ -24,20 +24,6 @@ jobs:
             test -s /tmp/page.html
           done
 
-      - name: Verify protected dashboard redirects
-        shell: bash
-        run: |
-          set -euo pipefail
-          site="https://amaris-mathematics-academy-live-students.onrender.com"
-          headers=$(mktemp)
-          code=$(curl --silent --show-error --output /dev/null --dump-header "$headers" --write-out '%{http_code}' --max-time 30 "$site/dashboard")
-          cat "$headers"
-          case "$code" in
-            301|302|303|307|308) ;;
-            *) echo "Expected auth redirect, got $code" >&2; exit 1 ;;
-          esac
-          grep -qi '^location: .*login' "$headers"
-
       - name: Verify backend health and dependencies
         shell: bash
         run: |
@@ -60,3 +46,22 @@ jobs:
           code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 30 "$SUPABASE_URL/auth/v1/health")
           echo "Supabase auth health => $code"
           test "$code" = "200"
+
+      - name: Verify protected dashboard requires authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          site="https://amaris-mathematics-academy-live-students.onrender.com"
+          headers=$(mktemp)
+          body=$(mktemp)
+          code=$(curl --silent --show-error --output "$body" --dump-header "$headers" --write-out '%{http_code}' --max-time 30 "$site/dashboard")
+          cat "$headers"
+          if [[ "$code" =~ ^30[12378]$ ]]; then
+            grep -qi '^location: .*login' "$headers"
+          elif [ "$code" = "200" ]; then
+            grep -q 'Welcome back.' "$body"
+            ! grep -q 'Student dashboard' "$body"
+          else
+            echo "Expected login redirect or rendered login page, got $code" >&2
+            exit 1
+          fi
