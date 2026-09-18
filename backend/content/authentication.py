@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -11,8 +12,23 @@ from django.core.cache import cache
 from django.db import IntegrityError
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 from rest_framework.exceptions import APIException, AuthenticationFailed
+from jwt import PyJWKClient, decode as decode_jwt
+from jwt.exceptions import PyJWTError
 
 from .models import StudentRecord
+
+
+GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
+GITHUB_OIDC_JWKS = "https://token.actions.githubusercontent.com/.well-known/jwks"
+GITHUB_ACCEPTANCE_STUDENT_ID = uuid.UUID("00000000-0000-4000-8000-000000009001")
+GITHUB_ACCEPTANCE_EMAIL = "acceptance.student@example.test"
+_GITHUB_JWK_CLIENT = PyJWKClient(
+    GITHUB_OIDC_JWKS,
+    cache_keys=True,
+    cache_jwk_set=True,
+    lifespan=3600,
+    timeout=5,
+)
 
 
 class AuthenticationServiceUnavailable(APIException):
@@ -67,6 +83,9 @@ class SupabaseStudentAuthentication(BaseAuthentication):
         except UnicodeDecodeError as exc:
             raise AuthenticationFailed("The access token is malformed.") from exc
 
+        if request.headers.get("X-Amaris-Acceptance", "").strip().lower() == "github-actions":
+            return self._authenticate_github_acceptance(token)
+
         user_payload = self._validate_token(token)
         user_id = str(user_payload.get("id") or "").strip()
         email = str(user_payload.get("email") or "").strip().lower()
@@ -88,6 +107,64 @@ class SupabaseStudentAuthentication(BaseAuthentication):
 
     def authenticate_header(self, request):
         return "Bearer"
+
+    def _authenticate_github_acceptance(self, token: str):
+        if not bool(getattr(settings, "ACCEPTANCE_GITHUB_OIDC_ENABLED", False)):
+            raise AuthenticationFailed("Synthetic acceptance authentication is disabled.")
+
+        audience = str(getattr(settings, "ACCEPTANCE_GITHUB_AUDIENCE", "amaris-staging"))
+        expected_repository = str(
+            getattr(
+                settings,
+                "ACCEPTANCE_GITHUB_REPOSITORY",
+                "BETHUELTHIPE/Amaris-Mathematics-Academy",
+            )
+        )
+        expected_environment = str(getattr(settings, "ACCEPTANCE_GITHUB_ENVIRONMENT", "staging"))
+        expected_ref = str(getattr(settings, "ACCEPTANCE_GITHUB_REF", "refs/heads/main"))
+
+        try:
+            signing_key = _GITHUB_JWK_CLIENT.get_signing_key_from_jwt(token).key
+            claims = decode_jwt(
+                token,
+                signing_key,
+                algorithms=["RS256"],
+                audience=audience,
+                issuer=GITHUB_OIDC_ISSUER,
+                options={"require": ["exp", "iat", "nbf"]},
+            )
+        except (PyJWTError, ValueError, TypeError, OSError) as exc:
+            raise AuthenticationFailed("The synthetic acceptance identity is invalid.") from exc
+
+        if claims.get("repository") != expected_repository:
+            raise AuthenticationFailed("The synthetic acceptance repository is not trusted.")
+        if claims.get("event_name") != "push":
+            raise AuthenticationFailed("Synthetic acceptance requires a protected main-branch push.")
+        if claims.get("environment") != expected_environment:
+            raise AuthenticationFailed("Synthetic acceptance requires the staging environment.")
+        if expected_ref and claims.get("ref") != expected_ref:
+            raise AuthenticationFailed("Synthetic acceptance is restricted to the main branch.")
+
+        student, _ = StudentRecord.objects.update_or_create(
+            supabase_user_id=GITHUB_ACCEPTANCE_STUDENT_ID,
+            defaults={
+                "email": GITHUB_ACCEPTANCE_EMAIL,
+                "first_name": "Acceptance",
+                "last_name": "Student",
+                "is_active": True,
+            },
+        )
+        principal = SupabaseStudentPrincipal(
+            student=student,
+            supabase_user_id=str(GITHUB_ACCEPTANCE_STUDENT_ID),
+            email=GITHUB_ACCEPTANCE_EMAIL,
+        )
+        return principal, {
+            "provider": "github-actions-oidc",
+            "repository": claims.get("repository"),
+            "run_id": claims.get("run_id"),
+            "sha": claims.get("sha"),
+        }
 
     def _validate_token(self, token: str) -> dict:
         url = str(getattr(settings, "SUPABASE_URL", "") or "").rstrip("/")
