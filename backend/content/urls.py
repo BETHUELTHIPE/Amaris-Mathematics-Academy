@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .payfast_views import PayFastITNView
 from .student_views import (
     AcceptanceSeedView,
+    AcceptanceSettlePaymentView,
     CheckoutView,
     PaymentStatusView,
     ProgressView,
@@ -39,6 +40,7 @@ router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 urlpatterns = [
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
+    path("student/acceptance/settle-payment/", AcceptanceSettlePaymentView.as_view(), name="student-acceptance-settle-payment"),
     path("student/courses/", StudentCoursesView.as_view(), name="student-courses"),
     path("student/lessons/<slug:course_slug>/<slug:lesson_slug>/", StudentLessonView.as_view(), name="student-lesson"),
     path("student/checkout/", CheckoutView.as_view(), name="student-checkout"),
