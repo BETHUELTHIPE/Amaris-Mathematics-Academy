@@ -199,7 +199,7 @@ def count_requests(
     exception: Exception | None = None,
     **_kwargs: Any,
 ) -> None:
-    del request_type, name, response_time, response_length, exception
+    del request_type, response_time, response_length, exception
     global _LOCAL_REQUESTS, _LOCAL_5XX
     _LOCAL_REQUESTS += 1
     _SEEN_REQUEST_NAMES.add(name)
@@ -228,7 +228,9 @@ def receive_capacity_counters(
     **_kwargs: Any,
 ) -> None:
     request_names = tuple(
-        str(name) for name in data.get("capacity_request_names", []) if str(name)
+        str(name)
+        for name in data.get("capacity_request_names", [])
+        if str(name)
     )
     _WORKER_COUNTERS[client_id] = (
         int(data.get("capacity_request_count", 0)),
