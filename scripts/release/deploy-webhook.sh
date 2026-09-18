@@ -6,7 +6,7 @@ environment_name=${2:?environment name is required}
 image_reference=${3:-}
 
 case "$action" in
-    current-release|deploy|migrate|migration-plan|rollback) ;;
+    current-release|rollback-target|deploy|migrate|migration-plan|rollback) ;;
     *) echo "Unsupported deployment action." >&2; exit 2 ;;
 esac
 
@@ -73,8 +73,8 @@ preflight_migration() {
 }
 
 case "$action" in
-    current-release)
-        post_action current-release
+    current-release|rollback-target)
+        post_action "$action"
         ;;
     deploy|migrate)
         validate_immutable_image
