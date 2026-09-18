@@ -187,6 +187,11 @@ class CapacityContractTests(unittest.TestCase):
         self.assertIn('"locust_version"', text)
         self.assertIn('"tested_at_utc"', text)
 
+    def test_capacity_fast_http_auth_is_applied_per_request(self):
+        text = self._capacity_locust_text()
+        self.assertIn("headers=_request_headers(protected=protected)", text)
+        self.assertNotIn("self.client.headers.update", text)
+
     def test_capacity_requires_sustained_hold_and_fast_http_users(self):
         text = self._capacity_locust_text()
         self.assertIn("FastHttpUser", text)
