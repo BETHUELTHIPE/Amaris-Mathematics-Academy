@@ -462,6 +462,9 @@ jobs:
           test "$course_slug" = "acceptance-capacity-mathematics"
           test "$lesson_slug" = "acceptance-algebra"
 
+          search=$(curl --fail --silent --show-error "$STAGING_BASE_URL/api/v1/courses/?search=acceptance")
+          python -c 'import json,sys; p=json.load(sys.stdin); slugs=[item["slug"] for item in p["results"]]; assert "acceptance-capacity-mathematics" in slugs' <<<"$search"
+
           key="acceptance-${GITHUB_SHA:0:32}"
           checkout_body=$(COURSE_SLUG="$course_slug" CHECKOUT_KEY="$key" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"idempotency_key":os.environ["CHECKOUT_KEY"]}))')
           checkout=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$STAGING_BASE_URL/api/v1/student/checkout/" -d "$checkout_body")
@@ -469,6 +472,11 @@ jobs:
 
           payment=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/payments/$reference/")
           python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="pending"; assert p["enrollment_status"] is None' <<<"$payment"
+
+          completed=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$STAGING_BASE_URL/api/v1/student/acceptance/payments/$reference/complete/" -d '{}')
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="paid"; assert p["enrollment_status"]=="active"' <<<"$completed"
+          payment=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/payments/$reference/")
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="paid"; assert p["enrollment_status"]=="active"; assert p["paid_at"]' <<<"$payment"
 
           progress_body=$(COURSE_SLUG="$course_slug" LESSON_SLUG="$lesson_slug" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"lesson_slug":os.environ["LESSON_SLUG"],"position_seconds":347,"progress_percent":42}))')
           progress=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X PATCH "$STAGING_BASE_URL/api/v1/student/progress/" -d "$progress_body")
@@ -479,7 +487,7 @@ jobs:
 
           lesson=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/lessons/$course_slug/$lesson_slug/")
           python -c 'import json,sys; p=json.load(sys.stdin); assert p["lesson"]["slug"]=="acceptance-algebra"; assert p["resume"]["last_position_seconds"]==347' <<<"$lesson"
-          echo "Real staging checkout/status/progress/resume/lesson journey passed without contacting PayFast."
+          echo "Real staging search/checkout/synthetic-paid/status/progress/resume/lesson journey passed without a real PayFast charge."
 
       - uses: actions/setup-python@v5
         with:

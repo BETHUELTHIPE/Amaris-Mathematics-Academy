@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import os
 import uuid
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
 from content.authentication import SupabaseStudentPrincipal
 from content.models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment, StudentRecord
+from content.payment_models import Invoice, NotificationOutbox, ServiceTicket
 
 
 class StudentJourneyApiTests(APITestCase):
@@ -108,6 +111,84 @@ class StudentJourneyApiTests(APITestCase):
         self.authenticate(self.other)
         cross_user = self.client.get(reverse("student-resume", args=[self.course.slug]), secure=True)
         self.assertEqual(cross_user.status_code, 404)
+
+    def test_acceptance_payment_completion_uses_real_fulfillment_path_in_sandbox(self):
+        self.course.slug = "acceptance-capacity-mathematics"
+        self.course.save(update_fields=["slug", "updated_at"])
+        principal = SupabaseStudentPrincipal(
+            student=self.student,
+            supabase_user_id=str(self.student.supabase_user_id),
+            email=self.student.email,
+        )
+        self.client.force_authenticate(
+            user=principal,
+            token={"provider": "github-actions-oidc"},
+        )
+
+        with patch.dict(os.environ, {"PAYFAST_MODE": "sandbox"}):
+            checkout = self.client.post(
+                reverse("student-checkout"),
+                {
+                    "course_slug": self.course.slug,
+                    "idempotency_key": "acceptance-paid-001",
+                },
+                format="json",
+                secure=True,
+            )
+            self.assertEqual(checkout.status_code, 201)
+            reference = checkout.data["payment_reference"]
+            completed = self.client.post(
+                reverse("student-acceptance-payment-complete", args=[reference]),
+                {},
+                format="json",
+                secure=True,
+            )
+
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.data["status"], Payment.Status.PAID)
+        self.assertEqual(completed.data["enrollment_status"], Enrollment.Status.ACTIVE)
+        payment = Payment.objects.get(reference=reference)
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertIsNotNone(payment.gateway_verified_at)
+        self.assertTrue(Invoice.objects.filter(payment=payment).exists())
+        self.assertTrue(ServiceTicket.objects.filter(payment=payment).exists())
+        self.assertTrue(NotificationOutbox.objects.filter(payment=payment).exists())
+
+    def test_acceptance_payment_completion_is_disabled_in_live_payfast_mode(self):
+        self.course.slug = "acceptance-capacity-mathematics"
+        self.course.save(update_fields=["slug", "updated_at"])
+        principal = SupabaseStudentPrincipal(
+            student=self.student,
+            supabase_user_id=str(self.student.supabase_user_id),
+            email=self.student.email,
+        )
+        self.client.force_authenticate(
+            user=principal,
+            token={"provider": "github-actions-oidc"},
+        )
+
+        with patch.dict(os.environ, {"PAYFAST_MODE": "sandbox"}):
+            checkout = self.client.post(
+                reverse("student-checkout"),
+                {
+                    "course_slug": self.course.slug,
+                    "idempotency_key": "acceptance-live-001",
+                },
+                format="json",
+                secure=True,
+            )
+        reference = checkout.data["payment_reference"]
+
+        with patch.dict(os.environ, {"PAYFAST_MODE": "live"}):
+            completed = self.client.post(
+                reverse("student-acceptance-payment-complete", args=[reference]),
+                {},
+                format="json",
+                secure=True,
+            )
+
+        self.assertEqual(completed.status_code, 403)
+        self.assertEqual(Payment.objects.get(reference=reference).status, Payment.Status.PENDING)
 
     def test_anonymous_student_journey_is_rejected(self):
         self.client.force_authenticate(user=None)
