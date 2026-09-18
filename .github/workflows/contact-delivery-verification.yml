@@ -20,19 +20,19 @@ jobs:
         run: |
           set -euo pipefail
           api="https://amaris-mathematics-academy-staging.onrender.com"
+          site="https://amaris-mathematics-academy-live-students.onrender.com"
 
-          settings=$(mktemp)
-          code=$(curl --silent --show-error --output "$settings" --write-out '%{http_code}' --max-time 45 "$api/api/v1/settings/")
+          contact=$(mktemp)
+          code=$(curl --silent --show-error --output "$contact" --write-out '%{http_code}' --max-time 45 "$site/contact")
           test "$code" = "200"
 
-          recipient=$(python - "$settings" <<'PY'
-          import json, sys
-          with open(sys.argv[1], encoding="utf-8") as fh:
-              payload = json.load(fh)
-          email = (payload or {}).get("email") or ""
-          if not email or "@" not in email:
+          recipient=$(python - "$contact" <<'PY'
+          import re, sys
+          html = open(sys.argv[1], encoding="utf-8", errors="ignore").read()
+          matches = re.findall(r'mailto:([^"\'<>? ]+)', html, flags=re.I)
+          if not matches:
               raise SystemExit(2)
-          print(email)
+          print(matches[0])
           PY
           )
 
