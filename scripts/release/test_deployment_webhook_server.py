@@ -108,6 +108,76 @@ class DeploymentWebhookDispatchTests(unittest.TestCase):
         self.assertEqual(result["release_sha"], sha)
 
     @mock.patch.object(deployment_webhook_server.subprocess, "run")
+    def test_rollback_target_requires_immutable_identity_and_safety_flag(self, run):
+        sha = "c" * 40
+        target = {
+            "status": "succeeded",
+            "image": f"docker.io/bethuelm/amaris-mathematics-academy:{sha}",
+            "release_sha": sha,
+            "rollback_safe": True,
+        }
+        run.return_value = mock.Mock(
+            returncode=0,
+            stdout=json.dumps(target),
+            stderr="",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "rollback-target-handler"
+            executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            executable.chmod(0o700)
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "DEPLOYMENT_ENVIRONMENT": "production",
+                    "ROLLBACK_TARGET_ACTION_EXECUTABLE": str(executable),
+                },
+                clear=False,
+            ):
+                result = deployment_webhook_server.dispatch(
+                    {"action": "rollback-target", "environment": "production"}
+                )
+
+        self.assertTrue(result["rollback_safe"])
+        self.assertEqual(result["image"], target["image"])
+        self.assertEqual(result["release_sha"], sha)
+
+    @mock.patch.object(deployment_webhook_server.subprocess, "run")
+    def test_rollback_target_rejects_missing_safety_flag(self, run):
+        sha = "d" * 40
+        run.return_value = mock.Mock(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "status": "succeeded",
+                    "image": (
+                        "docker.io/bethuelm/amaris-mathematics-academy:"
+                        f"{sha}"
+                    ),
+                    "release_sha": sha,
+                }
+            ),
+            stderr="",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "rollback-target-handler"
+            executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            executable.chmod(0o700)
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "DEPLOYMENT_ENVIRONMENT": "production",
+                    "ROLLBACK_TARGET_ACTION_EXECUTABLE": str(executable),
+                },
+                clear=False,
+            ):
+                with self.assertRaises(deployment_webhook_server.WebhookError):
+                    deployment_webhook_server.dispatch(
+                        {"action": "rollback-target", "environment": "production"}
+                    )
+
+    @mock.patch.object(deployment_webhook_server.subprocess, "run")
     def test_rollback_requires_exact_immutable_target(self, run):
         run.return_value = mock.Mock(
             returncode=0,
