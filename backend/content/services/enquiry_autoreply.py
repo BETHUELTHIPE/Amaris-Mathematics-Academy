@@ -257,6 +257,11 @@ def auto_reply_to_enquiry(enquiry: ContactEnquiry) -> AutoReplyResult:
             f"AI AUTO-REPLY SENT. OpenAI response_id={response_id or 'not-returned'}\n\n{audit_reply}",
             mark_in_progress=True,
         )
+        logger.info(
+            "AI enquiry auto-reply sent successfully enquiry_id=%s response_id=%s",
+            enquiry.pk,
+            response_id or "not-returned",
+        )
         return AutoReplyResult(True, "sent", response_id=response_id)
     except Exception as exc:
         logger.exception("Unable to send AI enquiry auto-reply for enquiry %s", enquiry.pk)
