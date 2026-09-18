@@ -60,5 +60,6 @@ jobs:
           with open(sys.argv[1], encoding="utf-8") as fh:
               payload = json.load(fh)
           assert payload["dependencies"]["postgresql"] is True
-          assert payload["status"] in {"ok", "degraded"}
+          assert payload["dependencies"]["redis"] is False
+          assert payload["status"] == "degraded"
           PY
