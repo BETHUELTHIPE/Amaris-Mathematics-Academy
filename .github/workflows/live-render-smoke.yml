@@ -1,0 +1,86 @@
+name: Live Render Browser Smoke
+
+on:
+  push:
+    branches: [render-live-current-20260918]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BASE_URL: https://amaris-mathematics-academy-live-students.onrender.com
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install browser smoke dependencies
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Verify live public pages
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from playwright.sync_api import sync_playwright
+
+          base = os.environ["BASE_URL"].rstrip("/")
+          failures = []
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              for path in ["/", "/contact"]:
+                  page = browser.new_page()
+                  page_errors = []
+                  console_errors = []
+
+                  page.on("pageerror", lambda exc, store=page_errors: store.append(str(exc)))
+                  page.on(
+                      "console",
+                      lambda msg, store=console_errors: store.append(msg.text)
+                      if msg.type == "error"
+                      else None,
+                  )
+
+                  response = page.goto(
+                      f"{base}{path}",
+                      wait_until="networkidle",
+                      timeout=120_000,
+                  )
+                  status = response.status if response else 0
+                  body = page.locator("body").inner_text(timeout=30_000)
+                  print(f"PATH {path} STATUS {status}")
+                  print(f"TITLE {page.title()}")
+                  if page_errors:
+                      print("PAGE_ERRORS:")
+                      for item in page_errors:
+                          print(f"  - {item}")
+                  if console_errors:
+                      print("CONSOLE_ERRORS:")
+                      for item in console_errors[:20]:
+                          print(f"  - {item}")
+
+                  if not response or status >= 500:
+                      failures.append(f"{path}: HTTP {status}")
+                  if "We could not load this page." in body:
+                      failures.append(f"{path}: recovery screen rendered")
+                  if page_errors:
+                      failures.append(f"{path}: browser page error: {page_errors[0]}")
+
+                  page.close()
+              browser.close()
+
+          if failures:
+              print("LIVE SMOKE FAILED")
+              for failure in failures:
+                  print(f"  - {failure}")
+              sys.exit(1)
+
+          print("LIVE SMOKE PASSED")
+          PY
