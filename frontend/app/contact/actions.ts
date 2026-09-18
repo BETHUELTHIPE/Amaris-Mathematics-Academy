@@ -46,10 +46,10 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
             subject: parsed.data.enquiryType.replaceAll("-", " "),
             message: parsed.data.message,
           }),
-          signal: AbortSignal.timeout(6_000),
+          signal: AbortSignal.timeout(45_000),
         });
         if (cmsResponse.ok) {
-          return { status: "success", message: "Thank you. Your enquiry has been received, and the Amaris team will respond as soon as possible." };
+          return { status: "success", message: "Thank you. Your enquiry has been received. Amaris will send an automated response based on current website information when AI support is available, with staff follow-up when needed." };
         }
         console.error("Django CMS rejected contact enquiry", cmsResponse.status);
       } catch (cmsError) {
@@ -72,7 +72,7 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
       "new",
     ).run();
 
-    return { status: "success", message: "Thank you. Your enquiry has been received, and the Amaris team will respond as soon as possible." };
+    return { status: "success", message: "Thank you. Your enquiry has been received. Amaris will send an automated response based on current website information when AI support is available, with staff follow-up when needed." };
   } catch (error) {
     console.error("Unable to save contact enquiry", error);
     return { status: "error", message: "We could not send your enquiry right now. Please try again or contact us by phone or email." };
