@@ -66,6 +66,7 @@ class StudentJourneyApiTests(APITestCase):
             reverse("student-checkout"),
             {"course_slug": self.course.slug, "idempotency_key": "journey-checkout-001"},
             format="json",
+            secure=True,
         )
         self.assertEqual(checkout.status_code, 201)
         self.assertEqual(checkout.data["status"], Payment.Status.PENDING)
@@ -73,7 +74,7 @@ class StudentJourneyApiTests(APITestCase):
         self.assertIn("sandbox.payfast.co.za", checkout.data["gateway_url"])
 
         reference = checkout.data["payment_reference"]
-        status_response = self.client.get(reverse("student-payment-status", args=[reference]))
+        status_response = self.client.get(reverse("student-payment-status", args=[reference]), secure=True)
         self.assertEqual(status_response.status_code, 200)
         self.assertEqual(status_response.data["status"], Payment.Status.PENDING)
 
@@ -98,7 +99,7 @@ class StudentJourneyApiTests(APITestCase):
         self.assertEqual(update.data["last_position_seconds"], 347)
         self.assertEqual(update.data["progress_percent"], 42)
 
-        resumed = self.client.get(reverse("student-resume", args=[self.course.slug]))
+        resumed = self.client.get(reverse("student-resume", args=[self.course.slug]), secure=True)
         self.assertEqual(resumed.status_code, 200)
         self.assertEqual(resumed.data["last_lesson"]["slug"], self.lesson.slug)
         self.assertEqual(resumed.data["last_position_seconds"], 347)
