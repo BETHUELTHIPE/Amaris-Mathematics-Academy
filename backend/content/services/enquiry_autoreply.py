@@ -166,7 +166,6 @@ def _call_openai(enquiry: ContactEnquiry, website_context: str) -> tuple[str, st
             "model": model,
             "store": False,
             "max_output_tokens": 650,
-            "temperature": 0.2,
             "instructions": instructions,
             "input": input_text,
             "safety_identifier": hashlib.sha256(enquiry.email.lower().encode("utf-8")).hexdigest()[:64],
