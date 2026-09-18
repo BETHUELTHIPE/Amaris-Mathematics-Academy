@@ -90,7 +90,7 @@ if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
             "options": " ".join(
                 [
                     f"-c statement_timeout={int(os.getenv('DATABASE_STATEMENT_TIMEOUT_MS', '30000'))}",
-                    "-c idle_in_transaction_session_timeout=30000",
+                    f"-c idle_in_transaction_session_timeout={int(os.getenv('DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS', '30000'))}",
                 ]
             ),
         }
