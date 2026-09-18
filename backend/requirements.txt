@@ -18,3 +18,5 @@ boto3==1.40.43
 Pillow==12.3.0
 whitenoise==6.9.0
 PyJWT[crypto]==2.14.0
+
+python-dotenv==1.2.3
