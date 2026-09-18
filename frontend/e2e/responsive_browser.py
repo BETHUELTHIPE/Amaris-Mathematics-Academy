@@ -222,7 +222,8 @@ def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: s
         menu.click()
         courses_link = page.locator('details a[href="/courses"]').first
         require(courses_link.is_visible(), "Courses link is unavailable without JavaScript")
-        courses_link.click(force=True)
+        courses_link.focus()
+        page.keyboard.press("Enter")
         page.wait_for_url("**/courses*", wait_until="domcontentloaded")
         require("/courses" in page.url, "Navigation to courses failed without JavaScript")
 
