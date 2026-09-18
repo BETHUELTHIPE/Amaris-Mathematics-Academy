@@ -227,11 +227,7 @@ def receive_capacity_counters(
     data: dict[str, Any],
     **_kwargs: Any,
 ) -> None:
-    request_names = tuple(
-        str(name)
-        for name in data.get("capacity_request_names", [])
-        if str(name)
-    )
+    request_names = tuple(str(name) for name in data.get("capacity_request_names", []) if str(name))
     _WORKER_COUNTERS[client_id] = (
         int(data.get("capacity_request_count", 0)),
         int(data.get("capacity_5xx_count", 0)),
@@ -377,10 +373,7 @@ def write_capacity_evidence(
         }
         missing_authenticated = sorted(required_authenticated_requests - request_names)
         if missing_authenticated:
-            failures.append(
-                "authenticated traffic mix missing required samples: "
-                + ", ".join(missing_authenticated)
-            )
+            failures.append("authenticated traffic mix missing required samples: " + ", ".join(missing_authenticated))
     if failure_pct > threshold.failure_pct:
         failures.append(f"failure rate {failure_pct:.3f}% exceeded " f"{threshold.failure_pct:.3f}%")
     if server_5xx_pct > threshold.server_5xx_pct:
