@@ -146,7 +146,7 @@ export async function verifyEmailAction(formData: FormData) {
 
   if (error) {
     redirect(
-      `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("That code is invalid or has expired. Request a new code and verification link and try again.")}`,
+      `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("This verification code is no longer active. If you already used the confirmation link, your email is verified — log in to continue. Otherwise, request a new verification email.")}`,
     );
   }
 
