@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import time
 import traceback
 from pathlib import Path
 
@@ -164,6 +165,17 @@ def check_checkout(page: Page) -> None:
     require(page.get_by_text(re.compile("Please do not pay again", re.IGNORECASE)).is_visible(), "Duplicate-payment warning is not visible")
     assert_no_horizontal_overflow(page, "checkout/payment state")
 
+    goto(page, "/payments/confirmed")
+    require(
+        page.get_by_role("heading", name="Your payment is confirmed.").is_visible(),
+        "Payment-confirmed state is not visible",
+    )
+    require(
+        page.get_by_text(re.compile("course access is active", re.IGNORECASE)).is_visible(),
+        "Payment-confirmed access guidance is not visible",
+    )
+    assert_no_horizontal_overflow(page, "confirmed payment state")
+
 
 def check_lesson_interface(page: Page) -> None:
     goto(page, COURSE_PATH)
@@ -218,6 +230,54 @@ def run_context(browser: Browser, engine_name: str, viewport_name: str, viewport
     context.close()
     return failures
 
+
+
+def check_slow_mobile_delivery(browser: Browser, engine_name: str) -> list[str]:
+    failures: list[str] = []
+    context = browser.new_context(
+        viewport=VIEWPORTS["mobile"],
+        locale="en-ZA",
+        timezone_id="Africa/Johannesburg",
+        reduced_motion="reduce",
+    )
+    delayed = False
+
+    def delay_first_document(route) -> None:
+        nonlocal delayed
+        if not delayed and route.request.resource_type == "document":
+            delayed = True
+            time.sleep(1.25)
+        route.continue_()
+
+    context.route("**/*", delay_first_document)
+    page = context.new_page()
+    page.set_default_timeout(12_000)
+    try:
+        goto(page, "/courses")
+        require(
+            page.get_by_role("heading", name="Find your mathematics pathway.").is_visible(),
+            "Course catalogue did not recover after delayed mobile navigation",
+        )
+        search = page.get_by_placeholder(re.compile("Search algebra", re.IGNORECASE))
+        require(search.is_visible(), "Course search is unavailable after slow mobile delivery")
+        search.fill("TVET N4")
+        require(
+            page.get_by_role("heading", name="Engineering Mathematics N4").is_visible(),
+            "Relevant TVET N4 result is missing after slow mobile delivery",
+        )
+        print(f"PASS {engine_name:8} slow-mobile delayed-navigation-and-search")
+    except Exception as exc:  # noqa: BLE001
+        screenshot = ARTIFACT_DIR / f"{engine_name}-slow-mobile.png"
+        try:
+            page.screenshot(path=str(screenshot), full_page=True)
+        except Exception:
+            pass
+        failures.append(f"{engine_name}/slow-mobile: {exc}")
+        print(f"FAIL {engine_name:8} slow-mobile: {exc}", file=sys.stderr)
+        traceback.print_exc()
+    finally:
+        context.close()
+    return failures
 
 
 def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: str) -> list[str]:
@@ -282,10 +342,11 @@ def main() -> int:
                 for viewport_name, viewport in VIEWPORTS.items():
                     failures.extend(run_context(browser, engine_name, viewport_name, viewport))
                 failures.extend(check_no_javascript_progressive_enhancement(browser, engine_name))
+                failures.extend(check_slow_mobile_delivery(browser, engine_name))
             finally:
                 browser.close()
 
-    total = 3 * (len(VIEWPORTS) * len(CHECKS) + 1)
+    total = 3 * (len(VIEWPORTS) * len(CHECKS) + 2)
     passed = total - len(failures)
     print(f"\nResponsive/browser checks: {passed}/{total} passed")
     if failures:
