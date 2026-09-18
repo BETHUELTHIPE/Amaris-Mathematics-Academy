@@ -199,6 +199,15 @@ class CapacityContractTests(unittest.TestCase):
         self.assertIn("target_hold_sustained", text)
         self.assertIn("HOLD_SECONDS - 15.0", text)
 
+    def test_capacity_requires_authenticated_representative_samples(self):
+        text = self._capacity_locust_text()
+        self.assertIn('"07 Student dashboard"', text)
+        self.assertIn('"08 Lesson access"', text)
+        self.assertIn('"11 Payment-status polling"', text)
+        self.assertIn("authenticated traffic mix missing required samples", text)
+        self.assertIn("capacity_user_count", text)
+        self.assertIn("capacity_request_names", text)
+
 
 if __name__ == "__main__":
     unittest.main()

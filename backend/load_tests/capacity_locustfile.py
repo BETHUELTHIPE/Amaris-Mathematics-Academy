@@ -41,7 +41,9 @@ _MAX_USERS_OBSERVED = 0
 _TARGET_SECONDS_OBSERVED = 0.0
 _LOCAL_REQUESTS = 0
 _LOCAL_5XX = 0
-_WORKER_COUNTERS: dict[str, tuple[int, int]] = {}
+_WORKER_COUNTERS: dict[str, tuple[int, int, int, tuple[str, ...]]] = {}
+_SEEN_REQUEST_NAMES: set[str] = set()
+_RUNNER: Any = None
 _STOP_SAMPLING = False
 
 
@@ -174,7 +176,10 @@ def _sample_users(environment: Environment) -> None:
 
         runner = environment.runner
         if runner is not None and not isinstance(runner, WorkerRunner):
-            user_count = int(getattr(runner, "user_count", 0))
+            if isinstance(runner, MasterRunner) and _WORKER_COUNTERS:
+                user_count = sum(item[2] for item in _WORKER_COUNTERS.values())
+            else:
+                user_count = int(getattr(runner, "user_count", 0))
             _MAX_USERS_OBSERVED = max(
                 _MAX_USERS_OBSERVED,
                 user_count,
@@ -194,9 +199,10 @@ def count_requests(
     exception: Exception | None = None,
     **_kwargs: Any,
 ) -> None:
-    del request_type, name, response_time, response_length, exception
+    del request_type, response_time, response_length, exception
     global _LOCAL_REQUESTS, _LOCAL_5XX
     _LOCAL_REQUESTS += 1
+    _SEEN_REQUEST_NAMES.add(name)
     status_code = getattr(response, "status_code", 0)
     if isinstance(status_code, int) and status_code >= 500:
         _LOCAL_5XX += 1
@@ -211,6 +217,8 @@ def report_capacity_counters(
     del client_id
     data["capacity_request_count"] = _LOCAL_REQUESTS
     data["capacity_5xx_count"] = _LOCAL_5XX
+    data["capacity_user_count"] = int(getattr(_RUNNER, "user_count", 0))
+    data["capacity_request_names"] = sorted(_SEEN_REQUEST_NAMES)
 
 
 @events.worker_report.add_listener
@@ -219,9 +227,12 @@ def receive_capacity_counters(
     data: dict[str, Any],
     **_kwargs: Any,
 ) -> None:
+    request_names = tuple(str(name) for name in data.get("capacity_request_names", []) if str(name))
     _WORKER_COUNTERS[client_id] = (
         int(data.get("capacity_request_count", 0)),
         int(data.get("capacity_5xx_count", 0)),
+        int(data.get("capacity_user_count", 0)),
+        request_names,
     )
 
 
@@ -234,7 +245,9 @@ def validate_capacity_run(
     global _MAX_USERS_OBSERVED
     global _TARGET_SECONDS_OBSERVED
     global _STOP_SAMPLING
+    global _RUNNER
 
+    _RUNNER = environment.runner
     target_url = environment.host or os.getenv("LOADTEST_TARGET_URL", "")
     validate_target(
         target_url,
@@ -271,6 +284,15 @@ def validate_capacity_run(
         gevent.spawn(_sample_users, environment)
 
 
+def _effective_request_names(environment: Environment) -> set[str]:
+    if isinstance(environment.runner, MasterRunner) and _WORKER_COUNTERS:
+        names: set[str] = set()
+        for item in _WORKER_COUNTERS.values():
+            names.update(item[3])
+        return names
+    return set(_SEEN_REQUEST_NAMES)
+
+
 def _effective_counters(environment: Environment) -> tuple[int, int]:
     if isinstance(environment.runner, MasterRunner):
         if _WORKER_COUNTERS:
@@ -296,6 +318,7 @@ def write_capacity_evidence(
     total = environment.stats.total
     request_count, server_5xx_count = _effective_counters(environment)
     duration_seconds = max(time.monotonic() - _STARTED_AT, 0.001)
+    request_names = _effective_request_names(environment)
     failure_pct = total.fail_ratio * 100.0
     server_5xx_pct = server_5xx_count / request_count * 100.0 if request_count else 0.0
     minimum_hold_seconds = max(1.0, HOLD_SECONDS - 15.0)
@@ -312,6 +335,7 @@ def write_capacity_evidence(
         "target_hold_sustained": (_TARGET_SECONDS_OBSERVED >= minimum_hold_seconds),
         "duration_seconds": round(duration_seconds, 3),
         "requests": int(total.num_requests),
+        "request_names": sorted(request_names),
         "failures": int(total.num_failures),
         "failure_pct": round(failure_pct, 6),
         "server_5xx": int(server_5xx_count),
@@ -341,6 +365,15 @@ def write_capacity_evidence(
             f"{_TARGET_SECONDS_OBSERVED:.1f}s; at least "
             f"{minimum_hold_seconds:.1f}s is required"
         )
+    if REQUIRE_AUTH:
+        required_authenticated_requests = {
+            "07 Student dashboard",
+            "08 Lesson access",
+            "11 Payment-status polling",
+        }
+        missing_authenticated = sorted(required_authenticated_requests - request_names)
+        if missing_authenticated:
+            failures.append("authenticated traffic mix missing required samples: " + ", ".join(missing_authenticated))
     if failure_pct > threshold.failure_pct:
         failures.append(f"failure rate {failure_pct:.3f}% exceeded " f"{threshold.failure_pct:.3f}%")
     if server_5xx_pct > threshold.server_5xx_pct:
