@@ -37,12 +37,13 @@
     {
       "id": 4,
       "name": "Student resumes the last lesson",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Progress schema stores last_lesson; enrolled lesson resume journey still requires staging proof."
+        "GitHub Actions Quality Gates and Release run 35354817117 deployed exact staging SHA 0345bfe99ce1f5a06068842c7c7c45fe6ea624a4 and passed the real authenticated staging checkout/resume journey.",
+        "The staging journey persisted synthetic lesson position 347 seconds and progress 42%, then read them back through /api/v1/student/resume/ and confirmed the protected lesson endpoint returned the same persisted resume state."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "GitHub Actions + Render staging",
+      "verified_at": "2026-09-18T16:31:00+02:00"
     },
     {
       "id": 5,
@@ -169,12 +170,13 @@
     {
       "id": 17,
       "name": "Monitoring captures failures without personal data",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Prometheus/Grafana rules avoid personal labels; staging failure capture and dashboard review remain."
+        "Render staging deploy dep-damkkof40ujc73ba76pg is live at exact SHA 0345bfe99ce1f5a06068842c7c7c45fe6ea624a4 using the privacy-preserving ASGI worker.",
+        "Live Render application logs during the controlled load run captured cache outages, worker recycling, and CancelledError failures without client IP addresses, query strings, referrers, user agents, email addresses, bearer tokens, or student identifiers."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "Render live logs",
+      "verified_at": "2026-09-18T16:36:30+02:00"
     },
     {
       "id": 18,
