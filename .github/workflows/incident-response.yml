@@ -1,0 +1,253 @@
+name: Production Incident Response
+
+on:
+  repository_dispatch:
+    types: [production_incident]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: production-incident-response
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    name: Sanitize, record, and notify
+    runs-on: ubuntu-latest
+    outputs:
+      issue_number: ${{ steps.issue.outputs.issue_number }}
+      issue_url: ${{ steps.issue.outputs.issue_url }}
+      fingerprint: ${{ steps.meta.outputs.fingerprint }}
+      severity: ${{ steps.meta.outputs.severity }}
+      source: ${{ steps.meta.outputs.source }}
+      release_sha: ${{ steps.meta.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Materialize untrusted event payload
+        shell: bash
+        env:
+          RAW_INCIDENT: ${{ toJSON(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          printf '%s' "${RAW_INCIDENT:-null}" > /tmp/incident-raw.json
+          python scripts/incident/validate_incident.py             --input /tmp/incident-raw.json             --output /tmp/incident.json
+
+      - name: Export sanitized metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "fingerprint=$(jq -er '.fingerprint' /tmp/incident.json)" >> "$GITHUB_OUTPUT"
+          echo "severity=$(jq -er '.severity' /tmp/incident.json)" >> "$GITHUB_OUTPUT"
+          echo "source=$(jq -er '.source' /tmp/incident.json)" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$(jq -er '.release_sha' /tmp/incident.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub incident issue
+        id: issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          fingerprint="$(jq -er '.fingerprint' /tmp/incident.json)"
+          severity="$(jq -er '.severity' /tmp/incident.json)"
+          source="$(jq -er '.source' /tmp/incident.json)"
+          release_sha="$(jq -er '.release_sha' /tmp/incident.json)"
+          exception_type="$(jq -er '.event.exception_type' /tmp/incident.json)"
+          path="$(jq -er '.event.path' /tmp/incident.json)"
+          status_code="$(jq -er '.event.status_code' /tmp/incident.json)"
+          correlation="$(jq -r '.event.correlation_reference // ""' /tmp/incident.json)"
+
+          cat > /tmp/incident-body.md <<EOF
+          ## Sanitized production incident
+
+          - Fingerprint: `$fingerprint`
+          - Severity: `$severity`
+          - Source: `$source`
+          - Release SHA: `$release_sha`
+          - Exception type: `$exception_type`
+          - HTTP status: `$status_code`
+          - Route: `$path`
+          - Correlation reference: `$correlation`
+
+          The collector intentionally excludes request bodies, query strings, cookies,
+          authorization headers, user objects, exception messages, local variables and
+          source lines.
+
+          Any code remediation must be submitted through a pull request and pass the
+          repository's mandatory Quality, Security, Docker/Nginx and frontend gates.
+          This workflow never merges or deploys a code fix.
+          EOF
+
+          existing="$(gh issue list             --repo "$GITHUB_REPOSITORY"             --state open             --search "$fingerprint in:title"             --json number             --jq '.[0].number // empty')"
+
+          title="[production incident][$severity] $fingerprint $exception_type"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing"               --repo "$GITHUB_REPOSITORY"               --body-file /tmp/incident-body.md
+            issue_number="$existing"
+          else
+            issue_url="$(gh issue create               --repo "$GITHUB_REPOSITORY"               --title "$title"               --body-file /tmp/incident-body.md)"
+            issue_number="${issue_url##*/}"
+          fi
+
+          issue_url="https://github.com/$GITHUB_REPOSITORY/issues/$issue_number"
+          echo "issue_number=$issue_number" >> "$GITHUB_OUTPUT"
+          echo "issue_url=$issue_url" >> "$GITHUB_OUTPUT"
+
+      - name: Send incident email in company letterhead
+        if: vars.INCIDENT_EMAIL_ENABLED == 'true'
+        shell: bash
+        env:
+          INCIDENT_ISSUE_URL: ${{ steps.issue.outputs.issue_url }}
+          INCIDENT_EMAIL_TO: ${{ vars.INCIDENT_EMAIL_TO }}
+          INCIDENT_EMAIL_FROM: ${{ vars.INCIDENT_EMAIL_FROM }}
+          INCIDENT_SMTP_HOST: ${{ vars.INCIDENT_SMTP_HOST }}
+          INCIDENT_SMTP_PORT: ${{ vars.INCIDENT_SMTP_PORT }}
+          INCIDENT_SMTP_USERNAME: ${{ secrets.INCIDENT_SMTP_USERNAME }}
+          INCIDENT_SMTP_PASSWORD: ${{ secrets.INCIDENT_SMTP_PASSWORD }}
+          INCIDENT_COMPANY_NAME: ${{ vars.INCIDENT_COMPANY_NAME }}
+          INCIDENT_COMPANY_LOGO_URL: ${{ vars.INCIDENT_COMPANY_LOGO_URL }}
+          INCIDENT_COMPANY_PHONE: ${{ vars.INCIDENT_COMPANY_PHONE }}
+          INCIDENT_COMPANY_EMAIL: ${{ vars.INCIDENT_COMPANY_EMAIL }}
+          INCIDENT_COMPANY_WEBSITE: ${{ vars.INCIDENT_COMPANY_WEBSITE }}
+          INCIDENT_COMPANY_ADDRESS: ${{ vars.INCIDENT_COMPANY_ADDRESS }}
+        run: python scripts/incident/send_incident_email.py /tmp/incident.json
+
+      - name: Preserve sanitized incident evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-incident-${{ steps.meta.outputs.fingerprint }}
+          path: /tmp/incident.json
+          if-no-files-found: error
+          retention-days: 30
+
+  rollback-trigger:
+    name: Protected immutable rollback trigger
+    needs: [triage]
+    if: >-
+      needs.triage.outputs.severity == 'critical' &&
+      vars.PRODUCTION_AUTO_ROLLBACK == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve verified rollback target
+        id: target
+        shell: bash
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_TOKEN: ${{ secrets.PRODUCTION_DEPLOY_TOKEN }}
+        run: |
+          set -euo pipefail
+          target="$(scripts/release/deploy-webhook.sh rollback-target production)"
+          test "$(printf '%s' "$target" | jq -er '.rollback_safe')" = "true"
+          image="$(printf '%s' "$target" | jq -er '.image')"
+          sha="$(printf '%s' "$target" | jq -er '.release_sha')"
+          expected="docker.io/bethuelm/amaris-mathematics-academy:$sha"
+          test "$image" = "$expected"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Roll back to the exact verified immutable image
+        shell: bash
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_TOKEN: ${{ secrets.PRODUCTION_DEPLOY_TOKEN }}
+          HEALTHCHECK_URL: ${{ vars.PRODUCTION_HEALTHCHECK_URL }}
+        run: |
+          set -euo pipefail
+          scripts/release/deploy-webhook.sh             rollback production "${{ steps.target.outputs.image }}"
+          scripts/release/verify-health.sh "$HEALTHCHECK_URL"
+
+      - name: Record successful rollback on incident
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ needs.triage.outputs.issue_number }}
+          ROLLBACK_SHA: ${{ steps.target.outputs.release_sha }}
+          ROLLBACK_IMAGE: ${{ steps.target.outputs.image }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$ISSUE_NUMBER"             --repo "$GITHUB_REPOSITORY"             --body "Automatic protected rollback restored immutable release `$ROLLBACK_SHA` using `$ROLLBACK_IMAGE`; post-rollback health passed."
+
+  draft-revert-fix:
+    name: Create conservative draft revert PR
+    needs: [triage]
+    if: >-
+      needs.triage.outputs.source == 'django' &&
+      needs.triage.outputs.release_sha != 'unknown' &&
+      vars.INCIDENT_AUTO_REVERT_PR == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify incident bot token is configured
+        id: token
+        shell: bash
+        env:
+          BOT_TOKEN: ${{ secrets.INCIDENT_BOT_TOKEN }}
+        run: |
+          if [ -n "$BOT_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build a draft revert candidate only for current single-parent main release
+        if: steps.token.outputs.configured == 'true'
+        id: revert
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.INCIDENT_BOT_TOKEN }}
+          RELEASE_SHA: ${{ needs.triage.outputs.release_sha }}
+          FINGERPRINT: ${{ needs.triage.outputs.fingerprint }}
+          ISSUE_NUMBER: ${{ needs.triage.outputs.issue_number }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          main_sha="$(git rev-parse origin/main)"
+          if [ "$RELEASE_SHA" != "$main_sha" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          parent_count="$(git rev-list --parents -n 1 "$RELEASE_SHA" | awk '{print NF-1}')"
+          if [ "$parent_count" -ne 1 ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          branch="incident-fix/$FINGERPRINT"
+          git switch --create "$branch" origin/main
+          git config user.name "Amaris Incident Bot"
+          git config user.email "incident-bot@users.noreply.github.com"
+          git revert --no-edit "$RELEASE_SHA"
+
+          gh auth setup-git
+          git push --set-upstream origin "$branch"
+          pr_url="$(gh pr create             --draft             --base main             --head "$branch"             --title "incident: revert release $RELEASE_SHA"             --body "Automated conservative revert candidate for production incident #$ISSUE_NUMBER. This draft PR must pass all mandatory CI gates and must not be auto-merged or auto-deployed.")"
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
+
+      - name: Link draft remediation PR to incident
+        if: steps.revert.outputs.eligible == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.INCIDENT_BOT_TOKEN }}
+          ISSUE_NUMBER: ${{ needs.triage.outputs.issue_number }}
+          PR_URL: ${{ steps.revert.outputs.pr_url }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER"             --repo "$GITHUB_REPOSITORY"             --body "A conservative draft revert candidate was opened: $PR_URL. It is not merged and cannot reach production until the normal mandatory release gates pass."
