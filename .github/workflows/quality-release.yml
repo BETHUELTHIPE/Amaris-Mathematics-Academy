@@ -406,17 +406,51 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     needs: [publish-image]
+    permissions:
+      contents: write
     environment:
       name: staging
-      url: ${{ vars.STAGING_URL }}
+      url: https://amaris-mathematics-academy-staging.onrender.com
     steps:
       - uses: actions/checkout@v4
-      - name: Promote reversible staging release
-        env:
-          DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
-          DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
-          HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL }}
-        run: scripts/release/promote.sh staging "${{ needs.publish-image.outputs.image }}"
+        with:
+          fetch-depth: 0
+
+      - name: Promote exact main commit to Render staging branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "${GITHUB_SHA}:refs/heads/staging" --force
+
+      - name: Wait for exact Render staging release
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://amaris-mathematics-academy-staging.onrender.com"
+          for attempt in $(seq 1 60); do
+            ready=$(curl --silent --show-error --output /tmp/ready.json --write-out '%{http_code}' --max-time 15 "$base/health/ready/" || true)
+            version=$(curl --silent --show-error --output /tmp/version.json --write-out '%{http_code}' --max-time 15 "$base/health/version/" || true)
+            deployed_sha=$(python - <<'PY'
+import json
+try:
+    with open("/tmp/version.json", encoding="utf-8") as fh:
+        print(json.load(fh).get("git_sha", ""))
+except Exception:
+    print("")
+PY
+)
+            echo "attempt=$attempt ready=$ready version=$version deployed_sha=$deployed_sha expected=${GITHUB_SHA}"
+            if [ "$ready" = "200" ] && [ "$version" = "200" ] && [ "$deployed_sha" = "${GITHUB_SHA}" ]; then
+              cat /tmp/ready.json
+              cat /tmp/version.json
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Render staging did not reach the exact expected Git SHA." >&2
+          cat /tmp/ready.json 2>/dev/null || true
+          cat /tmp/version.json 2>/dev/null || true
+          exit 1
 
   deploy-production:
     name: Approve, deploy, and verify production
