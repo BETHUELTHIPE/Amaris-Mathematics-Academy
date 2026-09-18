@@ -1,3 +1,5 @@
+import os
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -26,6 +28,16 @@ def _postgresql_available():
 def health_ready(_request):
     ready = _postgresql_available()
     return JsonResponse({"status": "ready" if ready else "unavailable"}, status=200 if ready else 503)
+
+
+def health_version(_request):
+    return JsonResponse(
+        {
+            "status": "ok",
+            "git_sha": os.getenv("RENDER_GIT_COMMIT") or os.getenv("RELEASE_GIT_SHA") or "unknown",
+            "service": os.getenv("RENDER_SERVICE_NAME") or os.getenv("SERVICE_ROLE") or "amaris",
+        }
+    )
 
 
 def health_dependencies(_request):
@@ -60,6 +72,7 @@ urlpatterns = [
     path("health/", health_live, name="health"),
     path("health/live/", health_live, name="health-live"),
     path("health/ready/", health_ready, name="health-ready"),
+    path("health/version/", health_version, name="health-version"),
     path("health/dependencies/", health_dependencies, name="health-dependencies"),
     path("", include("django_prometheus.urls")),
 ]

@@ -126,6 +126,20 @@ CACHES = {
 PUBLIC_CONTENT_CACHE_SECONDS = int(os.getenv("PUBLIC_CONTENT_CACHE_SECONDS", "300"))
 SITE_BOOTSTRAP_CACHE_SECONDS = int(os.getenv("SITE_BOOTSTRAP_CACHE_SECONDS", "60"))
 
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+SUPABASE_AUTH_TIMEOUT_SECONDS = float(os.getenv("SUPABASE_AUTH_TIMEOUT_SECONDS", "4"))
+SUPABASE_AUTH_CACHE_SECONDS = int(os.getenv("SUPABASE_AUTH_CACHE_SECONDS", "15"))
+
+ACCEPTANCE_GITHUB_OIDC_ENABLED = env_bool("ACCEPTANCE_GITHUB_OIDC_ENABLED", False)
+ACCEPTANCE_GITHUB_AUDIENCE = os.getenv("ACCEPTANCE_GITHUB_AUDIENCE", "amaris-staging")
+ACCEPTANCE_GITHUB_REPOSITORY = os.getenv(
+    "ACCEPTANCE_GITHUB_REPOSITORY",
+    "BETHUELTHIPE/Amaris-Mathematics-Academy",
+)
+ACCEPTANCE_GITHUB_ENVIRONMENT = os.getenv("ACCEPTANCE_GITHUB_ENVIRONMENT", "staging")
+ACCEPTANCE_GITHUB_REF = os.getenv("ACCEPTANCE_GITHUB_REF", "refs/heads/main")
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -240,6 +254,20 @@ CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
 }
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
 CELERY_TASK_TIME_LIMIT = 30 * 60
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT_SECONDS", "10"))
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@example.invalid>")
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
 CELERY_BEAT_SCHEDULE = {
     "publish-scheduled-content": {
         "task": "content.tasks.publish_scheduled_content",
@@ -248,6 +276,11 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-verified-payments": {
         "task": "content.tasks.reconcile_payments",
         "schedule": 300.0,
+    },
+    "deliver-transactional-email": {
+        "task": "content.tasks.deliver_transactional_email",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
     },
 }
 

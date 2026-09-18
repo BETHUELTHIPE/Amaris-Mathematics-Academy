@@ -6,7 +6,7 @@ def env_int(name: str, default: int) -> int:
 
 
 bind = os.getenv("GUNICORN_BIND", "0.0.0.0:8000")
-worker_class = "uvicorn_worker.UvicornWorker"
+worker_class = "amaris_cms.workers.PrivacyUvicornWorker"
 workers = env_int("WEB_CONCURRENCY", 3)
 timeout = env_int("GUNICORN_TIMEOUT", 60)
 graceful_timeout = env_int("GUNICORN_GRACEFUL_TIMEOUT", 30)

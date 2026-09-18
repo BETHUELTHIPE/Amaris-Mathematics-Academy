@@ -139,7 +139,8 @@ def check_checkout(page: Page) -> None:
     require(page.get_by_text(re.compile("secure PayFast checkout", re.IGNORECASE)).first.is_visible(), "PayFast checkout guidance is not visible")
     cta = page.get_by_role("link", name=re.compile("Continue to enrol"))
     require(cta.is_visible(), "Verified-student checkout CTA is not visible")
-    require(cta.get_attribute("href") == "/dashboard", "Checkout entry CTA does not return the verified student to the dashboard")
+    href = cta.get_attribute("href") or ""
+    require(href.startswith("/checkout/"), "Checkout entry CTA does not open the protected checkout flow")
 
     goto(page, "/payments/pending")
     require(

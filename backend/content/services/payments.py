@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -8,6 +9,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Protocol
+from urllib.parse import quote_plus, urlencode
+from urllib.request import Request, urlopen
 
 from django.db import transaction
 from django.utils import timezone
@@ -17,6 +20,12 @@ from content.models import Course, Enrollment, Payment, StudentRecord
 from content.payment_models import Invoice, NotificationOutbox, PaymentWebhookEvent, ServiceTicket
 
 PAYFAST_SANDBOX_URL = "https://sandbox.payfast.co.za/eng/process"
+PAYFAST_LIVE_URL = "https://www.payfast.co.za/eng/process"
+PAYFAST_SANDBOX_VALIDATE_URL = "https://sandbox.payfast.co.za/eng/query/validate"
+PAYFAST_LIVE_VALIDATE_URL = "https://www.payfast.co.za/eng/query/validate"
+PAYFAST_SANDBOX_MERCHANT_ID = "10000100"
+PAYFAST_SANDBOX_MERCHANT_KEY = "46f0cd694581a"
+PAYFAST_SANDBOX_PASSPHRASE = "jt7NOE43FZPn"
 PAYMENT_CANCELLED = "cancelled"
 PAYMENT_WEBHOOK_MAX_AGE_HOURS = int(os.getenv("PAYMENT_WEBHOOK_MAX_AGE_HOURS", "168"))
 
@@ -46,13 +55,47 @@ class NotificationResult:
     duplicate: bool = False
 
 
-def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: str) -> CheckoutSession:
-    """Create a server-priced PayFast sandbox checkout without granting access.
+def _payfast_mode() -> str:
+    mode = os.getenv("PAYFAST_MODE", "sandbox").strip().lower()
+    if mode not in {"sandbox", "live"}:
+        raise PaymentSecurityError("PAYFAST_MODE must be sandbox or live.")
+    return mode
 
-    The caller supplies only an idempotency token. Student, course, amount and
-    currency are bound by trusted server-side records and cannot be overridden
-    by browser form values.
-    """
+
+def _payfast_credentials() -> tuple[str, str, str]:
+    mode = _payfast_mode()
+    if mode == "sandbox":
+        merchant_id = os.getenv("PAYFAST_MERCHANT_ID", PAYFAST_SANDBOX_MERCHANT_ID).strip()
+        merchant_key = os.getenv("PAYFAST_MERCHANT_KEY", PAYFAST_SANDBOX_MERCHANT_KEY).strip()
+        passphrase = os.getenv("PAYFAST_PASSPHRASE", PAYFAST_SANDBOX_PASSPHRASE).strip()
+    else:
+        merchant_id = os.getenv("PAYFAST_MERCHANT_ID", "").strip()
+        merchant_key = os.getenv("PAYFAST_MERCHANT_KEY", "").strip()
+        passphrase = os.getenv("PAYFAST_PASSPHRASE", "").strip()
+        if not merchant_id or not merchant_key:
+            raise PaymentSecurityError("Live PayFast merchant credentials are not configured.")
+    return merchant_id, merchant_key, passphrase
+
+
+def _signature_parameter_string(fields: Mapping[str, str], passphrase: str = "") -> str:
+    pairs: list[str] = []
+    for key, raw_value in fields.items():
+        if key == "signature":
+            continue
+        value = str(raw_value).strip()
+        if value:
+            pairs.append(f"{key}={quote_plus(value)}")
+    if passphrase:
+        pairs.append(f"passphrase={quote_plus(passphrase.strip())}")
+    return "&".join(pairs)
+
+
+def generate_payfast_signature(fields: Mapping[str, str], passphrase: str = "") -> str:
+    return hashlib.md5(_signature_parameter_string(fields, passphrase).encode("utf-8")).hexdigest()
+
+
+def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: str) -> CheckoutSession:
+    """Create a server-priced, signed PayFast checkout without granting access."""
 
     key = idempotency_key.strip()
     if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", key):
@@ -86,17 +129,68 @@ def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: 
             if not expected:
                 raise PaymentSecurityError("Checkout idempotency key is already bound to a different purchase.")
 
+    merchant_id, merchant_key, passphrase = _payfast_credentials()
+    mode = _payfast_mode()
+    site_url = os.getenv("PUBLIC_SITE_URL", "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site").rstrip("/")
+    api_url = os.getenv("PUBLIC_API_URL", "").rstrip("/")
+    return_url = os.getenv("PAYFAST_RETURN_URL", f"{site_url}/payments/pending").strip()
+    cancel_url = os.getenv("PAYFAST_CANCEL_URL", f"{site_url}/payments/cancelled").strip()
+    notify_url = os.getenv("PAYFAST_NOTIFY_URL", f"{api_url}/api/v1/payfast/itn/" if api_url else "").strip()
+
+    fields = {
+        "merchant_id": merchant_id,
+        "merchant_key": merchant_key,
+        "return_url": f"{return_url}?reference={payment.reference}",
+        "cancel_url": f"{cancel_url}?reference={payment.reference}",
+        "notify_url": notify_url,
+        "name_first": student.first_name[:100],
+        "name_last": student.last_name[:100],
+        "email_address": student.email[:100],
+        "m_payment_id": payment.reference,
+        "amount": f"{payment.amount:.2f}",
+        "item_name": course.title[:100],
+        "custom_str1": str(student.supabase_user_id),
+        "custom_str2": course.slug,
+    }
+    fields = {key: value for key, value in fields.items() if value != ""}
+    fields["signature"] = generate_payfast_signature(fields, passphrase)
+
     return CheckoutSession(
         payment_reference=payment.reference,
-        gateway_url=PAYFAST_SANDBOX_URL,
-        fields={
-            "m_payment_id": payment.reference,
-            "amount": f"{payment.amount:.2f}",
-            "item_name": course.title,
-            "custom_str1": str(student.supabase_user_id),
-            "custom_str2": course.slug,
-        },
+        gateway_url=PAYFAST_SANDBOX_URL if mode == "sandbox" else PAYFAST_LIVE_URL,
+        fields=fields,
     )
+
+
+class HttpPayFastVerificationGateway:
+    """Validate PayFast ITN signatures and confirm the payload with PayFast."""
+
+    def verify_notification(self, payload: Mapping[str, str]) -> bool:
+        _, _, passphrase = _payfast_credentials()
+        supplied_signature = str(payload.get("signature", "")).strip().lower()
+        if not supplied_signature:
+            return False
+        expected_signature = generate_payfast_signature(payload, passphrase)
+        if not hmac.compare_digest(supplied_signature, expected_signature):
+            return False
+
+        encoded = urlencode(
+            [(str(key), str(value)) for key, value in payload.items() if key != "signature" and str(value) != ""]
+        ).encode("utf-8")
+        validate_url = PAYFAST_SANDBOX_VALIDATE_URL if _payfast_mode() == "sandbox" else PAYFAST_LIVE_VALIDATE_URL
+        request = Request(
+            validate_url,
+            data=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "text/plain"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=float(os.getenv("PAYFAST_VERIFY_TIMEOUT_SECONDS", "8"))) as response:
+                return response.read().decode("utf-8").strip() == "VALID"
+        except TimeoutError:
+            raise
+        except OSError as exc:
+            raise ConnectionError("PayFast validation request failed.") from exc
 
 
 def authoritative_payment_status(reference: str) -> str:

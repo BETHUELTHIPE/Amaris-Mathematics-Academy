@@ -34,6 +34,7 @@ AUTH_BEARER = os.getenv("LOADTEST_AUTH_BEARER", "").strip()
 COOKIE_HEADER = os.getenv("LOADTEST_COOKIE_HEADER", "").strip()
 SESSION_COOKIE_NAME = os.getenv("LOADTEST_SESSION_COOKIE_NAME", "").strip()
 SESSION_COOKIE_VALUE = os.getenv("LOADTEST_SESSION_COOKIE_VALUE", "").strip()
+ACCEPTANCE_HEADER = env_bool("LOADTEST_ACCEPTANCE_HEADER", False)
 
 _STARTED_AT = 0.0
 _MAX_USERS_OBSERVED = 0
@@ -100,6 +101,8 @@ class CapacityStudentUser(FastHttpUser):
     def on_start(self) -> None:
         if AUTH_BEARER:
             self.client.headers.update({"Authorization": f"Bearer {AUTH_BEARER}"})
+            if ACCEPTANCE_HEADER:
+                self.client.headers.update({"X-Amaris-Acceptance": "github-actions"})
         elif COOKIE_HEADER:
             self.client.headers.update({"Cookie": COOKIE_HEADER})
         elif SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE:

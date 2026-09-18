@@ -179,10 +179,13 @@
     {
       "id": 18,
       "name": "Essential navigation and forms work without JavaScript",
-      "status": "pending",
-      "evidence": [],
-      "verified_by": null,
-      "verified_at": null
+      "status": "passed",
+      "evidence": [
+        "GitHub Actions Quality Gates and Release run 35344274130 passed the responsive browser suite with JavaScript disabled in Chromium, Firefox, and WebKit.",
+        "The final no-JavaScript progressive-enhancement checks completed successfully as part of the 66/66 responsive/browser result on PR #41."
+      ],
+      "verified_by": "GitHub Actions",
+      "verified_at": "2026-09-18T15:45:00+02:00"
     },
     {
       "id": 19,

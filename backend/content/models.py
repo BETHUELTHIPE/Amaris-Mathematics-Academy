@@ -442,6 +442,15 @@ class Enrollment(TimeStampedModel):
     course = models.ForeignKey(Course, related_name="enrollments", on_delete=models.PROTECT)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
     progress_percent = models.PositiveSmallIntegerField(default=0)
+    last_lesson = models.ForeignKey(
+        Lesson,
+        related_name="last_resumed_enrollments",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+    )
+    last_position_seconds = models.PositiveIntegerField(default=0)
+    progress_updated_at = models.DateTimeField(blank=True, null=True)
     enrolled_at = models.DateTimeField(default=timezone.now)
     completed_at = models.DateTimeField(blank=True, null=True)
 
@@ -454,6 +463,9 @@ class Enrollment(TimeStampedModel):
         super().clean()
         if self.progress_percent > 100:
             raise ValidationError("Progress cannot be higher than 100%.")
+        last_lesson = self.last_lesson
+        if last_lesson is not None and last_lesson.module.course_id != self.course_id:
+            raise ValidationError("The resume lesson must belong to the enrollment course.")
 
     def __str__(self) -> str:
         return f"{self.student} — {self.course}"
