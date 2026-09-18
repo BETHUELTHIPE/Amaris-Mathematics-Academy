@@ -18,6 +18,8 @@ class ResilientRedisCache(RedisCache):
     _fallback_lock = threading.RLock()
     _fallback_store: "OrderedDict[str, tuple[float | None, object]]" = OrderedDict()
     _fallback_max_entries = 512
+    _redis_retry_after = 0.0
+    _redis_retry_seconds = 15.0
 
     def _warn_once(self, operation: str, message: str) -> None:
         if operation not in self._warned_operations:
@@ -59,10 +61,24 @@ class ResilientRedisCache(RedisCache):
                 self._fallback_store.popitem(last=False)
         return True
 
+    def _redis_available_for_attempt(self) -> bool:
+        return time.monotonic() >= self._redis_retry_after
+
+    def _open_redis_circuit(self) -> None:
+        self._redis_retry_after = time.monotonic() + self._redis_retry_seconds
+
+    def _close_redis_circuit(self) -> None:
+        self._redis_retry_after = 0.0
+
     def get(self, key, default=None, version=None):
+        if not self._redis_available_for_attempt():
+            return self._fallback_get(key, default=default, version=version)
+
         try:
             value = super().get(key, default=None, version=version)
+            self._close_redis_circuit()
         except self._cache_errors:
+            self._open_redis_circuit()
             self._warn_once(
                 "read",
                 "Redis cache read failed; using bounded local fallback cache.",
@@ -80,9 +96,15 @@ class ResilientRedisCache(RedisCache):
             timeout=timeout,
             version=version,
         )
+        if not self._redis_available_for_attempt():
+            return fallback_result
+
         try:
-            return super().set(key, value, timeout=timeout, version=version)
+            result = super().set(key, value, timeout=timeout, version=version)
+            self._close_redis_circuit()
+            return result
         except self._cache_errors:
+            self._open_redis_circuit()
             self._warn_once(
                 "write",
                 "Redis cache write failed; response retained in bounded local fallback cache.",
