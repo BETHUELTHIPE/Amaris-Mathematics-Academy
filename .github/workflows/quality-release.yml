@@ -534,7 +534,7 @@ jobs:
           export LOADTEST_PAYMENT_STATUS_PATH="/api/v1/student/payments/$reference/"
           export CAPACITY_LOCUST_RESULT="load_tests/results/capacity-100-locust.json"
 
-          python -m locust -f load_tests/capacity_locustfile.py --headless --host "$LOADTEST_TARGET_URL" --processes 4 --csv load_tests/results/locust-100 --csv-full-history --html load_tests/results/locust-100.html
+          python -m locust -f load_tests/capacity_locustfile.py --headless --host "$LOADTEST_TARGET_URL" --csv load_tests/results/locust-100 --csv-full-history --html load_tests/results/locust-100.html
 
       - name: Publish 100-user capacity evidence
         if: always()

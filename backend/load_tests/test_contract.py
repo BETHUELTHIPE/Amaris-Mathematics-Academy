@@ -195,5 +195,21 @@ class CapacityContractTests(unittest.TestCase):
         self.assertIn("HOLD_SECONDS - 15.0", text)
 
 
+    def test_capacity_mix_cannot_omit_protected_student_requests(self):
+        text = self._capacity_locust_text()
+        self.assertIn("class CapacityJourneyUser(FastHttpUser)", text)
+        self.assertIn('"07 Student dashboard"', text)
+        self.assertIn('"08 Lesson access"', text)
+        self.assertIn('"11 Payment-status polling"', text)
+        self.assertIn("missing_protected_names", text)
+
+    def test_main_release_100_user_gate_is_single_process(self):
+        text = self._workflow_text()
+        self.assertNotIn(
+            'capacity_locustfile.py --headless --host "$LOADTEST_TARGET_URL" --processes',
+            text,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -69,34 +69,16 @@ def _checked_get(
             response.failure(f"unexpected status {response.status_code}")
 
 
-class CapacityPublicUser(FastHttpUser):
-    weight = 6
+class CapacityJourneyUser(FastHttpUser):
+    """One deterministic mixed journey so protected traffic cannot disappear.
+
+    Splitting public and authenticated behavior across weighted user classes made
+    the first deployed capacity run non-representative: only public endpoints
+    were sampled. A single user class guarantees every running user contributes
+    to the same public/authenticated workload mix.
+    """
+
     wait_time = between(1.0, 2.5)
-
-    @task(5)
-    def homepage(self) -> None:
-        _checked_get(self, ENDPOINTS.homepage, "01 Homepage")
-
-    @task(4)
-    def course_catalogue(self) -> None:
-        _checked_get(self, ENDPOINTS.catalogue, "02 Course catalogue")
-
-    @task(3)
-    def course_search(self) -> None:
-        _checked_get(self, ENDPOINTS.search, "03 Course search")
-
-    @task(3)
-    def course_details(self) -> None:
-        _checked_get(self, ENDPOINTS.course_detail, "04 Course details")
-
-    @task(1)
-    def login_page(self) -> None:
-        _checked_get(self, ENDPOINTS.login_page, "06a Login page")
-
-
-class CapacityStudentUser(FastHttpUser):
-    weight = 4 if REQUIRE_AUTH else 0
-    wait_time = between(1.0, 2.0)
 
     def on_start(self) -> None:
         if AUTH_BEARER:
@@ -111,32 +93,55 @@ class CapacityStudentUser(FastHttpUser):
                 SESSION_COOKIE_VALUE,
             )
 
+    @task(6)
+    def homepage(self) -> None:
+        _checked_get(self, ENDPOINTS.homepage, "01 Homepage")
+
+    @task(5)
+    def course_catalogue(self) -> None:
+        _checked_get(self, ENDPOINTS.catalogue, "02 Course catalogue")
+
+    @task(4)
+    def course_search(self) -> None:
+        _checked_get(self, ENDPOINTS.search, "03 Course search")
+
+    @task(4)
+    def course_details(self) -> None:
+        _checked_get(self, ENDPOINTS.course_detail, "04 Course details")
+
+    @task(1)
+    def login_page(self) -> None:
+        _checked_get(self, ENDPOINTS.login_page, "06a Login page")
+
     @task(5)
     def dashboard(self) -> None:
-        _checked_get(
-            self,
-            ENDPOINTS.dashboard,
-            "07 Student dashboard",
-            protected=True,
-        )
+        if REQUIRE_AUTH:
+            _checked_get(
+                self,
+                ENDPOINTS.dashboard,
+                "07 Student dashboard",
+                protected=True,
+            )
 
     @task(6)
     def lesson_access(self) -> None:
-        _checked_get(
-            self,
-            ENDPOINTS.lesson,
-            "08 Lesson access",
-            protected=True,
-        )
+        if REQUIRE_AUTH:
+            _checked_get(
+                self,
+                ENDPOINTS.lesson,
+                "08 Lesson access",
+                protected=True,
+            )
 
     @task(3)
     def payment_status_polling(self) -> None:
-        _checked_get(
-            self,
-            ENDPOINTS.payment_status,
-            "11 Payment-status polling",
-            protected=True,
-        )
+        if REQUIRE_AUTH:
+            _checked_get(
+                self,
+                ENDPOINTS.payment_status,
+                "11 Payment-status polling",
+                protected=True,
+            )
 
 
 class CapacityShape(LoadTestShape):
@@ -292,8 +297,22 @@ def write_capacity_evidence(
     server_5xx_pct = server_5xx_count / request_count * 100.0 if request_count else 0.0
     minimum_hold_seconds = max(1.0, HOLD_SECONDS - 15.0)
 
+    observed_request_names = sorted(
+        {
+            name
+            for (name, _method), entry in environment.stats.entries.items()
+            if entry.num_requests
+        }
+    )
+    required_protected_names = {
+        "07 Student dashboard",
+        "08 Lesson access",
+        "11 Payment-status polling",
+    } if REQUIRE_AUTH else set()
+
     evidence = {
         "target_users": TARGET_USERS,
+        "observed_request_names": observed_request_names,
         "max_users_observed": _MAX_USERS_OBSERVED,
         "target_reached": _MAX_USERS_OBSERVED >= TARGET_USERS,
         "target_hold_seconds_required": HOLD_SECONDS,
@@ -323,6 +342,12 @@ def write_capacity_evidence(
     }
 
     failures: list[str] = []
+    missing_protected_names = sorted(required_protected_names - set(observed_request_names))
+    if missing_protected_names:
+        failures.append(
+            "protected journey produced no samples for: "
+            + ", ".join(missing_protected_names)
+        )
     if total.num_requests == 0:
         failures.append("no requests were recorded")
     if _MAX_USERS_OBSERVED < TARGET_USERS:
