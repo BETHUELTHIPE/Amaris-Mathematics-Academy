@@ -1,8 +1,13 @@
 FROM python:3.13-slim
 
+ARG RELEASE_SHA=unknown
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    RELEASE_SHA=${RELEASE_SHA}
+
+LABEL org.opencontainers.image.revision="${RELEASE_SHA}"
 
 WORKDIR /app
 
