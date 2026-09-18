@@ -1,0 +1,35 @@
+name: Contact AI Readiness
+
+on:
+  push:
+    branches: [live-smoke-20260918]
+    paths:
+      - ".github/workflows/contact-ai-readiness.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify backend AI and SMTP capability flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://amaris-mathematics-academy-staging.onrender.com"
+          body=$(mktemp)
+          code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --max-time 45 "$api/health/dependencies/")
+          cat "$body"
+          test "$code" = "200"
+          python - "$body" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              payload = json.load(fh)
+          caps = payload.get("capabilities", {})
+          assert caps.get("openai_configured") is True, caps
+          assert caps.get("smtp_configured") is True, caps
+          assert caps.get("contact_ai_autoreply_enabled") is True, caps
+          PY
