@@ -1,0 +1,195 @@
+# Render Blueprint for the production Amaris Django/Celery data plane.
+# The release image is immutable and must be updated to the exact tested Git SHA for each release.
+# Secrets marked sync:false are supplied from Render/secret-manager configuration, never committed.
+
+services:
+  - type: web
+    name: amaris-production-web
+    runtime: image
+    plan: standard
+    region: frankfurt
+    image:
+      url: docker.io/bethuelm/amaris-mathematics-academy:8bfaa4af91adbf260811a882eacce03938a1df38
+    autoDeployTrigger: off
+    healthCheckPath: /health/ready/
+    scaling:
+      minInstances: 3
+      maxInstances: 24
+      targetCPUPercent: 70
+    dockerCommand: /bin/sh -c 'GUNICORN_BIND=0.0.0.0:$PORT exec gunicorn amaris_cms.asgi:application --config /app/gunicorn.conf.py'
+    envVars:
+      - key: SERVICE_ROLE
+        value: web
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: amaris-production-postgres
+          property: connectionPoolString
+      - key: DATABASE_SSL_REQUIRED
+        value: "true"
+      - key: DATABASE_CONN_MAX_AGE
+        value: "600"
+      - key: DJANGO_CACHE_URL
+        fromService:
+          type: keyvalue
+          name: amaris-production-cache
+          property: connectionString
+      - key: DJANGO_PUBLIC_CACHE_URL
+        fromService:
+          type: keyvalue
+          name: amaris-production-cache
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: amaris-production-broker
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: amaris-production-broker
+          property: connectionString
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_S3_REGION_NAME
+        value: af-south-1
+
+  - type: worker
+    name: amaris-production-critical-worker
+    runtime: image
+    plan: standard
+    region: frankfurt
+    image:
+      url: docker.io/bethuelm/amaris-mathematics-academy:8bfaa4af91adbf260811a882eacce03938a1df38
+    autoDeployTrigger: off
+    dockerCommand: celery -A amaris_cms worker --loglevel=INFO --queues=critical,default --concurrency=2 --events --hostname=critical@%h
+    envVars:
+      - key: SERVICE_ROLE
+        value: celery-worker
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: amaris-production-postgres
+          property: connectionPoolString
+      - key: DATABASE_SSL_REQUIRED
+        value: "true"
+      - key: DJANGO_CACHE_URL
+        fromService:
+          type: keyvalue
+          name: amaris-production-cache
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: amaris-production-broker
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: amaris-production-broker
+          property: connectionString
+
+  - type: worker
+    name: amaris-production-notification-worker
+    runtime: image
+    plan: starter
+    region: frankfurt
+    image:
+      url: docker.io/bethuelm/amaris-mathematics-academy:8bfaa4af91adbf260811a882eacce03938a1df38
+    autoDeployTrigger: off
+    dockerCommand: celery -A amaris_cms worker --loglevel=INFO --queues=notifications --concurrency=2 --events --hostname=notifications@%h
+    envVars:
+      - key: SERVICE_ROLE
+        value: celery-notifications
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: amaris-production-postgres
+          property: connectionPoolString
+      - key: DATABASE_SSL_REQUIRED
+        value: "true"
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: amaris-production-broker
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: amaris-production-broker
+          property: connectionString
+
+  - type: worker
+    name: amaris-production-beat
+    runtime: image
+    plan: starter
+    region: frankfurt
+    image:
+      url: docker.io/bethuelm/amaris-mathematics-academy:8bfaa4af91adbf260811a882eacce03938a1df38
+    autoDeployTrigger: off
+    dockerCommand: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
+    envVars:
+      - key: SERVICE_ROLE
+        value: celery-beat
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: amaris-production-postgres
+          property: connectionPoolString
+      - key: DATABASE_SSL_REQUIRED
+        value: "true"
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: amaris-production-broker
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: amaris-production-broker
+          property: connectionString
+
+  - type: keyvalue
+    name: amaris-production-broker
+    plan: starter
+    region: frankfurt
+    maxmemoryPolicy: noeviction
+    persistenceMode: journal-snapshot
+    ipAllowList: []
+
+  - type: keyvalue
+    name: amaris-production-cache
+    plan: starter
+    region: frankfurt
+    maxmemoryPolicy: allkeys-lru
+    persistenceMode: off
+    ipAllowList: []
+
+databases:
+  - name: amaris-production-postgres
+    plan: basic-1gb
+    region: frankfurt
+    postgresMajorVersion: "17"
+    connectionPool: pgbouncer
