@@ -65,6 +65,58 @@ jobs:
           grep -q 'Send a new code and verification link' "$body"
           grep -q 'Confirm your email' "$body"
 
+
+      - name: Verify contact page and AI enquiry readiness
+        id: contact
+        shell: bash
+        run: |
+          set -euo pipefail
+          site="https://amaris-mathematics-academy-live-students.onrender.com"
+          api="https://amaris-mathematics-academy-staging.onrender.com"
+          page=$(mktemp)
+          code=$(curl --silent --show-error --output "$page" --write-out '%{http_code}' --max-time 45 "$site/contact")
+          test "$code" = "200"
+          grep -q 'Send us a message' "$page"
+          grep -q 'AI-assisted support' "$page"
+
+          caps=$(mktemp)
+          cap_code=$(curl --silent --show-error --output "$caps" --write-out '%{http_code}' --max-time 45 "$api/health/dependencies/")
+          test "$cap_code" = "200"
+          cat "$caps"
+          python - "$caps" "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              p = json.load(fh)
+          caps = p.get("capabilities", {})
+          with open(sys.argv[2], "a", encoding="utf-8") as out:
+              out.write(f"openai={str(bool(caps.get('openai_configured'))).lower()}\n")
+              out.write(f"smtp={str(bool(caps.get('smtp_configured'))).lower()}\n")
+              out.write(f"ai={str(bool(caps.get('contact_ai_autoreply_enabled'))).lower()}\n")
+          PY
+
+      - name: OpenAI enquiry key configured
+        if: steps.contact.outputs.openai == 'true'
+        run: echo "OpenAI is configured."
+
+      - name: Production SMTP configured
+        if: steps.contact.outputs.smtp == 'true'
+        run: echo "SMTP is configured."
+
+      - name: AI enquiry auto-reply fully configured
+        if: steps.contact.outputs.ai == 'true'
+        run: echo "AI enquiry auto-reply is active."
+
+      - name: Verify enquiry endpoint saves safely while AI is unavailable
+        if: steps.contact.outputs.ai != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://amaris-mathematics-academy-staging.onrender.com"
+          body=$(mktemp)
+          code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --max-time 45             -H 'Content-Type: application/json'             -d '{"name":"Synthetic Contact Smoke","email":"contact-smoke@example.invalid","phone":"","subject":"technical support","message":"Synthetic production-safe contact form persistence check only."}'             "$api/api/v1/enquiries/")
+          cat "$body"
+          test "$code" = "201"
+
       - name: Verify backend health and dependencies
         shell: bash
         run: |
