@@ -16,11 +16,11 @@ export default async function Home() {
       <section className="relative isolate overflow-hidden bg-[#07152d] text-white">
         {/* Direct delivery avoids the Vinext image optimizer path while keeping the LCP image discoverable in the initial HTML. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[62%_center] opacity-90" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,#07152d_0%,rgba(7,21,45,.95)_34%,rgba(7,21,45,.66)_54%,rgba(7,21,45,.04)_100%)]" />
-        <div className="graph-paper absolute inset-0 opacity-15" />
+        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[70%_center] opacity-100 [filter:contrast(1.06)_saturate(1.06)_brightness(1.03)] sm:object-[64%_center]" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,#07152d_0%,rgba(7,21,45,.94)_28%,rgba(7,21,45,.62)_44%,rgba(7,21,45,.18)_62%,rgba(7,21,45,0)_82%)]" />
+        <div className="graph-paper absolute inset-0 opacity-[0.08]" />
         <div className="relative mx-auto grid min-h-[690px] max-w-7xl items-center px-5 py-20 lg:px-8">
-          <div className="max-w-2xl rounded-[2rem] bg-[#07152d] p-6 shadow-[0_28px_90px_rgba(0,0,0,.24)] sm:p-9">
+          <div className="max-w-2xl rounded-[2rem] border border-white/10 bg-[#07152d]/92 p-6 shadow-[0_28px_90px_rgba(0,0,0,.24)] backdrop-blur-[2px] sm:p-9">
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 py-2 text-sm text-white/80 backdrop-blur"><span className="size-2 rounded-full bg-[#ffcc66]" /> Mathematics for school, TVET & university</div>
             <h1 className="text-5xl font-semibold leading-[1.02] tracking-[-0.055em] sm:text-6xl lg:text-[5.4rem]">Master mathematics,<br /><span className="text-[#ffcc66]">one clear step</span> at a time.</h1>
             <p className="mt-7 max-w-xl text-lg leading-8 text-white/70">Structured lessons, worked examples and deliberate practice—built to turn uncertainty into confident problem-solving.</p>
