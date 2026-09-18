@@ -137,9 +137,11 @@ def check_checkout(page: Page) -> None:
     goto(page, COURSE_PATH)
     require(page.get_by_text("Complete course access", exact=True).is_visible(), "Checkout entry card is not visible")
     require(page.get_by_text(re.compile("secure PayFast checkout", re.IGNORECASE)).first.is_visible(), "PayFast checkout guidance is not visible")
-    cta = page.get_by_role("link", name=re.compile("Continue to enrol"))
+    cta = page.get_by_role("button", name=re.compile("Continue to enrol"))
     require(cta.is_visible(), "Verified-student checkout CTA is not visible")
-    require(cta.get_attribute("href") == "/dashboard", "Checkout entry CTA does not return the verified student to the dashboard")
+    checkout_form = cta.locator("xpath=ancestor::form")
+    require(checkout_form.is_visible(), "Server-rendered checkout form is not visible")
+    require(checkout_form.locator('input[name="courseSlug"]').input_value() == "caps-grade-12-mathematics", "Checkout form is not bound to the selected course")
 
     goto(page, "/payments/pending")
     require(
@@ -226,6 +228,22 @@ def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: s
         page.keyboard.press("Enter")
         page.wait_for_url("**/courses*", wait_until="domcontentloaded")
         require("/courses" in page.url, "Navigation to courses failed without JavaScript")
+
+        goto(page, "/register")
+        require(page.get_by_role("button", name="Create student profile").is_visible(), "Registration form is unavailable without JavaScript")
+        require(page.locator('input[name="email"]').is_visible(), "Registration email field is unavailable without JavaScript")
+
+        goto(page, "/login")
+        require(page.get_by_role("button", name="Log in securely").is_visible(), "Login form is unavailable without JavaScript")
+        require(page.locator('input[name="password"]').is_visible(), "Login password field is unavailable without JavaScript")
+
+        goto(page, COURSE_PATH)
+        checkout_button = page.get_by_role("button", name=re.compile("Continue to enrol"))
+        require(checkout_button.is_visible(), "Checkout form is unavailable without JavaScript")
+        require(
+            checkout_button.locator("xpath=ancestor::form").locator('input[name="courseSlug"]').input_value() == "caps-grade-12-mathematics",
+            "No-JavaScript checkout form is not bound to the course",
+        )
 
         goto(page, "/contact")
         page.locator("#fullName").fill("No JS Synthetic Student")

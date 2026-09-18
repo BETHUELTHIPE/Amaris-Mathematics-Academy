@@ -1,6 +1,15 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .student_views import (
+    CheckoutDetailView,
+    CheckoutStartView,
+    EnrollmentProgressView,
+    PayFastITNView,
+    PaymentStatusView,
+    ProtectedLessonView,
+    StudentDashboardView,
+)
 from .views import (
     AnnouncementViewSet,
     ContactEnquiryViewSet,
@@ -29,5 +38,16 @@ router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 urlpatterns = [
     path("bootstrap/", SiteBootstrapView.as_view(), name="site-bootstrap"),
     path("settings/", SiteSettingsView.as_view(), name="site-settings"),
+    path("student/dashboard/", StudentDashboardView.as_view(), name="student-dashboard"),
+    path("student/checkout/", CheckoutStartView.as_view(), name="student-checkout-start"),
+    path("student/checkout/<str:reference>/", CheckoutDetailView.as_view(), name="student-checkout-detail"),
+    path("student/payments/<str:reference>/", PaymentStatusView.as_view(), name="student-payment-status"),
+    path("student/courses/<slug:course_slug>/progress/", EnrollmentProgressView.as_view(), name="student-progress"),
+    path(
+        "student/courses/<slug:course_slug>/lessons/<slug:lesson_slug>/",
+        ProtectedLessonView.as_view(),
+        name="student-lesson",
+    ),
+    path("payments/payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("", include(router.urls)),
 ]

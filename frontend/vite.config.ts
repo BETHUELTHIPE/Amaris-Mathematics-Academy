@@ -19,6 +19,9 @@ const localBindingConfig = {
   vars: {
     CSP_REPORT_ONLY: process.env.CSP_REPORT_ONLY ?? "false",
     CMS_API_URL: process.env.CMS_API_URL ?? "",
+    SUPABASE_URL: process.env.SUPABASE_URL ?? "",
+    SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY ?? "",
+    SITE_URL: process.env.SITE_URL ?? "",
   },
   ratelimits: [
     { name: "AUTH_RATE_LIMITER", namespace_id: "41001", simple: { limit: 10, period: 60 as const } },
