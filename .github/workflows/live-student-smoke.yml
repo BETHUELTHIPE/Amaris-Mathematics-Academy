@@ -17,12 +17,23 @@ jobs:
         run: |
           set -euo pipefail
           site="https://amaris-mathematics-academy-live-students.onrender.com"
-          for path in / /courses /register /login /contact; do
+          for path in / /courses /register /login /forgot-password /contact; do
             code=$(curl --silent --show-error --output /tmp/page.html --write-out '%{http_code}' --max-time 30 "$site$path")
             echo "$path => $code"
             test "$code" = "200"
             test -s /tmp/page.html
           done
+
+      - name: Verify password recovery wording
+        shell: bash
+        run: |
+          set -euo pipefail
+          site="https://amaris-mathematics-academy-live-students.onrender.com"
+          body=$(mktemp)
+          code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --max-time 30 "$site/forgot-password")
+          test "$code" = "200"
+          grep -q 'Send reset link now' "$body"
+          ! grep -q 'It may take a few minutes to arrive' "$body"
 
       - name: Verify backend health and dependencies
         shell: bash
