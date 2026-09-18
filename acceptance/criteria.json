@@ -194,12 +194,14 @@
     {
       "id": 19,
       "name": "Monitoring and administration outages do not stop students",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Services are not application dependencies and a controlled outage test exists; staging result remains."
+        "The Render staging inventory contains the application service, PostgreSQL, and a Redis broker/cache but no Flower, Grafana, Prometheus, or administration service required by the student request path.",
+        "Quality Gates and Release run 35354817117 completed the real protected checkout/status/progress/resume/lesson staging journey while optional monitoring/admin services were absent.",
+        "During the capacity window Render application logs reported Redis cache read/write failures and delayed cache invalidation, while the web service remained live and continued serving requests; cache failure degraded performance but did not become a student-access dependency."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "Render inventory + staging release evidence",
+      "verified_at": "2026-09-18T17:15:00+02:00"
     },
     {
       "id": 20,
