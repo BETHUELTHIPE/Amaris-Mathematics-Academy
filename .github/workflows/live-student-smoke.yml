@@ -35,6 +35,18 @@ jobs:
           grep -q 'Send reset link now' "$body"
           ! grep -q 'It may take a few minutes to arrive' "$body"
 
+      - name: Verify signup verification wording
+        shell: bash
+        run: |
+          set -euo pipefail
+          site="https://amaris-mathematics-academy-live-students.onrender.com"
+          body=$(mktemp)
+          code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --max-time 30 "$site/verify-email?email=test%40example.com&registered=1")
+          test "$code" = "200"
+          grep -q 'No code entry is required for the current email format' "$body"
+          grep -q 'Send a new verification email' "$body"
+          ! grep -q 'Enter the six-digit code sent to' "$body"
+
       - name: Verify backend health and dependencies
         shell: bash
         run: |
