@@ -12,6 +12,7 @@ services:
       url: docker.io/bethuelm/amaris-mathematics-academy:6303fb30d296fd32886695d3d5cc9fe54f8a5b94
     autoDeployTrigger: off
     healthCheckPath: /health/ready/
+    preDeployCommand: python manage.py migrate --noinput
     scaling:
       minInstances: 3
       maxInstances: 24
