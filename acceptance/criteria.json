@@ -77,12 +77,13 @@
     {
       "id": 8,
       "name": "Delayed PayFast ITN is handled correctly",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Payment reconciliation is idempotent and tested; delayed sandbox ITN evidence remains."
+        "Payment Security run 35339900771 passed the deterministic PayFast security suite.",
+        "The suite proves a delayed verified callback within the configured replay window is accepted and fulfilled exactly once, while an expired callback is rejected before any gateway verification call; no real PayFast charge or live provider request is used."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "GitHub Actions Payment Security",
+      "verified_at": "2026-09-18T13:15:00+02:00"
     },
     {
       "id": 9,
@@ -154,12 +155,13 @@
     {
       "id": 16,
       "name": "Errors are useful without technical disclosure",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Branded safe error pages and correlation-reference tests pass; staging response review remains."
+        "Live Staging Acceptance run 35339900772 passed against the deployed Render staging service.",
+        "HTTP 400/403/404/429/500 responses returned the correct status, Amaris branding and support correlation reference, and were checked for absence of traceback, Django secret, database URL and PostgreSQL connection leakage."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "GitHub Actions live staging verification",
+      "verified_at": "2026-09-18T13:15:00+02:00"
     },
     {
       "id": 17,
