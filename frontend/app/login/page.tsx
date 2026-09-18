@@ -12,12 +12,12 @@ import { getStudentIdentity, safeRelativePath } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Log In" };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; next?: string; password_updated?: string; signed_out?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; next?: string; password_updated?: string; signed_out?: string; verified?: string }> }) {
   const student = await getStudentIdentity();
   if (student?.emailVerified) redirect("/dashboard");
   const params = await searchParams;
   const next = safeRelativePath(params.next);
-  const success = params.password_updated ? "Your password has been updated. Log in with your new password." : params.signed_out ? "You have signed out securely." : null;
+  const success = params.verified ? "Your email has been verified. Log in securely to continue to your dashboard." : params.password_updated ? "Your password has been updated. Log in with your new password." : params.signed_out ? "You have signed out securely." : null;
 
   return <main className="min-h-screen bg-[#f5f7fb]"><Header /><section className="mx-auto max-w-xl px-5 py-16 lg:px-8 lg:py-24"><div className="rounded-[2rem] border border-[#dce4ef] bg-white p-7 shadow-[0_25px_75px_rgba(7,21,45,.1)] sm:p-10"><span className="grid size-14 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LayoutDashboard className="size-7" /></span><p className="eyebrow mt-7">Student access</p><h1 className="mt-4 text-4xl font-semibold tracking-[-.045em]">Welcome back.</h1><p className="mt-4 text-base leading-7 text-[#60708a]">Log in to continue lessons and view your private learning dashboard.</p>
     {params.error && <Alert variant="destructive" className="mt-6"><AlertDescription>{params.error}</AlertDescription></Alert>}
