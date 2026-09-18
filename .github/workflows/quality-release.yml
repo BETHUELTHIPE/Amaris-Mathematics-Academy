@@ -458,17 +458,25 @@ jobs:
 
           seed=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$STAGING_BASE_URL/api/v1/student/acceptance/seed/" -d '{}')
           course_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["course_slug"])' <<<"$seed")
+          checkout_course_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["checkout_course_slug"])' <<<"$seed")
           lesson_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["lesson_slug"])' <<<"$seed")
           test "$course_slug" = "acceptance-capacity-mathematics"
+          test "$checkout_course_slug" = "acceptance-checkout-mathematics"
           test "$lesson_slug" = "acceptance-algebra"
 
           key="acceptance-${GITHUB_SHA:0:32}"
-          checkout_body=$(COURSE_SLUG="$course_slug" CHECKOUT_KEY="$key" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"idempotency_key":os.environ["CHECKOUT_KEY"]}))')
+          checkout_body=$(COURSE_SLUG="$checkout_course_slug" CHECKOUT_KEY="$key" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"idempotency_key":os.environ["CHECKOUT_KEY"]}))')
           checkout=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$STAGING_BASE_URL/api/v1/student/checkout/" -d "$checkout_body")
           reference=$(python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="pending"; assert "sandbox.payfast.co.za" in p["gateway_url"]; print(p["payment_reference"])' <<<"$checkout")
 
           payment=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/payments/$reference/")
           python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="pending"; assert p["enrollment_status"] is None' <<<"$payment"
+
+          settled=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$STAGING_BASE_URL/api/v1/student/acceptance/payments/$reference/settle/" -d '{}')
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="paid"; assert p["enrollment_status"]=="active"; assert p["invoice_number"]; assert p["notification_status"]=="queued"; assert p["external_gateway_contacted"] is False' <<<"$settled"
+
+          paid=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/payments/$reference/")
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="paid"; assert p["enrollment_status"]=="active"' <<<"$paid"
 
           progress_body=$(COURSE_SLUG="$course_slug" LESSON_SLUG="$lesson_slug" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"lesson_slug":os.environ["LESSON_SLUG"],"position_seconds":347,"progress_percent":42}))')
           progress=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X PATCH "$STAGING_BASE_URL/api/v1/student/progress/" -d "$progress_body")
@@ -479,7 +487,7 @@ jobs:
 
           lesson=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/lessons/$course_slug/$lesson_slug/")
           python -c 'import json,sys; p=json.load(sys.stdin); assert p["lesson"]["slug"]=="acceptance-algebra"; assert p["resume"]["last_position_seconds"]==347' <<<"$lesson"
-          echo "Real staging checkout/status/progress/resume/lesson journey passed without contacting PayFast."
+          echo "Real staging pending-to-paid checkout, enrollment, invoice, progress, resume, and lesson journey passed without contacting PayFast."
 
       - uses: actions/setup-python@v5
         with:
@@ -526,9 +534,9 @@ jobs:
 
           auth=(-H "Authorization: Bearer $oidc_token" -H "X-Amaris-Acceptance: github-actions")
           seed=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$LOADTEST_TARGET_URL/api/v1/student/acceptance/seed/" -d '{}')
-          course_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["course_slug"])' <<<"$seed")
+          checkout_course_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["checkout_course_slug"])' <<<"$seed")
           key="acceptance-${GITHUB_SHA:0:32}"
-          checkout_body=$(COURSE_SLUG="$course_slug" CHECKOUT_KEY="$key" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"idempotency_key":os.environ["CHECKOUT_KEY"]}))')
+          checkout_body=$(COURSE_SLUG="$checkout_course_slug" CHECKOUT_KEY="$key" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"idempotency_key":os.environ["CHECKOUT_KEY"]}))')
           checkout=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$LOADTEST_TARGET_URL/api/v1/student/checkout/" -d "$checkout_body")
           reference=$(python -c 'import json,sys; print(json.load(sys.stdin)["payment_reference"])' <<<"$checkout")
           export LOADTEST_PAYMENT_STATUS_PATH="/api/v1/student/payments/$reference/"
