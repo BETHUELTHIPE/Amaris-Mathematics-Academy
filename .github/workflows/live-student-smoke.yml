@@ -25,6 +25,22 @@ jobs:
             test -s /tmp/page.html
           done
 
+      - name: Verify homepage hero image
+        shell: bash
+        run: |
+          set -euo pipefail
+          site="https://amaris-mathematics-academy-live-students.onrender.com"
+          home=$(mktemp)
+          headers=$(mktemp)
+          image=$(mktemp)
+          code=$(curl --silent --show-error --output "$home" --write-out '%{http_code}' --max-time 30 "$site/")
+          test "$code" = "200"
+          grep -q '/amaris-math-hero.webp' "$home"
+          image_code=$(curl --silent --show-error --output "$image" --dump-header "$headers" --write-out '%{http_code}' --max-time 30 "$site/amaris-math-hero.webp")
+          test "$image_code" = "200"
+          grep -Eqi '^content-type: image/(webp|octet-stream)' "$headers"
+          test "$(wc -c < "$image")" -gt 30000
+
       - name: Verify password recovery wording
         shell: bash
         run: |
