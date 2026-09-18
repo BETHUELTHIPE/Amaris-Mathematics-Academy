@@ -43,14 +43,14 @@ class ResilientRedisCache(RedisCache):
 
     def _fallback_set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         cache_key = self._fallback_key(key, version=version)
-        resolved_timeout = self.get_backend_timeout(timeout)
-        if resolved_timeout == 0:
+        resolved_timeout = self.default_timeout if timeout is DEFAULT_TIMEOUT else timeout
+        if resolved_timeout is not None and float(resolved_timeout) <= 0:
             return False
 
         if resolved_timeout is None:
             expires_at = None
         else:
-            expires_at = time.monotonic() + max(0.0, float(resolved_timeout))
+            expires_at = time.monotonic() + float(resolved_timeout)
 
         with self._fallback_lock:
             self._fallback_store[cache_key] = (expires_at, value)
