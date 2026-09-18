@@ -13,7 +13,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ slug:
   await requireVerifiedStudent("/dashboard");
   const { slug } = await params;
 
-  let checkout;
+  let checkout: Awaited<ReturnType<typeof createStudentCheckout>>;
   try {
     checkout = await createStudentCheckout(slug);
   } catch {
