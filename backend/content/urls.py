@@ -11,7 +11,6 @@ from .student_views import (
     StudentCoursesView,
     StudentLessonView,
 )
-
 from .views import (
     AnnouncementViewSet,
     ContactEnquiryViewSet,
