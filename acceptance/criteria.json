@@ -39,11 +39,11 @@
       "name": "Student resumes the last lesson",
       "status": "passed",
       "evidence": [
-        "GitHub Actions Quality Gates and Release run 35354817117 promoted main commit 0345bfe99ce1f5a06068842c7c7c45fe6ea624a4 to Render staging and verified the exact deployed Git SHA.",
-        "The deployed synthetic student journey persisted lesson acceptance-algebra at position 347 seconds with 42% progress, then fetched /student/resume/ and the protected lesson endpoint and verified the same persisted resume state."
+        "GitHub Actions Quality Gates and Release run 35354817117 deployed exact main SHA 0345bfe99ce1f5a06068842c7c7c45fe6ea624a4 to Render staging.",
+        "The staging acceptance step persisted synthetic student progress at lesson acceptance-algebra, position 347 seconds and 42%, then fetched the resume and protected lesson endpoints and verified the same persisted state."
       ],
-      "verified_by": "GitHub Actions on Render staging",
-      "verified_at": "2026-09-18T16:31:00+02:00"
+      "verified_by": "GitHub Actions",
+      "verified_at": "2026-09-18T16:34:00+02:00"
     },
     {
       "id": 5,
@@ -170,12 +170,13 @@
     {
       "id": 17,
       "name": "Monitoring captures failures without personal data",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Prometheus/Grafana rules avoid personal labels; staging failure capture and dashboard review remain."
+        "Render staging telemetry for service srv-dam2iivcgkoc7383tq50 captured deploy lifecycle, worker shutdown/startup events, CPU usage, memory usage and resource limits during the 2026-09-18 capacity window.",
+        "The deployed service uses amaris_cms.workers.PrivacyUvicornWorker, which disables Uvicorn client-address access logging; sampled staging application logs contained operational events and no request IP, referrer, user-agent, query-string or student identifiers."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "Render staging telemetry review",
+      "verified_at": "2026-09-18T16:48:00+02:00"
     },
     {
       "id": 18,
