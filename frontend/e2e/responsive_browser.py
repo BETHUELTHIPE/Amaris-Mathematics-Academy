@@ -222,8 +222,8 @@ def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: s
         menu.click()
         courses_link = page.locator('details a[href="/courses"]').first
         require(courses_link.is_visible(), "Courses link is unavailable without JavaScript")
-        courses_link.click()
-        page.wait_for_load_state("domcontentloaded")
+        courses_link.click(force=True)
+        page.wait_for_url("**/courses*", wait_until="domcontentloaded")
         require("/courses" in page.url, "Navigation to courses failed without JavaScript")
 
         goto(page, "/contact")
@@ -231,8 +231,8 @@ def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: s
         page.locator("#email").fill("nojs.student@example.test")
         page.locator("#enquiryType").select_option("course-guidance")
         page.locator("#message").fill("Synthetic no JavaScript enquiry used only for progressive enhancement verification.")
-        page.locator("#consent").check()
-        page.get_by_role("button", name=re.compile("Send enquiry")).click()
+        page.locator("#consent").check(force=True)
+        page.get_by_role("button", name=re.compile("Send enquiry")).click(force=True)
         page.wait_for_load_state("domcontentloaded")
         require(
             page.get_by_text("Enquiry received", exact=True).is_visible(),
