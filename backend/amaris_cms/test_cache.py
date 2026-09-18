@@ -21,6 +21,7 @@ class ResilientRedisFallbackTests(SimpleTestCase):
             },
         )
         cache._fallback_store.clear()
+        cache._redis_retry_after = 0.0
         return cache
 
     def test_fallback_round_trip_when_redis_is_unavailable(self):
@@ -36,6 +37,30 @@ class ResilientRedisFallbackTests(SimpleTestCase):
             side_effect=OSError("synthetic redis outage"),
         ):
             self.assertEqual(cache.get("course-list"), {"ok": True})
+
+    def test_redis_circuit_skips_repeated_failed_network_attempts(self):
+        cache = self.make_cache()
+        with patch(
+            "django.core.cache.backends.redis.RedisCache.get",
+            side_effect=OSError("synthetic redis outage"),
+        ) as redis_get:
+            self.assertIsNone(cache.get("missing"))
+            self.assertIsNone(cache.get("missing"))
+        self.assertEqual(redis_get.call_count, 1)
+
+    def test_redis_circuit_retries_after_cooldown(self):
+        cache = self.make_cache()
+        cache._redis_retry_seconds = 15
+        with (
+            patch("amaris_cms.cache.time.monotonic", side_effect=[100.0, 100.0, 116.0, 116.0]),
+            patch(
+                "django.core.cache.backends.redis.RedisCache.get",
+                side_effect=OSError("synthetic redis outage"),
+            ) as redis_get,
+        ):
+            self.assertIsNone(cache.get("missing"))
+            self.assertIsNone(cache.get("missing"))
+        self.assertEqual(redis_get.call_count, 2)
 
     def test_fallback_entry_expires_using_duration_semantics(self):
         cache = self.make_cache()
