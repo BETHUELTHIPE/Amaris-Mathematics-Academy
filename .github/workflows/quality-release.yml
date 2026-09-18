@@ -208,6 +208,7 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:3000
           E2E_ARTIFACT_DIR: artifacts/e2e
           CMS_API_URL: http://127.0.0.1:3001/api/v1
+          CSP_REPORT_ONLY: "true"
         run: |
           python -u - <<'PY' > /tmp/amaris-e2e-cms.log 2>&1 &
           from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
