@@ -122,6 +122,54 @@ export const httpRecoveryDefinitions = {
 } satisfies Record<string, RecoveryDefinition>;
 
 export const experienceRecoveryDefinitions = {
+  "payment-processing": {
+    eyebrow: "Payment processing",
+    title: "Your payment is being processed.",
+    message:
+      "Your checkout has been submitted and the academy is waiting for a verified payment result.",
+    reassurance:
+      "Please do not pay again or close this page repeatedly. Check your dashboard before starting another checkout.",
+    kind: "payment",
+    primaryAction: { label: "Check order status", href: "/dashboard" },
+    secondaryAction: { label: "Return to courses", href: "/courses" },
+    showSupport: true,
+  },
+  "payment-paid": {
+    eyebrow: "Payment confirmed",
+    title: "Payment confirmed.",
+    message:
+      "Your verified payment has been accepted and your course access can now be opened from your dashboard.",
+    reassurance:
+      "Keep your order reference for your records. Amaris will never ask you to repeat a completed payment by email or phone.",
+    kind: "payment",
+    primaryAction: { label: "Open my dashboard", href: "/dashboard" },
+    secondaryAction: { label: "Browse courses", href: "/courses" },
+    showSupport: true,
+  },
+  "payment-expired": {
+    eyebrow: "Checkout expired",
+    title: "This checkout session has expired.",
+    message:
+      "The payment window ended before a verified payment was completed.",
+    reassurance:
+      "No course access is activated from an expired checkout. Check your dashboard before starting a fresh payment.",
+    kind: "payment",
+    primaryAction: { label: "Check order status", href: "/dashboard" },
+    secondaryAction: { label: "Return to courses", href: "/courses" },
+    showSupport: true,
+  },
+  "payment-refunded": {
+    eyebrow: "Refund recorded",
+    title: "Your refund has been recorded.",
+    message:
+      "This order is marked as refunded. Any related course-access changes are shown on your dashboard.",
+    reassurance:
+      "Refund settlement timing can depend on the payment provider and your bank. Keep your order reference if you contact support.",
+    kind: "payment",
+    primaryAction: { label: "Open my dashboard", href: "/dashboard" },
+    secondaryAction: { label: "Contact support", href: "/contact" },
+    showSupport: true,
+  },
   "payment-pending": {
     eyebrow: "Payment processing",
     title: "Your payment is still being confirmed.",
