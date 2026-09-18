@@ -1,8 +1,8 @@
-declare const __E2E_SYNTHETIC_STUDENT__: boolean;
-
 import { env } from "cloudflare:workers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireVerifiedStudent } from "@/lib/auth";
+
+declare const __E2E_SYNTHETIC_STUDENT__: boolean;
 
 export type ResumeState = {
   course_slug: string;
