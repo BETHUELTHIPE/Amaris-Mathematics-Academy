@@ -164,6 +164,17 @@ def check_checkout(page: Page) -> None:
     require(page.get_by_text(re.compile("Please do not pay again", re.IGNORECASE)).is_visible(), "Duplicate-payment warning is not visible")
     assert_no_horizontal_overflow(page, "checkout/payment state")
 
+    goto(page, "/payments/confirmed")
+    require(
+        page.get_by_role("heading", name="Your payment is confirmed.").is_visible(),
+        "Payment-confirmed state is not visible",
+    )
+    require(
+        page.get_by_text(re.compile("course access is active", re.IGNORECASE)).is_visible(),
+        "Payment-confirmed access guidance is not visible",
+    )
+    assert_no_horizontal_overflow(page, "confirmed payment state")
+
 
 def check_lesson_interface(page: Page) -> None:
     goto(page, COURSE_PATH)
