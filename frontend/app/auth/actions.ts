@@ -172,8 +172,13 @@ export async function resendVerificationAction(formData: FormData) {
     },
   });
 
-  if (error && /rate limit|too many/i.test(error.message)) {
-    redirect("/errors/429");
+  if (error) {
+    if (/rate limit|too many/i.test(error.message)) {
+      redirect("/errors/429");
+    }
+    redirect(
+      `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("We could not send another verification email. If your email is already verified, log in instead.")}`,
+    );
   }
 
   redirect(
