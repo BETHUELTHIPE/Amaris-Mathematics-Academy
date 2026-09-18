@@ -166,7 +166,7 @@ jobs:
           output-file: frontend-sbom.cdx.json
       - name: Preserve frontend evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-quality-evidence
           path: |
@@ -260,7 +260,7 @@ jobs:
           python e2e/responsive_browser.py
       - name: Preserve responsive-browser evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: responsive-browser-evidence
           path: |
@@ -352,7 +352,7 @@ jobs:
           sarif_file: trivy-results.sarif
       - name: Upload software bill of materials
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: amaris-backend-sbom
           path: amaris-backend-sbom.cdx.json
@@ -538,7 +538,7 @@ jobs:
 
       - name: Publish 100-user capacity evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: staging-capacity-100-${{ github.run_id }}
           path: backend/load_tests/results/
