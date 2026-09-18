@@ -25,6 +25,7 @@ MAX_BODY_BYTES = 16 * 1024
 DEFAULT_PATH = "/deploy"
 ACTION_EXECUTABLE_ENV = {
     "current-release": "CURRENT_RELEASE_ACTION_EXECUTABLE",
+    "rollback-target": "ROLLBACK_TARGET_ACTION_EXECUTABLE",
     "deploy": "DEPLOY_ACTION_EXECUTABLE",
     "migrate": "MIGRATE_ACTION_EXECUTABLE",
     "rollback": "ROLLBACK_ACTION_EXECUTABLE",
@@ -94,7 +95,7 @@ def _delegate_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 def dispatch(payload: dict[str, Any]) -> dict[str, Any]:
     action = payload.get("action")
-    if action not in {"current-release", "deploy", "migrate", "migration-plan", "rollback"}:
+    if action not in {"current-release", "rollback-target", "deploy", "migrate", "migration-plan", "rollback"}:
         raise WebhookError("unsupported deployment action")
 
     _validate_environment(payload)
@@ -102,9 +103,15 @@ def dispatch(payload: dict[str, Any]) -> dict[str, Any]:
     if action == "migration-plan":
         return host_migration_plan.run_migration_plan(payload)
 
-    if action == "current-release":
+    if action in {"current-release", "rollback-target"}:
         result = _delegate_action(action, payload)
         _validate_release_identity(result)
+        if action == "rollback-target":
+            rollback_safe = result.get("rollback_safe")
+            if not isinstance(rollback_safe, bool):
+                raise WebhookError(
+                    "rollback-target handler must return boolean rollback_safe"
+                )
         return result
 
     if action in {"deploy", "migrate", "rollback"}:
