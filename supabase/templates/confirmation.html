@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <body style="font-family: Arial, sans-serif; color: #0b2a5b; line-height: 1.6;">
+    <h2>Confirm your Amaris Mathematics Academy account</h2>
+    <p>Use either option below to verify your email address.</p>
+
+    <p><strong>Your six-digit verification code:</strong></p>
+    <p style="font-size: 30px; font-weight: 700; letter-spacing: 8px;">{{ .Token }}</p>
+
+    <p>Or select the secure verification link:</p>
+    <p>
+      <a href="https://amaris-mathematics-academy-live-students.onrender.com/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email&amp;next=/dashboard">
+        Confirm your email
+      </a>
+    </p>
+
+    <p>If you did not create this account, you can ignore this email.</p>
+  </body>
+</html>

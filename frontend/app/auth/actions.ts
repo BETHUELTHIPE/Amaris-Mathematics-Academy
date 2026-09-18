@@ -74,7 +74,7 @@ export async function registerAction(formData: FormData) {
     email: values.email,
     password: values.password,
     options: {
-      emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
+      emailRedirectTo: `${getSiteUrl()}/login?verified=1`,
       data: {
         first_name: values.firstName,
         last_name: values.lastName,
@@ -141,12 +141,12 @@ export async function verifyEmailAction(formData: FormData) {
   const { error } = await supabase.auth.verifyOtp({
     email,
     token,
-    type: "signup",
+    type: "email",
   });
 
   if (error) {
     redirect(
-      `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("That code is invalid or has expired. Request a new code and try again.")}`,
+      `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("This verification code is no longer active. If you already used the confirmation link, your email is verified — log in to continue. Otherwise, request a new verification email.")}`,
     );
   }
 
@@ -168,12 +168,17 @@ export async function resendVerificationAction(formData: FormData) {
     type: "signup",
     email,
     options: {
-      emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
+      emailRedirectTo: `${getSiteUrl()}/login?verified=1`,
     },
   });
 
-  if (error && /rate limit|too many/i.test(error.message)) {
-    redirect("/errors/429");
+  if (error) {
+    if (/rate limit|too many/i.test(error.message)) {
+      redirect("/errors/429");
+    }
+    redirect(
+      `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("We could not send another verification email. If your email is already verified, log in instead.")}`,
+    );
   }
 
   redirect(
@@ -233,8 +238,15 @@ export async function forgotPasswordAction(formData: FormData) {
     redirectTo: `${getSiteUrl()}/auth/confirm?next=/reset-password`,
   });
 
-  if (error && /rate limit|too many/i.test(error.message)) {
-    redirect("/errors/429");
+  if (error) {
+    if (/rate limit|too many/i.test(error.message)) {
+      redirect("/errors/429");
+    }
+    redirectWithMessage(
+      "/forgot-password",
+      "error",
+      "We could not request a reset email right now. Please try again.",
+    );
   }
 
   // The same response is shown whether the account exists or not.

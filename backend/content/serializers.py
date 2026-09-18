@@ -2,6 +2,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from .services.enquiry_autoreply import auto_reply_to_enquiry
+
 from .models import (
     FAQ,
     Announcement,
@@ -254,6 +256,11 @@ class ContactEnquirySerializer(serializers.ModelSerializer):
         if len(value) < 20:
             raise serializers.ValidationError("Please provide at least 20 characters.")
         return value
+
+    def create(self, validated_data):
+        enquiry = super().create(validated_data)
+        auto_reply_to_enquiry(enquiry)
+        return enquiry
 
 
 class SiteBootstrapSerializer(serializers.Serializer):
