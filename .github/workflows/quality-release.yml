@@ -431,15 +431,7 @@ jobs:
           for attempt in $(seq 1 60); do
             ready=$(curl --silent --show-error --output /tmp/ready.json --write-out '%{http_code}' --max-time 15 "$base/health/ready/" || true)
             version=$(curl --silent --show-error --output /tmp/version.json --write-out '%{http_code}' --max-time 15 "$base/health/version/" || true)
-            deployed_sha=$(python - <<'PY'
-import json
-try:
-    with open("/tmp/version.json", encoding="utf-8") as fh:
-        print(json.load(fh).get("git_sha", ""))
-except Exception:
-    print("")
-PY
-)
+            deployed_sha=$(python -c 'import json; print(json.load(open("/tmp/version.json", encoding="utf-8")).get("git_sha", ""))' 2>/dev/null || true)
             echo "attempt=$attempt ready=$ready version=$version deployed_sha=$deployed_sha expected=${GITHUB_SHA}"
             if [ "$ready" = "200" ] && [ "$version" = "200" ] && [ "$deployed_sha" = "${GITHUB_SHA}" ]; then
               cat /tmp/ready.json
@@ -459,34 +451,34 @@ PY
           STAGING_BASE_URL: https://amaris-mathematics-academy-staging.onrender.com
         run: |
           set -euo pipefail
-
-          oidc_response=$(curl --fail --silent --show-error             -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=amaris-staging")
+          oidc_response=$(curl --fail --silent --show-error -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=amaris-staging")
           oidc_token=$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$oidc_response")
           echo "::add-mask::$oidc_token"
           auth=(-H "Authorization: Bearer $oidc_token" -H "X-Amaris-Acceptance: github-actions")
 
-          seed=$(curl --fail --silent --show-error "${auth[@]}"             -H "Content-Type: application/json"             -X POST "$STAGING_BASE_URL/api/v1/student/acceptance/seed/"             -d '{}')
+          seed=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$STAGING_BASE_URL/api/v1/student/acceptance/seed/" -d '{}')
           course_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["course_slug"])' <<<"$seed")
           lesson_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["lesson_slug"])' <<<"$seed")
           test "$course_slug" = "acceptance-capacity-mathematics"
           test "$lesson_slug" = "acceptance-algebra"
 
           key="acceptance-${GITHUB_SHA:0:32}"
-          checkout=$(curl --fail --silent --show-error "${auth[@]}"             -H "Content-Type: application/json"             -X POST "$STAGING_BASE_URL/api/v1/student/checkout/"             -d "{"course_slug":"$course_slug","idempotency_key":"$key"}")
+          checkout_body=$(COURSE_SLUG="$course_slug" CHECKOUT_KEY="$key" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"idempotency_key":os.environ["CHECKOUT_KEY"]}))')
+          checkout=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$STAGING_BASE_URL/api/v1/student/checkout/" -d "$checkout_body")
           reference=$(python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="pending"; assert "sandbox.payfast.co.za" in p["gateway_url"]; print(p["payment_reference"])' <<<"$checkout")
 
-          payment=$(curl --fail --silent --show-error "${auth[@]}"             "$STAGING_BASE_URL/api/v1/student/payments/$reference/")
+          payment=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/payments/$reference/")
           python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="pending"; assert p["enrollment_status"] is None' <<<"$payment"
 
-          progress=$(curl --fail --silent --show-error "${auth[@]}"             -H "Content-Type: application/json"             -X PATCH "$STAGING_BASE_URL/api/v1/student/progress/"             -d "{"course_slug":"$course_slug","lesson_slug":"$lesson_slug","position_seconds":347,"progress_percent":42}")
+          progress_body=$(COURSE_SLUG="$course_slug" LESSON_SLUG="$lesson_slug" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"lesson_slug":os.environ["LESSON_SLUG"],"position_seconds":347,"progress_percent":42}))')
+          progress=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X PATCH "$STAGING_BASE_URL/api/v1/student/progress/" -d "$progress_body")
           python -c 'import json,sys; p=json.load(sys.stdin); assert p["last_lesson"]["slug"]=="acceptance-algebra"; assert p["last_position_seconds"]==347; assert p["progress_percent"]==42' <<<"$progress"
 
-          resume=$(curl --fail --silent --show-error "${auth[@]}"             "$STAGING_BASE_URL/api/v1/student/resume/$course_slug/")
+          resume=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/resume/$course_slug/")
           python -c 'import json,sys; p=json.load(sys.stdin); assert p["last_lesson"]["slug"]=="acceptance-algebra"; assert p["last_position_seconds"]==347; assert p["progress_percent"]==42' <<<"$resume"
 
-          lesson=$(curl --fail --silent --show-error "${auth[@]}"             "$STAGING_BASE_URL/api/v1/student/lessons/$course_slug/$lesson_slug/")
+          lesson=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/lessons/$course_slug/$lesson_slug/")
           python -c 'import json,sys; p=json.load(sys.stdin); assert p["lesson"]["slug"]=="acceptance-algebra"; assert p["resume"]["last_position_seconds"]==347' <<<"$lesson"
-
           echo "Real staging checkout/status/progress/resume/lesson journey passed without contacting PayFast."
 
       - uses: actions/setup-python@v5
@@ -527,21 +519,22 @@ PY
         run: |
           set -euo pipefail
           mkdir -p load_tests/results
-          oidc_response=$(curl --fail --silent --show-error             -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=amaris-staging")
+          oidc_response=$(curl --fail --silent --show-error -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=amaris-staging")
           oidc_token=$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$oidc_response")
           echo "::add-mask::$oidc_token"
           export LOADTEST_AUTH_BEARER="$oidc_token"
 
           auth=(-H "Authorization: Bearer $oidc_token" -H "X-Amaris-Acceptance: github-actions")
-          seed=$(curl --fail --silent --show-error "${auth[@]}"             -H "Content-Type: application/json"             -X POST "$LOADTEST_TARGET_URL/api/v1/student/acceptance/seed/" -d '{}')
+          seed=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$LOADTEST_TARGET_URL/api/v1/student/acceptance/seed/" -d '{}')
           course_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["course_slug"])' <<<"$seed")
           key="acceptance-${GITHUB_SHA:0:32}"
-          checkout=$(curl --fail --silent --show-error "${auth[@]}"             -H "Content-Type: application/json"             -X POST "$LOADTEST_TARGET_URL/api/v1/student/checkout/"             -d "{"course_slug":"$course_slug","idempotency_key":"$key"}")
+          checkout_body=$(COURSE_SLUG="$course_slug" CHECKOUT_KEY="$key" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"idempotency_key":os.environ["CHECKOUT_KEY"]}))')
+          checkout=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$LOADTEST_TARGET_URL/api/v1/student/checkout/" -d "$checkout_body")
           reference=$(python -c 'import json,sys; print(json.load(sys.stdin)["payment_reference"])' <<<"$checkout")
           export LOADTEST_PAYMENT_STATUS_PATH="/api/v1/student/payments/$reference/"
           export CAPACITY_LOCUST_RESULT="load_tests/results/capacity-100-locust.json"
 
-          python -m locust             -f load_tests/capacity_locustfile.py             --headless             --host "$LOADTEST_TARGET_URL"             --processes 4             --csv load_tests/results/locust-100             --csv-full-history             --html load_tests/results/locust-100.html
+          python -m locust -f load_tests/capacity_locustfile.py --headless --host "$LOADTEST_TARGET_URL" --processes 4 --csv load_tests/results/locust-100 --csv-full-history --html load_tests/results/locust-100.html
 
       - name: Publish 100-user capacity evidence
         if: always()
