@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import time
 import traceback
 from pathlib import Path
 
@@ -131,6 +132,33 @@ def check_offline_recovery(page: Page) -> None:
         "Connection-restored state did not appear after reconnecting",
     )
 
+def check_slow_submission(page: Page) -> None:
+    goto(page, "/contact")
+    page.locator("#fullName").fill("Slow Network Synthetic Student")
+    page.locator("#email").fill("slow.network.student@example.test")
+    page.locator("#enquiryType").select_option("technical-support")
+    page.locator("#message").fill("Synthetic delayed submission used to verify slow-network recovery without data loss.")
+    page.locator("#consent").check()
+
+    def delay_contact_post(route, request) -> None:
+        if request.method == "POST":
+            time.sleep(2.0)
+        route.continue_()
+
+    page.route("**/contact*", delay_contact_post)
+    started = time.monotonic()
+    try:
+        page.get_by_role("button", name=re.compile("Send enquiry")).click()
+        success = page.get_by_text("Enquiry received", exact=True)
+        success.wait_for(state="visible", timeout=12_000)
+        elapsed = time.monotonic() - started
+        require(elapsed >= 1.8, f"Slow-network delay was not exercised: elapsed={elapsed:.2f}s")
+        require(success.is_visible(), "Delayed enquiry did not recover to a success state")
+        require(page.url.endswith("/contact"), "Delayed submission navigated away unexpectedly")
+    finally:
+        page.unroute("**/contact*", delay_contact_post)
+
+
 def check_dashboard(page: Page) -> None:
     goto(page, "/dashboard")
     require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
@@ -183,6 +211,7 @@ CHECKS = (
     ("navigation", check_navigation),
     ("forms", check_form),
     ("offline-recovery", check_offline_recovery),
+    ("slow-submission", check_slow_submission),
     ("dashboard", check_dashboard),
     ("tables", check_table),
     ("checkout", check_checkout),
