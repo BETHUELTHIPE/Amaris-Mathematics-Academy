@@ -12,7 +12,8 @@ from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
 from .models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment
-from .services.payments import PaymentSecurityError, create_checkout
+from .payment_models import Invoice, NotificationOutbox, ServiceTicket
+from .services.payments import PaymentSecurityError, create_checkout, process_payfast_notification
 
 
 class CheckoutRequestSerializer(serializers.Serializer):
@@ -180,6 +181,74 @@ class AcceptanceSeedView(StudentAPIView):
                 "course_slug": course.slug,
                 "lesson_slug": lesson.slug,
                 "enrollment_status": enrollment.status,
+            }
+        )
+
+
+class AcceptanceCompletePaymentView(StudentAPIView):
+    """Complete one synthetic staging payment through the real fulfillment transaction."""
+
+    class _VerifiedAcceptanceGateway:
+        def verify_notification(self, payload):
+            return True
+
+    def post(self, request, reference: str):
+        auth = request.auth if isinstance(request.auth, dict) else {}
+        if auth.get("provider") != "github-actions-oidc":
+            raise PermissionDenied("Synthetic payment completion is restricted to GitHub Actions OIDC.")
+
+        payment = get_object_or_404(
+            Payment.objects.select_related("student", "course"),
+            reference=reference,
+            student=request.user.student,
+            status=Payment.Status.PENDING,
+            reference__startswith="PF-acceptance-",
+        )
+
+        payload = {
+            "m_payment_id": payment.reference,
+            "pf_payment_id": f"ACCEPT-{auth.get('run_id') or 'run'}-{payment.pk}",
+            "payment_status": "COMPLETE",
+            "amount_gross": f"{payment.amount:.2f}",
+            "custom_str1": str(payment.student.supabase_user_id),
+            "custom_str2": payment.course.slug,
+            "signature": "synthetic-acceptance-signature",
+        }
+        result = process_payfast_notification(
+            payload,
+            gateway=self._VerifiedAcceptanceGateway(),
+        )
+        payment.refresh_from_db()
+
+        if not result.accepted or payment.status != Payment.Status.PAID:
+            return Response(
+                {
+                    "accepted": result.accepted,
+                    "reason": result.reason,
+                    "payment_status": payment.status,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        enrollment = get_object_or_404(
+            Enrollment,
+            pk=payment.enrollment_id,
+            student=request.user.student,
+            course=payment.course,
+            status=Enrollment.Status.ACTIVE,
+        )
+        invoice = get_object_or_404(Invoice, payment=payment)
+        ticket = get_object_or_404(ServiceTicket, payment=payment, enrollment=enrollment)
+        notification = get_object_or_404(NotificationOutbox, payment=payment)
+
+        return Response(
+            {
+                "accepted": True,
+                "payment_status": payment.status,
+                "enrollment_status": enrollment.status,
+                "invoice_number": invoice.invoice_number,
+                "ticket_number": ticket.ticket_number,
+                "notification_status": notification.status,
             }
         )
 
