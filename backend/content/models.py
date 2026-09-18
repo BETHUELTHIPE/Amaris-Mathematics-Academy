@@ -463,7 +463,8 @@ class Enrollment(TimeStampedModel):
         super().clean()
         if self.progress_percent > 100:
             raise ValidationError("Progress cannot be higher than 100%.")
-        if self.last_lesson_id and self.last_lesson.module.course_id != self.course_id:
+        last_lesson = self.last_lesson
+        if last_lesson is not None and last_lesson.module.course_id != self.course_id:
             raise ValidationError("The resume lesson must belong to the enrollment course.")
 
     def __str__(self) -> str:
