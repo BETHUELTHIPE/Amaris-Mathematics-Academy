@@ -11,8 +11,8 @@ workers = env_int("WEB_CONCURRENCY", 3)
 timeout = env_int("GUNICORN_TIMEOUT", 60)
 graceful_timeout = env_int("GUNICORN_GRACEFUL_TIMEOUT", 30)
 keepalive = env_int("GUNICORN_KEEPALIVE", 5)
-max_requests = env_int("GUNICORN_MAX_REQUESTS", 1000)
-max_requests_jitter = env_int("GUNICORN_MAX_REQUESTS_JITTER", 100)
+max_requests = env_int("GUNICORN_MAX_REQUESTS", 10000)
+max_requests_jitter = env_int("GUNICORN_MAX_REQUESTS_JITTER", 1000)
 worker_tmp_dir = "/dev/shm"
 accesslog = "-"
 # Privacy-preserving access log: omit client IP, query strings, referrer and user-agent.
