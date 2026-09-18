@@ -207,10 +207,50 @@ jobs:
           E2E_SYNTHETIC_STUDENT: "true"
           E2E_BASE_URL: http://127.0.0.1:3000
           E2E_ARTIFACT_DIR: artifacts/e2e
+          CMS_API_URL: http://127.0.0.1:3001/api/v1
         run: |
+          python -u - <<'PY' > /tmp/amaris-e2e-cms.log 2>&1 &
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+          class Handler(BaseHTTPRequestHandler):
+              def log_message(self, format, *args):
+                  return
+
+              def do_GET(self):
+                  if self.path == "/health":
+                      self.send_response(204)
+                      self.end_headers()
+                      return
+                  self.send_response(404)
+                  self.end_headers()
+
+              def do_POST(self):
+                  if self.path != "/api/v1/enquiries/":
+                      self.send_response(404)
+                      self.end_headers()
+                      return
+                  length = int(self.headers.get("Content-Length", "0"))
+                  if length:
+                      self.rfile.read(length)
+                  self.send_response(201)
+                  self.send_header("Content-Type", "application/json")
+                  self.end_headers()
+                  self.wfile.write(b'{"status":"accepted"}')
+
+          ThreadingHTTPServer(("127.0.0.1", 3001), Handler).serve_forever()
+          PY
+          cms_pid=$!
+
           npm run dev:ci > /tmp/amaris-e2e-server.log 2>&1 &
           server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          trap 'kill "$server_pid" "$cms_pid" 2>/dev/null || true' EXIT
+
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:3001/health >/dev/null; then break; fi
+            if [ "$attempt" -eq 20 ]; then cat /tmp/amaris-e2e-cms.log; exit 1; fi
+            sleep 1
+          done
+
           for attempt in {1..45}; do
             if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then break; fi
             if [ "$attempt" -eq 45 ]; then cat /tmp/amaris-e2e-server.log; exit 1; fi
