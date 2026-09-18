@@ -58,12 +58,13 @@
     {
       "id": 6,
       "name": "Course search returns useful results",
-      "status": "partial",
+      "status": "passed",
       "evidence": [
-        "Topic, title, curriculum and level filtering is implemented; representative search relevance sign-off remains."
+        "GitHub Actions Quality Gates and Release run 35363898782 passed the full Django regression suite on merged main commit b681280f34064befca60cfea43ada57d0072b64e.",
+        "PublicContentApiTests.test_course_search_and_filters_return_relevant_published_results verifies that searching for 'derivative' returns only the published grade-12-differential-calculus course, alongside curriculum and academic-level filtering."
       ],
-      "verified_by": null,
-      "verified_at": null
+      "verified_by": "GitHub Actions",
+      "verified_at": "2026-09-18T17:50:56+02:00"
     },
     {
       "id": 7,
