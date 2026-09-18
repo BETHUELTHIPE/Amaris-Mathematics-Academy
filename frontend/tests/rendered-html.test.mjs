@@ -118,7 +118,7 @@ test("protected application responses are never publicly cacheable", async () =>
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
 
   const workerSource = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
-  for (const prefix of ["/dashboard", "/documents", "/checkout", "/api/auth-state"]) {
+  for (const prefix of ["/dashboard", "/documents", "/checkout", "/payments", "/api/auth-state"]) {
     assert.ok(workerSource.includes(prefix), `Missing protected prefix ${prefix}`);
   }
 });
