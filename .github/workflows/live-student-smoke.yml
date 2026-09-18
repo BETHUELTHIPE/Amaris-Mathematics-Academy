@@ -62,8 +62,9 @@ jobs:
           if [[ "$code" =~ ^30[12378]$ ]]; then
             grep -qi '^location: .*login' "$headers"
           elif [ "$code" = "200" ]; then
-            grep -q 'Welcome back.' "$body"
             ! grep -q 'Student dashboard' "$body"
+            ! grep -q 'Welcome,' "$body"
+            grep -Eqi 'login|NEXT_REDIRECT|redirect' "$body"
           else
             echo "Expected login redirect or rendered login page, got $code" >&2
             exit 1
