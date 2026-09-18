@@ -144,9 +144,7 @@ class StudentJourneyApiTests(APITestCase):
         payment = Payment.objects.get(reference=reference)
         self.assertEqual(payment.status, Payment.Status.PENDING)
         self.assertIsNone(payment.enrollment_id)
-        self.assertFalse(
-            Enrollment.objects.filter(student=self.student, course=self.checkout_course).exists()
-        )
+        self.assertFalse(Enrollment.objects.filter(student=self.student, course=self.checkout_course).exists())
 
         with patch.dict(os.environ, {"PAYFAST_MODE": "sandbox"}):
             settled = self.client.post(
