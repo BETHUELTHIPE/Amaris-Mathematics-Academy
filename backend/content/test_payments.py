@@ -16,7 +16,6 @@ from content.payment_models import (
     PaymentWebhookEvent,
     ServiceTicket,
 )
-from content.tasks import deliver_transactional_email
 from content.services.payments import (
     PAYMENT_CANCELLED,
     PaymentSecurityError,
@@ -24,6 +23,7 @@ from content.services.payments import (
     create_checkout,
     process_payfast_notification,
 )
+from content.tasks import deliver_transactional_email
 
 
 class MockPayFastGateway:
