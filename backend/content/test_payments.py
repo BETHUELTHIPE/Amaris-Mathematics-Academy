@@ -5,7 +5,8 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from content.models import Course, CourseCategory, Enrollment, Payment, StudentRecord
@@ -15,6 +16,7 @@ from content.payment_models import (
     PaymentWebhookEvent,
     ServiceTicket,
 )
+from content.tasks import deliver_transactional_email
 from content.services.payments import (
     PAYMENT_CANCELLED,
     PaymentSecurityError,
@@ -163,6 +165,26 @@ class PayFastPaymentAuthorityTests(TestCase):
         self.assertEqual(ticket.enrollment_id, enrollment.pk)
         self.assertEqual(outbox.status, NotificationOutbox.Status.QUEUED)
         self.assertEqual(outbox.destination, self.student.email)
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="Amaris <noreply@example.test>",
+    )
+    def test_verified_payment_notification_is_delivered_once_from_outbox(self):
+        process_payfast_notification(self.callback(), gateway=MockPayFastGateway(True))
+        outbox = NotificationOutbox.objects.get()
+        self.assertEqual(outbox.status, NotificationOutbox.Status.QUEUED)
+
+        delivered = deliver_transactional_email.run()
+        self.assertEqual(delivered, 1)
+        outbox.refresh_from_db()
+        self.assertEqual(outbox.status, NotificationOutbox.Status.SENT)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.student.email])
+        self.assertIn(self.course.title, mail.outbox[0].subject)
+
+        self.assertEqual(deliver_transactional_email.run(), 0)
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_failed_callback_never_activates_service(self):
         result = process_payfast_notification(
