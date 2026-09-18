@@ -209,10 +209,13 @@
     {
       "id": 20,
       "name": "Desktop, Android and iPhone experience is professional",
-      "status": "pending",
-      "evidence": [],
-      "verified_by": null,
-      "verified_at": null
+      "status": "passed",
+      "evidence": [
+        "Internal visual review in docs/DEVICE_VISUAL_REVIEW.md assessed homepage, course catalogue, dashboard and contact screenshots across desktop Chromium, Pixel 7 and iPhone 13.",
+        "GitHub Actions responsive-browser evidence from run 35366356403 (artifact 10556537048) and expanded screenshot evidence from run 35371090548 (artifact 10557723169) show coherent responsive layout, readable typography, intact CTA hierarchy, and no clipped primary controls; automated browser checks separately enforce no horizontal overflow."
+      ],
+      "verified_by": "Internal visual review + GitHub Actions",
+      "verified_at": "2026-09-18T19:05:00+02:00"
     }
   ]
 }
