@@ -83,7 +83,7 @@ jobs:
       - name: Install Python dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
       - name: Python formatting
-        run: black --check .
+        run: black --check --diff .
       - name: Python linting
         run: ruff check .
       - name: Static type checks
