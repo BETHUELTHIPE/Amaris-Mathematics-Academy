@@ -40,20 +40,18 @@ jobs:
           fi
 
       - name: Trigger Render deployment
-        id: trigger
         shell: bash
         env:
           DEPLOY_HOOK_URL: ${{ secrets.STAGING_RENDER_DEPLOY_HOOK_URL }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
         run: |
           set -euo pipefail
-
           if [ -n "${DEPLOY_HOOK_URL}" ]; then
             echo "::add-mask::${DEPLOY_HOOK_URL}"
-            curl --fail --silent --show-error               --request POST               --max-time 30               "${DEPLOY_HOOK_URL}" >/tmp/render-trigger.json
+            curl --fail --silent --show-error --request POST --max-time 30 "${DEPLOY_HOOK_URL}" >/tmp/render-trigger.json
             echo "Render deploy hook accepted the request."
           else
-            curl --fail --silent --show-error               --request POST               --max-time 30               --header "Authorization: Bearer ${RENDER_API_KEY}"               --header "Content-Type: application/json"               "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys"               --data '{}' >/tmp/render-trigger.json
+            curl --fail --silent --show-error --request POST --max-time 30               --header "Authorization: Bearer ${RENDER_API_KEY}"               --header "Content-Type: application/json"               "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys"               --data '{}' >/tmp/render-trigger.json
             echo "Render API accepted the deployment request."
           fi
 
@@ -61,23 +59,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           expected_sha="${GITHUB_SHA}"
           ready_url="${STAGING_BASE_URL}/health/ready/"
           version_url="${STAGING_BASE_URL}/health/version/"
 
           for attempt in $(seq 1 72); do
-            ready_code=$(curl --silent --show-error --output /tmp/ready.json               --write-out '%{http_code}' --max-time 15 "${ready_url}" || true)
-            version_code=$(curl --silent --show-error --output /tmp/version.json               --write-out '%{http_code}' --max-time 15 "${version_url}" || true)
-            deployed_sha=$(python - <<'PY'
-import json
-try:
-    with open("/tmp/version.json", encoding="utf-8") as handle:
-        print(json.load(handle).get("git_sha", ""))
-except Exception:
-    print("")
-PY
-)
+            ready_code=$(curl --silent --show-error --output /tmp/ready.json --write-out '%{http_code}' --max-time 15 "${ready_url}" || true)
+            version_code=$(curl --silent --show-error --output /tmp/version.json --write-out '%{http_code}' --max-time 15 "${version_url}" || true)
+            deployed_sha=$(python -c 'import json; import pathlib; p=pathlib.Path("/tmp/version.json"); print(json.loads(p.read_text(encoding="utf-8")).get("git_sha", "") if p.exists() else "")' 2>/dev/null || true)
 
             echo "attempt=${attempt} ready=${ready_code} version=${version_code} deployed_sha=${deployed_sha} expected=${expected_sha}"
 
@@ -87,7 +76,6 @@ PY
               cat /tmp/version.json
               exit 0
             fi
-
             sleep 10
           done
 
