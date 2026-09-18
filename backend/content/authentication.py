@@ -10,10 +10,11 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 from django.core.cache import cache
 from django.db import IntegrityError
+from jwt import PyJWKClient
+from jwt import decode as decode_jwt
+from jwt.exceptions import PyJWTError
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 from rest_framework.exceptions import APIException, AuthenticationFailed
-from jwt import PyJWKClient, decode as decode_jwt
-from jwt.exceptions import PyJWTError
 
 from .models import StudentRecord
 
