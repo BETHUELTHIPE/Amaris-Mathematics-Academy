@@ -43,9 +43,10 @@ jobs:
           body=$(mktemp)
           code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --max-time 30 "$site/verify-email?email=test%40example.com&registered=1")
           test "$code" = "200"
-          grep -q 'No code entry is required for the current email format' "$body"
-          grep -q 'Send a new verification email' "$body"
-          ! grep -q 'Enter the six-digit code sent to' "$body"
+          grep -q 'Enter the six-digit verification code sent to' "$body"
+          grep -q 'Verify six-digit code' "$body"
+          grep -q 'Send a new code and verification link' "$body"
+          grep -q 'Confirm your email' "$body"
 
       - name: Verify backend health and dependencies
         shell: bash
