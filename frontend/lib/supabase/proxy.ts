@@ -13,6 +13,26 @@ export async function refreshSupabaseSession(request: NextRequest) {
     nextResponse.headers.set("x-correlation-id", correlationReference);
     return nextResponse;
   };
+
+  const protectedPath = ["/dashboard", "/documents", "/checkout", "/learn"].some(
+    (path) => request.nextUrl.pathname.startsWith(path),
+  );
+  const returnTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  const hasAuthCookie = request.cookies
+    .getAll()
+    .some(({ name }) => /^sb-.+-auth-token(?:\.\d+)?$/.test(name));
+
+  // Enforce authentication at the request boundary. This produces a real
+  // HTTP redirect on Node/Vinext instead of relying on a server-component
+  // redirect that may be serialized into a 200 HTML shell.
+  if (protectedPath && !hasAuthCookie) {
+    const destination = new URL("/login", request.url);
+    destination.searchParams.set("next", returnTo);
+    const redirectResponse = NextResponse.redirect(destination);
+    redirectResponse.headers.set("x-correlation-id", correlationReference);
+    return redirectResponse;
+  }
+
   const config = getSupabaseConfig();
   if (!config) return createResponse();
 
@@ -49,12 +69,9 @@ export async function refreshSupabaseSession(request: NextRequest) {
     },
   });
 
-  // Verify the token and refresh it before any page or action reads identity.
+  // Verify and refresh an existing token before protected pages/actions read it.
   const { error: claimsError } = await supabase.auth.getClaims();
-  const hasAuthCookie = request.cookies.getAll().some(({ name }) => /^sb-.+-auth-token(?:\.\d+)?$/.test(name));
-  const protectedPath = ["/dashboard", "/documents", "/checkout"].some((path) => request.nextUrl.pathname.startsWith(path));
-  if (claimsError && hasAuthCookie && protectedPath) {
-    const returnTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  if (claimsError && protectedPath) {
     const destination = new URL("/session-expired", request.url);
     destination.searchParams.set("next", returnTo);
     const redirectResponse = NextResponse.redirect(destination);
