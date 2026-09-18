@@ -145,7 +145,7 @@ class SupabaseStudentAuthentication(BaseAuthentication):
         if expected_ref and claims.get("ref") != expected_ref:
             raise AuthenticationFailed("Synthetic acceptance is restricted to the main branch.")
 
-        student, _ = StudentRecord.objects.update_or_create(
+        student, created = StudentRecord.objects.get_or_create(
             supabase_user_id=GITHUB_ACCEPTANCE_STUDENT_ID,
             defaults={
                 "email": GITHUB_ACCEPTANCE_EMAIL,
@@ -154,6 +154,21 @@ class SupabaseStudentAuthentication(BaseAuthentication):
                 "is_active": True,
             },
         )
+        if not created:
+            changed_fields: list[str] = []
+            expected = {
+                "email": GITHUB_ACCEPTANCE_EMAIL,
+                "first_name": "Acceptance",
+                "last_name": "Student",
+                "is_active": True,
+            }
+            for field, value in expected.items():
+                if getattr(student, field) != value:
+                    setattr(student, field, value)
+                    changed_fields.append(field)
+            if changed_fields:
+                changed_fields.append("updated_at")
+                student.save(update_fields=changed_fields)
         principal = SupabaseStudentPrincipal(
             student=student,
             supabase_user_id=str(GITHUB_ACCEPTANCE_STUDENT_ID),

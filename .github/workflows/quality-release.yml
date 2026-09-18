@@ -545,7 +545,7 @@ jobs:
           python -m locust -f load_tests/capacity_locustfile.py --headless --host "$LOADTEST_TARGET_URL" --processes 4 --csv load_tests/results/locust-100 --csv-full-history --html load_tests/results/locust-100.html
 
       - name: Publish 100-user capacity evidence
-        if: always()
+        if: always() && hashFiles('backend/load_tests/results/**') != ''
         uses: actions/upload-artifact@v4
         with:
           name: staging-capacity-100-${{ github.run_id }}

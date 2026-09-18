@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import time
 import traceback
 from pathlib import Path
 
@@ -131,6 +132,70 @@ def check_offline_recovery(page: Page) -> None:
         "Connection-restored state did not appear after reconnecting",
     )
 
+def check_course_search(page: Page) -> None:
+    goto(page, "/courses")
+    search = page.get_by_role("textbox", name="Search mathematics courses")
+    require(search.is_visible(), "Course search field is not visible")
+
+    search.fill("Engineering Mathematics N4")
+    require(
+        page.get_by_role("heading", name="Engineering Mathematics N4").is_visible(),
+        "Representative N4 search did not return the expected course",
+    )
+    require(
+        not page.get_by_role("heading", name="CAPS Grade 12 Mathematics").is_visible(),
+        "Unrelated CAPS course remained visible for the exact N4 search",
+    )
+
+    search.fill("no-such-amaris-course")
+    require(
+        page.get_by_text("No courses match that search.", exact=True).is_visible(),
+        "Course search does not provide a useful empty state",
+    )
+
+    search.fill("")
+    page.get_by_role("button", name="University", exact=True).click()
+    require(
+        page.get_by_role("heading", name="University Calculus Foundations").is_visible(),
+        "University filter did not expose the calculus pathway",
+    )
+    require(
+        page.get_by_role("heading", name="Linear Algebra Essentials").is_visible(),
+        "University filter did not expose the linear algebra pathway",
+    )
+    require(
+        not page.get_by_role("heading", name="CAPS Grade 12 Mathematics").is_visible(),
+        "University filter left a CAPS course visible",
+    )
+    assert_no_horizontal_overflow(page, "course search")
+
+
+def check_slow_network_recovery(page: Page) -> None:
+    goto(page, "/contact")
+    page.locator("#fullName").fill("Slow Network Synthetic Student")
+    page.locator("#email").fill("slow.network.student@example.test")
+    page.locator("#enquiryType").select_option("technical-support")
+    page.locator("#message").fill("Synthetic slow-network submission used to verify resilient form delivery.")
+    page.locator("#consent").check()
+
+    def delay_contact_post(route) -> None:
+        if route.request.method == "POST":
+            time.sleep(1.5)
+        route.continue_()
+
+    page.route("**/contact*", delay_contact_post)
+    try:
+        submit_button = page.get_by_role("button", name=re.compile("Send enquiry"))
+        submit_button.click()
+        success = page.get_by_text("Enquiry received", exact=True)
+        success.wait_for(state="visible", timeout=15_000)
+        require(success.is_visible(), "Slow-network enquiry did not recover and complete")
+    finally:
+        page.unroute("**/contact*", delay_contact_post)
+
+    assert_no_horizontal_overflow(page, "slow-network recovery")
+
+
 def check_dashboard(page: Page) -> None:
     goto(page, "/dashboard")
     require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
@@ -159,13 +224,30 @@ def check_checkout(page: Page) -> None:
     href = cta.get_attribute("href") or ""
     require(href.startswith("/checkout/"), "Checkout entry CTA does not open the protected checkout flow")
 
+    payment_states = (
+        ("/payments/pending", "Your payment is still being confirmed."),
+        ("/payments/processing", "Your payment is being processed."),
+        ("/payments/paid", "Payment confirmed."),
+        ("/payments/cancelled", "No payment was completed."),
+        ("/payments/failed", "PayFast could not complete the payment."),
+        ("/payments/expired", "This checkout session has expired."),
+        ("/payments/refunded", "Your refund has been recorded."),
+    )
+    for path, heading in payment_states:
+        goto(page, path)
+        require(
+            page.get_by_role("heading", name=heading).is_visible(),
+            f"Checkout state {path} is not clearly communicated",
+        )
+        state_slug = path.rsplit("/", 1)[-1]
+        page.screenshot(path=str(ARTIFACT_DIR / f"payment-state-{state_slug}.png"), full_page=True)
+        assert_no_horizontal_overflow(page, f"checkout state {path}")
+
     goto(page, "/payments/pending")
     require(
-        page.get_by_role("heading", name="Your payment is still being confirmed.").is_visible(),
-        "Payment-pending recovery state is not visible",
+        page.get_by_text(re.compile("Please do not pay again", re.IGNORECASE)).is_visible(),
+        "Duplicate-payment warning is not visible",
     )
-    require(page.get_by_text(re.compile("Please do not pay again", re.IGNORECASE)).is_visible(), "Duplicate-payment warning is not visible")
-    assert_no_horizontal_overflow(page, "checkout/payment state")
 
 
 def check_lesson_interface(page: Page) -> None:
@@ -183,6 +265,8 @@ CHECKS = (
     ("navigation", check_navigation),
     ("forms", check_form),
     ("offline-recovery", check_offline_recovery),
+    ("slow-network", check_slow_network_recovery),
+    ("course-search", check_course_search),
     ("dashboard", check_dashboard),
     ("tables", check_table),
     ("checkout", check_checkout),
