@@ -126,6 +126,11 @@ CACHES = {
 PUBLIC_CONTENT_CACHE_SECONDS = int(os.getenv("PUBLIC_CONTENT_CACHE_SECONDS", "300"))
 SITE_BOOTSTRAP_CACHE_SECONDS = int(os.getenv("SITE_BOOTSTRAP_CACHE_SECONDS", "60"))
 
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+SUPABASE_AUTH_TIMEOUT_SECONDS = float(os.getenv("SUPABASE_AUTH_TIMEOUT_SECONDS", "4"))
+SUPABASE_AUTH_CACHE_SECONDS = int(os.getenv("SUPABASE_AUTH_CACHE_SECONDS", "15"))
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
