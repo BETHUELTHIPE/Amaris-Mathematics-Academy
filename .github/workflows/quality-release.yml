@@ -408,6 +408,7 @@ jobs:
     needs: [publish-image]
     permissions:
       contents: write
+      id-token: write
     environment:
       name: staging
       url: https://amaris-mathematics-academy-staging.onrender.com
@@ -451,6 +452,42 @@ PY
           cat /tmp/ready.json 2>/dev/null || true
           cat /tmp/version.json 2>/dev/null || true
           exit 1
+
+      - name: Verify real staging checkout and resume journey
+        shell: bash
+        env:
+          STAGING_BASE_URL: https://amaris-mathematics-academy-staging.onrender.com
+        run: |
+          set -euo pipefail
+
+          oidc_response=$(curl --fail --silent --show-error             -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=amaris-staging")
+          oidc_token=$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$oidc_response")
+          echo "::add-mask::$oidc_token"
+          auth=(-H "Authorization: Bearer $oidc_token" -H "X-Amaris-Acceptance: github-actions")
+
+          seed=$(curl --fail --silent --show-error "${auth[@]}"             -H "Content-Type: application/json"             -X POST "$STAGING_BASE_URL/api/v1/student/acceptance/seed/"             -d '{}')
+          course_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["course_slug"])' <<<"$seed")
+          lesson_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["lesson_slug"])' <<<"$seed")
+          test "$course_slug" = "acceptance-capacity-mathematics"
+          test "$lesson_slug" = "acceptance-algebra"
+
+          key="acceptance-${GITHUB_SHA:0:32}"
+          checkout=$(curl --fail --silent --show-error "${auth[@]}"             -H "Content-Type: application/json"             -X POST "$STAGING_BASE_URL/api/v1/student/checkout/"             -d "{"course_slug":"$course_slug","idempotency_key":"$key"}")
+          reference=$(python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="pending"; assert "sandbox.payfast.co.za" in p["gateway_url"]; print(p["payment_reference"])' <<<"$checkout")
+
+          payment=$(curl --fail --silent --show-error "${auth[@]}"             "$STAGING_BASE_URL/api/v1/student/payments/$reference/")
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="pending"; assert p["enrollment_status"] is None' <<<"$payment"
+
+          progress=$(curl --fail --silent --show-error "${auth[@]}"             -H "Content-Type: application/json"             -X PATCH "$STAGING_BASE_URL/api/v1/student/progress/"             -d "{"course_slug":"$course_slug","lesson_slug":"$lesson_slug","position_seconds":347,"progress_percent":42}")
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["last_lesson"]["slug"]=="acceptance-algebra"; assert p["last_position_seconds"]==347; assert p["progress_percent"]==42' <<<"$progress"
+
+          resume=$(curl --fail --silent --show-error "${auth[@]}"             "$STAGING_BASE_URL/api/v1/student/resume/$course_slug/")
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["last_lesson"]["slug"]=="acceptance-algebra"; assert p["last_position_seconds"]==347; assert p["progress_percent"]==42' <<<"$resume"
+
+          lesson=$(curl --fail --silent --show-error "${auth[@]}"             "$STAGING_BASE_URL/api/v1/student/lessons/$course_slug/$lesson_slug/")
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["lesson"]["slug"]=="acceptance-algebra"; assert p["resume"]["last_position_seconds"]==347' <<<"$lesson"
+
+          echo "Real staging checkout/status/progress/resume/lesson journey passed without contacting PayFast."
 
   deploy-production:
     name: Approve, deploy, and verify production
