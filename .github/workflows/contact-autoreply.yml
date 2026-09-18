@@ -59,14 +59,14 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Generate an ephemeral Django secret
         shell: bash
         run: |
           secret="$(openssl rand -hex 64)"
           echo "::add-mask::$secret"
           printf 'DJANGO_SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -75,6 +75,8 @@ jobs:
             backend/requirements-dev.txt
       - name: Install dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
+      - name: Django configuration check
+        run: python manage.py check
       - name: Check formatting
         run: >-
           black --diff --check
@@ -91,7 +93,7 @@ jobs:
           tests/integration/test_contact_enquiry_autoreply.py
       - name: Apply test migrations
         run: python manage.py migrate --noinput
-      - name: Run mocked OpenAI and letterhead rendering tests
+      - name: Run mocked OpenAI and new-letterhead rendering tests
         run: >-
           python manage.py test
           tests.unit.test_enquiry_ai_autoreply
