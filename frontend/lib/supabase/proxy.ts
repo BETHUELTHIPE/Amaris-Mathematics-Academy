@@ -52,7 +52,7 @@ export async function refreshSupabaseSession(request: NextRequest) {
   // Verify the token and refresh it before any page or action reads identity.
   const { error: claimsError } = await supabase.auth.getClaims();
   const hasAuthCookie = request.cookies.getAll().some(({ name }) => /^sb-.+-auth-token(?:\.\d+)?$/.test(name));
-  const protectedPath = ["/dashboard", "/documents", "/checkout"].some((path) => request.nextUrl.pathname.startsWith(path));
+  const protectedPath = ["/dashboard", "/documents", "/checkout", "/learn", "/payments/status"].some((path) => request.nextUrl.pathname.startsWith(path));
   if (claimsError && hasAuthCookie && protectedPath) {
     const returnTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
     const destination = new URL("/session-expired", request.url);

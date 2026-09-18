@@ -1,13 +1,17 @@
+import { env } from "cloudflare:workers";
+
 const DEFAULT_SITE_URL =
   "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site";
 
-function readEnvironmentValue(key: string): string | undefined {
+export function readEnvironmentValue(key: string): string | undefined {
   if (typeof process !== "undefined") {
     const processValue = process.env[key];
     if (processValue) return processValue;
   }
 
-  return undefined;
+  const bindings = env as unknown as Record<string, string | undefined>;
+  const workerValue = bindings[key];
+  return workerValue || undefined;
 }
 
 export function getSupabaseConfig(): {

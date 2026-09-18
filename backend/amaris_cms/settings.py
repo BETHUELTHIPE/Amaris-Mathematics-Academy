@@ -133,6 +133,37 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT_SECONDS", "10"))
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@localhost>")
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+TRANSACTIONAL_EMAIL_REQUIRED = env_bool("TRANSACTIONAL_EMAIL_REQUIRED", False)
+if TRANSACTIONAL_EMAIL_REQUIRED and not DEBUG:
+    missing_email = [
+        name
+        for name, value in {
+            "EMAIL_HOST": EMAIL_HOST,
+            "EMAIL_HOST_USER": EMAIL_HOST_USER,
+            "EMAIL_HOST_PASSWORD": EMAIL_HOST_PASSWORD,
+            "DEFAULT_FROM_EMAIL": DEFAULT_FROM_EMAIL,
+        }.items()
+        if not str(value).strip() or (name == "DEFAULT_FROM_EMAIL" and "localhost" in str(value))
+    ]
+    if missing_email:
+        raise RuntimeError(
+            "Transactional email is required but SMTP configuration is incomplete: " + ", ".join(sorted(missing_email))
+        )
+
 LANGUAGE_CODE = "en-za"
 TIME_ZONE = "Africa/Johannesburg"
 USE_I18N = True
@@ -214,6 +245,12 @@ CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 CELERY_BROKER_POOL_LIMIT = int(os.getenv("CELERY_BROKER_POOL_LIMIT", "10"))
 CELERY_RESULT_EXPIRES = int(os.getenv("CELERY_RESULT_EXPIRES_SECONDS", "86400"))
 CELERY_TASK_IGNORE_RESULT = True
+CELERY_TASK_ROUTES = {
+    "content.tasks.deliver_notification_outbox": {"queue": "notifications"},
+    "content.tasks.deliver_queued_notifications": {"queue": "notifications"},
+    "content.tasks.reconcile_payments": {"queue": "critical"},
+    "content.tasks.publish_scheduled_content": {"queue": "default"},
+}
 CELERY_TASK_PUBLISH_RETRY = True
 CELERY_TASK_PUBLISH_RETRY_POLICY = {
     "max_retries": 5,
@@ -248,6 +285,10 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-verified-payments": {
         "task": "content.tasks.reconcile_payments",
         "schedule": 300.0,
+    },
+    "deliver-transactional-notifications": {
+        "task": "content.tasks.deliver_queued_notifications",
+        "schedule": 60.0,
     },
 }
 

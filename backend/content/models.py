@@ -442,6 +442,14 @@ class Enrollment(TimeStampedModel):
     course = models.ForeignKey(Course, related_name="enrollments", on_delete=models.PROTECT)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
     progress_percent = models.PositiveSmallIntegerField(default=0)
+    last_lesson = models.ForeignKey(
+        "Lesson",
+        related_name="resume_enrollments",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+    )
+    last_position_seconds = models.PositiveIntegerField(default=0)
     enrolled_at = models.DateTimeField(default=timezone.now)
     completed_at = models.DateTimeField(blank=True, null=True)
 
