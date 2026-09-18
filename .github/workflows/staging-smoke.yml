@@ -1,0 +1,51 @@
+name: Staging Smoke Verification
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for staging readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://amaris-mathematics-academy-staging.onrender.com"
+          for attempt in $(seq 1 30); do
+            live=$(curl --silent --show-error --output /tmp/live.json --write-out '%{http_code}' --max-time 15 "$base/health/live/" || true)
+            ready=$(curl --silent --show-error --output /tmp/ready.json --write-out '%{http_code}' --max-time 15 "$base/health/ready/" || true)
+            if [ "$live" = "200" ] && [ "$ready" = "200" ]; then
+              cat /tmp/live.json
+              cat /tmp/ready.json
+              exit 0
+            fi
+            echo "attempt=$attempt live=$live ready=$ready"
+            sleep 10
+          done
+          echo "Staging did not become healthy in the allowed window." >&2
+          cat /tmp/live.json 2>/dev/null || true
+          cat /tmp/ready.json 2>/dev/null || true
+          exit 1
+
+      - name: Verify dependency endpoint without requiring noncritical cache health
+        shell: bash
+        run: |
+          set -euo pipefail
+          body=$(mktemp)
+          code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --max-time 15 \
+            https://amaris-mathematics-academy-staging.onrender.com/health/dependencies/)
+          cat "$body"
+          test "$code" = "200"
+          python - "$body" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding='utf-8') as fh:
+              payload = json.load(fh)
+          assert payload['dependencies']['postgresql'] is True
+          PY

@@ -99,10 +99,13 @@
     {
       "id": 10,
       "name": "Protected content is never publicly cached",
-      "status": "pending",
-      "evidence": [],
-      "verified_by": null,
-      "verified_at": null
+      "status": "passed",
+      "evidence": [
+        "GitHub Actions Quality Gates and Release run 35344274130 passed the production worker protected-response cache-header test on release commit 179691dea3f6626d3f83f066991149e8e8c08a43.",
+        "The test verifies protected /checkout responses are private, no-store, max-age=0 with Vary: Cookie and confirms protected prefixes for dashboard, documents, checkout and auth-state handling."
+      ],
+      "verified_by": "GitHub Actions",
+      "verified_at": "2026-09-18T14:25:00+02:00"
     },
     {
       "id": 11,
