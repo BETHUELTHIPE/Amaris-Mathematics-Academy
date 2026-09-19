@@ -27,7 +27,7 @@ export const academyBrand: AcademyBrand = {
   addressShort: "27 Tshivhase Street, Atteridgeville, Pretoria",
   addressHref: "https://maps.google.com/?q=27+Tshivhase+Street,+Atteridgeville,+Pretoria,+Gauteng,+0008",
   hours: "Mon–Sun, 07:00–20:00",
-  website: "amaris-mathematics-academy.bethuelthipe.chatgpt.site",
-  websiteHref: "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site",
+  website: "amaris-mathematics-academy-live-students.onrender.com",
+  websiteHref: "https://amaris-mathematics-academy-live-students.onrender.com",
   logoPath: "/brand/amaris-academy-icon-192.png",
 };
