@@ -168,10 +168,7 @@ def build_website_context() -> str:
                         _clean(plan.billing_label, 100),
                         _clean(plan.description, 320),
                         "features=" + _clean(", ".join(str(item) for item in (plan.features or [])), 500),
-                        (
-                            f"cta={_clean(plan.call_to_action_label, 100)} -> "
-                            f"{_public_url(plan.call_to_action_url)}"
-                        ),
+                        (f"cta={_clean(plan.call_to_action_label, 100)} -> " f"{_public_url(plan.call_to_action_url)}"),
                     ]
                 )
             )
@@ -187,9 +184,7 @@ def build_website_context() -> str:
         lines.append("\nPublished website pages:")
         for page in pages:
             page_path = "/" if page.slug in {"home", "homepage"} else f"/{page.slug}"
-            lines.append(
-                f"- {_clean(page.title, 160)} | url={_public_url(page_path)}: {_clean(page.summary, 500)}"
-            )
+            lines.append(f"- {_clean(page.title, 160)} | url={_public_url(page_path)}: {_clean(page.summary, 500)}")
 
     sections = (
         PageSection.objects.filter(_live_filter(), page__in=pages)
@@ -204,8 +199,7 @@ def build_website_context() -> str:
             ]
             if section.call_to_action_label or section.call_to_action_url:
                 details.append(
-                    f"CTA={_clean(section.call_to_action_label, 100)} -> "
-                    f"{_public_url(section.call_to_action_url)}"
+                    f"CTA={_clean(section.call_to_action_label, 100)} -> " f"{_public_url(section.call_to_action_url)}"
                 )
             structured = _structured_content(section.content)
             if structured:
