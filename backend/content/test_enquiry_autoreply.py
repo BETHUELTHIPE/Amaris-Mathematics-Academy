@@ -2,8 +2,9 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 
-from content.models import ContactEnquiry
+from content.models import ContactEnquiry, Course, CourseCategory, Page, PageSection, SiteSettings
 from content.serializers import ContactEnquirySerializer
+from content.services.enquiry_autoreply import build_website_context
 
 
 @override_settings(
@@ -21,7 +22,11 @@ class EnquiryAutoReplyTests(TestCase):
     @patch(
         "content.services.enquiry_autoreply._call_openai",
         return_value=(
-            "Hello Student,\n\nWe can help with the published mathematics courses.\n\nKind regards,\nAmaris Mathematics Academy",
+            (
+                "Hello Student,\n\n"
+                "We can help with the published mathematics courses.\n\n"
+                "Kind regards,\nAmaris Mathematics Academy"
+            ),
             "resp_test_123",
         ),
     )
@@ -47,6 +52,71 @@ class EnquiryAutoReplyTests(TestCase):
         self.assertIn("AI AUTO-REPLY SENT", enquiry.admin_notes)
         self.assertIn("resp_test_123", enquiry.admin_notes)
         send.assert_called_once_with(fail_silently=False)
+
+    @override_settings(PUBLIC_SITE_URL="https://academy.example.test")
+    def test_website_context_includes_registration_verification_and_purchase_workflow(self):
+        SiteSettings.objects.create(
+            site_name="Amaris Mathematics Academy",
+            phone="071 415 6665",
+            email="support@example.test",
+            business_hours="Mon-Sun, 07:00-20:00",
+        )
+        category = CourseCategory.objects.create(name="CAPS", slug="caps")
+        Course.objects.create(
+            category=category,
+            title="Grade 12 Mathematics",
+            slug="grade-12-mathematics",
+            short_description="Exam-focused Grade 12 mathematics.",
+            description="Structured Grade 12 mathematics course.",
+            curriculum="CAPS",
+            academic_level="Grade 12",
+            price=950,
+            estimated_hours=20,
+            status=Course.Status.PUBLISHED,
+        )
+
+        context = build_website_context()
+
+        self.assertIn("Official website student workflow:", context)
+        self.assertIn("https://academy.example.test/register", context)
+        self.assertIn("six-digit verification code", context)
+        self.assertIn("secure confirmation link", context)
+        self.assertIn("https://academy.example.test/login", context)
+        self.assertIn("https://academy.example.test/courses", context)
+        self.assertIn("https://academy.example.test/checkout/<course-slug>", context)
+        self.assertIn("continues to PayFast", context)
+        self.assertIn("only after the server verifies the PayFast notification", context)
+        self.assertIn("https://academy.example.test/dashboard", context)
+        self.assertIn(
+            "url=https://academy.example.test/courses/grade-12-mathematics",
+            context,
+        )
+
+    @override_settings(PUBLIC_SITE_URL="https://academy.example.test")
+    def test_website_context_includes_published_page_ctas_and_structured_content(self):
+        page = Page.objects.create(
+            title="How it works",
+            slug="how-it-works",
+            summary="Learn how to join Amaris.",
+            is_published=True,
+        )
+        PageSection.objects.create(
+            page=page,
+            section_key="registration",
+            heading="Create your profile",
+            body="Register and verify your email before enrolling.",
+            call_to_action_label="Register",
+            call_to_action_url="/register",
+            content={"steps": ["Register", "Verify email", "Choose a course"]},
+            is_published=True,
+        )
+
+        context = build_website_context()
+
+        self.assertIn("url=https://academy.example.test/how-it-works", context)
+        self.assertIn("CTA=Register -> https://academy.example.test/register", context)
+        self.assertIn("structured_content=", context)
+        self.assertIn("Choose a course", context)
 
     @override_settings(OPENAI_API_KEY="")
     @patch("content.services.enquiry_autoreply.EmailMessage.send")
