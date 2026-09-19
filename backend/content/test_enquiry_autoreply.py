@@ -22,7 +22,11 @@ class EnquiryAutoReplyTests(TestCase):
     @patch(
         "content.services.enquiry_autoreply._call_openai",
         return_value=(
-            "Hello Student,\n\nWe can help with the published mathematics courses.\n\nKind regards,\nAmaris Mathematics Academy",
+            (
+                "Hello Student,\n\n"
+                "We can help with the published mathematics courses.\n\n"
+                "Kind regards,\nAmaris Mathematics Academy"
+            ),
             "resp_test_123",
         ),
     )
