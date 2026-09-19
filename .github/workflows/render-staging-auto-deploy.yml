@@ -30,12 +30,12 @@ jobs:
       - name: Validate deployment credential
         shell: bash
         env:
-          DEPLOY_HOOK_URL: ${{ secrets.STAGING_RENDER_DEPLOY_HOOK_URL }}
+          DEPLOY_HOOK_URL: ${{ secrets.AMARIS_STAGING_RENDER_DEPLOY_HOOK_URL }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
         run: |
           set -euo pipefail
           if [ -z "${DEPLOY_HOOK_URL}" ] && [ -z "${RENDER_API_KEY}" ]; then
-            echo "::error::Configure either STAGING_RENDER_DEPLOY_HOOK_URL or RENDER_API_KEY in the GitHub staging environment."
+            echo "::error::Configure either AMARIS_STAGING_RENDER_DEPLOY_HOOK_URL or RENDER_API_KEY in the GitHub staging environment."
             exit 1
           fi
 
@@ -43,7 +43,7 @@ jobs:
             case "${DEPLOY_HOOK_URL}" in
               https://api.render.com/deploy/*) ;;
               *)
-                echo "::error::STAGING_RENDER_DEPLOY_HOOK_URL is not a Render deploy-hook URL. Do not use the onrender.com application URL."
+                echo "::error::AMARIS_STAGING_RENDER_DEPLOY_HOOK_URL is not a Render deploy-hook URL. Do not use the onrender.com application URL."
                 exit 1
                 ;;
             esac
@@ -52,7 +52,7 @@ jobs:
       - name: Trigger Render deployment
         shell: bash
         env:
-          DEPLOY_HOOK_URL: ${{ secrets.STAGING_RENDER_DEPLOY_HOOK_URL }}
+          DEPLOY_HOOK_URL: ${{ secrets.AMARIS_STAGING_RENDER_DEPLOY_HOOK_URL }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
         run: |
           set -euo pipefail
