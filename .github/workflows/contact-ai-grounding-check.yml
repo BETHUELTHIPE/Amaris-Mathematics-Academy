@@ -28,7 +28,7 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
       - name: Check formatting
-        run: black --check content/services/enquiry_autoreply.py content/test_enquiry_autoreply.py
+        run: black --check --diff content/services/enquiry_autoreply.py content/test_enquiry_autoreply.py
       - name: Lint grounding changes
         run: ruff check content/services/enquiry_autoreply.py content/test_enquiry_autoreply.py
       - name: Run contact AI grounding tests
