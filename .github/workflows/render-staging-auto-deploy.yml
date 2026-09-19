@@ -39,6 +39,16 @@ jobs:
             exit 1
           fi
 
+          if [ -n "${DEPLOY_HOOK_URL}" ]; then
+            case "${DEPLOY_HOOK_URL}" in
+              https://api.render.com/deploy/*) ;;
+              *)
+                echo "::error::STAGING_RENDER_DEPLOY_HOOK_URL is not a Render deploy-hook URL. Do not use the onrender.com application URL."
+                exit 1
+                ;;
+            esac
+          fi
+
       - name: Trigger Render deployment
         shell: bash
         env:
