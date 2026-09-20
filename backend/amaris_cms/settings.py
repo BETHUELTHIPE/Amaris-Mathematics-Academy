@@ -3,8 +3,57 @@ import secrets
 from pathlib import Path
 
 import dj_database_url
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _load_render_secret_env_files() -> None:
+    candidates = [
+        Path("/etc/secrets/.env"),
+        Path("/etc/secrets/env"),
+        BASE_DIR / ".env",
+        BASE_DIR.parent / ".env",
+    ]
+    secret_dir = Path("/etc/secrets")
+    if secret_dir.is_dir():
+        candidates.extend(sorted(secret_dir.glob(".env*")))
+        candidates.extend(sorted(secret_dir.glob("*.env")))
+
+        expected_markers = (
+            "OPENAI_API_KEY=",
+            "OPENAI_KEY=",
+            "OPENAI_APIKEY=",
+            "EMAIL_HOST_USER=",
+            "EMAIL_HOST_PASSWORD=",
+            "GMAIL_USER=",
+            "GMAIL_EMAIL=",
+            "GMAIL_APP_PASSWORD=",
+            "DEFAULT_FROM_EMAIL=",
+        )
+        for secret_file in sorted(secret_dir.iterdir()):
+            if not secret_file.is_file() or secret_file in candidates:
+                continue
+            try:
+                preview = secret_file.read_text(encoding="utf-8", errors="ignore")[:8192]
+            except OSError:
+                continue
+            if any(marker in preview for marker in expected_markers):
+                candidates.append(secret_file)
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate
+        if resolved in seen or not candidate.is_file():
+            continue
+        seen.add(resolved)
+        load_dotenv(candidate, override=False)
+
+
+_load_render_secret_env_files()
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -260,13 +309,18 @@ EMAIL_BACKEND = os.getenv(
 )
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER") or os.getenv("GMAIL_USER") or os.getenv("GMAIL_EMAIL", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD") or os.getenv("GMAIL_APP_PASSWORD", "")
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT_SECONDS", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@example.invalid>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+AI_ENQUIRY_AUTOREPLY_ENABLED = env_bool("AI_ENQUIRY_AUTOREPLY_ENABLED", True)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY") or os.getenv("OPENAI_APIKEY", "")
+OPENAI_ENQUIRY_MODEL = os.getenv("OPENAI_ENQUIRY_MODEL", "gpt-5.6-luna")
+OPENAI_ENQUIRY_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ENQUIRY_TIMEOUT_SECONDS", "10"))
 
 CELERY_BEAT_SCHEDULE = {
     "publish-scheduled-content": {

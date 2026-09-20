@@ -53,8 +53,21 @@ def health_dependencies(_request):
 
     critical_healthy = dependencies["postgresql"]
     state = "ok" if all(dependencies.values()) else ("degraded" if critical_healthy else "unavailable")
+    smtp_configured = bool(
+        "smtp.EmailBackend" in str(settings.EMAIL_BACKEND)
+        and settings.EMAIL_HOST
+        and settings.EMAIL_HOST_USER
+        and settings.EMAIL_HOST_PASSWORD
+    )
+    capabilities = {
+        "contact_ai_autoreply_enabled": bool(
+            settings.AI_ENQUIRY_AUTOREPLY_ENABLED and settings.OPENAI_API_KEY and smtp_configured
+        ),
+        "openai_configured": bool(settings.OPENAI_API_KEY),
+        "smtp_configured": smtp_configured,
+    }
     return JsonResponse(
-        {"status": state, "dependencies": dependencies},
+        {"status": state, "dependencies": dependencies, "capabilities": capabilities},
         status=200 if critical_healthy else 503,
     )
 
