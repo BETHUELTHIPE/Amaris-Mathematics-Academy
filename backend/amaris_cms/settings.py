@@ -66,9 +66,11 @@ def env_list(name: str, default: str = "") -> list[str]:
 
 
 DEBUG = env_bool("DJANGO_DEBUG", True)
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+SECRET_KEY = os.getenv("DJANGO_SIGNING_KEY") or os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY and not DEBUG:
-    raise RuntimeError("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false.")
+    raise RuntimeError(
+        "DJANGO_SIGNING_KEY or DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false."
+    )
 if not SECRET_KEY:
     SECRET_KEY = secrets.token_urlsafe(64)
 
