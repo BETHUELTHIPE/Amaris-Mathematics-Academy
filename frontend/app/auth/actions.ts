@@ -176,6 +176,10 @@ export async function resendVerificationAction(formData: FormData) {
     redirect("/errors/429");
   }
 
+  if (error) {
+    redirect(`/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("We could not send a verification email. Please try again shortly.")}`);
+  }
+
   redirect(
     `/verify-email?email=${encodeURIComponent(email)}&resent=1`,
   );
@@ -185,7 +189,7 @@ export async function loginAction(formData: FormData) {
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
-    next: formData.get("next"),
+    next: formData.get("next") ?? undefined,
   });
   if (!parsed.success) {
     redirectWithMessage(
@@ -237,6 +241,10 @@ export async function forgotPasswordAction(formData: FormData) {
     redirect("/errors/429");
   }
 
+  if (error) {
+    redirectWithMessage("/forgot-password", "error", "We could not send a password reset email. Please try again shortly.");
+  }
+
   // The same response is shown whether the account exists or not.
   redirect("/forgot-password?sent=1");
 }
@@ -264,8 +272,9 @@ export async function resetPasswordAction(formData: FormData) {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
-  if (!user) {
+  if (userError || !user) {
     redirectWithMessage(
       "/forgot-password",
       "error",
@@ -282,13 +291,17 @@ export async function resetPasswordAction(formData: FormData) {
     );
   }
 
-  await supabase.auth.signOut({ scope: "global" });
+  const { error: signOutError } = await supabase.auth.signOut({ scope: "global" });
+  if (signOutError) {
+    throw new Error("Your password changed, but we could not sign out your existing sessions. Please try signing out again.");
+  }
   redirect("/login?password_updated=1");
 }
 
 export async function signOutAction() {
   const supabase = await createSupabaseServerClient();
-  await supabase.auth.signOut({ scope: "local" });
+  const { error } = await supabase.auth.signOut({ scope: "local" });
+  if (error) throw new Error("We could not sign you out. Please try again.");
   redirect("/login?signed_out=1");
 }
 

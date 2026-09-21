@@ -24,7 +24,7 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
-const protectedPrefixes = ["/dashboard", "/documents", "/checkout", "/api/auth-state"];
+const protectedPrefixes = ["/dashboard", "/documents", "/checkout", "/learn", "/api/auth-state", "/login", "/register", "/forgot-password", "/reset-password", "/verify-email", "/auth", "/session-expired"];
 const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const csp = [
   "default-src 'self'",
@@ -47,7 +47,7 @@ async function rateLimitResponse(request: Request, env: Env, pathname: string): 
 
   let limiter: RateLimit | undefined;
   let scope = "";
-  if (pathname === "/login" || pathname.startsWith("/auth/")) {
+  if (pathname === "/login" || pathname === "/verify-email" || pathname.startsWith("/auth/")) {
     limiter = env.AUTH_RATE_LIMITER;
     scope = "auth";
   } else if (pathname === "/register") {
@@ -73,7 +73,7 @@ async function rateLimitResponse(request: Request, env: Env, pathname: string): 
   return secureResponse(response, pathname, env);
 }
 
-function secureResponse(response: Response, pathname: string, env: Env): Response {
+function secureResponse(response: Response, pathname: string, env: Env, personalized = false): Response {
   const secured = new Response(response.body, response);
   secured.headers.set("X-Content-Type-Options", "nosniff");
   secured.headers.set("X-Frame-Options", "DENY");
@@ -95,7 +95,7 @@ function secureResponse(response: Response, pathname: string, env: Env): Respons
     );
   }
 
-  if (protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+  if (personalized || secured.headers.has("Set-Cookie") || protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     secured.headers.set("Cache-Control", "private, no-store, max-age=0");
     secured.headers.append("Vary", "Cookie");
   }
@@ -125,7 +125,7 @@ const worker = {
     }
 
     const response = await handler.fetch(request, env, ctx);
-    return secureResponse(response, url.pathname, env);
+    return secureResponse(response, url.pathname, env, /(?:^|;\s*)sb-.+-auth-token(?:\.\d+)?=/.test(request.headers.get("cookie") ?? ""));
   },
 };
 

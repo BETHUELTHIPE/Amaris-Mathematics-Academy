@@ -11,6 +11,7 @@ export async function refreshSupabaseSession(request: NextRequest) {
   const createResponse = () => {
     const nextResponse = NextResponse.next({ request: { headers: requestHeaders } });
     nextResponse.headers.set("x-correlation-id", correlationReference);
+    nextResponse.headers.set("Cache-Control", "private, no-store, max-age=0");
     return nextResponse;
   };
   const config = getSupabaseConfig();
@@ -38,11 +39,12 @@ export async function refreshSupabaseSession(request: NextRequest) {
         cookiesToSet.forEach(({ name, value }) =>
           request.cookies.set(name, value),
         );
+        requestHeaders.set("cookie", request.cookies.toString());
         response = createResponse();
         cookiesToSet.forEach(({ name, value, options }) =>
           response.cookies.set(name, value, options),
         );
-        Object.entries(headersToSet).forEach(([key, value]) =>
+        Object.entries(headersToSet ?? {}).forEach(([key, value]) =>
           response.headers.set(key, value),
         );
       },
@@ -52,13 +54,15 @@ export async function refreshSupabaseSession(request: NextRequest) {
   // Verify the token and refresh it before any page or action reads identity.
   const { error: claimsError } = await supabase.auth.getClaims();
   const hasAuthCookie = request.cookies.getAll().some(({ name }) => /^sb-.+-auth-token(?:\.\d+)?$/.test(name));
-  const protectedPath = ["/dashboard", "/documents", "/checkout"].some((path) => request.nextUrl.pathname.startsWith(path));
+  const protectedPath = ["/dashboard", "/documents", "/checkout", "/learn"].some((path) => request.nextUrl.pathname.startsWith(path));
   if (claimsError && hasAuthCookie && protectedPath) {
     const returnTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
     const destination = new URL("/session-expired", request.url);
     destination.searchParams.set("next", returnTo);
     const redirectResponse = NextResponse.redirect(destination);
     redirectResponse.headers.set("x-correlation-id", correlationReference);
+    redirectResponse.headers.set("Cache-Control", "private, no-store, max-age=0");
+    response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
     return redirectResponse;
   }
   return response;
