@@ -125,6 +125,13 @@ TEMPLATES = [
 WSGI_APPLICATION = "amaris_cms.wsgi.application"
 ASGI_APPLICATION = "amaris_cms.asgi.application"
 
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if not DATABASE_URL and not DEBUG:
+    raise RuntimeError(
+        "DATABASE_URL must be set when DJANGO_DEBUG is false; "
+        "refusing to fall back to ephemeral SQLite."
+    )
+
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
