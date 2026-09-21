@@ -266,3 +266,106 @@ class SiteBootstrapSerializer(serializers.Serializer):
     settings = SiteSettingsSerializer(allow_null=True)
     navigation = NavigationItemSerializer(many=True)
     announcements = AnnouncementSerializer(many=True)
+
+
+class CourseIdentitySerializer(serializers.Serializer):
+    slug = serializers.SlugField()
+    title = serializers.CharField()
+
+
+class ResumeLessonSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    slug = serializers.SlugField()
+    title = serializers.CharField()
+    module = serializers.CharField()
+
+
+class ResumeSerializer(serializers.Serializer):
+    course_slug = serializers.SlugField()
+    enrollment_status = serializers.CharField()
+    progress_percent = serializers.IntegerField()
+    last_position_seconds = serializers.IntegerField()
+    last_lesson = ResumeLessonSerializer(allow_null=True)
+    progress_updated_at = serializers.DateTimeField(allow_null=True)
+
+
+class StudentCourseEnrollmentSerializer(serializers.Serializer):
+    course = CourseIdentitySerializer()
+    resume = ResumeSerializer()
+
+
+class LessonVideoSerializer(serializers.Serializer):
+    provider = serializers.CharField()
+    youtube_video_id = serializers.CharField(allow_blank=True)
+    duration_seconds = serializers.IntegerField()
+
+
+class StudentLessonSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    slug = serializers.SlugField()
+    title = serializers.CharField()
+    summary = serializers.CharField(allow_blank=True)
+    lesson_body = serializers.CharField(allow_blank=True)
+    duration_minutes = serializers.IntegerField()
+    module = serializers.CharField()
+    video = LessonVideoSerializer(allow_null=True)
+
+
+class StudentLessonResponseSerializer(serializers.Serializer):
+    course_slug = serializers.SlugField()
+    course_title = serializers.CharField()
+    lesson = StudentLessonSerializer()
+    resume = ResumeSerializer()
+
+
+class AcceptanceSeedResponseSerializer(serializers.Serializer):
+    student = serializers.CharField()
+    course_slug = serializers.SlugField()
+    lesson_slug = serializers.SlugField()
+    enrollment_status = serializers.CharField()
+
+
+class AcceptancePaymentCompleteResponseSerializer(serializers.Serializer):
+    payment_reference = serializers.CharField()
+    status = serializers.CharField()
+    enrollment_status = serializers.CharField(allow_null=True)
+
+
+class PaymentConflictResponseSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    reason = serializers.CharField()
+
+
+class CheckoutResponseSerializer(serializers.Serializer):
+    payment_reference = serializers.CharField()
+    status = serializers.CharField()
+    gateway_url = serializers.URLField()
+    fields = serializers.DictField(child=serializers.CharField())
+    course = CourseIdentitySerializer()
+
+
+class PaymentStatusResponseSerializer(serializers.Serializer):
+    payment_reference = serializers.CharField()
+    status = serializers.CharField()
+    course_slug = serializers.SlugField()
+    paid_at = serializers.DateTimeField(allow_null=True)
+    enrollment_status = serializers.CharField(allow_null=True)
+
+
+class PayFastITNRequestSerializer(serializers.Serializer):
+    merchant_id = serializers.CharField(required=False)
+    m_payment_id = serializers.CharField(required=False)
+    pf_payment_id = serializers.CharField(required=False)
+    payment_status = serializers.CharField(required=False)
+    amount_gross = serializers.CharField(required=False)
+    custom_str1 = serializers.CharField(required=False, allow_blank=True)
+    custom_str2 = serializers.CharField(required=False, allow_blank=True)
+    signature = serializers.CharField(required=False)
+
+
+class PayFastITNStatusSerializer(serializers.Serializer):
+    status = serializers.CharField()
+
+
+class ErrorDetailSerializer(serializers.Serializer):
+    detail = serializers.CharField()
