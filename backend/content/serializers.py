@@ -2,6 +2,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from .services.enquiry_autoreply import auto_reply_to_enquiry
+
 from .models import (
     FAQ,
     Announcement,
@@ -17,8 +19,6 @@ from .models import (
     SiteSettings,
     Testimonial,
 )
-
-from .services.enquiry_autoreply import auto_reply_to_enquiry
 
 
 class AbsoluteFileMixin:
