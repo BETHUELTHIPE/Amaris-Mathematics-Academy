@@ -3,10 +3,12 @@ from __future__ import annotations
 import ipaddress
 import os
 
+from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .serializers import ErrorDetailSerializer, PayFastITNRequestSerializer, PayFastITNStatusSerializer
 from .services.payments import HttpPayFastVerificationGateway, process_payfast_notification
 
 DEFAULT_PAYFAST_NETWORKS = (
@@ -39,6 +41,16 @@ class PayFastITNView(APIView):
     authentication_classes = ()
     permission_classes = (AllowAny,)
 
+    @extend_schema(
+        request=PayFastITNRequestSerializer,
+        responses={
+            200: PayFastITNStatusSerializer,
+            400: ErrorDetailSerializer,
+            403: ErrorDetailSerializer,
+            503: ErrorDetailSerializer,
+        },
+        auth=[],
+    )
     def post(self, request):
         remote_ip = _request_ip(request)
         try:

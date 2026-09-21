@@ -11,4 +11,4 @@ class ContentConfig(AppConfig):
         from . import payment_models  # noqa: F401
 
     def ready(self):
-        from . import payment_admin, signals  # noqa: F401
+        from . import payment_admin, schema, signals  # noqa: F401
