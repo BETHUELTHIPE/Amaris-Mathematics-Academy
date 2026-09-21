@@ -18,6 +18,8 @@ from .models import (
     Testimonial,
 )
 
+from .services.enquiry_autoreply import auto_reply_to_enquiry
+
 
 class AbsoluteFileMixin:
     def file_url(self, field) -> str | None:
@@ -254,6 +256,11 @@ class ContactEnquirySerializer(serializers.ModelSerializer):
         if len(value) < 20:
             raise serializers.ValidationError("Please provide at least 20 characters.")
         return value
+
+    def create(self, validated_data):
+        enquiry = super().create(validated_data)
+        auto_reply_to_enquiry(enquiry)
+        return enquiry
 
 
 class SiteBootstrapSerializer(serializers.Serializer):
