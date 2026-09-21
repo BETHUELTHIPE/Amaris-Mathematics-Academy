@@ -122,3 +122,10 @@ test("protected application responses are never publicly cacheable", async () =>
     assert.ok(workerSource.includes(prefix), `Missing protected prefix ${prefix}`);
   }
 });
+
+
+test("keeps the founder Facebook profile link on the About page", async () => {
+  const aboutSource = await readFile(new URL("../app/about/page.tsx", import.meta.url), "utf8");
+  assert.match(aboutSource, /https:\/\/www\.facebook\.com\/share\/19dqWUxjvh/);
+  assert.match(aboutSource, /label: "Facebook"/);
+});
