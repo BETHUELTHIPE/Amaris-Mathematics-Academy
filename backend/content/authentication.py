@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 import uuid
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
@@ -167,6 +168,17 @@ class SupabaseStudentAuthentication(BaseAuthentication):
         }
 
     def _validate_token(self, token: str) -> dict:
+        # This decode can only reject/cap caching. Identity and signature trust
+        # still come exclusively from the project's Auth server below.
+        try:
+            claims = decode_jwt(
+                token,
+                options={"verify_signature": False, "verify_exp": True, "require": ["exp"]},
+            )
+            expires_at = int(claims["exp"])
+        except (PyJWTError, ValueError, TypeError, OverflowError) as exc:
+            raise AuthenticationFailed("The student session is invalid or expired.") from exc
+
         url = str(getattr(settings, "SUPABASE_URL", "") or "").rstrip("/")
         publishable_key = str(getattr(settings, "SUPABASE_PUBLISHABLE_KEY", "") or "")
         if not url or not publishable_key:
@@ -200,7 +212,10 @@ class SupabaseStudentAuthentication(BaseAuthentication):
         except (URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
             raise AuthenticationServiceUnavailable() from exc
 
-        ttl = max(0, int(getattr(settings, "SUPABASE_AUTH_CACHE_SECONDS", 15)))
+        if not isinstance(payload, dict):
+            raise AuthenticationServiceUnavailable()
+
+        ttl = max(0, min(int(getattr(settings, "SUPABASE_AUTH_CACHE_SECONDS", 15)), int(expires_at - time.time())))
         if ttl:
             try:
                 cache.set(cache_key, payload, timeout=ttl)

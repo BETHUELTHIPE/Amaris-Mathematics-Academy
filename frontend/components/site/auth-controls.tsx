@@ -12,7 +12,7 @@ export async function AuthControls({ links }: { links: NavigationLink[] }) {
   const student = await getStudentIdentity();
   const state = !student ? "anonymous" : student.emailVerified ? "verified" : "unverified";
   const authenticated = Boolean(student);
-  const primaryHref = state === "verified" ? "/dashboard" : state === "unverified" ? "/verify-email" : "/register";
+  const primaryHref = state === "verified" ? "/dashboard" : state === "unverified" ? `/verify-email?email=${encodeURIComponent(student?.email ?? "")}` : "/register";
   const primaryLabel = state === "verified" ? "My dashboard" : state === "unverified" ? "Verify email" : "Register";
 
   return (

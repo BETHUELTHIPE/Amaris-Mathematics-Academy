@@ -17,7 +17,9 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const suppliedType = searchParams.get("type") as EmailOtpType | null;
-  const next = safeRelativePath(searchParams.get("next"));
+  // Recovery is the only auth destination permitted after a successful exchange.
+  const isRecovery = suppliedType === "recovery" || searchParams.get("next") === "/reset-password";
+  const next = isRecovery ? "/reset-password" : safeRelativePath(searchParams.get("next"));
   const supabase = await createSupabaseServerClient();
 
   let error: Error | null = null;
@@ -37,13 +39,20 @@ export async function GET(request: NextRequest) {
   }
 
   if (error) {
-    const url = new URL("/login", request.url);
+    const url = new URL(isRecovery ? "/forgot-password" : "/login", request.url);
     url.searchParams.set(
       "error",
       "This email link is invalid or has expired. Please request a new one.",
     );
-    return NextResponse.redirect(url);
+    return privateRedirect(url);
   }
 
-  return NextResponse.redirect(new URL(next, request.url));
+  return privateRedirect(new URL(next, request.url));
+}
+
+function privateRedirect(url: URL) {
+  const response = NextResponse.redirect(url);
+  response.headers.set("Cache-Control", "private, no-store, max-age=0");
+  response.headers.set("Referrer-Policy", "no-referrer");
+  return response;
 }
