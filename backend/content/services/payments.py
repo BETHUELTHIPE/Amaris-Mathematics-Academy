@@ -9,6 +9,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from functools import partial
 from typing import Protocol
 from urllib.parse import quote_plus, urlencode
 from urllib.request import Request, urlopen
@@ -262,7 +263,7 @@ def _fulfill_verified_payment(payment: Payment) -> None:
         raise PaymentSecurityError("Existing invoice does not match the verified payment.")
 
     if invoice_created or not invoice.pdf_storage_path:
-        transaction.on_commit(lambda invoice_id=invoice.pk: _queue_invoice_archive(invoice_id))
+        transaction.on_commit(partial(_queue_invoice_archive, invoice.pk))
 
     ticket, _ = ServiceTicket.objects.get_or_create(
         payment=payment,
