@@ -127,7 +127,7 @@ def archive_invoice_pdf_task(self, invoice_id: int) -> str:
     except Exception as exc:
         mark_invoice_archive_failure(invoice_id, exc)
         countdown = min(300, 2 ** min(self.request.retries + 1, 8))
-        raise self.retry(exc=exc, countdown=countdown)
+        raise self.retry(exc=exc, countdown=countdown) from exc
 
 
 @shared_task(bind=True, ignore_result=True)
