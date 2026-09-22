@@ -84,6 +84,8 @@ export const getManagedBrand = cache(async (): Promise<AcademyBrand> => {
     managingDirector: settings.managing_director,
     phoneDisplay: settings.phone,
     phoneHref: phoneHref(settings.phone),
+    whatsappDisplay: academyBrand.whatsappDisplay,
+    whatsappHref: academyBrand.whatsappHref,
     email: settings.email,
     emailHref: `mailto:${settings.email}`,
     address: settings.address,
