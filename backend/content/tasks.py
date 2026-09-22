@@ -5,7 +5,8 @@ from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
 
-from content.payment_models import NotificationOutbox
+from content.payment_models import Invoice, NotificationOutbox
+from content.services.invoices import archive_invoice_pdf, mark_invoice_archive_failure
 from content.services.reconciliation import reconcile_verified_payments
 
 
@@ -115,3 +116,38 @@ def deliver_transactional_email(_self) -> int:
         outbox.status = NotificationOutbox.Status.SENT
         outbox.save(update_fields=["status", "updated_at"])
         return 1
+
+
+@shared_task(bind=True, ignore_result=True, max_retries=6)
+def archive_invoice_pdf_task(self, invoice_id: int) -> str:
+    """Generate and archive one verified paid invoice in private Supabase Storage."""
+
+    try:
+        return archive_invoice_pdf(invoice_id)
+    except Exception as exc:
+        mark_invoice_archive_failure(invoice_id, exc)
+        countdown = min(300, 2 ** min(self.request.retries + 1, 8))
+        raise self.retry(exc=exc, countdown=countdown)
+
+
+@shared_task(bind=True, ignore_result=True)
+def archive_missing_invoice_pdfs(_self) -> int:
+    """Recovery sweep for verified invoices whose PDF was not archived yet."""
+
+    invoice_ids = list(
+        Invoice.objects.filter(
+            payment__status="paid",
+            payment__gateway_verified_at__isnull=False,
+            pdf_storage_path="",
+        )
+        .order_by("issued_at")
+        .values_list("pk", flat=True)[:100]
+    )
+    queued = 0
+    for invoice_id in invoice_ids:
+        try:
+            archive_invoice_pdf_task.delay(invoice_id)
+            queued += 1
+        except Exception:
+            continue
+    return queued
