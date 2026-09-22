@@ -49,6 +49,7 @@ class AmarisAssistantApiTests(TestCase):
             "/api/v1/assistant/",
             {"message": "How do I register?"},
             format="json",
+            secure=True,
         )
 
         self.assertEqual(response.status_code, 503)
