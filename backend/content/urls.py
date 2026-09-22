@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .assistant_views import AmarisAssistantView
 from .payfast_views import PayFastITNView
 from .student_views import (
     AcceptancePaymentCompleteView,
@@ -38,6 +39,7 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("assistant/ask/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
     path(
