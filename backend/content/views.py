@@ -3,11 +3,11 @@ from django.db.models import Count, Prefetch, Q
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
-from rest_framework.views import APIView
 
 from .models import (
     FAQ,
@@ -25,11 +25,14 @@ from .models import (
     Testimonial,
 )
 from .serializers import (
+    AmarisAssistantRequestSerializer,
+    AmarisAssistantResponseSerializer,
     AnnouncementSerializer,
     ContactEnquirySerializer,
     CourseCategorySerializer,
     CourseSerializer,
     CourseSummarySerializer,
+    ErrorDetailSerializer,
     FAQSerializer,
     NavigationItemSerializer,
     PageSerializer,
@@ -188,9 +191,18 @@ class AssistantThrottle(AnonRateThrottle):
     scope = "assistant"
 
 
-class AmarisAssistantView(APIView):
+class AmarisAssistantView(generics.GenericAPIView):
+    serializer_class = AmarisAssistantRequestSerializer
     throttle_classes = (AssistantThrottle,)
 
+    @extend_schema(
+        request=AmarisAssistantRequestSerializer,
+        responses={
+            200: AmarisAssistantResponseSerializer,
+            400: ErrorDetailSerializer,
+            503: ErrorDetailSerializer,
+        },
+    )
     def post(self, request):
         message = request.data.get("message")
         if not isinstance(message, str) or not message.strip():
