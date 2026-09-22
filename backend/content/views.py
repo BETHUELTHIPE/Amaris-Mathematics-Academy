@@ -7,6 +7,7 @@ from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
+from rest_framework.views import APIView
 
 from .models import (
     FAQ,
@@ -23,6 +24,7 @@ from .models import (
     SiteSettings,
     Testimonial,
 )
+from .services.assistant import answer_website_question
 from .serializers import (
     AnnouncementSerializer,
     ContactEnquirySerializer,
