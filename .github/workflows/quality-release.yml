@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, production-20260922]
   workflow_dispatch:
     inputs:
       deploy_production:
