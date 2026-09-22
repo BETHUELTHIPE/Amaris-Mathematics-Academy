@@ -11,6 +11,7 @@ on:
       - "frontend/app/forgot-password/**"
       - "frontend/app/reset-password/**"
       - "frontend/lib/auth.ts"
+      - "frontend/components/site/google-auth-button.tsx"
       - "frontend/lib/supabase/**"
       - "frontend/tests/**"
       - ".github/workflows/live-auth-verification.yml"
@@ -41,4 +42,4 @@ jobs:
       - name: TypeScript checks
         run: npm run typecheck
       - name: Student authentication unit tests
-        run: node --test tests/auth-identity.test.mjs tests/auth-session-actions.test.mjs tests/registration-actions.test.mjs tests/recovery-safety.test.mjs
+        run: node --test tests/auth-identity.test.mjs tests/auth-session-actions.test.mjs tests/google-oauth.test.mjs tests/registration-actions.test.mjs tests/recovery-safety.test.mjs
