@@ -19,7 +19,7 @@ export async function createSupabaseServerClient() {
     signInWithPassword: async (input) => { state.loginInput = input; return { error: state.loginError ?? null }; },
     signInWithOAuth: async (input) => {
       state.oauthInput = input;
-      return state.oauthResponse ?? { data: { url: "https://accounts.google.test/oauth/start" }, error: null };
+      return state.oauthResponse ?? { data: { url: `https://oauth.${input.provider}.test/start` }, error: null };
     },
     resetPasswordForEmail: async (email, options) => {
       state.recoveryInput = { email, options };
@@ -203,6 +203,50 @@ test("LinkedIn provider errors return a generic student-safe message", async () 
     "LinkedIn sign-in is temporarily unavailable. Please use Google, email and password, or try again shortly.",
   );
   assert.doesNotMatch(url.href, /provider_disabled|provider detail/);
+});
+
+test("LinkedIn OIDC, Facebook and GitHub use the shared safe PKCE callback", async () => {
+  const providers = [
+    [linkedInAuthAction, "linkedin_oidc"],
+    [facebookAuthAction, "facebook"],
+    [githubAuthAction, "github"],
+  ];
+
+  for (const [action, provider] of providers) {
+    const url = await redirectUrl(action, form({ next: "/dashboard?from=social" }));
+    assert.equal(url.origin, `https://oauth.${provider}.test`);
+    assert.deepEqual(state.oauthInput, {
+      provider,
+      options: {
+        redirectTo: "https://academy.example.test/auth/callback?next=%2Fdashboard%3Ffrom%3Dsocial",
+      },
+    });
+
+    await redirectUrl(action, form({ next: "//evil.example/steal" }));
+    assert.equal(
+      state.oauthInput.options.redirectTo,
+      "https://academy.example.test/auth/callback?next=%2Fdashboard",
+    );
+  }
+});
+
+test("social provider failures never expose raw provider configuration details", async () => {
+  const cases = [
+    [linkedInAuthAction, "LinkedIn"],
+    [facebookAuthAction, "Facebook"],
+    [githubAuthAction, "GitHub"],
+  ];
+  for (const [action, label] of cases) {
+    state.oauthResponse = {
+      data: { url: null },
+      error: { message: "private provider configuration detail", code: "provider_disabled", status: 400 },
+    };
+    const url = await redirectUrl(action, form({ next: "/dashboard" }));
+    assert.equal(url.pathname, "/login");
+    assert.match(url.searchParams.get("error"), new RegExp(`^${label} sign-in is temporarily unavailable`));
+    assert.doesNotMatch(url.href, /provider_disabled|configuration detail/);
+    delete state.oauthResponse;
+  }
 });
 
 test("password recovery is neutral and uses the production confirmation route", async () => {
