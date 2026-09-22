@@ -19,7 +19,7 @@ export async function createSupabaseServerClient() {
     signInWithPassword: async (input) => { state.loginInput = input; return { error: state.loginError ?? null }; },
     signInWithOAuth: async (input) => {
       state.oauthInput = input;
-      return state.oauthResponse ?? { data: { url: `https://oauth.${input.provider}.test/start` }, error: null };
+      return state.oauthResponse ?? { data: { url: "https://oauth." + input.provider + ".test/start" }, error: null };
     },
     resetPasswordForEmail: async (email, options) => {
       state.recoveryInput = { email, options };
