@@ -45,7 +45,15 @@ class PaymentWebhookEventAdmin(ImmutablePaymentArtifactAdmin):
 
 @admin.register(Invoice)
 class InvoiceAdmin(ImmutablePaymentArtifactAdmin):
-    list_display = ("invoice_number", "student", "course", "amount", "currency", "issued_at")
+    list_display = (
+        "invoice_number",
+        "student",
+        "course",
+        "amount",
+        "currency",
+        "issued_at",
+        "pdf_generated_at",
+    )
     search_fields = ("invoice_number", "payment__reference", "student__email", "course__title")
     readonly_fields = (
         "payment",
@@ -55,6 +63,10 @@ class InvoiceAdmin(ImmutablePaymentArtifactAdmin):
         "amount",
         "currency",
         "issued_at",
+        "pdf_storage_path",
+        "pdf_sha256",
+        "pdf_generated_at",
+        "pdf_last_error_code",
         "created_at",
         "updated_at",
     )
