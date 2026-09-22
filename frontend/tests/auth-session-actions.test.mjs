@@ -61,6 +61,7 @@ const { state } = await vite.ssrLoadModule("test:session-auth-state");
 const {
   loginAction,
   googleAuthAction,
+  linkedInAuthAction,
   forgotPasswordAction,
   resetPasswordAction,
   signOutAction,
@@ -168,6 +169,40 @@ test("Google provider errors return a generic student-safe message", async () =>
     "Google sign-in is temporarily unavailable. Please use your email and password or try again shortly.",
   );
   assert.doesNotMatch(url.href, /provider_disabled|configuration detail/);
+});
+
+test("LinkedIn OIDC authentication uses the shared PKCE callback and safe next path", async () => {
+  state.oauthResponse = { data: { url: "https://www.linkedin.test/oauth/start" }, error: null };
+  const url = await redirectUrl(linkedInAuthAction, form({
+    next: "/dashboard?from=linkedin",
+  }));
+  assert.equal(url.origin, "https://www.linkedin.test");
+  assert.deepEqual(state.oauthInput, {
+    provider: "linkedin_oidc",
+    options: {
+      redirectTo: "https://academy.example.test/auth/callback?next=%2Fdashboard%3Ffrom%3Dlinkedin",
+    },
+  });
+
+  await redirectUrl(linkedInAuthAction, form({ next: "//evil.example/steal" }));
+  assert.equal(
+    state.oauthInput.options.redirectTo,
+    "https://academy.example.test/auth/callback?next=%2Fdashboard",
+  );
+});
+
+test("LinkedIn provider errors return a generic student-safe message", async () => {
+  state.oauthResponse = {
+    data: { url: null },
+    error: { message: "private LinkedIn provider detail", code: "provider_disabled", status: 400 },
+  };
+  const url = await redirectUrl(linkedInAuthAction, form({ next: "/dashboard" }));
+  assert.equal(url.pathname, "/login");
+  assert.equal(
+    url.searchParams.get("error"),
+    "LinkedIn sign-in is temporarily unavailable. Please use Google, email and password, or try again shortly.",
+  );
+  assert.doesNotMatch(url.href, /provider_disabled|provider detail/);
 });
 
 test("password recovery is neutral and uses the production confirmation route", async () => {
