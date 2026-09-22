@@ -1,4 +1,4 @@
-import type { JwtPayload } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getSupabaseConfig } from "@/lib/supabase/config";
@@ -33,10 +33,16 @@ export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null
   if (!getSupabaseConfig()) return null;
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.getClaims();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
 
-  if (error || !data?.claims) return null;
-  return mapClaims(data.claims);
+  // Email verification is an account property, not a standard access-token
+  // claim. Use the authoritative Auth user record so verified students are not
+  // incorrectly sent back to the verification screen after login.
+  if (error || !user) return null;
+  return mapUser(user);
 });
 
 export async function requireVerifiedStudent(
@@ -82,17 +88,17 @@ export function safeRelativePath(value: string | null | undefined): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function mapClaims(claims: JwtPayload): StudentIdentity {
-  const metadata = claims.user_metadata ?? {};
+function mapUser(user: User): StudentIdentity {
+  const metadata = user.user_metadata ?? {};
   const firstName = cleanName(metadata.first_name) || "Student";
   const lastName = cleanName(metadata.last_name);
   return {
-    id: claims.sub,
-    email: typeof claims.email === "string" ? claims.email : "",
+    id: user.id,
+    email: user.email ?? "",
     firstName,
     lastName,
     displayName: [firstName, lastName].filter(Boolean).join(" "),
-    emailVerified: claims.email_verified === true,
+    emailVerified: Boolean(user.email_confirmed_at),
   };
 }
 
