@@ -1,4 +1,4 @@
-import { Clock3, Mail, MapPin, Phone } from "lucide-react";
+import { Clock3, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
 
 export async function Footer() {
@@ -27,6 +27,7 @@ export async function Footer() {
           <p className="text-sm font-semibold text-[#ffcc66]">Contact & support</p>
           <div className="mt-4 grid gap-4 text-sm text-white/65">
             <a href={academyBrand.phoneHref} className="flex items-start gap-3 transition hover:text-white"><Phone className="mt-0.5 size-4 shrink-0 text-[#ffcc66]" /><span>{academyBrand.phoneDisplay}</span></a>
+            <a href={academyBrand.whatsappHref} target="_blank" rel="noreferrer" className="flex items-start gap-3 transition hover:text-white"><MessageCircle className="mt-0.5 size-4 shrink-0 text-[#ffcc66]" /><span>WhatsApp {academyBrand.whatsappDisplay}</span></a>
             <a href={academyBrand.emailHref} className="flex min-w-0 items-start gap-3 transition hover:text-white"><Mail className="mt-0.5 size-4 shrink-0 text-[#ffcc66]" /><span className="break-all">{academyBrand.email}</span></a>
             <a href={academyBrand.addressHref} target="_blank" rel="noreferrer" className="flex items-start gap-3 transition hover:text-white"><MapPin className="mt-0.5 size-4 shrink-0 text-[#ffcc66]" /><span>{academyBrand.address}</span></a>
             <span className="flex items-start gap-3"><Clock3 className="mt-0.5 size-4 shrink-0 text-[#ffcc66]" /><span>{academyBrand.hours}</span></span>
