@@ -4,6 +4,8 @@ import { getSupabaseConfig } from "@/lib/supabase/config";
 import type { Database } from "@/lib/supabase/database.types";
 import { createCorrelationReference } from "@/lib/recovery";
 
+declare const __E2E_SYNTHETIC_STUDENT__: boolean;
+
 export async function refreshSupabaseSession(request: NextRequest) {
   const correlationReference = createCorrelationReference();
   const requestHeaders = new Headers(request.headers);
@@ -21,6 +23,13 @@ export async function refreshSupabaseSession(request: NextRequest) {
   const hasAuthCookie = request.cookies
     .getAll()
     .some(({ name }) => /^sb-.+-auth-token(?:\.\d+)?$/.test(name));
+
+  // Development E2E uses a compile-time synthetic identity so protected
+  // responsive-browser checks exercise the real protected pages. The
+  // production Nitro build hard-codes this symbol to false.
+  if (protectedPath && __E2E_SYNTHETIC_STUDENT__) {
+    return createResponse();
+  }
 
   // Enforce authentication at the request boundary. This produces a real
   // HTTP redirect on Node/Vinext instead of relying on a server-component
