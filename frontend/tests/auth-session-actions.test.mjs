@@ -17,6 +17,10 @@ export async function createSupabaseServerClient() {
     resend: async () => ({ error: null }),
     verifyOtp: async () => ({ error: null }),
     signInWithPassword: async (input) => { state.loginInput = input; return { error: state.loginError ?? null }; },
+    signInWithOAuth: async (input) => {
+      state.oauthInput = input;
+      return state.oauthResponse ?? { data: { url: "https://accounts.google.test/oauth/start" }, error: null };
+    },
     resetPasswordForEmail: async (email, options) => {
       state.recoveryInput = { email, options };
       return { error: state.recoveryError ?? null };
@@ -56,6 +60,7 @@ const vite = await createServer({
 const { state } = await vite.ssrLoadModule("test:session-auth-state");
 const {
   loginAction,
+  googleAuthAction,
   forgotPasswordAction,
   resetPasswordAction,
   signOutAction,
@@ -130,6 +135,39 @@ test("invalid credentials use one generic response and rate limits use the brand
     password: "wrong",
   }));
   assert.equal(url.pathname, "/errors/429");
+});
+
+test("Google authentication uses PKCE callback and preserves only a safe next path", async () => {
+  const url = await redirectUrl(googleAuthAction, form({
+    next: "/courses/algebra?from=google",
+  }));
+  assert.equal(url.origin, "https://accounts.google.test");
+  assert.deepEqual(state.oauthInput, {
+    provider: "google",
+    options: {
+      redirectTo: "https://academy.example.test/auth/callback?next=%2Fcourses%2Falgebra%3Ffrom%3Dgoogle",
+    },
+  });
+
+  await redirectUrl(googleAuthAction, form({ next: "//evil.example/steal" }));
+  assert.equal(
+    state.oauthInput.options.redirectTo,
+    "https://academy.example.test/auth/callback?next=%2Fdashboard",
+  );
+});
+
+test("Google provider errors return a generic student-safe message", async () => {
+  state.oauthResponse = {
+    data: { url: null },
+    error: { message: "private provider configuration detail", code: "provider_disabled", status: 400 },
+  };
+  const url = await redirectUrl(googleAuthAction, form({ next: "/dashboard" }));
+  assert.equal(url.pathname, "/login");
+  assert.equal(
+    url.searchParams.get("error"),
+    "Google sign-in is temporarily unavailable. Please use your email and password or try again shortly.",
+  );
+  assert.doesNotMatch(url.href, /provider_disabled|configuration detail/);
 });
 
 test("password recovery is neutral and uses the production confirmation route", async () => {
