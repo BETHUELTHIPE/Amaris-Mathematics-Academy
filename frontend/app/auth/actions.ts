@@ -69,34 +69,56 @@ export async function registerAction(formData: FormData) {
   }
 
   const values = parsed.data;
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.signUp({
-    email: values.email,
-    password: values.password,
-    options: {
-      emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
-      data: {
-        first_name: values.firstName,
-        last_name: values.lastName,
-        mobile: values.mobile,
-        province: values.province,
-        institution: values.institution,
-        academic_level: values.academicLevel,
-        terms_accepted_at: new Date().toISOString(),
+  const verificationPath = `/verify-email?email=${encodeURIComponent(values.email)}&registered=1`;
+  let result;
+  try {
+    const supabase = await createSupabaseServerClient();
+    result = await supabase.auth.signUp({
+      email: values.email,
+      password: values.password,
+      options: {
+        emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
+        data: {
+          first_name: values.firstName,
+          last_name: values.lastName,
+          mobile: values.mobile,
+          province: values.province,
+          institution: values.institution,
+          academic_level: values.academicLevel,
+          terms_accepted_at: new Date().toISOString(),
+        },
       },
-    },
-  });
+    });
+  } catch {
+    // Never log submitted details, passwords, tokens or raw provider errors.
+    console.error("student_registration_failed", { code: "auth_unavailable" });
+    redirectWithMessage("/register", "error", "Registration is temporarily unavailable. Please try again shortly. If you already registered, log in or reset your password.");
+  }
+
+  const { data, error } = result;
 
   if (error) {
-    if (/rate limit|too many/i.test(error.message)) redirect("/errors/429");
+    // Match the neutral success response: do not disclose account existence.
+    if (error.code === "user_already_exists" || error.code === "email_exists") {
+      redirect(verificationPath);
+    }
+    console.error("student_registration_failed", { code: safeAuthErrorCode(error.code), status: error.status });
     redirectWithMessage(
       "/register",
       "error",
-      friendlyAuthError(error.message, "We could not create your profile."),
+      registrationErrorMessage(error.code),
     );
   }
 
-  if (data.user) {
+  if (!data.user) {
+    console.error("student_registration_failed", { code: "missing_user" });
+    redirectWithMessage("/register", "error", "Registration could not be completed. Please try again shortly or contact us for help.");
+  }
+
+  // Supabase creates the authoritative profile in its auth.users trigger.
+  // Only mirror an authenticated, verified identity. Duplicate signup can
+  // return an obfuscated user, and unverified retries must not overwrite names.
+  if (data.session && data.user.email_confirmed_at) {
     try {
       await getDb()
         .insert(studentProfiles)
@@ -122,9 +144,7 @@ export async function registerAction(formData: FormData) {
     redirect("/dashboard?registered=1");
   }
 
-  redirect(
-    `/verify-email?email=${encodeURIComponent(values.email)}&registered=1`,
-  );
+  redirect(verificationPath);
 }
 
 export async function verifyEmailAction(formData: FormData) {
@@ -163,17 +183,25 @@ export async function resendVerificationAction(formData: FormData) {
     );
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.resend({
-    type: "signup",
-    email,
-    options: {
-      emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
-    },
-  });
+  let result;
+  try {
+    const supabase = await createSupabaseServerClient();
+    result = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: {
+        emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
+      },
+    });
+  } catch {
+    console.error("student_verification_resend_failed", { code: "auth_unavailable" });
+    redirect(`/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("Verification email could not be requested. Please try again shortly or contact us for help.")}`);
+  }
+  const { error } = result;
 
-  if (error && /rate limit|too many/i.test(error.message)) {
-    redirect("/errors/429");
+  if (error) {
+    console.error("student_verification_resend_failed", { code: safeAuthErrorCode(error.code), status: error.status });
+    redirect(`/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent(registrationErrorMessage(error.code))}`);
   }
 
   redirect(
@@ -298,6 +326,28 @@ function friendlyAuthError(message: string, fallback: string): string {
     return "Too many attempts. Wait a few minutes before trying again.";
   }
   return fallback;
+}
+
+function registrationErrorMessage(code: string | undefined): string {
+  switch (code) {
+    case "over_email_send_rate_limit":
+    case "over_request_rate_limit":
+      return "Too many attempts. Wait a few minutes before trying again. If a verification email already arrived, use its code or link.";
+    case "weak_password":
+      return "Choose a stronger password with at least 12 characters, uppercase, lowercase, a number and a symbol. Avoid common or previously exposed passwords.";
+    case "email_address_invalid":
+      return "Check your email address and try again.";
+    case "email_address_not_authorized":
+      return "Verification email delivery is unavailable for this address. Please contact us for help.";
+    case "signup_disabled":
+      return "New registrations are temporarily unavailable. Please contact us for help.";
+    default:
+      return "Registration or verification could not be completed. Please try again shortly. If you already registered, log in or reset your password. Contact us if this continues.";
+  }
+}
+
+function safeAuthErrorCode(code: string | undefined): string {
+  return code && /^[a-z_]{1,64}$/.test(code) ? code : "unknown_auth_error";
 }
 
 function redirectWithMessage(path: string, key: string, message: string): never {
