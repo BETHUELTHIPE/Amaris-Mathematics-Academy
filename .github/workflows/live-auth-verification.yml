@@ -12,6 +12,7 @@ on:
       - "frontend/app/reset-password/**"
       - "frontend/lib/auth.ts"
       - "frontend/components/site/google-auth-button.tsx"
+      - "frontend/components/site/linkedin-auth-button.tsx"
       - "frontend/lib/supabase/**"
       - "frontend/tests/**"
       - ".github/workflows/live-auth-verification.yml"
