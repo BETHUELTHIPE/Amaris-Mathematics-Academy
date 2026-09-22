@@ -1,0 +1,32 @@
+name: Production Post Deploy Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-post-deploy
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - name: Public production API smoke
+        env:
+          PRODUCTION_API_ORIGIN: ${{ vars.PRODUCTION_API_ORIGIN }}
+          LIVE_STUDENT_ORIGIN: ${{ vars.LIVE_STUDENT_ORIGIN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_API_ORIGIN"
+          test -n "$LIVE_STUDENT_ORIGIN"
+          curl --fail --silent --show-error "$PRODUCTION_API_ORIGIN/health/" >/dev/null
+          curl --fail --silent --show-error "$PRODUCTION_API_ORIGIN/health/ready/" >/dev/null
+          curl --fail --silent --show-error "$LIVE_STUDENT_ORIGIN/" >/dev/null
+          curl --fail --silent --show-error "$LIVE_STUDENT_ORIGIN/login" >/dev/null
+          curl --fail --silent --show-error "$LIVE_STUDENT_ORIGIN/register" >/dev/null
+          curl --fail --silent --show-error "$LIVE_STUDENT_ORIGIN/courses" >/dev/null
