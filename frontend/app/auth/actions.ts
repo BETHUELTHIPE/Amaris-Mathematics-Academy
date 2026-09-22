@@ -271,6 +271,31 @@ export async function googleAuthAction(formData: FormData) {
   redirect(data.url);
 }
 
+export async function linkedInAuthAction(formData: FormData) {
+  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "linkedin_oidc",
+    options: {
+      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
+    },
+  });
+
+  if (error || !data.url) {
+    console.error("student_linkedin_auth_failed", {
+      code: safeAuthErrorCode(error?.code),
+      status: error?.status,
+    });
+    redirectWithMessage(
+      "/login",
+      "error",
+      "LinkedIn sign-in is temporarily unavailable. Please use Google, email and password, or try again shortly.",
+    );
+  }
+
+  redirect(data.url);
+}
+
 export async function forgotPasswordAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!z.string().email().safeParse(email).success) {
