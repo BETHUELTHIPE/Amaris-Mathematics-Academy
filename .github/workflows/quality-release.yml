@@ -21,7 +21,7 @@ on:
 
 concurrency:
   group: amaris-release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/production-20260922' }}
 
 permissions:
   contents: read
