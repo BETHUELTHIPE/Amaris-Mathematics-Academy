@@ -13,26 +13,22 @@ export default async function Home() {
   return (
     <main className="home-shell min-h-screen bg-[#f5f7fb] text-[#0a1b36]">
       <Header />
-      <section className="overflow-hidden bg-[#07152d] text-white">
-        <div className="mx-auto grid max-w-7xl lg:min-h-[690px] lg:grid-cols-[1.05fr_.95fr] lg:items-stretch">
-          <div className="relative flex items-center px-5 py-16 sm:py-20 lg:px-8 lg:py-24">
-            <div className="graph-paper absolute inset-0 opacity-[0.08]" />
-            <div className="relative max-w-2xl">
-              <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 py-2 text-sm text-white/80"><span className="size-2 rounded-full bg-[#ffcc66]" /> CAPS, IEB, TVET & university mathematics</div>
-              <h1 className="text-5xl font-semibold leading-[1.02] tracking-[-0.055em] sm:text-6xl lg:text-[5.1rem]">Master mathematics,<br /><span className="text-[#ffcc66]">one clear step</span> at a time.</h1>
-              <p className="mt-7 max-w-xl text-lg leading-8 text-white/70">Structured lessons, worked examples and deliberate practice—built to turn uncertainty into confident problem-solving.</p>
-              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <a href="/courses" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#ffcc66] px-6 py-3.5 font-bold text-[#07152d] transition hover:bg-[#ffd780]">Browse courses <ArrowRight className="size-4" /></a>
-                <a href="/how-it-works" className="inline-flex items-center justify-center gap-2 rounded-full border border-white/25 bg-white/8 px-6 py-3.5 font-semibold text-white transition hover:bg-white/15"><CirclePlay className="size-4" /> See how it works</a>
-              </div>
-              <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/65"><span className="flex items-center gap-2"><Check className="size-4 text-[#ffcc66]" /> Learn at your pace</span><span className="flex items-center gap-2"><Check className="size-4 text-[#ffcc66]" /> Track every lesson</span><span className="flex items-center gap-2"><Check className="size-4 text-[#ffcc66]" /> Secure PayFast checkout</span></div>
+      <section className="relative isolate min-h-[690px] overflow-hidden bg-[#07152d] text-white">
+        {/* The hero image fills the entire section edge-to-edge on every screen size. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="async" className="absolute inset-0 h-full w-full object-cover object-center" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,21,45,.96)_0%,rgba(7,21,45,.86)_30%,rgba(7,21,45,.52)_52%,rgba(7,21,45,.18)_72%,rgba(7,21,45,.06)_100%)]" />
+        <div className="graph-paper absolute inset-0 opacity-[0.06]" />
+        <div className="relative mx-auto flex min-h-[690px] max-w-7xl items-center px-5 py-16 sm:py-20 lg:px-8 lg:py-24">
+          <div className="max-w-2xl rounded-[2rem] border border-white/10 bg-[#07152d]/78 p-6 shadow-[0_28px_90px_rgba(0,0,0,.24)] backdrop-blur-[2px] sm:p-9">
+            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 py-2 text-sm text-white/80"><span className="size-2 rounded-full bg-[#ffcc66]" /> CAPS, IEB, TVET & university mathematics</div>
+            <h1 className="text-5xl font-semibold leading-[1.02] tracking-[-0.055em] sm:text-6xl lg:text-[5.1rem]">Master mathematics,<br /><span className="text-[#ffcc66]">one clear step</span> at a time.</h1>
+            <p className="mt-7 max-w-xl text-lg leading-8 text-white/70">Structured lessons, worked examples and deliberate practice—built to turn uncertainty into confident problem-solving.</p>
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+              <a href="/courses" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#ffcc66] px-6 py-3.5 font-bold text-[#07152d] transition hover:bg-[#ffd780]">Browse courses <ArrowRight className="size-4" /></a>
+              <a href="/how-it-works" className="inline-flex items-center justify-center gap-2 rounded-full border border-white/25 bg-white/8 px-6 py-3.5 font-semibold text-white transition hover:bg-white/15"><CirclePlay className="size-4" /> See how it works</a>
             </div>
-          </div>
-          <div className="relative min-h-[360px] overflow-hidden border-t border-white/10 sm:min-h-[460px] lg:min-h-full lg:border-l lg:border-t-0">
-            {/* Direct public asset delivery keeps the homepage photo visible without an image-optimizer dependency. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="async" className="absolute inset-0 h-full w-full object-cover object-center" />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#07152d]/20 via-transparent to-transparent lg:bg-gradient-to-r lg:from-[#07152d]/18 lg:via-transparent lg:to-transparent" />
+            <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/65"><span className="flex items-center gap-2"><Check className="size-4 text-[#ffcc66]" /> Learn at your pace</span><span className="flex items-center gap-2"><Check className="size-4 text-[#ffcc66]" /> Track every lesson</span><span className="flex items-center gap-2"><Check className="size-4 text-[#ffcc66]" /> Secure PayFast checkout</span></div>
           </div>
         </div>
       </section>
