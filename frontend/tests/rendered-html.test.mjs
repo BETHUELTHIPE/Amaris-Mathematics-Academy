@@ -88,7 +88,9 @@ test("renders branded recovery pages without technical details", async () => {
 test("keeps the optimized hero background photo visible on the homepage", async () => {
   const homepageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(homepageSource, /src="\/amaris-math-hero\.webp"/);
-  assert.match(homepageSource, /opacity-90/);
+  assert.match(homepageSource, /className="absolute inset-0 h-full w-full object-cover object-center"/);
+  assert.match(homepageSource, /fetchPriority="high"/);
+  assert.match(homepageSource, /loading="eager"/);
 });
 
 test("protected application responses are never publicly cacheable", async () => {
