@@ -182,6 +182,40 @@ class ContactEnquiryViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     throttle_classes = (EnquiryThrottle,)
 
 
+class AssistantThrottle(AnonRateThrottle):
+    scope = "assistant"
+
+
+class AmarisAssistantView(APIView):
+    throttle_classes = (AssistantThrottle,)
+
+    def post(self, request):
+        message = request.data.get("message")
+        if not isinstance(message, str) or not message.strip():
+            return Response({"detail": "Enter a question for Amaris Assistant."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(message) > 1200:
+            return Response(
+                {"detail": "Keep your question under 1,200 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not getattr(settings, "OPENAI_API_KEY", ""):
+            return Response(
+                {"detail": "Amaris Assistant is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        try:
+            answer, _response_id = answer_website_question(message)
+        except (RuntimeError, ValueError):
+            return Response(
+                {"detail": "Amaris Assistant is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response({"answer": answer}, status=status.HTTP_200_OK)
+
+
 @public_cache(settings.SITE_BOOTSTRAP_CACHE_SECONDS)
 class SiteBootstrapView(generics.GenericAPIView):
     """One request for global website content used by the public frontend shell."""
