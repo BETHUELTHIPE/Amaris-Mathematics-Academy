@@ -43,6 +43,8 @@ services:
         value: "true"
       - key: SUPABASE_STORAGE_BUCKET_NAME
         value: amaris-cms-files
+      - key: SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME
+        value: Amaris Mathematics Academy
       - key: SUPABASE_STORAGE_S3_ENDPOINT
         value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
       - key: SUPABASE_STORAGE_S3_REGION
@@ -148,6 +150,26 @@ services:
           type: keyvalue
           name: amaris-production-broker
           property: connectionString
+      - key: SUPABASE_STORAGE_ENABLED
+        value: "true"
+      - key: SUPABASE_STORAGE_BUCKET_NAME
+        value: amaris-cms-files
+      - key: SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME
+        value: Amaris Mathematics Academy
+      - key: SUPABASE_STORAGE_S3_ENDPOINT
+        value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
+      - key: SUPABASE_STORAGE_S3_REGION
+        value: us-east-1
+      - key: SUPABASE_STORAGE_S3_ACCESS_KEY_ID
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_STORAGE_S3_ACCESS_KEY_ID
+      - key: SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY
 
   - type: worker
     name: amaris-production-notification-worker
