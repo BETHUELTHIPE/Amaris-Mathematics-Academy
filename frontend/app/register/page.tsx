@@ -11,6 +11,7 @@ import { Header } from "@/components/site/header";
 import { getStudentIdentity } from "@/lib/auth";
 import { SafeFormDraft } from "@/components/site/safe-form-draft";
 import { GoogleAuthButton } from "@/components/site/google-auth-button";
+import { LinkedInAuthButton } from "@/components/site/linkedin-auth-button";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Registration" };
@@ -38,7 +39,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <div className="rounded-[2rem] border border-[#dce4ef] bg-white p-6 shadow-[0_25px_75px_rgba(7,21,45,.1)] sm:p-9">
         <div className="flex items-center gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LockKeyhole className="size-6" /></span><div><h2 className="text-2xl font-semibold tracking-[-.03em]">Student details</h2><p className="mt-1 text-sm text-[#60708a]">All fields are required.</p></div></div>
         {error && <Alert variant="destructive" className="mt-6"><AlertDescription>{error}</AlertDescription></Alert>}
-        <div className="mt-7"><GoogleAuthButton label="Register with Google" /></div>
+        <div className="mt-7 grid gap-3"><GoogleAuthButton label="Register with Google" /><LinkedInAuthButton label="Register with LinkedIn" /></div>
         <div className="my-7 flex items-center gap-4 text-xs font-bold uppercase tracking-[.12em] text-[#8a98ac]"><span className="h-px flex-1 bg-[#dce4ef]" /><span>or register with email</span><span className="h-px flex-1 bg-[#dce4ef]" /></div>
         <form action={registerAction} className="grid gap-5">
           <SafeFormDraft draftKey="student-registration-v1" allowedFields={["firstName", "lastName", "email", "mobile", "province", "academicLevel", "institution"]} />
