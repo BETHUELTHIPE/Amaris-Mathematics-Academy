@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 from collections.abc import Mapping
@@ -28,6 +29,7 @@ PAYFAST_SANDBOX_MERCHANT_KEY = "46f0cd694581a"
 PAYFAST_SANDBOX_PASSPHRASE = "jt7NOE43FZPn"
 PAYMENT_CANCELLED = "cancelled"
 PAYMENT_WEBHOOK_MAX_AGE_HOURS = int(os.getenv("PAYMENT_WEBHOOK_MAX_AGE_HOURS", "168"))
+logger = logging.getLogger(__name__)
 
 
 class PaymentSecurityError(ValueError):
@@ -240,7 +242,7 @@ def _fulfill_verified_payment(payment: Payment) -> None:
         payment.enrollment = enrollment
         payment.save(update_fields=["enrollment", "updated_at"])
 
-    invoice, _ = Invoice.objects.get_or_create(
+    invoice, invoice_created = Invoice.objects.get_or_create(
         payment=payment,
         defaults={
             "invoice_number": f"INV-{payment.reference}",
@@ -258,6 +260,9 @@ def _fulfill_verified_payment(payment: Payment) -> None:
         or invoice.currency != payment.currency
     ):
         raise PaymentSecurityError("Existing invoice does not match the verified payment.")
+
+    if invoice_created or not invoice.pdf_storage_path:
+        transaction.on_commit(lambda invoice_id=invoice.pk: _queue_invoice_archive(invoice_id))
 
     ticket, _ = ServiceTicket.objects.get_or_create(
         payment=payment,
@@ -422,3 +427,15 @@ def process_payfast_notification(
         )
 
     return NotificationResult(True, target_status)
+
+
+
+def _queue_invoice_archive(invoice_id: int) -> None:
+    """Queue invoice archival without turning a broker outage into a payment rollback."""
+
+    from content.tasks import archive_invoice_pdf_task
+
+    try:
+        archive_invoice_pdf_task.delay(invoice_id)
+    except Exception:
+        logger.exception("invoice_archive_enqueue_failed", extra={"invoice_id": invoice_id})
