@@ -3,6 +3,7 @@ import { preload } from "react-dom";
 import { ArrowRight, BookOpenCheck, Check, CirclePlay, GraduationCap, ShieldCheck } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
+import { AmarisAssistant } from "@/components/site/amaris-assistant";
 import { formatRand } from "@/lib/courses";
 import { getManagedCourses } from "@/lib/cms";
 
@@ -50,6 +51,7 @@ export default async function Home() {
       </section>
 
       <section className="px-5 pb-24 lg:px-8"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-8 overflow-hidden rounded-[2rem] bg-[#ffcc66] p-8 sm:p-12 lg:flex-row lg:items-center"><div><p className="text-sm font-bold uppercase tracking-[.16em] text-[#0b2a5b]">Start where you are</p><h2 className="mt-3 max-w-2xl text-4xl font-semibold leading-tight tracking-[-.04em] text-[#07152d] sm:text-5xl">Your next mathematics breakthrough starts with one lesson.</h2></div><a href="/courses" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[#07152d] px-7 py-4 font-bold text-white">Explore courses <ArrowRight className="size-4" /></a></div></section>
+      <AmarisAssistant />
       <Footer />
     </main>
   );
