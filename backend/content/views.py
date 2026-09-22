@@ -24,7 +24,6 @@ from .models import (
     SiteSettings,
     Testimonial,
 )
-from .services.assistant import answer_website_question
 from .serializers import (
     AnnouncementSerializer,
     ContactEnquirySerializer,
@@ -39,6 +38,7 @@ from .serializers import (
     SiteSettingsSerializer,
     TestimonialSerializer,
 )
+from .services.assistant import answer_website_question
 
 
 def public_cache(seconds: int):
