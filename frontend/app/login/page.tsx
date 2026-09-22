@@ -10,6 +10,9 @@ import { Header } from "@/components/site/header";
 import { getStudentIdentity, safeRelativePath } from "@/lib/auth";
 import { GoogleAuthButton } from "@/components/site/google-auth-button";
 import { LinkedInAuthButton } from "@/components/site/linkedin-auth-button";
+import { FacebookAuthButton } from "@/components/site/facebook-auth-button";
+import { GitHubAuthButton } from "@/components/site/github-auth-button";
+import { LinkedInAuthButton } from "@/components/site/linkedin-auth-button";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Log In" };
