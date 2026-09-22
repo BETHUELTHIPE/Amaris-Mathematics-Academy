@@ -36,6 +36,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install locked dependencies
         run: npm ci
+      - name: Install Render build-only dependencies
+        run: npm install --no-save nitro @tailwindcss/vite@4.3.3
       - name: TypeScript checks
         run: npm run typecheck
       - name: Auth and frontend unit tests
