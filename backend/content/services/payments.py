@@ -429,7 +429,6 @@ def process_payfast_notification(
     return NotificationResult(True, target_status)
 
 
-
 def _queue_invoice_archive(invoice_id: int) -> None:
     """Queue invoice archival without turning a broker outage into a payment rollback."""
 

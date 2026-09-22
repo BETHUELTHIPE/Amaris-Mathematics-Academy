@@ -198,10 +198,7 @@ def build_invoice_pdf(invoice: Invoice) -> bytes:
 def archive_invoice_pdf(invoice_id: int, *, storage: Storage | None = None) -> str:
     """Generate and persist one paid invoice under the student's private UUID folder."""
 
-    invoice = (
-        Invoice.objects.select_related("payment", "student", "course")
-        .get(pk=invoice_id)
-    )
+    invoice = Invoice.objects.select_related("payment", "student", "course").get(pk=invoice_id)
     if invoice.payment.status != Payment.Status.PAID or invoice.payment.gateway_verified_at is None:
         raise InvoiceArchiveError("Only server-verified paid invoices may be archived.")
 
@@ -245,9 +242,6 @@ def mark_invoice_archive_failure(invoice_id: int, exc: BaseException) -> None:
 
 
 def _ensure_invoice_relations(invoice: Invoice) -> Invoice:
-    if all(
-        hasattr(invoice, relation)
-        for relation in ("payment", "student", "course")
-    ):
+    if all(hasattr(invoice, relation) for relation in ("payment", "student", "course")):
         return invoice
     return Invoice.objects.select_related("payment", "student", "course").get(pk=invoice.pk)
