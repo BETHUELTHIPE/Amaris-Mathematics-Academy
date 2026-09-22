@@ -20,7 +20,7 @@ export function GitHubAuthButton({
           {label}
         </button>
       </form>
-      <p className="text-center text-xs leading-5 text-[#718096]">
+      <p className="text-center text-xs leading-5 text-[#60708a]">
         By continuing with GitHub, you agree to the{" "}
         <Link href="/terms" className="font-semibold text-[#1f5bbd] underline">Terms</Link>
         {" "}and{" "}
