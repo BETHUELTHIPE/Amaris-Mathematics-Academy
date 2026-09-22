@@ -213,7 +213,7 @@ export async function loginAction(formData: FormData) {
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
-    next: formData.get("next"),
+    next: String(formData.get("next") ?? ""),
   });
   if (!parsed.success) {
     redirectWithMessage(
