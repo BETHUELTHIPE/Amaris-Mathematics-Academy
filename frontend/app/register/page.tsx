@@ -12,6 +12,9 @@ import { getStudentIdentity } from "@/lib/auth";
 import { SafeFormDraft } from "@/components/site/safe-form-draft";
 import { GoogleAuthButton } from "@/components/site/google-auth-button";
 import { LinkedInAuthButton } from "@/components/site/linkedin-auth-button";
+import { FacebookAuthButton } from "@/components/site/facebook-auth-button";
+import { GitHubAuthButton } from "@/components/site/github-auth-button";
+import { LinkedInAuthButton } from "@/components/site/linkedin-auth-button";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Registration" };
