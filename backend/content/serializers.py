@@ -241,6 +241,16 @@ class AnnouncementSerializer(serializers.ModelSerializer):
         fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at")
 
 
+class AssistantQuestionSerializer(serializers.Serializer):
+    question = serializers.CharField(min_length=2, max_length=800, trim_whitespace=True)
+
+
+class AssistantResponseSerializer(serializers.Serializer):
+    assistant = serializers.CharField()
+    answer = serializers.CharField()
+    grounded_on = serializers.CharField()
+
+
 class ContactEnquirySerializer(serializers.ModelSerializer):
     class Meta:
         model = ContactEnquiry
