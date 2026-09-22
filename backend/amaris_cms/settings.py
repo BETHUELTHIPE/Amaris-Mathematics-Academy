@@ -159,6 +159,10 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 SUPABASE_STORAGE_ENABLED = env_bool("SUPABASE_STORAGE_ENABLED", False)
 SUPABASE_STORAGE_BUCKET_NAME = os.getenv("SUPABASE_STORAGE_BUCKET_NAME", "amaris-cms-files")
+SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME = os.getenv(
+    "SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME",
+    "Amaris Mathematics Academy",
+)
 SUPABASE_STORAGE_S3_ENDPOINT = os.getenv("SUPABASE_STORAGE_S3_ENDPOINT", "")
 SUPABASE_STORAGE_S3_ACCESS_KEY_ID = os.getenv("SUPABASE_STORAGE_S3_ACCESS_KEY_ID", "")
 SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY = os.getenv("SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY", "")
@@ -205,6 +209,22 @@ if SUPABASE_STORAGE_ENABLED:
                 "file_overwrite": False,
             },
         },
+        "student_documents": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME,
+                "region_name": SUPABASE_STORAGE_S3_REGION,
+                "endpoint_url": SUPABASE_STORAGE_S3_ENDPOINT,
+                "access_key": SUPABASE_STORAGE_S3_ACCESS_KEY_ID,
+                "secret_key": SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY,
+                "addressing_style": "path",
+                "signature_version": "s3v4",
+                "default_acl": None,
+                "querystring_auth": True,
+                "querystring_expire": 600,
+                "file_overwrite": True,
+            },
+        },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 elif AWS_STORAGE_BUCKET_NAME:
@@ -219,11 +239,19 @@ elif AWS_STORAGE_BUCKET_NAME:
                 "file_overwrite": False,
             },
         },
+        "student_documents": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 else:
     STORAGES = {
         "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "student_documents": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": BASE_DIR / "media" / "student-documents",
+                "allow_overwrite": True,
+            },
+        },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 
@@ -325,6 +353,10 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-verified-payments": {
         "task": "content.tasks.reconcile_payments",
         "schedule": 300.0,
+    },
+    "archive-issued-invoices": {
+        "task": "content.tasks.archive_missing_invoice_pdfs",
+        "schedule": 120.0,
     },
     "deliver-transactional-email": {
         "task": "content.tasks.deliver_transactional_email",
