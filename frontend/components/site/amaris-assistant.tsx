@@ -73,8 +73,6 @@ export function AmarisAssistant() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
-    setVoiceSupported(Boolean(getSpeechRecognition()) && "speechSynthesis" in window);
-
     return () => {
       recognitionRef.current?.stop();
       window.speechSynthesis?.cancel();
