@@ -248,7 +248,12 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
-    "DEFAULT_THROTTLE_RATES": {\n        "anon": "120/hour",\n        "user": "1000/hour",\n        "enquiries": "5/hour",\n        "assistant": "30/hour",\n    },
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "120/hour",
+        "user": "1000/hour",
+        "enquiries": "5/hour",
+        "assistant": "30/hour",
+    },
 }
 
 SPECTACULAR_SETTINGS = {
