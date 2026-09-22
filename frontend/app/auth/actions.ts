@@ -296,6 +296,56 @@ export async function linkedInAuthAction(formData: FormData) {
   redirect(data.url);
 }
 
+export async function facebookAuthAction(formData: FormData) {
+  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "facebook",
+    options: {
+      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
+    },
+  });
+
+  if (error || !data.url) {
+    console.error("student_facebook_auth_failed", {
+      code: safeAuthErrorCode(error?.code),
+      status: error?.status,
+    });
+    redirectWithMessage(
+      "/login",
+      "error",
+      "Facebook sign-in is temporarily unavailable. Please use Google, LinkedIn, GitHub, email and password, or try again shortly.",
+    );
+  }
+
+  redirect(data.url);
+}
+
+export async function githubAuthAction(formData: FormData) {
+  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "github",
+    options: {
+      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
+    },
+  });
+
+  if (error || !data.url) {
+    console.error("student_github_auth_failed", {
+      code: safeAuthErrorCode(error?.code),
+      status: error?.status,
+    });
+    redirectWithMessage(
+      "/login",
+      "error",
+      "GitHub sign-in is temporarily unavailable. Please use Google, LinkedIn, Facebook, email and password, or try again shortly.",
+    );
+  }
+
+  redirect(data.url);
+}
+
 export async function forgotPasswordAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!z.string().email().safeParse(email).success) {
