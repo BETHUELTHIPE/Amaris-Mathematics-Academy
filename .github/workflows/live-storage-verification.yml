@@ -9,6 +9,13 @@ on:
       - "frontend/tests/student-storage.test.mjs"
       - "frontend/supabase/storage/**"
       - "backend/amaris_cms/settings.py"
+      - "backend/content/payment_models.py"
+      - "backend/content/services/invoices.py"
+      - "backend/content/services/payments.py"
+      - "backend/content/tasks.py"
+      - "backend/content/test_invoice_archive.py"
+      - "backend/content/migrations/**"
+      - "backend/requirements.txt"
       - "backend/.env.example"
       - "render.yaml"
       - ".github/workflows/live-storage-verification.yml"
@@ -67,6 +74,7 @@ jobs:
           SUPABASE_URL: https://epkcuseloinygkakxxdu.supabase.co
           SUPABASE_STORAGE_ENABLED: "true"
           SUPABASE_STORAGE_BUCKET_NAME: amaris-cms-files
+          SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME: Amaris Mathematics Academy
           SUPABASE_STORAGE_S3_ENDPOINT: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
           SUPABASE_STORAGE_S3_REGION: us-east-1
           SUPABASE_STORAGE_S3_ACCESS_KEY_ID: synthetic-ci-access-key
@@ -88,5 +96,18 @@ jobs:
           assert options["addressing_style"] == "path"
           assert options["location"] == "cms"
           assert options["querystring_auth"] is True
+
+          student_storage = settings.STORAGES["student_documents"]
+          assert student_storage["BACKEND"] == "storages.backends.s3.S3Storage"
+          student_options = student_storage["OPTIONS"]
+          assert student_options["bucket_name"] == "Amaris Mathematics Academy"
+          assert student_options["file_overwrite"] is True
+          assert student_options["endpoint_url"] == "https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3"
           print("Supabase S3 storage configuration validated.")
           PY
+      - name: Invoice archive migration and tests
+        env:
+          DJANGO_DEBUG: "true"
+        run: |
+          python manage.py makemigrations --check --dry-run
+          python manage.py test content.test_invoice_archive
