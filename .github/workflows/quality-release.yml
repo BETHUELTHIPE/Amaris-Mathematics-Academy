@@ -134,6 +134,8 @@ jobs:
           chrome-version: stable
       - name: Install locked frontend dependencies
         run: npm ci
+      - name: Install Render build-only dependencies
+        run: npm install --no-save nitro @tailwindcss/vite@4.3.3
       - name: Frontend linting
         run: npm run lint
       - name: TypeScript checks
