@@ -52,6 +52,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
           <button type="submit" className="min-h-12 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white transition hover:bg-[#123d79]">Create student profile</button>
         </form>
         <p className="mt-6 text-center text-sm text-[#60708a]">Already registered? <Link href="/login" className="font-bold text-[#1f5bbd]">Log in</Link></p>
+        <p className="mt-3 text-center text-sm text-[#60708a]"><Link href="/forgot-password" className="font-bold text-[#1f5bbd]">Reset your password</Link> or <Link href="/contact" className="font-bold text-[#1f5bbd]">contact us for help</Link>.</p>
       </div>
     </section>
     <Footer />
