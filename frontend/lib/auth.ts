@@ -90,8 +90,17 @@ export function safeRelativePath(value: string | null | undefined): string {
 
 function mapUser(user: User): StudentIdentity {
   const metadata = user.user_metadata ?? {};
-  const firstName = cleanName(metadata.first_name) || "Student";
-  const lastName = cleanName(metadata.last_name);
+  const fullName = cleanName(metadata.full_name) || cleanName(metadata.name);
+  const [fullFirst = "", ...fullRest] = fullName.split(/\s+/).filter(Boolean);
+  const firstName =
+    cleanName(metadata.first_name) ||
+    cleanName(metadata.given_name) ||
+    fullFirst ||
+    "Student";
+  const lastName =
+    cleanName(metadata.last_name) ||
+    cleanName(metadata.family_name) ||
+    fullRest.join(" ");
   return {
     id: user.id,
     email: user.email ?? "",
