@@ -220,7 +220,7 @@ jobs:
 
       - name: Upload capacity evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: capacity-evidence-${{ github.run_id }}
           path: backend/load_tests/results/
