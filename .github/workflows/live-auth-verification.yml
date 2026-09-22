@@ -1,0 +1,42 @@
+name: Live Student Auth Verification
+
+on:
+  push:
+    branches: [render-live-current-20260918]
+    paths:
+      - "frontend/app/auth/**"
+      - "frontend/app/login/**"
+      - "frontend/app/register/**"
+      - "frontend/app/verify-email/**"
+      - "frontend/app/forgot-password/**"
+      - "frontend/app/reset-password/**"
+      - "frontend/lib/auth.ts"
+      - "frontend/lib/supabase/**"
+      - "frontend/tests/**"
+      - ".github/workflows/live-auth-verification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-auth:
+    name: Frontend auth type and unit checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: TypeScript checks
+        run: npm run typecheck
+      - name: Auth and frontend unit tests
+        run: npm run test:unit
