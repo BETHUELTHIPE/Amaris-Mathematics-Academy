@@ -62,6 +62,8 @@ const {
   loginAction,
   googleAuthAction,
   linkedInAuthAction,
+  facebookAuthAction,
+  githubAuthAction,
   forgotPasswordAction,
   resetPasswordAction,
   signOutAction,
@@ -142,7 +144,7 @@ test("Google authentication uses PKCE callback and preserves only a safe next pa
   const url = await redirectUrl(googleAuthAction, form({
     next: "/courses/algebra?from=google",
   }));
-  assert.equal(url.origin, "https://accounts.google.test");
+  assert.equal(url.origin, "https://oauth.google.test");
   assert.deepEqual(state.oauthInput, {
     provider: "google",
     options: {
