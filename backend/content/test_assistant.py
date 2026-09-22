@@ -23,6 +23,7 @@ class AmarisAssistantApiTests(TestCase):
             "/api/v1/assistant/",
             {"message": "Which courses can I study?"},
             format="json",
+            secure=True,
         )
 
         self.assertEqual(response.status_code, 200)
@@ -30,13 +31,13 @@ class AmarisAssistantApiTests(TestCase):
         answer.assert_called_once_with("Which courses can I study?")
 
     def test_assistant_rejects_empty_question(self):
-        response = self.client.post("/api/v1/assistant/", {"message": "   "}, format="json")
+        response = self.client.post("/api/v1/assistant/", {"message": "   "}, format="json", secure=True)
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("question", response.json()["detail"].lower())
 
     def test_assistant_rejects_oversized_question(self):
-        response = self.client.post("/api/v1/assistant/", {"message": "x" * 1201}, format="json")
+        response = self.client.post("/api/v1/assistant/", {"message": "x" * 1201}, format="json", secure=True)
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("1,200", response.json()["detail"])
