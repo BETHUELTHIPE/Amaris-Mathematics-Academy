@@ -157,8 +157,57 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+SUPABASE_STORAGE_ENABLED = env_bool("SUPABASE_STORAGE_ENABLED", False)
+SUPABASE_STORAGE_BUCKET_NAME = os.getenv("SUPABASE_STORAGE_BUCKET_NAME", "amaris-cms-files")
+SUPABASE_STORAGE_S3_ENDPOINT = os.getenv("SUPABASE_STORAGE_S3_ENDPOINT", "")
+SUPABASE_STORAGE_S3_ACCESS_KEY_ID = os.getenv("SUPABASE_STORAGE_S3_ACCESS_KEY_ID", "")
+SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY = os.getenv("SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY", "")
+SUPABASE_STORAGE_S3_REGION = os.getenv("SUPABASE_STORAGE_S3_REGION", "us-east-1")
+
 AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
-if AWS_STORAGE_BUCKET_NAME:
+
+if SUPABASE_STORAGE_ENABLED:
+    if not SUPABASE_STORAGE_S3_ENDPOINT:
+        project_ref = SUPABASE_URL.removeprefix("https://").split(".", 1)[0] if SUPABASE_URL else ""
+        if project_ref:
+            SUPABASE_STORAGE_S3_ENDPOINT = f"https://{project_ref}.storage.supabase.co/storage/v1/s3"
+
+    missing_supabase_storage = [
+        name
+        for name, value in {
+            "SUPABASE_STORAGE_S3_ENDPOINT": SUPABASE_STORAGE_S3_ENDPOINT,
+            "SUPABASE_STORAGE_S3_ACCESS_KEY_ID": SUPABASE_STORAGE_S3_ACCESS_KEY_ID,
+            "SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY": SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY,
+        }.items()
+        if not value
+    ]
+    if missing_supabase_storage:
+        raise RuntimeError(
+            "Supabase Storage is enabled but these server-only settings are missing: "
+            + ", ".join(missing_supabase_storage)
+        )
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": SUPABASE_STORAGE_BUCKET_NAME,
+                "region_name": SUPABASE_STORAGE_S3_REGION,
+                "endpoint_url": SUPABASE_STORAGE_S3_ENDPOINT,
+                "access_key": SUPABASE_STORAGE_S3_ACCESS_KEY_ID,
+                "secret_key": SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY,
+                "addressing_style": "path",
+                "signature_version": "s3v4",
+                "location": "cms",
+                "default_acl": None,
+                "querystring_auth": True,
+                "querystring_expire": 600,
+                "file_overwrite": False,
+            },
+        },
+        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    }
+elif AWS_STORAGE_BUCKET_NAME:
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3.S3Storage",
