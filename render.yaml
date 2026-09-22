@@ -1,32 +1,28 @@
 # Amaris Mathematics Academy production data plane.
-# Source deploys are pinned to the dedicated production branch so the backend,
-# migrations, invoice PDF generator, storage integration and workers are built
-# from the same reviewed source revision.
-#
-# Secrets marked sync:false must be entered in Render and are never committed.
+# Production services deploy ONLY immutable Docker images tagged with the full Git SHA.
+# The Production Candidate Pin workflow updates these image references after the exact
+# production commit passes full CI, security, staging acceptance, and the controlled
+# capacity gate. Secrets marked sync:false are supplied in Render and never committed.
 
 services:
   - type: web
     name: amaris-production-web
-    runtime: python
-    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
-    branch: production-20260922
+    runtime: image
     plan: standard
     region: frankfurt
+    image:
+      url: docker.io/bethuelm/amaris-mathematics-academy:7c003f6df6de53c745b46422d65b931b99ff8066
     autoDeployTrigger: off
-    buildCommand: cd backend && pip install -r requirements.txt
-    preDeployCommand: cd backend && python manage.py migrate --noinput
-    startCommand: cd backend && GUNICORN_BIND=0.0.0.0:$PORT gunicorn -c gunicorn.conf.py amaris_cms.asgi:application
     healthCheckPath: /health/ready/
+    preDeployCommand: python manage.py migrate --noinput
     scaling:
-      minInstances: 2
-      maxInstances: 12
+      minInstances: 3
+      maxInstances: 24
       targetCPUPercent: 70
+    dockerCommand: /bin/sh -c 'GUNICORN_BIND=0.0.0.0:$PORT exec gunicorn amaris_cms.asgi:application --config /app/gunicorn.conf.py'
     envVars:
       - key: SERVICE_ROLE
         value: web
-      - key: PYTHON_VERSION
-        value: 3.13.15
       - key: DJANGO_DEBUG
         value: "false"
       - key: DJANGO_SECRET_KEY
@@ -63,6 +59,8 @@ services:
         sync: false
       - key: SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY
         sync: false
+      - key: ACCEPTANCE_GITHUB_OIDC_ENABLED
+        value: "false"
       - key: PAYFAST_MODE
         value: live
       - key: PAYFAST_MERCHANT_ID
@@ -108,19 +106,16 @@ services:
 
   - type: worker
     name: amaris-production-critical-worker
-    runtime: python
-    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
-    branch: production-20260922
+    runtime: image
     plan: standard
     region: frankfurt
+    image:
+      url: docker.io/bethuelm/amaris-mathematics-academy:7c003f6df6de53c745b46422d65b931b99ff8066
     autoDeployTrigger: off
-    buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && celery -A amaris_cms worker --loglevel=INFO --queues=critical,default --concurrency=2 --events --hostname=critical@%h
+    dockerCommand: celery -A amaris_cms worker --loglevel=INFO --queues=critical,default --concurrency=2 --events --hostname=critical@%h
     envVars:
       - key: SERVICE_ROLE
         value: celery-worker
-      - key: PYTHON_VERSION
-        value: 3.13.15
       - key: DJANGO_DEBUG
         value: "false"
       - key: DJANGO_SECRET_KEY
@@ -172,19 +167,16 @@ services:
 
   - type: worker
     name: amaris-production-notification-worker
-    runtime: python
-    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
-    branch: production-20260922
+    runtime: image
     plan: starter
     region: frankfurt
+    image:
+      url: docker.io/bethuelm/amaris-mathematics-academy:7c003f6df6de53c745b46422d65b931b99ff8066
     autoDeployTrigger: off
-    buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && celery -A amaris_cms worker --loglevel=INFO --queues=notifications --concurrency=2 --events --hostname=notifications@%h
+    dockerCommand: celery -A amaris_cms worker --loglevel=INFO --queues=notifications --concurrency=2 --events --hostname=notifications@%h
     envVars:
       - key: SERVICE_ROLE
         value: celery-notifications
-      - key: PYTHON_VERSION
-        value: 3.13.15
       - key: DJANGO_DEBUG
         value: "false"
       - key: DJANGO_SECRET_KEY
@@ -227,19 +219,16 @@ services:
 
   - type: worker
     name: amaris-production-beat
-    runtime: python
-    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
-    branch: production-20260922
+    runtime: image
     plan: starter
     region: frankfurt
+    image:
+      url: docker.io/bethuelm/amaris-mathematics-academy:7c003f6df6de53c745b46422d65b931b99ff8066
     autoDeployTrigger: off
-    buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
+    dockerCommand: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
     envVars:
       - key: SERVICE_ROLE
         value: celery-beat
-      - key: PYTHON_VERSION
-        value: 3.13.15
       - key: DJANGO_DEBUG
         value: "false"
       - key: DJANGO_SECRET_KEY
