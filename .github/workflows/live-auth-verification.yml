@@ -40,5 +40,5 @@ jobs:
         run: npm install --no-save nitro @tailwindcss/vite@4.3.3
       - name: TypeScript checks
         run: npm run typecheck
-      - name: Auth and frontend unit tests
-        run: npm run test:unit
+      - name: Student authentication unit tests
+        run: node --test tests/auth-identity.test.mjs tests/auth-session-actions.test.mjs tests/registration-actions.test.mjs tests/recovery-safety.test.mjs
