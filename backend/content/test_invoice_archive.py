@@ -141,3 +141,33 @@ class InvoiceArchiveTests(TestCase):
         invoice = Invoice.objects.get(payment__reference=checkout.payment_reference)
         delayed.assert_called_once_with(invoice.pk)
         self.assertEqual(invoice.pdf_storage_path, "")
+
+    def test_broker_outage_archives_verified_invoice_synchronously(self):
+        _payment, invoice = self._paid_invoice()
+        storage = InMemoryStorage()
+
+        with patch("content.tasks.archive_invoice_pdf_task.delay", side_effect=ConnectionError("broker down")):
+            with patch(
+                "content.services.invoices.archive_invoice_pdf",
+                side_effect=lambda invoice_id: archive_invoice_pdf(invoice_id, storage=storage),
+            ):
+                from content.services.payments import _queue_invoice_archive
+
+                _queue_invoice_archive(invoice.pk)
+
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.pdf_storage_path, invoice_storage_path(invoice))
+        self.assertTrue(storage.exists(invoice.pdf_storage_path))
+
+    def test_broker_and_storage_outage_records_failure_without_rolling_back_payment(self):
+        _payment, invoice = self._paid_invoice()
+
+        with patch("content.tasks.archive_invoice_pdf_task.delay", side_effect=ConnectionError("broker down")):
+            with patch("content.services.invoices.archive_invoice_pdf", side_effect=OSError("storage down")):
+                from content.services.payments import _queue_invoice_archive
+
+                _queue_invoice_archive(invoice.pk)
+
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.pdf_storage_path, "")
+        self.assertEqual(invoice.pdf_last_error_code, "OSError")
