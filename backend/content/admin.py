@@ -10,6 +10,7 @@ from .models import (
     CourseModule,
     Enrollment,
     Lesson,
+    LiveClassBooking,
     NavigationItem,
     Page,
     PageSection,
@@ -20,6 +21,7 @@ from .models import (
     SiteSettings,
     StudentRecord,
     Testimonial,
+    TutorAvailabilitySlot,
     VideoAsset,
 )
 
@@ -384,6 +386,81 @@ class PaymentReconciliationRunAdmin(TimeStampedAdmin):
 
     def has_change_permission(self, request, obj=None):
         return request.method in ("GET", "HEAD", "OPTIONS")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(TutorAvailabilitySlot)
+class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
+    list_display = (
+        "tutor",
+        "programme",
+        "subject",
+        "level",
+        "starts_at",
+        "ends_at",
+        "is_active",
+    )
+    list_filter = ("programme", "subject", "level", "is_active", "starts_at")
+    search_fields = (
+        "tutor__username",
+        "tutor__first_name",
+        "tutor__last_name",
+        "level",
+    )
+    autocomplete_fields = ("tutor",)
+    list_editable = ("is_active",)
+    ordering = ("starts_at",)
+
+
+@admin.register(LiveClassBooking)
+class LiveClassBookingAdmin(TimeStampedAdmin):
+    list_display = (
+        "reference",
+        "student",
+        "slot",
+        "topic",
+        "amount",
+        "status",
+        "paid_at",
+        "confirmation_sent_at",
+        "reminder_sent_at",
+    )
+    list_filter = ("status", "programme", "subject", "slot__starts_at")
+    search_fields = (
+        "reference",
+        "student__email",
+        "student__first_name",
+        "student__last_name",
+        "topic",
+        "invoice_number",
+    )
+    readonly_fields = (
+        "id",
+        "reference",
+        "idempotency_key",
+        "student",
+        "slot",
+        "programme",
+        "subject",
+        "level",
+        "topic",
+        "amount",
+        "currency",
+        "hold_expires_at",
+        "provider_reference",
+        "paid_at",
+        "gateway_verified_at",
+        "invoice_number",
+        "confirmation_sent_at",
+        "reminder_sent_at",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
 
     def has_delete_permission(self, request, obj=None):
         return False
