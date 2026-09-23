@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -72,9 +73,14 @@ def answer_website_question(question: str) -> tuple[str, str]:
         with urlopen(request, timeout=timeout) as response:
             response_payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
-        detail = exc.read(1200).decode("utf-8", errors="replace")
-        logger.warning("Amaris Assistant upstream returned HTTP %d", exc.code)
-        raise RuntimeError(f"OpenAI request failed with HTTP {exc.code}: {detail}") from exc
+        try:
+            error = json.loads(exc.read(1200).decode("utf-8")).get("error", {})
+            code = error.get("code") or error.get("type")
+        except (ValueError, AttributeError, UnicodeDecodeError):
+            code = None
+        safe_code = code if isinstance(code, str) and re.fullmatch(r"[a-z0-9_]{1,80}", code) else "unknown"
+        logger.warning("Amaris Assistant upstream returned HTTP %d code=%s", exc.code, safe_code)
+        raise RuntimeError(f"OpenAI request failed with HTTP {exc.code} code={safe_code}") from exc
     except (URLError, TimeoutError) as exc:
         logger.warning("Amaris Assistant upstream timed out or was unreachable: %s", type(exc).__name__)
         raise RuntimeError("OpenAI request timed out or was unreachable.") from exc
