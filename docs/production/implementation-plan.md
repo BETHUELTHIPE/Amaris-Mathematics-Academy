@@ -118,10 +118,12 @@ All must PASS:
 - Production cache: **PROVISIONED**
 - Private Supabase buckets/RLS: **PROVISIONED**
 - Invoice PDF archival implementation/tests: **PASS**
-- Production Django web: **NOT YET CREATED**
-- Production Celery workers/beat: **NOT YET CREATED**
-- Render secret/resource bindings: **PENDING**
-- Frontend cutover to production API: **NOT STARTED**
+- Production Django web: **BLUEPRINT READY — NOT YET CREATED**
+- Production Celery workers/beat: **BLUEPRINT READY — NOT YET CREATED**
+- Production release branch: **PINNED** (`production-release-20260923`)
+- Release gate: **PASS** on commit `48579040297cece0eaab0a76d8fefe411b2eb5da`
+- Render secret/resource bindings: **BLUEPRINT DEFINED — APPLY/SYNC PENDING**
+- Frontend cutover to production API: **BLOCKED UNTIL BACKEND HEALTH PASS**
 - Production readiness: **NOT READY FOR PRODUCTION**
 
 ## Capacity status
@@ -130,3 +132,27 @@ Production readiness and 50,000-user capacity remain separate.
 
 - MAXIMUM VERIFIED CONCURRENT USERS: not established by this deployment
 - 50,000 CONCURRENT USERS VERIFIED: NO
+
+
+## Implementation evidence — 2026-09-23
+
+Provisioned in Render:
+
+- `amaris-production-postgres` — PostgreSQL 17, `basic_1gb`, 5 GB, Frankfurt
+- `amaris-production-broker` — starter Key Value, `noeviction`, journal/snapshot, Frankfurt
+- `amaris-production-cache` — starter Key Value, `allkeys-lru`, Frankfurt
+
+Verified:
+
+- Render production Blueprint wiring: PASS
+- Django deployment checks: PASS
+- Migration consistency: PASS
+- Payment and PayFast regression: PASS
+- Automatic invoice PDF archive regression: PASS
+- Student authorization/cross-user regression: PASS
+- Supabase private buckets exist and remain private
+- Production data stores show healthy resource metrics and no application traffic before cutover
+
+Remaining external control-plane step:
+
+The connected Render API available in ChatGPT can create databases, Key Value stores and ordinary source web services, but it cannot apply a Blueprint, create background workers, or attach `fromDatabase` / `fromService` secret references. Therefore the validated `render.yaml` must be applied/synced once from the Render Blueprint UI. Do not cut the live frontend over before the new web service and workers report healthy.
