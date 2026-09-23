@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { ArrowLeft, Bot, MessageCircle, Mic, Send, Sparkles, Volume2, X } from "lucide-react";
+import { websiteFallback } from "@/lib/assistant-fallback";
 
 type ChatMessage = {
   id: string;
@@ -107,7 +108,7 @@ export function AmarisAssistant() {
     setBusy(true);
     setVoiceError("");
 
-    let reply = "Amaris Assistant is temporarily unavailable. Please try again shortly.";
+    let reply = websiteFallback(message);
 
     try {
       const response = await fetch("/api/assistant/", {
@@ -119,10 +120,11 @@ export function AmarisAssistant() {
         answer?: string;
         detail?: string;
       };
-      reply =
-        response.ok && payload.answer
-          ? payload.answer
-          : payload.detail || reply;
+      if (response.ok && payload.answer) {
+        reply = payload.answer;
+      } else if (response.status !== 503) {
+        reply = payload.detail || reply;
+      }
     } catch {
       // Use the safe fallback response below.
     } finally {
