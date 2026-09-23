@@ -1,3 +1,6 @@
+from datetime import timedelta
+from html import escape
+
 from celery import shared_task
 from django.apps import apps
 from django.core.mail import EmailMultiAlternatives, send_mail
@@ -151,16 +154,16 @@ def _send_live_class_message(
             *body_lines,
         ]
     )
-    html_lines = "".join(f"<p>{line}</p>" for line in body_lines)
+    html_lines = "".join(f"<p>{escape(line)}</p>" for line in body_lines)
     html = (
         '<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;'
         'border:1px solid #dce4ef;border-radius:18px;overflow:hidden">'
         '<div style="background:#07152d;color:#fff;padding:24px">'
-        f'<div style="font-size:22px;font-weight:700">{name}</div>'
-        f'<div style="margin-top:6px;color:#dce4ef">{email} · {phone}</div>'
+        f'<div style="font-size:22px;font-weight:700">{escape(name)}</div>'
+        f'<div style="margin-top:6px;color:#dce4ef">{escape(email)} · {escape(phone)}</div>'
         "</div>"
         '<div style="padding:28px;color:#1d2d44">'
-        f'<h1 style="font-size:24px;margin-top:0">{heading}</h1>'
+        f'<h1 style="font-size:24px;margin-top:0">{escape(heading)}</h1>'
         f"{html_lines}"
         "</div></div>"
     )
@@ -265,7 +268,7 @@ def deliver_live_class_reminder(_self) -> int:
                 status=LiveClassBooking.Status.CONFIRMED,
                 reminder_sent_at__isnull=True,
                 slot__starts_at__gt=now,
-                slot__starts_at__lte=now + timezone.timedelta(minutes=30),
+                slot__starts_at__lte=now + timedelta(minutes=30),
             )
             .order_by("slot__starts_at")
             .first()
