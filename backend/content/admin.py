@@ -448,6 +448,7 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
         "topic",
         "amount",
         "currency",
+        "status",
         "hold_expires_at",
         "provider_reference",
         "paid_at",
