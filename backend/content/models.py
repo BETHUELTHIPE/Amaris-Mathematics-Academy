@@ -479,6 +479,8 @@ class TutorAvailabilitySlot(TimeStampedModel):
         super().clean()
         if self.ends_at <= self.starts_at:
             raise ValidationError("The class end time must be after the start time.")
+        if self.ends_at - self.starts_at != timedelta(hours=1):
+            raise ValidationError("Live class slots must be exactly one hour.")
         if self.is_active and not self.zoom_join_url:
             raise ValidationError("An active live-class slot must have a Zoom join URL.")
 
