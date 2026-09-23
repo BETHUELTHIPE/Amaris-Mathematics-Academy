@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import ErrorDetailSerializer, PayFastITNRequestSerializer, PayFastITNStatusSerializer
+from .services.live_classes import process_live_class_notification
 from .services.payments import HttpPayFastVerificationGateway, process_payfast_notification
 
 DEFAULT_PAYFAST_NETWORKS = (
@@ -62,10 +63,11 @@ class PayFastITNView(APIView):
             return Response({"detail": "Payment notification source is not trusted."}, status=403)
 
         payload = {str(key): str(value) for key, value in request.data.items()}
-        result = process_payfast_notification(
-            payload,
-            gateway=HttpPayFastVerificationGateway(),
-        )
+        gateway = HttpPayFastVerificationGateway()
+        if str(payload.get("m_payment_id", "")).startswith("LCB-"):
+            result = process_live_class_notification(payload, gateway=gateway)
+        else:
+            result = process_payfast_notification(payload, gateway=gateway)
         if result.accepted:
             return Response({"status": result.payment_status}, status=200)
         if result.retryable:
