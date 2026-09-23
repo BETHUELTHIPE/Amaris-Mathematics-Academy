@@ -11,7 +11,7 @@ services:
     repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
     branch: production-release-20260923
     rootDir: backend
-    autoDeployTrigger: off
+    autoDeployTrigger: "off"
     buildCommand: pip install -r requirements.txt
     preDeployCommand: python manage.py migrate --noinput
     startCommand: GUNICORN_BIND=0.0.0.0:$PORT gunicorn -c gunicorn.conf.py amaris_cms.asgi:application
@@ -106,7 +106,7 @@ services:
     repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
     branch: production-release-20260923
     rootDir: backend
-    autoDeployTrigger: off
+    autoDeployTrigger: "off"
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A amaris_cms worker --loglevel=INFO --queues=critical,default --concurrency=2 --events --hostname=critical@%h
     envVars:
@@ -169,7 +169,7 @@ services:
     repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
     branch: production-release-20260923
     rootDir: backend
-    autoDeployTrigger: off
+    autoDeployTrigger: "off"
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A amaris_cms worker --loglevel=INFO --queues=notifications --concurrency=2 --events --hostname=notifications@%h
     envVars:
@@ -223,7 +223,7 @@ services:
     repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
     branch: production-release-20260923
     rootDir: backend
-    autoDeployTrigger: off
+    autoDeployTrigger: "off"
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
     envVars:
