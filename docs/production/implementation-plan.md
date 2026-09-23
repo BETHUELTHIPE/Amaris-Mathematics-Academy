@@ -118,11 +118,16 @@ All must PASS:
 - Production cache: **PROVISIONED**
 - Private Supabase buckets/RLS: **PROVISIONED**
 - Invoice PDF archival implementation/tests: **PASS**
-- Production Django web: **BLUEPRINT READY — NOT YET CREATED**
+- Production Django web: **CREATED — BLOCKED BY DATABASE/SECRET BINDINGS**
 - Production Celery workers/beat: **BLUEPRINT READY — NOT YET CREATED**
 - Production release branch: **PINNED** (`production-release-20260923`)
 - Release gate: **PASS** on commit `48579040297cece0eaab0a76d8fefe411b2eb5da`
-- Render secret/resource bindings: **BLUEPRINT DEFINED — APPLY/SYNC PENDING**
+- Redis runtime bindings: **CONFIGURED on production web**
+- Production PostgreSQL `DATABASE_URL`: **MISSING on production web**
+- Supabase S3 production credentials: **MISSING**
+- PayFast live credentials: **MISSING**
+- Transactional email credentials: **MISSING**
+- Render secret/resource bindings: **PARTIALLY APPLIED**
 - Frontend cutover to production API: **BLOCKED UNTIL BACKEND HEALTH PASS**
 - Production readiness: **NOT READY FOR PRODUCTION**
 
@@ -156,3 +161,21 @@ Verified:
 Remaining external control-plane step:
 
 The connected Render API available in ChatGPT can create databases, Key Value stores and ordinary source web services, but it cannot apply a Blueprint, create background workers, or attach `fromDatabase` / `fromService` secret references. Therefore the validated `render.yaml` must be applied/synced once from the Render Blueprint UI. Do not cut the live frontend over before the new web service and workers report healthy.
+
+
+## Production web bootstrap evidence — 2026-09-23
+
+- Service: `amaris-production-web`
+- Render service ID: `srv-dapn6b3tqb8s73d3r7n0`
+- Plan: Standard
+- Region: Frankfurt
+- Branch: `production-release-20260923`
+- Auto deploy: disabled
+- Python: pinned to 3.13.7
+- Build: PASS
+- Runtime: intentionally FAIL-CLOSED with `PRODUCTION_MODE requires DATABASE_URL; SQLite fallback is forbidden.`
+- Redis cache/broker internal URLs: configured
+- Student frontend: not cut over
+- PayFast: remains sandbox on the bootstrap service until live credentials are present
+
+Protected production secret preflight run `35827615636` confirmed these required credentials are not configured in the GitHub production environment: Render API key, Supabase Storage S3 access key/secret, and PayFast merchant ID/key/passphrase. SMTP credentials are also absent. No secret values were printed.
