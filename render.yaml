@@ -21,6 +21,8 @@ services:
         value: web
       - key: DJANGO_DEBUG
         value: "false"
+      - key: PRODUCTION_MODE
+        value: "true"
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DJANGO_ALLOWED_HOSTS
@@ -114,6 +116,8 @@ services:
         value: celery-worker
       - key: DJANGO_DEBUG
         value: "false"
+      - key: PRODUCTION_MODE
+        value: "true"
       - key: DJANGO_SECRET_KEY
         fromService:
           type: web
@@ -177,6 +181,8 @@ services:
         value: celery-notifications
       - key: DJANGO_DEBUG
         value: "false"
+      - key: PRODUCTION_MODE
+        value: "true"
       - key: DJANGO_SECRET_KEY
         fromService:
           type: web
@@ -231,6 +237,8 @@ services:
         value: celery-beat
       - key: DJANGO_DEBUG
         value: "false"
+      - key: PRODUCTION_MODE
+        value: "true"
       - key: DJANGO_SECRET_KEY
         fromService:
           type: web
