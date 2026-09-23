@@ -213,16 +213,23 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
 if AWS_STORAGE_BUCKET_NAME:
+    storage_options = {
+        "bucket_name": AWS_STORAGE_BUCKET_NAME,
+        "region_name": os.getenv("AWS_S3_REGION_NAME", "af-south-1"),
+        "default_acl": None,
+        "querystring_auth": True,
+        "file_overwrite": False,
+    }
+    if endpoint_url := os.getenv("AWS_S3_ENDPOINT_URL", ""):
+        storage_options.update(
+            endpoint_url=endpoint_url,
+            addressing_style="path",
+            signature_version="s3v4",
+        )
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-                "bucket_name": AWS_STORAGE_BUCKET_NAME,
-                "region_name": os.getenv("AWS_S3_REGION_NAME", "af-south-1"),
-                "default_acl": None,
-                "querystring_auth": True,
-                "file_overwrite": False,
-            },
+            "OPTIONS": storage_options,
         },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
