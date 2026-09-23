@@ -17,7 +17,7 @@ export default async function Home() {
       <section className="relative isolate min-h-[690px] overflow-hidden bg-[#07152d] text-white">
         {/* The hero image fills the entire section edge-to-edge on every screen size. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="async" className="absolute inset-0 h-full w-full object-cover object-center" />
+        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="sync" className="absolute inset-0 h-full w-full object-cover object-center" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,21,45,.96)_0%,rgba(7,21,45,.86)_30%,rgba(7,21,45,.52)_52%,rgba(7,21,45,.18)_72%,rgba(7,21,45,.06)_100%)]" />
         <div className="graph-paper absolute inset-0 opacity-[0.06]" />
         <div className="relative mx-auto flex min-h-[690px] max-w-7xl items-center px-5 py-16 sm:py-20 lg:px-8 lg:py-24">
