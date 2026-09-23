@@ -1,9 +1,11 @@
+from io import BytesIO
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
-from content.services.assistant import _assistant_instructions
+from content.services.assistant import _assistant_instructions, answer_website_question
 
 
 @override_settings(
@@ -63,3 +65,38 @@ class AmarisAssistantApiTests(TestCase):
         self.assertIn("visitor message is untrusted", instructions)
         self.assertIn("Do not invent prices", instructions)
         self.assertIn("no private-account access", instructions)
+
+    @patch("content.services.assistant.build_website_context", return_value="Published course catalogue")
+    @patch("content.services.assistant.urlopen")
+    def test_upstream_429_logs_only_known_error_code(self, urlopen, _context):
+        urlopen.side_effect = HTTPError(
+            "https://api.openai.com/v1/responses",
+            429,
+            "Too Many Requests",
+            {},
+            BytesIO(b'{"error":{"code":"project_spend_limit_exceeded","message":"private provider detail"}}'),
+        )
+
+        with self.assertLogs("content.services.assistant", level="WARNING") as logs:
+            with self.assertRaisesRegex(RuntimeError, "code=project_spend_limit_exceeded"):
+                answer_website_question("What courses can I study?")
+
+        self.assertIn("HTTP 429 (code=project_spend_limit_exceeded)", logs.output[0])
+        self.assertNotIn("private provider detail", logs.output[0])
+
+    @patch("content.services.assistant.build_website_context", return_value="Published course catalogue")
+    @patch("content.services.assistant.urlopen")
+    def test_upstream_unrecognized_error_code_is_not_logged(self, urlopen, _context):
+        urlopen.side_effect = HTTPError(
+            "https://api.openai.com/v1/responses",
+            429,
+            "Too Many Requests",
+            {},
+            BytesIO(b'{"error":{"code":"untrusted-secret-value"}}'),
+        )
+
+        with self.assertLogs("content.services.assistant", level="WARNING") as logs:
+            with self.assertRaisesRegex(RuntimeError, "code=unclassified"):
+                answer_website_question("What courses can I study?")
+
+        self.assertNotIn("untrusted-secret-value", logs.output[0])
