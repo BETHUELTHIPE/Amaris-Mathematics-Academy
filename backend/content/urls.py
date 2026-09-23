@@ -13,6 +13,7 @@ from .student_views import (
     StudentLessonView,
 )
 from .views import (
+    AmarisAssistantView,
     AnnouncementViewSet,
     ContactEnquiryViewSet,
     CourseCategoryViewSet,
@@ -38,6 +39,7 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
     path(

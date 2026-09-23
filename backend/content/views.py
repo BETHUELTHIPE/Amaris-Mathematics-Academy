@@ -1,8 +1,11 @@
+import logging
+
 from django.conf import settings
 from django.db.models import Count, Prefetch, Q
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -24,6 +27,8 @@ from .models import (
     Testimonial,
 )
 from .serializers import (
+    AmarisAssistantRequestSerializer,
+    AmarisAssistantResponseSerializer,
     AnnouncementSerializer,
     ContactEnquirySerializer,
     CourseCategorySerializer,
@@ -37,6 +42,10 @@ from .serializers import (
     SiteSettingsSerializer,
     TestimonialSerializer,
 )
+from .services.assistant import answer_website_question
+from .services.assistant_fallback import website_fallback
+
+logger = logging.getLogger(__name__)
 
 
 def public_cache(seconds: int):
@@ -180,6 +189,36 @@ class ContactEnquiryViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     queryset = ContactEnquiry.objects.none()
     serializer_class = ContactEnquirySerializer
     throttle_classes = (EnquiryThrottle,)
+
+
+class AssistantThrottle(AnonRateThrottle):
+    scope = "assistant"
+
+
+class AmarisAssistantView(generics.GenericAPIView):
+    serializer_class = AmarisAssistantRequestSerializer
+    throttle_classes = (AssistantThrottle,)
+
+    @extend_schema(request=AmarisAssistantRequestSerializer, responses={200: AmarisAssistantResponseSerializer})
+    def post(self, request):
+        message = request.data.get("message")
+        if not isinstance(message, str) or not message.strip():
+            return Response({"detail": "Enter a question for Amaris Assistant."}, status=400)
+        if len(message) > 1200:
+            return Response({"detail": "Keep your question under 1,200 characters."}, status=400)
+
+        if not settings.OPENAI_API_KEY:
+            logger.warning("Amaris Assistant unavailable: OPENAI_API_KEY is not configured")
+            answer, source = website_fallback(message), "website_fallback"
+        else:
+            try:
+                answer, _response_id = answer_website_question(message)
+                source = "ai"
+            except (RuntimeError, ValueError) as exc:
+                logger.warning("Amaris Assistant unavailable: %s", type(exc).__name__)
+                answer, source = website_fallback(message), "website_fallback"
+
+        return Response({"answer": answer, "source": source}, headers={"Cache-Control": "no-store"})
 
 
 @public_cache(settings.SITE_BOOTSTRAP_CACHE_SECONDS)

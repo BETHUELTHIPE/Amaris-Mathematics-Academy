@@ -4,7 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.db import connection
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from redis import Redis
@@ -14,6 +14,15 @@ from . import error_views
 
 def health_live(_request):
     return JsonResponse({"status": "ok"})
+
+
+def service_home(_request):
+    return HttpResponse(
+        "<main><h1>Amaris Mathematics Academy API</h1>"
+        "<p>The backend is online. Visit the "
+        "<a href='https://amaris-mathematics-academy-live-students.onrender.com/'>Student website</a> "
+        "or <a href='/admin/'>Administration</a>.</p></main>"
+    )
 
 
 def _postgresql_available():
@@ -60,6 +69,7 @@ def health_dependencies(_request):
 
 
 urlpatterns = [
+    path("", service_home, name="service-home"),
     path("errors/400/", error_views.error_400, name="error-400"),
     path("errors/403/", error_views.error_403, name="error-403"),
     path("errors/404/", error_views.error_404, name="error-404"),

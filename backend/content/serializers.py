@@ -240,6 +240,15 @@ class AnnouncementSerializer(serializers.ModelSerializer):
         fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at")
 
 
+class AmarisAssistantRequestSerializer(serializers.Serializer):
+    message = serializers.CharField(max_length=1200, trim_whitespace=True)
+
+
+class AmarisAssistantResponseSerializer(serializers.Serializer):
+    answer = serializers.CharField()
+    source = serializers.ChoiceField(choices=("ai", "website_fallback"))
+
+
 class ContactEnquirySerializer(serializers.ModelSerializer):
     class Meta:
         model = ContactEnquiry
