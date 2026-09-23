@@ -1,8 +1,9 @@
-import datetime
 import uuid
 
 from django.conf import settings
 from django.db import migrations, models
+
+import content.models
 import django.db.models.deletion
 
 
@@ -187,7 +188,7 @@ class Migration(migrations.Migration):
                     "hold_expires_at",
                     models.DateTimeField(
                         db_index=True,
-                        default=datetime.datetime.now,
+                        default=content.models.live_class_hold_expiry,
                     ),
                 ),
                 ("provider_reference", models.CharField(blank=True, max_length=160)),
@@ -235,9 +236,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="liveclassbooking",
             constraint=models.UniqueConstraint(
-                condition=models.Q(
-                    ("status__in", ("pending_payment", "confirmed")),
-                ),
+                condition=models.Q(status__in=("pending_payment", "confirmed")),
                 fields=("slot",),
                 name="liveclass_active_slot_unique",
             ),
