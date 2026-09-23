@@ -82,6 +82,8 @@ def create_live_class_checkout(
             raise PaymentSecurityError("This tutor slot is no longer available.")
         if not locked_slot.zoom_join_url:
             raise PaymentSecurityError("This tutor slot is not ready for Zoom booking.")
+        if locked_slot.ends_at - locked_slot.starts_at != timedelta(hours=1):
+            raise PaymentSecurityError("Live class slots must be exactly one hour.")
 
         LiveClassBooking.objects.filter(
             slot=locked_slot,
@@ -250,6 +252,24 @@ def process_live_class_notification(
         )
     if not verified:
         return NotificationResult(False, booking.status, reason="invalid_callback")
+
+    if (
+        booking.provider_reference
+        and booking.provider_reference != provider_reference
+    ):
+        return NotificationResult(
+            False,
+            booking.status,
+            reason="provider_reference_replay",
+        )
+    if LiveClassBooking.objects.filter(
+        provider_reference=provider_reference
+    ).exclude(pk=booking.pk).exists():
+        return NotificationResult(
+            False,
+            booking.status,
+            reason="provider_reference_replay",
+        )
 
     amount = _decimal(payload.get("amount_gross"))
     if amount is None or amount != booking.amount:
