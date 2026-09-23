@@ -88,13 +88,15 @@ services:
           name: amaris-production-broker
           property: connectionString
       - key: AWS_STORAGE_BUCKET_NAME
-        sync: false
+        value: amaris-cms-files
+      - key: AWS_S3_ENDPOINT_URL
+        value: https://epkcuseloinygkakxxdu.supabase.co/storage/v1/s3
       - key: AWS_ACCESS_KEY_ID
         sync: false
       - key: AWS_SECRET_ACCESS_KEY
         sync: false
       - key: AWS_S3_REGION_NAME
-        value: af-south-1
+        value: us-east-1
 
   - type: worker
     name: amaris-production-critical-worker
