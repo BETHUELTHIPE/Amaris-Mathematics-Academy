@@ -44,6 +44,7 @@ from .serializers import (
     TestimonialSerializer,
 )
 from .services.assistant import answer_website_question
+from .services.assistant_fallback import website_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -220,8 +221,8 @@ class AmarisAssistantView(generics.GenericAPIView):
         if not getattr(settings, "OPENAI_API_KEY", ""):
             logger.warning("Amaris Assistant unavailable: OPENAI_API_KEY is not configured")
             return Response(
-                {"detail": "Amaris Assistant is temporarily unavailable."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                {"answer": website_fallback(message), "source": "website_fallback"},
+                headers={"Cache-Control": "no-store"},
             )
 
         try:
@@ -229,11 +230,11 @@ class AmarisAssistantView(generics.GenericAPIView):
         except (RuntimeError, ValueError) as exc:
             logger.warning("Amaris Assistant unavailable: %s", type(exc).__name__)
             return Response(
-                {"detail": "Amaris Assistant is temporarily unavailable."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                {"answer": website_fallback(message), "source": "website_fallback"},
+                headers={"Cache-Control": "no-store"},
             )
 
-        return Response({"answer": answer}, status=status.HTTP_200_OK)
+        return Response({"answer": answer, "source": "ai"}, headers={"Cache-Control": "no-store"})
 
 
 @public_cache(settings.SITE_BOOTSTRAP_CACHE_SECONDS)
