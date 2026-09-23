@@ -271,7 +271,7 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
-    "DEFAULT_THROTTLE_RATES": {"anon": "120/hour", "user": "1000/hour", "enquiries": "5/hour"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "120/hour", "user": "1000/hour", "enquiries": "5/hour", "assistant": "30/hour"},
 }
 
 SPECTACULAR_SETTINGS = {
@@ -280,6 +280,11 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
+
+PUBLIC_SITE_URL = os.getenv("PUBLIC_SITE_URL", "https://amaris-mathematics-academy-live-students.onrender.com").rstrip("/")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_ASSISTANT_MODEL = os.getenv("OPENAI_ASSISTANT_MODEL", "gpt-5.6-luna")
+OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
 CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
