@@ -431,11 +431,17 @@ def process_payfast_notification(
 
 
 def _queue_invoice_archive(invoice_id: int) -> None:
-    """Queue invoice archival without turning a broker outage into a payment rollback."""
+    """Archive after a verified payment even when the broker is unavailable."""
 
+    from content.services.invoices import archive_invoice_pdf, mark_invoice_archive_failure
     from content.tasks import archive_invoice_pdf_task
 
     try:
         archive_invoice_pdf_task.delay(invoice_id)
     except Exception:
         logger.exception("invoice_archive_enqueue_failed", extra={"invoice_id": invoice_id})
+        try:
+            archive_invoice_pdf(invoice_id)
+        except Exception as exc:
+            mark_invoice_archive_failure(invoice_id, exc)
+            logger.exception("invoice_archive_fallback_failed", extra={"invoice_id": invoice_id})
