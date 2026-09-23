@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import timedelta
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -114,7 +115,7 @@ def create_live_class_checkout(
                 ).exclude(pk=existing.pk).exists():
                     raise PaymentSecurityError("This tutor slot has already been booked.")
                 existing.status = LiveClassBooking.Status.PENDING_PAYMENT
-                existing.hold_expires_at = now + timezone.timedelta(minutes=30)
+                existing.hold_expires_at = now + timedelta(minutes=30)
                 existing.provider_reference = ""
                 existing.paid_at = None
                 existing.gateway_verified_at = None
