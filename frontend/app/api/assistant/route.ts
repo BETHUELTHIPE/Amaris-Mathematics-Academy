@@ -43,7 +43,8 @@ export async function POST(request: NextRequest) {
 
     const payload = (await response.json().catch(() => ({}))) as AssistantResponse;
     if (!response.ok) {
-      const status = response.status === 429 ? 429 : response.status >= 500 ? 503 : 400;
+      // A missing CMS route is an upstream outage; let the client show published guidance.
+      const status = response.status === 429 ? 429 : response.status === 404 || response.status >= 500 ? 503 : 400;
       return NextResponse.json(
         { detail: payload.detail || "Amaris Assistant is temporarily unavailable." },
         { status, headers: { "Cache-Control": "no-store" } },
