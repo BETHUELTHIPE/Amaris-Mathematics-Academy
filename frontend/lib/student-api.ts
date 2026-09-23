@@ -31,6 +31,40 @@ export type CheckoutSession = {
   course: { slug: string; title: string };
 };
 
+export type LiveClassCheckoutSession = {
+  booking_reference: string;
+  status: string;
+  gateway_url: string;
+  fields: Record<string, string>;
+  booking: {
+    programme: string;
+    subject: string;
+    level: string;
+    topic: string;
+    tutor: string;
+    starts_at: string;
+    ends_at: string;
+    amount: string;
+    currency: string;
+  };
+};
+
+export type LiveClassBookingStatus = {
+  booking_reference: string;
+  status: string;
+  programme: string;
+  subject: string;
+  level: string;
+  topic: string;
+  tutor: string;
+  starts_at: string;
+  ends_at: string;
+  amount: string;
+  currency: string;
+  invoice_number: string | null;
+  zoom_join_url: string;
+};
+
 export type ProtectedLesson = {
   course_slug: string;
   course_title: string;
@@ -102,6 +136,40 @@ export async function createStudentCheckout(courseSlug: string): Promise<Checkou
       idempotency_key: await checkoutKey(courseSlug),
     }),
   });
+}
+
+async function liveClassCheckoutKey(slotId: string, topic: string): Promise<string> {
+  const student = await requireVerifiedStudent();
+  const normalizedTopic = topic.trim().replace(/\s+/g, " ").toLowerCase();
+  const bytes = new TextEncoder().encode(`${student.id}:${slotId}:${normalizedTopic}`);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const hex = Array.from(new Uint8Array(digest))
+    .slice(0, 20)
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+  return `liveclass-${hex}`;
+}
+
+export async function createStudentLiveClassCheckout(
+  slotId: string,
+  topic: string,
+): Promise<LiveClassCheckoutSession> {
+  return studentFetch<LiveClassCheckoutSession>("/student/live-classes/checkout/", {
+    method: "POST",
+    body: JSON.stringify({
+      slot_id: slotId,
+      topic: topic.trim(),
+      idempotency_key: await liveClassCheckoutKey(slotId, topic),
+    }),
+  });
+}
+
+export async function getStudentLiveClassBooking(
+  reference: string,
+): Promise<LiveClassBookingStatus> {
+  return studentFetch<LiveClassBookingStatus>(
+    `/student/live-classes/bookings/${encodeURIComponent(reference)}/`,
+  );
 }
 
 export async function getStudentCourses(): Promise<StudentCourse[]> {
