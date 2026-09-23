@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
 from django.core.exceptions import ValidationError
@@ -432,7 +433,7 @@ class StudentRecord(TimeStampedModel):
 
 
 def live_class_hold_expiry():
-    return timezone.now() + timezone.timedelta(minutes=30)
+    return timezone.now() + timedelta(minutes=30)
 
 
 class TutorAvailabilitySlot(TimeStampedModel):
