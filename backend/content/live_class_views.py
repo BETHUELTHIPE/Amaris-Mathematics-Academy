@@ -26,11 +26,26 @@ class LiveClassSlotFilterSerializer(serializers.Serializer):
     level = serializers.CharField(max_length=80, required=False, trim_whitespace=True)
 
 
+class LiveClassSlotResponseSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    programme = serializers.CharField()
+    programme_label = serializers.CharField()
+    subject = serializers.CharField()
+    subject_label = serializers.CharField()
+    level = serializers.CharField()
+    tutor = serializers.CharField()
+    starts_at = serializers.DateTimeField()
+    ends_at = serializers.DateTimeField()
+    duration_minutes = serializers.IntegerField()
+    price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    currency = serializers.CharField()
+
+
 class LiveClassSlotView(APIView):
     authentication_classes = ()
     permission_classes = (AllowAny,)
 
-    @extend_schema(parameters=[LiveClassSlotFilterSerializer], responses={200: serializers.ListSerializer})
+    @extend_schema(\n        parameters=[LiveClassSlotFilterSerializer],\n        responses={200: LiveClassSlotResponseSerializer(many=True)},\n    )
     def get(self, request):
         filters = LiveClassSlotFilterSerializer(data=request.query_params)
         filters.is_valid(raise_exception=True)
