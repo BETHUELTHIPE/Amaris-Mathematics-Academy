@@ -75,6 +75,11 @@ TEMPLATES = [
 WSGI_APPLICATION = "amaris_cms.wsgi.application"
 ASGI_APPLICATION = "amaris_cms.asgi.application"
 
+PRODUCTION_MODE = env_bool("PRODUCTION_MODE", False)
+
+if PRODUCTION_MODE and not os.getenv("DATABASE_URL"):
+    raise RuntimeError("PRODUCTION_MODE requires DATABASE_URL; SQLite fallback is forbidden.")
+
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
@@ -98,6 +103,17 @@ if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
             ),
         }
     )
+
+if PRODUCTION_MODE:
+    missing_runtime = [
+        key
+        for key in ("DJANGO_CACHE_URL", "CELERY_BROKER_URL", "CELERY_RESULT_BACKEND", "SUPABASE_URL")
+        if not os.getenv(key)
+    ]
+    if missing_runtime:
+        raise RuntimeError(
+            "PRODUCTION_MODE requires these runtime services: " + ", ".join(missing_runtime)
+        )
 
 CACHES = {
     "default": {
