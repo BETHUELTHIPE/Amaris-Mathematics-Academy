@@ -247,6 +247,7 @@ class AmarisAssistantRequestSerializer(serializers.Serializer):
 
 class AmarisAssistantResponseSerializer(serializers.Serializer):
     answer = serializers.CharField()
+    source = serializers.ChoiceField(choices=("ai", "website_fallback"))
 
 
 class ContactEnquirySerializer(serializers.ModelSerializer):
