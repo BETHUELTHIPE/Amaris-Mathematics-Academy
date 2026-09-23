@@ -71,7 +71,6 @@ class LiveClassSlotView(APIView):
                 )
             )
             .distinct()
-            .order_by("starts_at")[:100]
         )
         if values.get("programme"):
             queryset = queryset.filter(programme=values["programme"])
@@ -79,6 +78,7 @@ class LiveClassSlotView(APIView):
             queryset = queryset.filter(subject=values["subject"])
         if values.get("level"):
             queryset = queryset.filter(level__iexact=values["level"])
+        queryset = queryset.order_by("starts_at")[:100]
 
         payload = [
             {
