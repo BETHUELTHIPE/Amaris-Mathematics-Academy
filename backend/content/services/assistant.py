@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -9,6 +8,27 @@ from django.conf import settings
 from .enquiry_autoreply import _clean, _extract_output_text, build_website_context
 
 logger = logging.getLogger(__name__)
+
+_PUBLIC_UPSTREAM_ERROR_CODES = frozenset(
+    {
+        "rate_limit_exceeded",
+        "insufficient_quota",
+        "credit_balance_exhausted",
+        "organization_usage_limit_exceeded",
+        "organization_spend_limit_exceeded",
+        "project_spend_limit_exceeded",
+    }
+)
+
+
+def _upstream_error_code(body: bytes) -> str:
+    """Keep the provider's known error category without logging its raw response."""
+    try:
+        error = json.loads(body).get("error")
+        code = error.get("code") if isinstance(error, dict) else None
+    except (AttributeError, TypeError, ValueError):
+        return "unclassified"
+    return code if isinstance(code, str) and code in _PUBLIC_UPSTREAM_ERROR_CODES else "unclassified"
 
 
 def _assistant_instructions() -> str:
@@ -73,14 +93,9 @@ def answer_website_question(question: str) -> tuple[str, str]:
         with urlopen(request, timeout=timeout) as response:
             response_payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
-        try:
-            error = json.loads(exc.read(1200).decode("utf-8")).get("error", {})
-            code = error.get("code") or error.get("type")
-        except (ValueError, AttributeError, UnicodeDecodeError):
-            code = None
-        safe_code = code if isinstance(code, str) and re.fullmatch(r"[a-z0-9_]{1,80}", code) else "unknown"
-        logger.warning("Amaris Assistant upstream returned HTTP %d code=%s", exc.code, safe_code)
-        raise RuntimeError(f"OpenAI request failed with HTTP {exc.code} code={safe_code}") from exc
+        code = _upstream_error_code(exc.read(1200))
+        logger.warning("Amaris Assistant upstream returned HTTP %d (code=%s)", exc.code, code)
+        raise RuntimeError(f"OpenAI request failed with HTTP {exc.code} (code={code}).") from exc
     except (URLError, TimeoutError) as exc:
         logger.warning("Amaris Assistant upstream timed out or was unreachable: %s", type(exc).__name__)
         raise RuntimeError("OpenAI request timed out or was unreachable.") from exc
