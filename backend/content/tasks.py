@@ -266,6 +266,7 @@ def deliver_live_class_reminder(_self) -> int:
             .select_related("student", "slot", "slot__tutor")
             .filter(
                 status=LiveClassBooking.Status.CONFIRMED,
+                confirmation_sent_at__isnull=False,
                 reminder_sent_at__isnull=True,
                 slot__starts_at__gt=now,
                 slot__starts_at__lte=now + timedelta(minutes=30),
