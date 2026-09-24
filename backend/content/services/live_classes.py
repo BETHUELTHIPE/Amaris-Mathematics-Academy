@@ -73,11 +73,7 @@ def create_live_class_checkout(
     now = timezone.now()
     reference = f"LCB-{key}"
     with transaction.atomic():
-        locked_slot = (
-            TutorAvailabilitySlot.objects.select_for_update()
-            .select_related("tutor")
-            .get(pk=slot.pk)
-        )
+        locked_slot = TutorAvailabilitySlot.objects.select_for_update().select_related("tutor").get(pk=slot.pk)
         if not locked_slot.is_active or locked_slot.starts_at <= now:
             raise PaymentSecurityError("This tutor slot is no longer available.")
         if not locked_slot.zoom_join_url:
@@ -99,22 +95,24 @@ def create_live_class_checkout(
                 and existing.topic == cleaned_topic
             )
             if not same_booking:
-                raise PaymentSecurityError(
-                    "This booking key is already bound to another live class."
-                )
+                raise PaymentSecurityError("This booking key is already bound to another live class.")
             if existing.status == LiveClassBooking.Status.CONFIRMED:
                 raise PaymentSecurityError("This live class is already confirmed.")
             if existing.status in {
                 LiveClassBooking.Status.EXPIRED,
                 LiveClassBooking.Status.CANCELLED,
             }:
-                if LiveClassBooking.objects.filter(
-                    slot=locked_slot,
-                    status__in=(
-                        LiveClassBooking.Status.PENDING_PAYMENT,
-                        LiveClassBooking.Status.CONFIRMED,
-                    ),
-                ).exclude(pk=existing.pk).exists():
+                if (
+                    LiveClassBooking.objects.filter(
+                        slot=locked_slot,
+                        status__in=(
+                            LiveClassBooking.Status.PENDING_PAYMENT,
+                            LiveClassBooking.Status.CONFIRMED,
+                        ),
+                    )
+                    .exclude(pk=existing.pk)
+                    .exists()
+                ):
                     raise PaymentSecurityError("This tutor slot has already been booked.")
                 existing.status = LiveClassBooking.Status.PENDING_PAYMENT
                 existing.hold_expires_at = now + timedelta(minutes=30)
@@ -205,9 +203,7 @@ def process_live_class_notification(
         return NotificationResult(False, "pending_payment", reason="missing_required_fields")
 
     try:
-        booking = LiveClassBooking.objects.select_related("student", "slot").get(
-            reference=reference
-        )
+        booking = LiveClassBooking.objects.select_related("student", "slot").get(reference=reference)
     except LiveClassBooking.DoesNotExist:
         return NotificationResult(False, "pending_payment", reason="unknown_booking")
 
@@ -226,10 +222,7 @@ def process_live_class_notification(
             duplicate=True,
         )
 
-    if (
-        booking.status == LiveClassBooking.Status.PENDING_PAYMENT
-        and booking.hold_expires_at <= timezone.now()
-    ):
+    if booking.status == LiveClassBooking.Status.PENDING_PAYMENT and booking.hold_expires_at <= timezone.now():
         booking.status = LiveClassBooking.Status.EXPIRED
         booking.save(update_fields=("status", "updated_at"))
         return NotificationResult(False, booking.status, reason="booking_hold_expired")
@@ -253,18 +246,13 @@ def process_live_class_notification(
     if not verified:
         return NotificationResult(False, booking.status, reason="invalid_callback")
 
-    if (
-        booking.provider_reference
-        and booking.provider_reference != provider_reference
-    ):
+    if booking.provider_reference and booking.provider_reference != provider_reference:
         return NotificationResult(
             False,
             booking.status,
             reason="provider_reference_replay",
         )
-    if LiveClassBooking.objects.filter(
-        provider_reference=provider_reference
-    ).exclude(pk=booking.pk).exists():
+    if LiveClassBooking.objects.filter(provider_reference=provider_reference).exclude(pk=booking.pk).exists():
         return NotificationResult(
             False,
             booking.status,
@@ -274,19 +262,13 @@ def process_live_class_notification(
     amount = _decimal(payload.get("amount_gross"))
     if amount is None or amount != booking.amount:
         return NotificationResult(False, booking.status, reason="tampered_amount")
-    if str(payload.get("custom_str1", "")).strip() != str(
-        booking.student.supabase_user_id
-    ):
+    if str(payload.get("custom_str1", "")).strip() != str(booking.student.supabase_user_id):
         return NotificationResult(False, booking.status, reason="wrong_student")
     if str(payload.get("custom_str2", "")).strip() != booking.reference:
         return NotificationResult(False, booking.status, reason="wrong_service")
 
     with transaction.atomic():
-        booking = (
-            LiveClassBooking.objects.select_for_update()
-            .select_related("student", "slot")
-            .get(pk=booking.pk)
-        )
+        booking = LiveClassBooking.objects.select_for_update().select_related("student", "slot").get(pk=booking.pk)
         booking.provider_reference = provider_reference
         booking.gateway_verified_at = timezone.now()
 
