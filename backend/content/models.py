@@ -647,13 +647,13 @@ class CustomVideoRequest(TimeStampedModel):
             models.UniqueConstraint(
                 fields=("provider_reference",),
                 condition=~models.Q(provider_reference=""),
-                name="custom_video_provider_ref_unique",
+                name="cvideo_provider_ref_uniq",
             )
         ]
         indexes = [
             models.Index(
                 fields=("student", "status", "-created_at"),
-                name="custom_video_student_status_idx",
+                name="cvideo_student_status_idx",
             )
         ]
 
