@@ -321,6 +321,7 @@ EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT_SECONDS", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@example.invalid>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+CUSTOM_VIDEO_NOTIFICATION_EMAILS = env_list("CUSTOM_VIDEO_NOTIFICATION_EMAILS")
 
 AI_ENQUIRY_AUTOREPLY_ENABLED = env_bool("AI_ENQUIRY_AUTOREPLY_ENABLED", True)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY") or os.getenv("OPENAI_APIKEY", "")
@@ -356,6 +357,11 @@ CELERY_BEAT_SCHEDULE = {
     "expire-live-class-holds": {
         "task": "content.tasks.expire_live_class_holds",
         "schedule": 300.0,
+    },
+    "deliver-custom-video-notifications": {
+        "task": "content.tasks.deliver_custom_video_notifications",
+        "schedule": 60.0,
+        "options": {"queue": "notifications"},
     },
 }
 
