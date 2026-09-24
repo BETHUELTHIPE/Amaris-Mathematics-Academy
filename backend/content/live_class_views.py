@@ -45,7 +45,10 @@ class LiveClassSlotView(APIView):
     authentication_classes = ()
     permission_classes = (AllowAny,)
 
-    @extend_schema(\n        parameters=[LiveClassSlotFilterSerializer],\n        responses={200: LiveClassSlotResponseSerializer(many=True)},\n    )
+    @extend_schema(
+        parameters=[LiveClassSlotFilterSerializer],
+        responses={200: LiveClassSlotResponseSerializer(many=True)},
+    )
     def get(self, request):
         filters = LiveClassSlotFilterSerializer(data=request.query_params)
         filters.is_valid(raise_exception=True)
