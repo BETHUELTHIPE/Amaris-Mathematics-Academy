@@ -1,6 +1,9 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-// @ts-expect-error Render installs this deployment-only Vite plugin before the Node build.\nimport tailwindcss from "@tailwindcss/vite";\n// @ts-expect-error Render installs Nitro before the Node build.\nimport { nitro } from "nitro/vite";
+// @ts-expect-error Render installs this deployment-only Vite plugin before the Node build.
+import tailwindcss from "@tailwindcss/vite";
+// @ts-expect-error Render installs Nitro before the Node build.
+import { nitro } from "nitro/vite";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 
