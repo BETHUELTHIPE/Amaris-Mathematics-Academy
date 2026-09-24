@@ -102,6 +102,7 @@ class LiveClassBookingTests(TestCase):
                 "subject": "mathematics",
                 "level": "Grade 12",
             },
+            secure=True,
         )
 
         self.assertEqual(response.status_code, 200)
