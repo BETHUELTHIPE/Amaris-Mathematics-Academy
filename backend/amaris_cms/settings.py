@@ -368,6 +368,20 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 30.0,
         "options": {"queue": "notifications"},
     },
+    "deliver-live-class-confirmation": {
+        "task": "content.tasks.deliver_live_class_confirmation",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
+    "deliver-live-class-reminder": {
+        "task": "content.tasks.deliver_live_class_reminder",
+        "schedule": 60.0,
+        "options": {"queue": "notifications"},
+    },
+    "expire-live-class-holds": {
+        "task": "content.tasks.expire_live_class_holds",
+        "schedule": 300.0,
+    },
 }
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
