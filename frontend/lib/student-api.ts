@@ -49,6 +49,29 @@ export type LiveClassCheckoutSession = {
   };
 };
 
+export type CustomVideoRequestStatus = {
+  request_reference: string;
+  status: string;
+  programme: string;
+  subject: string;
+  level: string;
+  topic: string;
+  amount: string | null;
+  currency: string;
+  invoice_number: string | null;
+  supporting_files: Array<{ name: string; content_type: string; size_bytes: number }>;
+  checkout_enabled: boolean;
+};
+
+export type CustomVideoCheckoutSession = {
+  request_reference: string;
+  status: string;
+  gateway_url: string;
+  fields: Record<string, string>;
+  amount: string;
+  currency: string;
+};
+
 export type LiveClassBookingStatus = {
   booking_reference: string;
   status: string;
@@ -108,11 +131,11 @@ async function studentFetch<T>(path: string, init: RequestInit = {}): Promise<T>
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${token}`,
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       ...(init.headers ?? {}),
     },
     cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(init.body instanceof FormData ? 30_000 : 8_000),
   });
   if (!response.ok) {
     const body = await response.text();
@@ -169,6 +192,32 @@ export async function getStudentLiveClassBooking(
 ): Promise<LiveClassBookingStatus> {
   return studentFetch<LiveClassBookingStatus>(
     `/student/live-classes/bookings/${encodeURIComponent(reference)}/`,
+  );
+}
+
+export async function createStudentCustomVideoRequest(
+  formData: FormData,
+): Promise<CustomVideoRequestStatus> {
+  return studentFetch<CustomVideoRequestStatus>("/student/custom-videos/", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function createStudentCustomVideoCheckout(
+  reference: string,
+): Promise<CustomVideoCheckoutSession> {
+  return studentFetch<CustomVideoCheckoutSession>(
+    `/student/custom-videos/${encodeURIComponent(reference)}/checkout/`,
+    { method: "POST" },
+  );
+}
+
+export async function getStudentCustomVideoRequest(
+  reference: string,
+): Promise<CustomVideoRequestStatus> {
+  return studentFetch<CustomVideoRequestStatus>(
+    `/student/custom-videos/${encodeURIComponent(reference)}/`,
   );
 }
 
