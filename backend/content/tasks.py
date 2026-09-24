@@ -121,7 +121,6 @@ def deliver_transactional_email(_self) -> int:
         return 1
 
 
-
 def _live_class_brand() -> tuple[str, str, str]:
     site = SiteSettings.objects.first()
     name = site.site_name if site else "Amaris Mathematics Academy"
