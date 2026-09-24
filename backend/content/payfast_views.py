@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import ErrorDetailSerializer, PayFastITNRequestSerializer, PayFastITNStatusSerializer
+from .services.custom_videos import process_custom_video_notification
 from .services.live_classes import process_live_class_notification
 from .services.payments import HttpPayFastVerificationGateway, process_payfast_notification
 
@@ -64,7 +65,10 @@ class PayFastITNView(APIView):
 
         payload = {str(key): str(value) for key, value in request.data.items()}
         gateway = HttpPayFastVerificationGateway()
-        if str(payload.get("m_payment_id", "")).startswith("LCB-"):
+        payment_id = str(payload.get("m_payment_id", ""))
+        if payment_id.startswith("CVR-"):
+            result = process_custom_video_notification(payload, gateway=gateway)
+        elif payment_id.startswith("LCB-"):
             result = process_live_class_notification(payload, gateway=gateway)
         else:
             result = process_payfast_notification(payload, gateway=gateway)
