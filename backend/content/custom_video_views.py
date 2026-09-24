@@ -8,7 +8,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
-from .models import CustomVideoRequest, CustomVideoSettings, TutorAvailabilitySlot
+from .models import (
+    CustomVideoInvoice,
+    CustomVideoRequest,
+    CustomVideoSettings,
+    TutorAvailabilitySlot,
+)
 from .services.custom_videos import (
     CustomVideoValidationError,
     create_custom_video_checkout,
@@ -89,7 +94,6 @@ class CustomVideoRequestCreateSerializer(serializers.Serializer):
     files = serializers.ListField(
         child=serializers.FileField(),
         allow_empty=False,
-        max_length=20,
     )
 
 
@@ -124,7 +128,10 @@ class CustomVideoCheckoutResponseSerializer(serializers.Serializer):
 
 
 def _request_payload(request_record: CustomVideoRequest) -> dict:
-    invoice = getattr(request_record, "invoice", None)
+    try:
+        invoice = request_record.invoice
+    except CustomVideoInvoice.DoesNotExist:
+        invoice = None
     invoice_url = ""
     if invoice is not None and invoice.pdf_file.name:
         try:
