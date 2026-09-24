@@ -214,9 +214,7 @@ class LiveClassBookingTests(TestCase):
     def test_expired_unpaid_hold_releases_slot(self):
         checkout = self.checkout()
         booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
-        LiveClassBooking.objects.filter(pk=booking.pk).update(
-            hold_expires_at=timezone.now() - timedelta(seconds=1)
-        )
+        LiveClassBooking.objects.filter(pk=booking.pk).update(hold_expires_at=timezone.now() - timedelta(seconds=1))
 
         self.assertEqual(expire_live_class_holds.run(), 1)
         booking.refresh_from_db()
@@ -226,9 +224,7 @@ class LiveClassBookingTests(TestCase):
             student=self.other_student,
             key="liveclass-checkout-003",
         )
-        replacement_booking = LiveClassBooking.objects.get(
-            reference=replacement.booking_reference
-        )
+        replacement_booking = LiveClassBooking.objects.get(reference=replacement.booking_reference)
         self.assertEqual(
             replacement_booking.status,
             LiveClassBooking.Status.PENDING_PAYMENT,
