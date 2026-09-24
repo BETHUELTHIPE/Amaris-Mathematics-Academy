@@ -1,5 +1,7 @@
 import uuid
 from datetime import timedelta
+from decimal import Decimal
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from django.core.exceptions import ValidationError
@@ -542,6 +544,161 @@ class LiveClassBooking(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.reference
+
+
+def custom_video_attachment_upload_to(instance, filename: str) -> str:
+    safe_name = Path(filename).name.replace(" ", "_")[:180] or "supporting-file"
+    return f"custom-video/requests/{instance.request.reference}/{uuid.uuid4().hex}-{safe_name}"
+
+
+class CustomVideoSettings(TimeStampedModel):
+    enabled = models.BooleanField(
+        default=False,
+        help_text="Enable custom-video requests only after a flat fee has been configured.",
+    )
+    flat_fee = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        help_text="Admin-configured price per custom-video request. No default price is assumed.",
+    )
+    currency = models.CharField(max_length=3, default="ZAR")
+    max_files = models.PositiveSmallIntegerField(
+        default=5,
+        validators=[MinValueValidator(1)],
+        help_text="Maximum number of supporting files accepted per request.",
+    )
+    max_file_size_mb = models.PositiveSmallIntegerField(
+        default=15,
+        validators=[MinValueValidator(1)],
+        help_text="Maximum size of each supporting file in megabytes.",
+    )
+
+    class Meta:
+        verbose_name_plural = "Custom video settings"
+
+    def clean(self):
+        super().clean()
+        if self.enabled and self.flat_fee is None:
+            raise ValidationError("Set the custom-video flat fee before enabling requests.")
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return "Custom video request settings"
+
+
+class CustomVideoRequest(TimeStampedModel):
+    class Grade(models.TextChoices):
+        GRADE_10 = "10", "Grade 10"
+        GRADE_11 = "11", "Grade 11"
+        GRADE_12 = "12", "Grade 12"
+
+    class Status(models.TextChoices):
+        PENDING_PAYMENT = "pending_payment", "Pending payment"
+        PAID = "paid", "Paid"
+        IN_PROGRESS = "in_progress", "In progress"
+        DELIVERED = "delivered", "Delivered"
+        CANCELLED = "cancelled", "Cancelled"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reference = models.CharField(max_length=100, unique=True)
+    idempotency_key = models.CharField(max_length=64, unique=True, editable=False)
+    student = models.ForeignKey(
+        StudentRecord,
+        related_name="custom_video_requests",
+        on_delete=models.PROTECT,
+    )
+    curriculum = models.CharField(
+        max_length=20,
+        choices=TutorAvailabilitySlot.Programme.choices,
+        db_index=True,
+    )
+    subject = models.CharField(
+        max_length=32,
+        choices=TutorAvailabilitySlot.Subject.choices,
+        db_index=True,
+    )
+    grade = models.CharField(max_length=2, choices=Grade.choices, db_index=True)
+    topic = models.CharField(max_length=220)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    currency = models.CharField(max_length=3, default="ZAR")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING_PAYMENT,
+        db_index=True,
+    )
+    provider_reference = models.CharField(max_length=160, blank=True)
+    gateway_verified_at = models.DateTimeField(blank=True, null=True)
+    paid_at = models.DateTimeField(blank=True, null=True)
+    invoice_sent_at = models.DateTimeField(blank=True, null=True)
+    delivery_url = models.URLField(blank=True)
+    admin_notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("provider_reference",),
+                condition=~models.Q(provider_reference=""),
+                name="custom_video_provider_ref_unique",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=("student", "status", "-created_at"),
+                name="custom_video_student_status_idx",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return self.reference
+
+
+class CustomVideoRequestAttachment(TimeStampedModel):
+    request = models.ForeignKey(
+        CustomVideoRequest,
+        related_name="attachments",
+        on_delete=models.CASCADE,
+    )
+    file = models.FileField(upload_to=custom_video_attachment_upload_to)
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=120, blank=True)
+    size_bytes = models.PositiveBigIntegerField()
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.request.reference} — {self.original_name}"
+
+
+class CustomVideoInvoice(TimeStampedModel):
+    request = models.OneToOneField(
+        CustomVideoRequest,
+        related_name="invoice",
+        on_delete=models.PROTECT,
+    )
+    invoice_number = models.CharField(max_length=120, unique=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3, default="ZAR")
+    issued_at = models.DateTimeField(default=timezone.now)
+    pdf_file = models.FileField(
+        upload_to="custom-video/invoices/%Y/%m/",
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-issued_at"]
+
+    def __str__(self) -> str:
+        return self.invoice_number
 
 
 class Enrollment(TimeStampedModel):
