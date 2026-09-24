@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import migrations, models
 from django.utils import timezone
 
+import django.core.validators
 import django.db.models.deletion
 
 
@@ -44,7 +45,7 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("enabled", models.BooleanField(default=False, help_text="Enable custom-video checkout only after a flat fee has been configured.")),
-                ("flat_fee", models.DecimalField(blank=True, decimal_places=2, help_text="Admin-configured flat fee per custom-video request. No default price is assumed.", max_digits=10, null=True)),
+                ("flat_fee", models.DecimalField(blank=True, decimal_places=2, help_text="Admin-configured flat fee per custom-video request. No default price is assumed.", max_digits=10, null=True, validators=[django.core.validators.MinValueValidator(0)])),
                 ("currency", models.CharField(default="ZAR", max_length=3)),
                 ("max_files", models.PositiveSmallIntegerField(default=5)),
                 ("max_file_size_mb", models.PositiveSmallIntegerField(default=20)),
@@ -100,7 +101,7 @@ class Migration(migrations.Migration):
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("invoice_number", models.CharField(max_length=120, unique=True)),
-                ("amount", models.DecimalField(decimal_places=2, max_digits=10)),
+                ("amount", models.DecimalField(decimal_places=2, max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
                 ("currency", models.CharField(default="ZAR", max_length=3)),
                 ("issued_at", models.DateTimeField(default=timezone.now)),
                 ("pdf", models.FileField(blank=True, upload_to="invoices/custom-video/%Y/%m/")),
