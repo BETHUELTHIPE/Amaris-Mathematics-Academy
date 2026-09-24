@@ -278,7 +278,7 @@ def deliver_live_class_reminder(_self) -> int:
 
         _send_live_class_message(
             booking,
-            subject=f"Reminder: your Amaris Zoom class starts in 30 minutes",
+            subject="Reminder: your Amaris Zoom class starts in 30 minutes",
             heading="Your live class starts soon",
             body_lines=[
                 f"Topic: {booking.topic}",
