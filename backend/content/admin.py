@@ -5,6 +5,10 @@ from .models import (
     FAQ,
     Announcement,
     ContactEnquiry,
+    CustomVideoInvoice,
+    CustomVideoRequest,
+    CustomVideoRequestFile,
+    CustomVideoServiceSettings,
     Course,
     CourseCategory,
     CourseModule,
@@ -459,6 +463,74 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
         "created_at",
         "updated_at",
     )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CustomVideoServiceSettings)
+class CustomVideoServiceSettingsAdmin(TimeStampedAdmin):
+    list_display = ("enabled", "flat_fee", "currency", "max_files", "max_file_size_mb", "updated_at")
+    fields = ("enabled", "flat_fee", "currency", "max_files", "max_file_size_mb", "created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return not CustomVideoServiceSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class CustomVideoRequestFileInline(admin.TabularInline):
+    model = CustomVideoRequestFile
+    extra = 0
+    fields = ("original_name", "content_type", "size_bytes", "file", "created_at")
+    readonly_fields = fields
+    can_delete = False
+
+
+@admin.register(CustomVideoRequest)
+class CustomVideoRequestAdmin(TimeStampedAdmin):
+    list_display = ("reference", "student", "programme", "subject", "level", "topic", "status", "amount", "paid_at")
+    list_filter = ("status", "programme", "subject", "created_at")
+    search_fields = ("reference", "student__email", "student__first_name", "student__last_name", "topic", "invoice_number")
+    autocomplete_fields = ("student", "assigned_to")
+    inlines = (CustomVideoRequestFileInline,)
+    readonly_fields = (
+        "id",
+        "reference",
+        "idempotency_key",
+        "student",
+        "programme",
+        "subject",
+        "level",
+        "topic",
+        "amount",
+        "currency",
+        "provider_reference",
+        "paid_at",
+        "gateway_verified_at",
+        "invoice_number",
+        "confirmation_sent_at",
+        "admin_notification_sent_at",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CustomVideoInvoice)
+class CustomVideoInvoiceAdmin(TimeStampedAdmin):
+    list_display = ("invoice_number", "video_request", "amount", "currency", "issued_at")
+    search_fields = ("invoice_number", "video_request__reference", "video_request__student__email")
+    readonly_fields = ("video_request", "invoice_number", "amount", "currency", "issued_at", "pdf", "created_at", "updated_at")
 
     def has_add_permission(self, request):
         return False
