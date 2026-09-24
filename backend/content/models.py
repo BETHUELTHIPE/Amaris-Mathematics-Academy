@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
 from django.core.exceptions import ValidationError
@@ -429,6 +430,118 @@ class StudentRecord(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.first_name} {self.last_name} ({self.email})"
+
+
+def live_class_hold_expiry():
+    return timezone.now() + timedelta(minutes=30)
+
+
+class TutorAvailabilitySlot(TimeStampedModel):
+    class Programme(models.TextChoices):
+        CAPS = "caps", "CAPS"
+        IEB = "ieb", "IEB"
+        TVET = "tvet", "TVET"
+        UNIVERSITY = "university", "University"
+
+    class Subject(models.TextChoices):
+        MATHEMATICS = "mathematics", "Mathematics"
+        MATHEMATICAL_LITERACY = "mathematical_literacy", "Mathematical Literacy"
+
+    tutor = models.ForeignKey(
+        "auth.User",
+        related_name="live_class_slots",
+        on_delete=models.PROTECT,
+    )
+    programme = models.CharField(max_length=20, choices=Programme.choices, db_index=True)
+    subject = models.CharField(max_length=32, choices=Subject.choices, db_index=True)
+    level = models.CharField(max_length=80, db_index=True)
+    starts_at = models.DateTimeField(db_index=True)
+    ends_at = models.DateTimeField()
+    zoom_join_url = models.URLField(blank=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ["starts_at", "tutor__first_name", "tutor__last_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("tutor", "starts_at"),
+                name="liveclass_tutor_start_unique",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=("programme", "subject", "level", "starts_at"),
+                name="liveclass_slot_lookup_idx",
+            )
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.ends_at <= self.starts_at:
+            raise ValidationError("The class end time must be after the start time.")
+        if self.ends_at - self.starts_at != timedelta(hours=1):
+            raise ValidationError("Live class slots must be exactly one hour.")
+        if self.is_active and not self.zoom_join_url:
+            raise ValidationError("An active live-class slot must have a Zoom join URL.")
+
+    @property
+    def tutor_display_name(self) -> str:
+        full_name = self.tutor.get_full_name().strip()
+        return full_name or self.tutor.get_username()
+
+    def __str__(self) -> str:
+        return f"{self.tutor_display_name} — {self.starts_at:%Y-%m-%d %H:%M}"
+
+
+class LiveClassBooking(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING_PAYMENT = "pending_payment", "Pending payment"
+        CONFIRMED = "confirmed", "Confirmed"
+        EXPIRED = "expired", "Expired"
+        CANCELLED = "cancelled", "Cancelled"
+        COMPLETED = "completed", "Completed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reference = models.CharField(max_length=100, unique=True)
+    idempotency_key = models.CharField(max_length=64, unique=True, editable=False)
+    student = models.ForeignKey(StudentRecord, related_name="live_class_bookings", on_delete=models.PROTECT)
+    slot = models.ForeignKey(TutorAvailabilitySlot, related_name="bookings", on_delete=models.PROTECT)
+    programme = models.CharField(max_length=20, choices=TutorAvailabilitySlot.Programme.choices)
+    subject = models.CharField(max_length=32, choices=TutorAvailabilitySlot.Subject.choices)
+    level = models.CharField(max_length=80)
+    topic = models.CharField(max_length=180)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default="250.00")
+    currency = models.CharField(max_length=3, default="ZAR")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING_PAYMENT,
+        db_index=True,
+    )
+    hold_expires_at = models.DateTimeField(default=live_class_hold_expiry, db_index=True)
+    provider_reference = models.CharField(max_length=160, blank=True)
+    paid_at = models.DateTimeField(blank=True, null=True)
+    gateway_verified_at = models.DateTimeField(blank=True, null=True)
+    invoice_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
+    confirmation_sent_at = models.DateTimeField(blank=True, null=True)
+    reminder_sent_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("slot",),
+                condition=models.Q(status__in=("pending_payment", "confirmed")),
+                name="liveclass_active_slot_unique",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("student", "status", "-created_at"), name="liveclass_student_status_idx"),
+            models.Index(fields=("status", "hold_expires_at"), name="liveclass_hold_status_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.reference
 
 
 class Enrollment(TimeStampedModel):
