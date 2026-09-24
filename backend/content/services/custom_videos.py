@@ -116,6 +116,8 @@ def validate_supporting_files(files: Iterable, settings_row: CustomVideoServiceS
     uploads = list(files)
     max_files = settings_row.max_files if settings_row else 5
     max_file_size_mb = settings_row.max_file_size_mb if settings_row else 20
+    if not uploads:
+        raise PaymentSecurityError("At least one supporting file is required.")
     if len(uploads) > max_files:
         raise PaymentSecurityError(f"Upload no more than {max_files} supporting files.")
 
