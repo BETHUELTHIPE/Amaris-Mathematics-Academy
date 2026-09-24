@@ -663,3 +663,110 @@ class PaymentReconciliationRun(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.started_at:%Y-%m-%d %H:%M} — {self.status}"
+
+
+class CustomVideoServiceSettings(TimeStampedModel):
+    enabled = models.BooleanField(
+        default=False,
+        help_text="Enable custom-video checkout only after a flat fee has been configured.",
+    )
+    flat_fee = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0)],
+        help_text="Admin-configured flat fee per custom-video request. No default price is assumed.",
+    )
+    currency = models.CharField(max_length=3, default="ZAR")
+    max_files = models.PositiveSmallIntegerField(default=5)
+    max_file_size_mb = models.PositiveSmallIntegerField(default=20)
+
+    class Meta:
+        verbose_name = "Custom video service settings"
+        verbose_name_plural = "Custom video service settings"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        return super().save(*args, **kwargs)
+
+    @property
+    def checkout_enabled(self) -> bool:
+        return bool(self.enabled and self.flat_fee is not None and self.flat_fee > 0)
+
+    def __str__(self) -> str:
+        return "Custom video service settings"
+
+
+class CustomVideoRequest(TimeStampedModel):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        PENDING_PAYMENT = "pending_payment", "Pending payment"
+        PAID = "paid", "Paid"
+        IN_PROGRESS = "in_progress", "In progress"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reference = models.CharField(max_length=100, unique=True)
+    idempotency_key = models.CharField(max_length=64, unique=True, editable=False)
+    student = models.ForeignKey(StudentRecord, related_name="custom_video_requests", on_delete=models.PROTECT)
+    programme = models.CharField(max_length=20, choices=TutorAvailabilitySlot.Programme.choices, db_index=True)
+    subject = models.CharField(max_length=32, choices=TutorAvailabilitySlot.Subject.choices, db_index=True)
+    level = models.CharField(max_length=80)
+    topic = models.CharField(max_length=180)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    currency = models.CharField(max_length=3, default="ZAR")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True)
+    assigned_to = models.ForeignKey(
+        "auth.User",
+        related_name="assigned_custom_video_requests",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+    )
+    provider_reference = models.CharField(max_length=160, blank=True)
+    paid_at = models.DateTimeField(blank=True, null=True)
+    gateway_verified_at = models.DateTimeField(blank=True, null=True)
+    invoice_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
+    confirmation_sent_at = models.DateTimeField(blank=True, null=True)
+    admin_notification_sent_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=("student", "status", "-created_at"), name="video_req_student_status_idx"),
+            models.Index(fields=("status", "-created_at"), name="video_req_status_created_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.reference
+
+
+class CustomVideoRequestFile(TimeStampedModel):
+    video_request = models.ForeignKey(CustomVideoRequest, related_name="supporting_files", on_delete=models.CASCADE)
+    file = models.FileField(upload_to="custom-video-requests/%Y/%m/")
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=120, blank=True)
+    size_bytes = models.PositiveBigIntegerField()
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return self.original_name
+
+
+class CustomVideoInvoice(TimeStampedModel):
+    video_request = models.OneToOneField(CustomVideoRequest, related_name="invoice", on_delete=models.PROTECT)
+    invoice_number = models.CharField(max_length=120, unique=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    currency = models.CharField(max_length=3, default="ZAR")
+    issued_at = models.DateTimeField(default=timezone.now)
+    pdf = models.FileField(upload_to="invoices/custom-video/%Y/%m/", blank=True)
+
+    class Meta:
+        ordering = ["-issued_at"]
+
+    def __str__(self) -> str:
+        return self.invoice_number
