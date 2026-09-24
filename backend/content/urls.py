@@ -1,6 +1,12 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .custom_video_views import (
+    CustomVideoCheckoutView,
+    CustomVideoOptionsView,
+    CustomVideoRequestCreateView,
+    CustomVideoRequestStatusView,
+)
 from .live_class_views import LiveClassBookingStatusView, LiveClassCheckoutView, LiveClassSlotView
 from .payfast_views import PayFastITNView
 from .student_views import (
@@ -42,6 +48,7 @@ router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 urlpatterns = [
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
+    path("custom-videos/options/", CustomVideoOptionsView.as_view(), name="custom-video-options"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
     path(
@@ -53,6 +60,17 @@ urlpatterns = [
     path("student/lessons/<slug:course_slug>/<slug:lesson_slug>/", StudentLessonView.as_view(), name="student-lesson"),
     path("student/checkout/", CheckoutView.as_view(), name="student-checkout"),
     path("student/live-classes/checkout/", LiveClassCheckoutView.as_view(), name="live-class-checkout"),
+    path("student/custom-videos/", CustomVideoRequestCreateView.as_view(), name="custom-video-create"),
+    path(
+        "student/custom-videos/<str:reference>/checkout/",
+        CustomVideoCheckoutView.as_view(),
+        name="custom-video-checkout",
+    ),
+    path(
+        "student/custom-videos/<str:reference>/",
+        CustomVideoRequestStatusView.as_view(),
+        name="custom-video-status",
+    ),
     path(
         "student/live-classes/bookings/<str:reference>/",
         LiveClassBookingStatusView.as_view(),
