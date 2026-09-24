@@ -348,6 +348,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 30.0,
         "options": {"queue": "notifications"},
     },
+    "deliver-custom-video-invoice": {
+        "task": "content.tasks.deliver_custom_video_invoice",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
     "deliver-live-class-reminder": {
         "task": "content.tasks.deliver_live_class_reminder",
         "schedule": 60.0,
