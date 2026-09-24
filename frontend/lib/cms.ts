@@ -102,6 +102,7 @@ const fallbackNavigation: CmsNavigationItem[] = [
   { label: "Courses", url: "/courses", location: "both", order: 10, open_in_new_tab: false },
   { label: "How it works", url: "/how-it-works", location: "both", order: 20, open_in_new_tab: false },
   { label: "Book online live class", url: "/book-online-live-class", location: "both", order: 25, open_in_new_tab: false },
+  { label: "Request Your Own Video", url: "/request-your-own-video", location: "header", order: 27, open_in_new_tab: false },
   { label: "Pricing", url: "/pricing", location: "both", order: 30, open_in_new_tab: false },
   { label: "About", url: "/about", location: "both", order: 40, open_in_new_tab: false },
   { label: "Contact", url: "/contact", location: "both", order: 50, open_in_new_tab: false },
@@ -117,9 +118,19 @@ export const getManagedNavigation = cache(async (location: "header" | "footer") 
     order: 25,
     open_in_new_tab: false,
   };
-  const items = sourceItems.some((item) => item.url === bookingLink.url)
+  let items = sourceItems.some((item) => item.url === bookingLink.url)
     ? sourceItems
     : [...sourceItems, bookingLink];
+  const videoRequestLink: CmsNavigationItem = {
+    label: "Request Your Own Video",
+    url: "/request-your-own-video",
+    location: "header",
+    order: 27,
+    open_in_new_tab: false,
+  };
+  if (location === "header" && !items.some((item) => item.url === videoRequestLink.url)) {
+    items = [...items, videoRequestLink];
+  }
   return items
     .filter((item) => item.location === location || item.location === "both")
     .sort((a, b) => a.order - b.order);
