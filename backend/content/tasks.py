@@ -8,8 +8,9 @@ from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
 
-from content.models import LiveClassBooking, SiteSettings
+from content.models import CustomVideoRequest, LiveClassBooking, SiteSettings
 from content.payment_models import NotificationOutbox
+from content.services.custom_video_invoices import ensure_custom_video_invoice_pdf
 from content.services.reconciliation import reconcile_verified_payments
 
 
@@ -245,6 +246,97 @@ def deliver_live_class_confirmation(_self) -> int:
         )
         booking.confirmation_sent_at = timezone.now()
         booking.save(update_fields=("confirmation_sent_at", "updated_at"))
+        return 1
+
+
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    autoretry_for=(OSError, OperationalError, InterfaceError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 6},
+)
+def deliver_custom_video_invoice(_self) -> int:
+    with transaction.atomic():
+        request_record = (
+            CustomVideoRequest.objects.select_for_update(skip_locked=True)
+            .select_related("student", "invoice")
+            .filter(
+                status=CustomVideoRequest.Status.PAID,
+                invoice_sent_at__isnull=True,
+                invoice__isnull=False,
+            )
+            .order_by("paid_at", "created_at")
+            .first()
+        )
+        if request_record is None:
+            return 0
+
+        invoice = ensure_custom_video_invoice_pdf(request_record.invoice)
+        invoice.pdf_file.open("rb")
+        try:
+            pdf_bytes = invoice.pdf_file.read()
+        finally:
+            invoice.pdf_file.close()
+
+        name, email, phone = _live_class_brand()
+        heading = "Your custom video request payment is confirmed"
+        details = [
+            f"Request: {request_record.reference}",
+            f"Curriculum: {request_record.get_curriculum_display()}",
+            f"Subject: {request_record.get_subject_display()}",
+            f"Grade: {request_record.get_grade_display()}",
+            f"Topic: {request_record.topic}",
+            f"Invoice: {invoice.invoice_number}",
+            f"Amount paid: R{invoice.amount:.2f}",
+        ]
+        text_body = "\n".join(
+            [
+                name,
+                f"{email} | {phone}",
+                "",
+                heading,
+                "",
+                *details,
+                "",
+                "Your request is now queued for preparation by the Amaris team.",
+            ]
+        )
+        html_details = "".join(f"<p>{escape(line)}</p>" for line in details)
+        html_body = (
+            '<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;'
+            'border:1px solid #dce4ef;border-radius:18px;overflow:hidden">'
+            '<div style="background:#07152d;color:#fff;padding:24px">'
+            f'<div style="font-size:22px;font-weight:700">{escape(name)}</div>'
+            f'<div style="margin-top:6px;color:#dce4ef">{escape(email)} · {escape(phone)}</div>'
+            "</div>"
+            '<div style="padding:28px;color:#1d2d44">'
+            f'<h1 style="font-size:24px;margin-top:0">{escape(heading)}</h1>'
+            f"{html_details}"
+            "<p>Your request is now queued for preparation by the Amaris team.</p>"
+            "</div></div>"
+        )
+
+        message = EmailMultiAlternatives(
+            subject=f"Amaris custom video payment confirmed — {request_record.reference}",
+            body=text_body,
+            from_email=None,
+            to=[request_record.student.email],
+        )
+        message.attach_alternative(html_body, "text/html")
+        message.attach(
+            f"{invoice.invoice_number}.pdf",
+            pdf_bytes,
+            "application/pdf",
+        )
+        sent = message.send(fail_silently=False)
+        if sent != 1:
+            raise OSError("Transactional email backend did not accept the custom-video invoice.")
+
+        request_record.invoice_sent_at = timezone.now()
+        request_record.save(update_fields=("invoice_sent_at", "updated_at"))
         return 1
 
 

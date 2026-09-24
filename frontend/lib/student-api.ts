@@ -65,6 +65,40 @@ export type LiveClassBookingStatus = {
   zoom_join_url: string;
 };
 
+export type CustomVideoRequestStatus = {
+  request_reference: string;
+  status: string;
+  curriculum: string;
+  curriculum_label: string;
+  subject: string;
+  subject_label: string;
+  grade: string;
+  grade_label: string;
+  topic: string;
+  amount: string | null;
+  currency: string;
+  attachment_count: number;
+  invoice_number: string | null;
+  invoice_pdf_url: string;
+  delivery_url: string;
+};
+
+export type CustomVideoCheckoutSession = {
+  request_reference: string;
+  status: string;
+  gateway_url: string;
+  fields: Record<string, string>;
+  request: {
+    curriculum: string;
+    subject: string;
+    grade: string;
+    topic: string;
+    amount: string;
+    currency: string;
+    attachment_count: number;
+  };
+};
+
 export type ProtectedLesson = {
   course_slug: string;
   course_title: string;
@@ -101,18 +135,20 @@ async function accessToken(): Promise<string> {
   return token;
 }
 
-async function studentFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function studentFetch<T>(\n  path: string,\n  init: RequestInit = {},\n  timeoutMs = 8_000,\n): Promise<T> {
   const token = await accessToken();
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
   const response = await fetch(`${cmsBaseUrl()}${path}`, {
     ...init,
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${token}`,
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.body && !isFormData ? { "Content-Type": "application/json" } : {}),
       ...(init.headers ?? {}),
     },
     cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     const body = await response.text();
@@ -198,4 +234,35 @@ export async function saveStudentProgress(input: {
       ...(typeof input.progressPercent === "number" ? { progress_percent: input.progressPercent } : {}),
     }),
   });
+}
+
+
+export async function createStudentCustomVideoRequest(
+  formData: FormData,
+): Promise<CustomVideoRequestStatus> {
+  return studentFetch<CustomVideoRequestStatus>(
+    "/student/custom-video/requests/",
+    {
+      method: "POST",
+      body: formData,
+    },
+    60_000,
+  );
+}
+
+export async function getStudentCustomVideoRequest(
+  reference: string,
+): Promise<CustomVideoRequestStatus> {
+  return studentFetch<CustomVideoRequestStatus>(
+    `/student/custom-video/requests/${encodeURIComponent(reference)}/`,
+  );
+}
+
+export async function createStudentCustomVideoCheckout(
+  reference: string,
+): Promise<CustomVideoCheckoutSession> {
+  return studentFetch<CustomVideoCheckoutSession>(
+    `/student/custom-video/requests/${encodeURIComponent(reference)}/checkout/`,
+    { method: "POST" },
+  );
 }
