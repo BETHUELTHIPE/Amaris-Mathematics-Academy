@@ -232,9 +232,7 @@ class LiveClassBookingStatusView(LiveClassStudentAPIView):
                 "currency": booking.currency,
                 "invoice_number": booking.invoice_number,
                 "zoom_join_url": (
-                    booking.slot.zoom_join_url
-                    if booking.status == LiveClassBooking.Status.CONFIRMED
-                    else ""
+                    booking.slot.zoom_join_url if booking.status == LiveClassBooking.Status.CONFIRMED else ""
                 ),
             }
         )
