@@ -409,6 +409,9 @@ jobs:
   deploy-staging:
     name: Deploy and verify staging
     if: github.event_name != 'pull_request'
+    concurrency:
+      group: amaris-staging-runtime
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     needs: [publish-image]
     permissions:
