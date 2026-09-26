@@ -209,9 +209,7 @@ class CapacityStudentUser(FastHttpUser):
                 SESSION_COOKIE_VALUE,
             )
         if ACCEPTANCE_HEADER:
-            self.acceptance_user = (
-                f"capacity-{os.getpid()}-{next(_ACCEPTANCE_USER_COUNTER)}"
-            )
+            self.acceptance_user = f"capacity-{os.getpid()}-{next(_ACCEPTANCE_USER_COUNTER)}"
             self._prepare_acceptance_identity()
 
     def _protected_headers(self) -> dict[str, str]:
@@ -230,9 +228,7 @@ class CapacityStudentUser(FastHttpUser):
             catch_response=True,
         ) as response:
             if response.status_code != 200:
-                response.failure(
-                    f"acceptance seed returned {response.status_code}"
-                )
+                response.failure(f"acceptance seed returned {response.status_code}")
                 return
 
         idempotency_key = f"capacity-{self.acceptance_user}"
@@ -250,9 +246,7 @@ class CapacityStudentUser(FastHttpUser):
             catch_response=True,
         ) as response:
             if response.status_code != 201:
-                response.failure(
-                    f"acceptance checkout returned {response.status_code}"
-                )
+                response.failure(f"acceptance checkout returned {response.status_code}")
                 return
             try:
                 reference = str(response.json()["payment_reference"])
