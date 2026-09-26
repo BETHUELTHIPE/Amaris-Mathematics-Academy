@@ -16,22 +16,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  stress:
-    name: 100-user staging stress
+  frontend-stress:
+    name: 100-user staging frontend stress
     if: ${{ github.event.pull_request.number == 113 }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       LOADTEST_ENVIRONMENT: staging
-      LOADTEST_TARGET_URL: https://amaris-mathematics-academy-staging.onrender.com
-      LOADTEST_ALLOWED_HOSTS: amaris-mathematics-academy-staging.onrender.com
+      LOADTEST_TARGET_URL: https://amaris-mathematics-academy-staging-x4ax.onrender.com
+      LOADTEST_ALLOWED_HOSTS: amaris-mathematics-academy-staging-x4ax.onrender.com
       LOADTEST_ALLOW_PRODUCTION: "false"
       LOADTEST_ALLOW_LIVE_PAYFAST: "false"
       CAPACITY_USERS: "100"
       CAPACITY_RAMP_SECONDS: "60"
       CAPACITY_HOLD_SECONDS: "120"
       CAPACITY_REQUIRE_AUTH: "false"
-      CAPACITY_LOCUST_RESULT: load_tests/results/staging-stress-100.json
+      CAPACITY_LOCUST_RESULT: load_tests/results/frontend-stress-100.json
       CAPACITY_MAX_FAILURE_PCT: "1.0"
       CAPACITY_MAX_5XX_PCT: "0.1"
       CAPACITY_MAX_P95_MS: "1000"
@@ -57,7 +57,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-load.txt
 
-      - name: Run controlled 100-user staging stress test
+      - name: Run controlled 100-user staging frontend stress test
         working-directory: backend
         shell: bash
         run: |
@@ -67,24 +67,23 @@ jobs:
             -f load_tests/capacity_locustfile.py \
             --headless \
             --host "$LOADTEST_TARGET_URL" \
-            --csv load_tests/results/staging-stress-100 \
+            --csv load_tests/results/frontend-stress-100 \
             --csv-full-history \
-            --html load_tests/results/staging-stress-100.html
+            --html load_tests/results/frontend-stress-100.html
 
-      - name: Publish stress summary
+      - name: Publish frontend stress summary
         if: always()
         working-directory: backend
         shell: bash
         run: |
-          if [ -f load_tests/results/staging-stress-100.json ]; then
+          if [ -f load_tests/results/frontend-stress-100.json ]; then
             python - <<'PY'
           import json
           from pathlib import Path
 
-          p = Path("load_tests/results/staging-stress-100.json")
-          data = json.loads(p.read_text())
+          data = json.loads(Path("load_tests/results/frontend-stress-100.json").read_text())
           lines = [
-              "# Controlled staging stress test",
+              "# Controlled staging frontend stress test",
               "",
               f"- Target users: {data.get('target_users')}",
               f"- Max users observed: {data.get('max_users_observed')}",
@@ -99,20 +98,120 @@ jobs:
               f"- 5xx %: {data.get('server_5xx_pct')}",
               f"- Gate passed: {data.get('locust_gate_passed')}",
           ]
-          Path("/tmp/stress-summary.md").write_text("\n".join(lines) + "\n")
+          Path("/tmp/frontend-stress-summary.md").write_text("\n".join(lines) + "\n")
           PY
-            cat /tmp/stress-summary.md >> "$GITHUB_STEP_SUMMARY"
-            cat load_tests/results/staging-stress-100.json
+            cat /tmp/frontend-stress-summary.md >> "$GITHUB_STEP_SUMMARY"
+            cat load_tests/results/frontend-stress-100.json
           else
-            echo "Stress result JSON was not produced." >> "$GITHUB_STEP_SUMMARY"
+            echo "Frontend stress result JSON was not produced." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
-      - name: Upload stress evidence
+      - name: Upload frontend stress evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: staging-stress-100-${{ github.run_id }}
+          name: staging-frontend-stress-100-${{ github.run_id }}
+          path: backend/load_tests/results/
+          if-no-files-found: error
+          retention-days: 30
+
+  backend-api-stress:
+    name: 100-user staging backend API stress
+    if: ${{ github.event.pull_request.number == 113 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LOADTEST_ENVIRONMENT: staging
+      LOADTEST_TARGET_URL: https://amaris-mathematics-academy-staging.onrender.com
+      LOADTEST_ALLOWED_HOSTS: amaris-mathematics-academy-staging.onrender.com
+      LOADTEST_ALLOW_PRODUCTION: "false"
+      LOADTEST_ALLOW_LIVE_PAYFAST: "false"
+      CAPACITY_USERS: "100"
+      CAPACITY_RAMP_SECONDS: "60"
+      CAPACITY_HOLD_SECONDS: "120"
+      CAPACITY_REQUIRE_AUTH: "false"
+      CAPACITY_LOCUST_RESULT: load_tests/results/backend-api-stress-100.json
+      CAPACITY_MAX_FAILURE_PCT: "1.0"
+      CAPACITY_MAX_5XX_PCT: "0.1"
+      CAPACITY_MAX_P95_MS: "1000"
+      CAPACITY_MAX_P99_MS: "2000"
+      LOADTEST_HOMEPAGE_PATH: /api/v1/bootstrap/
+      LOADTEST_CATALOGUE_PATH: /api/v1/courses/
+      LOADTEST_SEARCH_PATH: /api/v1/courses/?search=algebra
+      LOADTEST_COURSE_DETAIL_PATH: /api/v1/settings/
+      LOADTEST_LOGIN_PAGE_PATH: /health/dependencies/
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.15"
+          cache: pip
+          cache-dependency-path: backend/requirements-load.txt
+
+      - name: Install load-test dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-load.txt
+
+      - name: Run controlled 100-user staging backend API stress test
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p load_tests/results
+          python -m locust \
+            -f load_tests/capacity_locustfile.py \
+            --headless \
+            --host "$LOADTEST_TARGET_URL" \
+            --csv load_tests/results/backend-api-stress-100 \
+            --csv-full-history \
+            --html load_tests/results/backend-api-stress-100.html
+
+      - name: Publish backend API stress summary
+        if: always()
+        working-directory: backend
+        shell: bash
+        run: |
+          if [ -f load_tests/results/backend-api-stress-100.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("load_tests/results/backend-api-stress-100.json").read_text())
+          lines = [
+              "# Controlled staging backend API stress test",
+              "",
+              f"- Target users: {data.get('target_users')}",
+              f"- Max users observed: {data.get('max_users_observed')}",
+              f"- Sustained target: {data.get('target_hold_sustained')}",
+              f"- Requests: {data.get('requests')}",
+              f"- RPS: {data.get('rps')}",
+              f"- p50: {data.get('p50_ms')} ms",
+              f"- p90: {data.get('p90_ms')} ms",
+              f"- p95: {data.get('p95_ms')} ms",
+              f"- p99: {data.get('p99_ms')} ms",
+              f"- Failure %: {data.get('failure_pct')}",
+              f"- 5xx %: {data.get('server_5xx_pct')}",
+              f"- Gate passed: {data.get('locust_gate_passed')}",
+          ]
+          Path("/tmp/backend-stress-summary.md").write_text("\n".join(lines) + "\n")
+          PY
+            cat /tmp/backend-stress-summary.md >> "$GITHUB_STEP_SUMMARY"
+            cat load_tests/results/backend-api-stress-100.json
+          else
+            echo "Backend API stress result JSON was not produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Upload backend API stress evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-backend-api-stress-100-${{ github.run_id }}
           path: backend/load_tests/results/
           if-no-files-found: error
           retention-days: 30
