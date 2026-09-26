@@ -1,0 +1,103 @@
+name: Staging Capacity Verification
+
+on:
+  push:
+    branches:
+      - capacity/staging-verification
+    paths:
+      - ".github/workflows/capacity-staging.yml"
+      - "performance/capacity-stage.txt"
+      - "performance/k6/capacity.js"
+  workflow_dispatch:
+    inputs:
+      users:
+        description: Concurrent users for this staging-only capacity stage
+        required: true
+        type: choice
+        options: ["100", "500", "1000", "2500", "5000", "10000", "25000", "50000"]
+        default: "100"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-staging-capacity-verification
+  cancel-in-progress: false
+
+jobs:
+  capacity-stage:
+    name: Staging capacity stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    env:
+      CAPACITY_TARGET_URL: https://amaris-mathematics-academy-staging-x4ax.onrender.com
+      CAPACITY_ALLOWED_HOSTS: amaris-mathematics-academy-staging-x4ax.onrender.com
+      CAPACITY_ENVIRONMENT: staging
+      CAPACITY_DURATION: 5m
+      CAPACITY_RAMP: 1m
+      CAPACITY_THINK_SECONDS: "1"
+      CAPACITY_MAX_FAILURE_RATE: "0.01"
+      CAPACITY_MAX_5XX_RATE: "0.005"
+      CAPACITY_P95_MS: "1500"
+      CAPACITY_P99_MS: "3000"
+      STAGING_BACKEND_URL: https://amaris-mathematics-academy-staging.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select approved capacity stage
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            users="${{ inputs.users }}"
+          else
+            users="$(tr -d '[:space:]' < performance/capacity-stage.txt)"
+          fi
+          case "$users" in
+            100|500|1000|2500|5000|10000|25000|50000) ;;
+            *) echo "Unsupported capacity stage: $users" >&2; exit 2 ;;
+          esac
+          echo "CAPACITY_USERS=$users" >> "$GITHUB_ENV"
+          echo "CAPACITY_SUMMARY_FILE=performance/reports/k6-$users.json" >> "$GITHUB_ENV"
+          echo "stage_users=$users" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight staging only
+        shell: bash
+        run: |
+          test "$CAPACITY_ENVIRONMENT" = "staging"
+          case "$CAPACITY_TARGET_URL" in
+            https://amaris-mathematics-academy-staging-x4ax.onrender.com) ;;
+            *) echo "Refusing non-staging frontend target" >&2; exit 3 ;;
+          esac
+          curl --fail --silent --show-error "$STAGING_BACKEND_URL/health/ready/" | tee /tmp/ready-before.json
+          curl --fail --silent --show-error "$STAGING_BACKEND_URL/health/dependencies/" | tee /tmp/dependencies-before.json
+
+      - name: Record test start
+        shell: bash
+        run: |
+          mkdir -p performance/reports
+          date -u +%Y-%m-%dT%H:%M:%SZ | tee performance/reports/start-utc.txt
+          printf '%s\n' "$GITHUB_SHA" > performance/reports/release-sha.txt
+          printf '%s\n' "$CAPACITY_USERS" > performance/reports/requested-users.txt
+
+      - name: Run k6 capacity stage
+        shell: bash
+        run: |
+          docker run --rm             -v "$PWD:/work"             -w /work             -e CAPACITY_TARGET_URL             -e CAPACITY_ALLOWED_HOSTS             -e CAPACITY_ENVIRONMENT             -e CAPACITY_USERS             -e CAPACITY_DURATION             -e CAPACITY_RAMP             -e CAPACITY_THINK_SECONDS             -e CAPACITY_MAX_FAILURE_RATE             -e CAPACITY_MAX_5XX_RATE             -e CAPACITY_P95_MS             -e CAPACITY_P99_MS             -e CAPACITY_SUMMARY_FILE             grafana/k6:2.3.0 run performance/k6/capacity.js
+
+      - name: Record test end and staging dependency state
+        if: always()
+        shell: bash
+        run: |
+          date -u +%Y-%m-%dT%H:%M:%SZ | tee performance/reports/end-utc.txt
+          curl --silent --show-error "$STAGING_BACKEND_URL/health/ready/" | tee performance/reports/ready-after.json || true
+          curl --silent --show-error "$STAGING_BACKEND_URL/health/dependencies/" | tee performance/reports/dependencies-after.json || true
+
+      - name: Upload capacity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capacity-stage-${{ env.CAPACITY_USERS }}-${{ github.sha }}
+          path: performance/reports/
+          if-no-files-found: error
+          retention-days: 30
