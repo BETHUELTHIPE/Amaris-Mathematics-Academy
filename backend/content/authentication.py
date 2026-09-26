@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
@@ -22,6 +23,7 @@ GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 GITHUB_OIDC_JWKS = "https://token.actions.githubusercontent.com/.well-known/jwks"
 GITHUB_ACCEPTANCE_STUDENT_ID = uuid.UUID("00000000-0000-4000-8000-000000009001")
 GITHUB_ACCEPTANCE_EMAIL = "acceptance.student@example.test"
+GITHUB_ACCEPTANCE_USER_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 _GITHUB_JWK_CLIENT = PyJWKClient(
     GITHUB_OIDC_JWKS,
     cache_keys=True,
@@ -84,7 +86,7 @@ class SupabaseStudentAuthentication(BaseAuthentication):
             raise AuthenticationFailed("The access token is malformed.") from exc
 
         if request.headers.get("X-Amaris-Acceptance", "").strip().lower() == "github-actions":
-            return self._authenticate_github_acceptance(token)
+            return self._authenticate_github_acceptance(token, request=request)
 
         user_payload = self._validate_token(token)
         user_id = str(user_payload.get("id") or "").strip()
@@ -108,7 +110,7 @@ class SupabaseStudentAuthentication(BaseAuthentication):
     def authenticate_header(self, request):
         return "Bearer"
 
-    def _authenticate_github_acceptance(self, token: str):
+    def _authenticate_github_acceptance(self, token: str, *, request):
         if not bool(getattr(settings, "ACCEPTANCE_GITHUB_OIDC_ENABLED", False)):
             raise AuthenticationFailed("Synthetic acceptance authentication is disabled.")
 
@@ -145,25 +147,47 @@ class SupabaseStudentAuthentication(BaseAuthentication):
         if expected_ref and claims.get("ref") != expected_ref:
             raise AuthenticationFailed("Synthetic acceptance is restricted to the main branch.")
 
-        student, _ = StudentRecord.objects.update_or_create(
-            supabase_user_id=GITHUB_ACCEPTANCE_STUDENT_ID,
+        acceptance_user = request.headers.get("X-Amaris-Acceptance-User", "").strip().lower()
+        if acceptance_user:
+            if not GITHUB_ACCEPTANCE_USER_RE.fullmatch(acceptance_user):
+                raise AuthenticationFailed("The synthetic acceptance user identifier is invalid.")
+            student_id = uuid.uuid5(GITHUB_ACCEPTANCE_STUDENT_ID, acceptance_user)
+            email = f"acceptance+{student_id.hex[:20]}@example.test"
+        else:
+            student_id = GITHUB_ACCEPTANCE_STUDENT_ID
+            email = GITHUB_ACCEPTANCE_EMAIL
+
+        student, created = StudentRecord.objects.get_or_create(
+            supabase_user_id=student_id,
             defaults={
-                "email": GITHUB_ACCEPTANCE_EMAIL,
+                "email": email,
                 "first_name": "Acceptance",
                 "last_name": "Student",
                 "is_active": True,
             },
         )
+        if not created:
+            update_fields = []
+            if student.email != email:
+                student.email = email
+                update_fields.append("email")
+            if not student.is_active:
+                student.is_active = True
+                update_fields.append("is_active")
+            if update_fields:
+                student.save(update_fields=[*update_fields, "updated_at"])
+
         principal = SupabaseStudentPrincipal(
             student=student,
-            supabase_user_id=str(GITHUB_ACCEPTANCE_STUDENT_ID),
-            email=GITHUB_ACCEPTANCE_EMAIL,
+            supabase_user_id=str(student_id),
+            email=email,
         )
         return principal, {
             "provider": "github-actions-oidc",
             "repository": claims.get("repository"),
             "run_id": claims.get("run_id"),
             "sha": claims.get("sha"),
+            "acceptance_user": acceptance_user or "default",
         }
 
     def _validate_token(self, token: str) -> dict:
