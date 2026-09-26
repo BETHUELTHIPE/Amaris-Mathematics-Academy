@@ -11,7 +11,16 @@ const allowedHosts = (__ENV.CAPACITY_ALLOWED_HOSTS || "localhost,127.0.0.1")
   .split(",")
   .map((value) => value.trim().toLowerCase())
   .filter(Boolean);
-const parsedTarget = new URL(target);
+const parsedMatch = target.match(/^(https?):\\/\\/([^/@:]+)(?::\\d+)?(?:\\/|$)/i);
+if (!parsedMatch || target.includes("@")) {
+  throw new Error("CAPACITY_TARGET_URL must be a credential-free http or https URL.");
+}
+const parsedTarget = {
+  protocol: `${parsedMatch[1].toLowerCase()}:`,
+  hostname: parsedMatch[2].toLowerCase(),
+  username: "",
+  password: "",
+};
 const productionAllowed = (__ENV.CAPACITY_ALLOW_PRODUCTION || "false").toLowerCase() === "true";
 const environmentName = (__ENV.CAPACITY_ENVIRONMENT || "staging").toLowerCase();
 const knownProductionHosts = new Set([
