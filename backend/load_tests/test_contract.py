@@ -189,8 +189,19 @@ class CapacityContractTests(unittest.TestCase):
 
     def test_capacity_fast_http_auth_is_applied_per_request(self):
         text = self._capacity_locust_text()
-        self.assertIn("headers=_request_headers(protected=protected)", text)
+        self.assertIn("headers=_request_headers(", text)
+        self.assertIn("acceptance_user=acceptance_user", text)
         self.assertNotIn("self.client.headers.update", text)
+
+    def test_capacity_acceptance_users_are_isolated_and_oidc_is_refreshable(self):
+        text = self._capacity_locust_text()
+        self.assertIn('"X-Amaris-Acceptance-User"', text)
+        self.assertIn("ACTIONS_ID_TOKEN_REQUEST_URL", text)
+        self.assertIn("ACTIONS_ID_TOKEN_REQUEST_TOKEN", text)
+        self.assertIn("LOADTEST_OIDC_REFRESH_SECONDS", text)
+        self.assertIn("self.payment_status_path", text)
+        self.assertIn('"00a Acceptance seed"', text)
+        self.assertIn('"00b Acceptance checkout"', text)
 
     def test_capacity_requires_sustained_hold_and_fast_http_users(self):
         text = self._capacity_locust_text()

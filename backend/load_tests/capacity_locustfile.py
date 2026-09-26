@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.request import Request, urlopen
 
 import gevent
 from locust import LoadTestShape, between, events, task
@@ -35,6 +39,16 @@ COOKIE_HEADER = os.getenv("LOADTEST_COOKIE_HEADER", "").strip()
 SESSION_COOKIE_NAME = os.getenv("LOADTEST_SESSION_COOKIE_NAME", "").strip()
 SESSION_COOKIE_VALUE = os.getenv("LOADTEST_SESSION_COOKIE_VALUE", "").strip()
 ACCEPTANCE_HEADER = env_bool("LOADTEST_ACCEPTANCE_HEADER", False)
+OIDC_REFRESH_SECONDS = env_int("LOADTEST_OIDC_REFRESH_SECONDS", 180)
+OIDC_AUDIENCE = os.getenv("LOADTEST_OIDC_AUDIENCE", "amaris-staging").strip()
+ACCEPTANCE_SEED_PATH = os.getenv(
+    "LOADTEST_ACCEPTANCE_SEED_PATH",
+    "/api/v1/student/acceptance/seed/",
+).strip()
+ACCEPTANCE_CHECKOUT_PATH = os.getenv(
+    "LOADTEST_ACCEPTANCE_CHECKOUT_PATH",
+    "/api/v1/student/checkout/",
+).strip()
 
 _STARTED_AT = 0.0
 _MAX_USERS_OBSERVED = 0
@@ -45,20 +59,87 @@ _WORKER_COUNTERS: dict[str, tuple[int, int, int, tuple[str, ...]]] = {}
 _SEEN_REQUEST_NAMES: set[str] = set()
 _RUNNER: Any = None
 _STOP_SAMPLING = False
+_AUTH_REFRESHED_AT = time.monotonic()
+_AUTH_REFRESH_LOCK = threading.Lock()
+_ACCEPTANCE_USER_COUNTER = itertools.count(1)
 
 
 def _auth_available() -> bool:
     return bool(AUTH_BEARER or COOKIE_HEADER or (SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE))
 
 
-def _request_headers(*, protected: bool) -> dict[str, str]:
+def _oidc_request_url() -> str:
+    request_url = os.getenv("ACTIONS_ID_TOKEN_REQUEST_URL", "").strip()
+    if not request_url:
+        return ""
+    parsed = urlsplit(request_url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["audience"] = OIDC_AUDIENCE
+    return urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            urlencode(query),
+            parsed.fragment,
+        )
+    )
+
+
+def _current_auth_bearer() -> str:
+    global AUTH_BEARER
+    global _AUTH_REFRESHED_AT
+
+    if not ACCEPTANCE_HEADER:
+        return AUTH_BEARER
+
+    request_url = _oidc_request_url()
+    request_token = os.getenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "").strip()
+    if not request_url or not request_token:
+        return AUTH_BEARER
+
+    if AUTH_BEARER and time.monotonic() - _AUTH_REFRESHED_AT < OIDC_REFRESH_SECONDS:
+        return AUTH_BEARER
+
+    with _AUTH_REFRESH_LOCK:
+        if AUTH_BEARER and time.monotonic() - _AUTH_REFRESHED_AT < OIDC_REFRESH_SECONDS:
+            return AUTH_BEARER
+        request = Request(
+            request_url,
+            headers={
+                "Authorization": f"bearer {request_token}",
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
+        try:
+            with urlopen(request, timeout=10) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise RuntimeError("GitHub OIDC refresh failed during capacity testing.") from exc
+        refreshed = str(payload.get("value") or "").strip()
+        if not refreshed:
+            raise RuntimeError("GitHub OIDC refresh returned no token.")
+        AUTH_BEARER = refreshed
+        _AUTH_REFRESHED_AT = time.monotonic()
+        return AUTH_BEARER
+
+
+def _request_headers(
+    *,
+    protected: bool,
+    acceptance_user: str = "",
+) -> dict[str, str]:
     if not protected:
         return {}
     headers: dict[str, str] = {}
-    if AUTH_BEARER:
-        headers["Authorization"] = f"Bearer {AUTH_BEARER}"
+    bearer = _current_auth_bearer()
+    if bearer:
+        headers["Authorization"] = f"Bearer {bearer}"
         if ACCEPTANCE_HEADER:
             headers["X-Amaris-Acceptance"] = "github-actions"
+            if acceptance_user:
+                headers["X-Amaris-Acceptance-User"] = acceptance_user
     elif COOKIE_HEADER:
         headers["Cookie"] = COOKIE_HEADER
     return headers
@@ -70,13 +151,17 @@ def _checked_get(
     name: str,
     *,
     protected: bool = False,
+    acceptance_user: str = "",
 ) -> None:
     if not path:
         return
     with user.client.get(
         path,
         name=name,
-        headers=_request_headers(protected=protected),
+        headers=_request_headers(
+            protected=protected,
+            acceptance_user=acceptance_user,
+        ),
         catch_response=True,
         allow_redirects=not protected,
     ) as response:
@@ -114,12 +199,62 @@ class CapacityStudentUser(FastHttpUser):
     weight = 4 if REQUIRE_AUTH else 0
     wait_time = between(1.0, 2.0)
 
+    acceptance_user = ""
+    payment_status_path = ENDPOINTS.payment_status
+
     def on_start(self) -> None:
         if SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE and not (AUTH_BEARER or COOKIE_HEADER):
             self.client.cookies.set(
                 SESSION_COOKIE_NAME,
                 SESSION_COOKIE_VALUE,
             )
+        if ACCEPTANCE_HEADER:
+            self.acceptance_user = f"capacity-{os.getpid()}-{next(_ACCEPTANCE_USER_COUNTER)}"
+            self._prepare_acceptance_identity()
+
+    def _protected_headers(self) -> dict[str, str]:
+        return _request_headers(
+            protected=True,
+            acceptance_user=self.acceptance_user,
+        )
+
+    def _prepare_acceptance_identity(self) -> None:
+        headers = self._protected_headers()
+        with self.client.post(
+            ACCEPTANCE_SEED_PATH,
+            name="00a Acceptance seed",
+            headers={**headers, "Content-Type": "application/json"},
+            data="{}",
+            catch_response=True,
+        ) as response:
+            if response.status_code != 200:
+                response.failure(f"acceptance seed returned {response.status_code}")
+                return
+
+        idempotency_key = f"capacity-{self.acceptance_user}"
+        checkout_body = json.dumps(
+            {
+                "course_slug": "acceptance-capacity-mathematics",
+                "idempotency_key": idempotency_key,
+            }
+        )
+        with self.client.post(
+            ACCEPTANCE_CHECKOUT_PATH,
+            name="00b Acceptance checkout",
+            headers={**self._protected_headers(), "Content-Type": "application/json"},
+            data=checkout_body,
+            catch_response=True,
+        ) as response:
+            if response.status_code != 201:
+                response.failure(f"acceptance checkout returned {response.status_code}")
+                return
+            try:
+                reference = str(response.json()["payment_reference"])
+            except (KeyError, TypeError, ValueError):
+                response.failure("acceptance checkout omitted payment_reference")
+                return
+
+        self.payment_status_path = f"/api/v1/student/payments/{reference}/"
 
     @task(5)
     def dashboard(self) -> None:
@@ -128,6 +263,7 @@ class CapacityStudentUser(FastHttpUser):
             ENDPOINTS.dashboard,
             "07 Student dashboard",
             protected=True,
+            acceptance_user=self.acceptance_user,
         )
 
     @task(6)
@@ -137,15 +273,17 @@ class CapacityStudentUser(FastHttpUser):
             ENDPOINTS.lesson,
             "08 Lesson access",
             protected=True,
+            acceptance_user=self.acceptance_user,
         )
 
     @task(3)
     def payment_status_polling(self) -> None:
         _checked_get(
             self,
-            ENDPOINTS.payment_status,
+            self.payment_status_path,
             "11 Payment-status polling",
             protected=True,
+            acceptance_user=self.acceptance_user,
         )
 
 
