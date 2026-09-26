@@ -72,10 +72,24 @@ jobs:
           curl --fail --silent --show-error "$STAGING_BACKEND_URL/health/ready/" | tee /tmp/ready-before.json
           curl --fail --silent --show-error "$STAGING_BACKEND_URL/health/dependencies/" | tee /tmp/dependencies-before.json
 
+      - name: Warm staging frontend before measured load
+        shell: bash
+        run: |
+          for path in "/" "/courses" "/courses?search=algebra" "/login" "/register"; do
+            for attempt in 1 2; do
+              curl --fail --silent --show-error --max-time 60 "$CAPACITY_TARGET_URL$path" > /dev/null
+            done
+          done
+          # Free staging services can cold-start after idle time. The warm-up is deliberately
+          # excluded from the measured window so cold-start latency cannot masquerade as
+          # steady-state capacity.
+          sleep 15
+
       - name: Record test start
         shell: bash
         run: |
           mkdir -p performance/reports
+          chmod 0777 performance/reports
           date -u +%Y-%m-%dT%H:%M:%SZ | tee performance/reports/start-utc.txt
           printf '%s\n' "$GITHUB_SHA" > performance/reports/release-sha.txt
           printf '%s\n' "$CAPACITY_USERS" > performance/reports/requested-users.txt
