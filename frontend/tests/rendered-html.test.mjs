@@ -90,7 +90,7 @@ test("keeps the optimized hero background photo visible on the homepage", async 
   assert.match(homepageSource, /src="\/amaris-math-hero\.webp"/);
   assert.match(homepageSource, /fetchPriority="high"/);
   assert.match(homepageSource, /loading="eager"/);
-  assert.match(homepageSource, /decoding="sync"/);
+  assert.match(homepageSource, /decoding="async"/);
 });
 
 test("protected application responses are never publicly cacheable", async () => {
