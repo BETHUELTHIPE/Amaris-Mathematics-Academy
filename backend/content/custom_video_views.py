@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+
 from django.conf import settings
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -20,6 +23,7 @@ from .services.custom_videos import (
     CustomVideoValidationError,
     create_custom_video_checkout,
     create_custom_video_request,
+    process_custom_video_notification,
 )
 from .services.payments import PaymentSecurityError
 
@@ -121,6 +125,12 @@ class CustomVideoCheckoutResponseSerializer(serializers.Serializer):
     gateway_url = serializers.URLField()
     fields = serializers.DictField(child=serializers.CharField())
     request = serializers.DictField()
+
+
+class CustomVideoAcceptanceCompleteResponseSerializer(serializers.Serializer):
+    request_reference = serializers.CharField()
+    status = serializers.CharField()
+    invoice_number = serializers.CharField()
 
 
 def _request_payload(request_record: CustomVideoRequest) -> dict:
@@ -276,4 +286,76 @@ class CustomVideoCheckoutView(CustomVideoStudentAPIView):
                 },
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class _AcceptanceCustomVideoGateway:
+    def verify_notification(self, payload):
+        del payload
+        return True
+
+
+class CustomVideoAcceptancePaymentCompleteView(CustomVideoStudentAPIView):
+    """Complete one synthetic staging custom-video payment without a real charge."""
+
+    @extend_schema(
+        request=None,
+        responses={200: CustomVideoAcceptanceCompleteResponseSerializer},
+    )
+    def post(self, request, reference: str):
+        auth = request.auth if isinstance(request.auth, dict) else {}
+        if auth.get("provider") != "github-actions-oidc":
+            raise PermissionDenied(
+                "Synthetic custom-video payment completion is restricted to GitHub Actions OIDC."
+            )
+        if os.getenv("PAYFAST_MODE", "sandbox").strip().lower() != "sandbox":
+            raise PermissionDenied(
+                "Synthetic custom-video payment completion requires PayFast sandbox mode."
+            )
+        if not reference.startswith("CVR-"):
+            raise PermissionDenied("Only custom-video acceptance payments can be completed.")
+
+        try:
+            request_record = CustomVideoRequest.objects.select_related("student").get(
+                reference=reference,
+                student=request.user.student,
+            )
+        except CustomVideoRequest.DoesNotExist:
+            return Response(
+                {"detail": "Custom-video request not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if request_record.amount is None:
+            return Response(
+                {"detail": "Create the sandbox checkout before completing the acceptance payment."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        payload = {
+            "m_payment_id": request_record.reference,
+            "pf_payment_id": f"ACCEPTANCE-{request_record.reference[-32:]}",
+            "payment_status": "COMPLETE",
+            "amount_gross": f"{request_record.amount:.2f}",
+            "custom_str1": str(request_record.student.supabase_user_id),
+            "custom_str2": request_record.reference,
+            "signature": "synthetic-acceptance-never-sent",
+        }
+        result = process_custom_video_notification(
+            payload,
+            gateway=_AcceptanceCustomVideoGateway(),
+        )
+        if not result.accepted:
+            return Response(
+                {"detail": result.reason or "Synthetic custom-video payment was not accepted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        request_record.refresh_from_db()
+        invoice = CustomVideoInvoice.objects.get(request=request_record)
+        return Response(
+            {
+                "request_reference": request_record.reference,
+                "status": request_record.status,
+                "invoice_number": invoice.invoice_number,
+            }
         )
