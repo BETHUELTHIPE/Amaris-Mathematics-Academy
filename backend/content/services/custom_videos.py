@@ -19,6 +19,7 @@ from content.models import (
     CustomVideoRequestAttachment,
     CustomVideoSettings,
     StudentRecord,
+    TutorAvailabilitySlot,
 )
 
 from .payments import (
@@ -187,9 +188,9 @@ def create_custom_video_request(
     if len(cleaned_topic) < 2 or len(cleaned_topic) > 220:
         raise CustomVideoValidationError("Enter a topic between 2 and 220 characters.")
 
-    allowed_curricula = {value for value, _label in CustomVideoRequest._meta.get_field("curriculum").choices}
-    allowed_subjects = {value for value, _label in CustomVideoRequest._meta.get_field("subject").choices}
-    allowed_grades = {value for value, _label in CustomVideoRequest.Grade.choices}
+    allowed_curricula = {choice.value for choice in TutorAvailabilitySlot.Programme}
+    allowed_subjects = {choice.value for choice in TutorAvailabilitySlot.Subject}
+    allowed_grades = {choice.value for choice in CustomVideoRequest.Grade}
     if curriculum not in allowed_curricula:
         raise CustomVideoValidationError("Choose a supported curriculum.")
     if subject not in allowed_subjects:
