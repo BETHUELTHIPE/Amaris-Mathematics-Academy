@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from django.conf import settings
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
@@ -52,15 +54,16 @@ class CustomVideoOptionsView(APIView):
 
     @extend_schema(responses={200: CustomVideoOptionsResponseSerializer})
     def get(self, request):
-        settings = CustomVideoSettings.objects.first()
+        video_settings = CustomVideoSettings.objects.first()
+        storage_ready = bool(getattr(settings, "CUSTOM_VIDEO_PERSISTENT_STORAGE", False))
         return Response(
             {
-                "enabled": bool(settings and settings.enabled),
-                "pricing_configured": bool(settings and settings.flat_fee is not None),
-                "amount": settings.flat_fee if settings else None,
-                "currency": settings.currency if settings else "ZAR",
-                "max_files": settings.max_files if settings else 5,
-                "max_file_size_mb": settings.max_file_size_mb if settings else 15,
+                "enabled": bool(video_settings and video_settings.enabled and storage_ready),
+                "pricing_configured": bool(video_settings and video_settings.flat_fee is not None),
+                "amount": video_settings.flat_fee if video_settings else None,
+                "currency": video_settings.currency if video_settings else "ZAR",
+                "max_files": video_settings.max_files if video_settings else 5,
+                "max_file_size_mb": video_settings.max_file_size_mb if video_settings else 15,
                 "curricula": [
                     {"value": value, "label": label} for value, label in TutorAvailabilitySlot.Programme.choices
                 ],
@@ -164,6 +167,8 @@ class CustomVideoStudentAPIView(APIView):
 
 class CustomVideoRequestCreateView(CustomVideoStudentAPIView):
     parser_classes = (MultiPartParser, FormParser)
+    throttle_classes = (UserRateThrottle, ScopedRateThrottle)
+    throttle_scope = "custom_video_request"
 
     @extend_schema(
         request=CustomVideoRequestCreateSerializer,
@@ -203,6 +208,9 @@ class CustomVideoRequestCreateView(CustomVideoStudentAPIView):
 
 
 class CustomVideoRequestStatusView(CustomVideoStudentAPIView):
+    throttle_classes = (UserRateThrottle, ScopedRateThrottle)
+    throttle_scope = "custom_video_status"
+
     @extend_schema(responses={200: CustomVideoRequestResponseSerializer})
     def get(self, request, reference: str):
         try:
@@ -223,6 +231,9 @@ class CustomVideoRequestStatusView(CustomVideoStudentAPIView):
 
 
 class CustomVideoCheckoutView(CustomVideoStudentAPIView):
+    throttle_classes = (UserRateThrottle, ScopedRateThrottle)
+    throttle_scope = "custom_video_checkout"
+
     @extend_schema(
         request=None,
         responses={201: CustomVideoCheckoutResponseSerializer},
