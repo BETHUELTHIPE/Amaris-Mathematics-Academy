@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .custom_video_views import (
+    CustomVideoAcceptancePaymentCompleteView,
     CustomVideoCheckoutView,
     CustomVideoOptionsView,
     CustomVideoRequestCreateView,
@@ -57,6 +58,11 @@ urlpatterns = [
         "student/custom-video/requests/<str:reference>/checkout/",
         CustomVideoCheckoutView.as_view(),
         name="custom-video-checkout",
+    ),
+    path(
+        "student/acceptance/custom-video/<str:reference>/complete/",
+        CustomVideoAcceptancePaymentCompleteView.as_view(),
+        name="custom-video-acceptance-payment-complete",
     ),
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
