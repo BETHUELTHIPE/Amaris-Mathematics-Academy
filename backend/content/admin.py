@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin, messages
 from django.utils import timezone
 
@@ -317,6 +318,63 @@ class CustomVideoSettingsAdmin(TimeStampedAdmin):
         return False
 
 
+class CustomVideoRequestAdminForm(forms.ModelForm):
+    class Meta:
+        model = CustomVideoRequest
+        fields = "__all__"
+
+    def clean(self):
+        cleaned = super().clean()
+        status = cleaned.get("status") or self.instance.status
+        delivery_url = str(cleaned.get("delivery_url") or "").strip()
+
+        if self.instance.pk:
+            allowed_transitions = {
+                CustomVideoRequest.Status.PENDING_PAYMENT: {
+                    CustomVideoRequest.Status.PENDING_PAYMENT,
+                    CustomVideoRequest.Status.CANCELLED,
+                },
+                CustomVideoRequest.Status.PAID: {
+                    CustomVideoRequest.Status.PAID,
+                    CustomVideoRequest.Status.IN_PROGRESS,
+                },
+                CustomVideoRequest.Status.IN_PROGRESS: {
+                    CustomVideoRequest.Status.PAID,
+                    CustomVideoRequest.Status.IN_PROGRESS,
+                    CustomVideoRequest.Status.DELIVERED,
+                },
+                CustomVideoRequest.Status.DELIVERED: {
+                    CustomVideoRequest.Status.DELIVERED,
+                },
+                CustomVideoRequest.Status.CANCELLED: {
+                    CustomVideoRequest.Status.CANCELLED,
+                },
+            }
+            allowed = allowed_transitions.get(self.instance.status, {self.instance.status})
+            if status not in allowed:
+                raise forms.ValidationError(
+                    f"Unsafe status transition from {self.instance.get_status_display()} "
+                    f"to {dict(CustomVideoRequest.Status.choices).get(status, status)}."
+                )
+
+        if status in {
+            CustomVideoRequest.Status.PAID,
+            CustomVideoRequest.Status.IN_PROGRESS,
+            CustomVideoRequest.Status.DELIVERED,
+        } and not (self.instance.gateway_verified_at and self.instance.paid_at):
+            raise forms.ValidationError(
+                "Paid or fulfilment statuses require a server-verified payment. "
+                "Do not mark an unpaid request as paid from the admin."
+            )
+
+        if status == CustomVideoRequest.Status.DELIVERED and not delivery_url:
+            self.add_error(
+                "delivery_url",
+                "Add the private delivery URL before marking the request delivered.",
+            )
+        return cleaned
+
+
 class CustomVideoAttachmentInline(admin.TabularInline):
     model = CustomVideoRequestAttachment
     extra = 0
@@ -333,6 +391,7 @@ class CustomVideoAttachmentInline(admin.TabularInline):
 
 @admin.register(CustomVideoRequest)
 class CustomVideoRequestAdmin(TimeStampedAdmin):
+    form = CustomVideoRequestAdminForm
     list_display = (
         "reference",
         "student",
@@ -354,7 +413,6 @@ class CustomVideoRequestAdmin(TimeStampedAdmin):
         "topic",
         "provider_reference",
     )
-    list_editable = ("status",)
     readonly_fields = (
         "id",
         "reference",
@@ -370,6 +428,7 @@ class CustomVideoRequestAdmin(TimeStampedAdmin):
         "gateway_verified_at",
         "paid_at",
         "invoice_sent_at",
+        "delivery_sent_at",
         "created_at",
         "updated_at",
     )
