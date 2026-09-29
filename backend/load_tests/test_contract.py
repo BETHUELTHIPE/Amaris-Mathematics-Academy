@@ -1,3 +1,4 @@
+import io
 import os
 import unittest
 from pathlib import Path
@@ -64,6 +65,22 @@ class LoadTestSafetyTests(unittest.TestCase):
 
 
 class CapacityContractTests(unittest.TestCase):
+    def test_expiring_oidc_credential_is_renewed_without_reusing_old_token(self):
+        from load_tests.oidc import ActionsOidcBearer
+
+        bearer = ActionsOidcBearer(
+            initial_token="old-token",
+            request_url="https://example.test/oidc?x=1",
+            request_token="runner-request-token",
+        )
+        bearer._refresh_at = 0
+        with patch("load_tests.oidc.urlopen", return_value=io.BytesIO(b'{"value":"renewed-token"}')) as open_token:
+            first = bearer.current()
+            second = bearer.current()
+        self.assertEqual(first, "renewed-token")
+        self.assertEqual(second, "renewed-token")
+        open_token.assert_called_once()
+
     @staticmethod
     def _workflow_text() -> str:
         workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "capacity.yml"
@@ -189,7 +206,8 @@ class CapacityContractTests(unittest.TestCase):
 
     def test_capacity_fast_http_auth_is_applied_per_request(self):
         text = self._capacity_locust_text()
-        self.assertIn("headers=_request_headers(protected=protected)", text)
+        self.assertIn('synthetic_student=getattr(user, "synthetic_student", "")', text)
+        self.assertIn("headers=_request_headers(", text)
         self.assertNotIn("self.client.headers.update", text)
 
     def test_capacity_requires_sustained_hold_and_fast_http_users(self):
