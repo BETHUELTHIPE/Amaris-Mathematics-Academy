@@ -389,6 +389,42 @@ class CustomVideoAttachmentInline(admin.TabularInline):
     can_delete = False
 
 
+@admin.register(CustomVideoRequestAttachment)
+class CustomVideoRequestAttachmentAdmin(TimeStampedAdmin):
+    list_display = (
+        "request",
+        "original_name",
+        "content_type",
+        "size_bytes",
+        "created_at",
+    )
+    search_fields = (
+        "request__reference",
+        "request__student__email",
+        "original_name",
+        "content_type",
+    )
+    readonly_fields = (
+        "request",
+        "file",
+        "original_name",
+        "content_type",
+        "size_bytes",
+        "created_at",
+        "updated_at",
+    )
+    autocomplete_fields = ("request",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return request.method in ("GET", "HEAD", "OPTIONS")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(CustomVideoRequest)
 class CustomVideoRequestAdmin(TimeStampedAdmin):
     form = CustomVideoRequestAdminForm
