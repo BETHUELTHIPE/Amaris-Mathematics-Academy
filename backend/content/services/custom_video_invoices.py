@@ -71,10 +71,7 @@ def build_custom_video_invoice_pdf(invoice: CustomVideoInvoice) -> bytes:
     for offset in offsets[1:]:
         output.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
     output.extend(
-        (
-            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-            f"startxref\n{xref_offset}\n%%EOF\n"
-        ).encode("ascii")
+        (f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n" f"startxref\n{xref_offset}\n%%EOF\n").encode("ascii")
     )
     return bytes(output)
 
