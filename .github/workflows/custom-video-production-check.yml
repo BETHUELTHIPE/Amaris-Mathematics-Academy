@@ -2,7 +2,7 @@ name: Custom Video Production Check
 
 on:
   push:
-    branches: [feature/custom-video-request]
+    branches: [feature/custom-video-request, feature/custom-video-production-ready-20260929]
   workflow_dispatch:
 
 concurrency:
