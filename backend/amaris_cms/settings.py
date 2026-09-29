@@ -211,18 +211,33 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
+AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "").strip()
+AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL", "").strip()
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+CUSTOM_VIDEO_PERSISTENT_STORAGE = bool(AWS_STORAGE_BUCKET_NAME) and env_bool(
+    "CUSTOM_VIDEO_PERSISTENT_STORAGE",
+    True,
+)
+
 if AWS_STORAGE_BUCKET_NAME:
+    storage_options = {
+        "bucket_name": AWS_STORAGE_BUCKET_NAME,
+        "region_name": os.getenv("AWS_S3_REGION_NAME", "af-south-1"),
+        "default_acl": None,
+        "querystring_auth": True,
+        "file_overwrite": False,
+    }
+    if AWS_S3_ENDPOINT_URL:
+        storage_options["endpoint_url"] = AWS_S3_ENDPOINT_URL
+    if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+        storage_options["access_key"] = AWS_ACCESS_KEY_ID
+        storage_options["secret_key"] = AWS_SECRET_ACCESS_KEY
+
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-                "bucket_name": AWS_STORAGE_BUCKET_NAME,
-                "region_name": os.getenv("AWS_S3_REGION_NAME", "af-south-1"),
-                "default_acl": None,
-                "querystring_auth": True,
-                "file_overwrite": False,
-            },
+            "OPTIONS": storage_options,
         },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
@@ -248,7 +263,15 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
-    "DEFAULT_THROTTLE_RATES": {"anon": "120/hour", "user": "1000/hour", "enquiries": "5/hour", "assistant": "30/hour"},
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "120/hour",
+        "user": "1000/hour",
+        "enquiries": "5/hour",
+        "assistant": "30/hour",
+        "custom_video_request": "10/hour",
+        "custom_video_status": "240/hour",
+        "custom_video_checkout": "30/hour",
+    },
 }
 
 SPECTACULAR_SETTINGS = {
@@ -345,6 +368,16 @@ CELERY_BEAT_SCHEDULE = {
     },
     "deliver-live-class-confirmation": {
         "task": "content.tasks.deliver_live_class_confirmation",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
+    "deliver-custom-video-invoice": {
+        "task": "content.tasks.deliver_custom_video_invoice",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
+    "deliver-custom-video-delivery": {
+        "task": "content.tasks.deliver_custom_video_delivery",
         "schedule": 30.0,
         "options": {"queue": "notifications"},
     },
