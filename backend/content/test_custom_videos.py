@@ -9,6 +9,9 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from rest_framework.test import APIClient
+
+from content.authentication import SupabaseStudentPrincipal
 
 from content.models import (
     CustomVideoInvoice,
@@ -22,7 +25,7 @@ from content.services.custom_videos import (
     create_custom_video_request,
     process_custom_video_notification,
 )
-from content.tasks import deliver_custom_video_invoice
+from content.tasks import deliver_custom_video_delivery, deliver_custom_video_invoice
 
 
 class MockPayFastGateway:
@@ -44,6 +47,7 @@ class CustomVideoRequestTests(TestCase):
             MEDIA_ROOT=cls.media_directory.name,
             EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
             DEFAULT_FROM_EMAIL="Amaris Mathematics Academy <noreply@example.test>",
+            CUSTOM_VIDEO_PERSISTENT_STORAGE=True,
             STORAGES={
                 "default": {
                     "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -108,6 +112,19 @@ class CustomVideoRequestTests(TestCase):
         }
         payload.update({key: str(value) for key, value in overrides.items()})
         return payload
+
+    @staticmethod
+    def authenticated_client(student: StudentRecord) -> APIClient:
+        client = APIClient()
+        client.force_authenticate(
+            user=SupabaseStudentPrincipal(
+                student=student,
+                supabase_user_id=str(student.supabase_user_id),
+                email=student.email,
+            ),
+            token={"provider": "test"},
+        )
+        return client
 
     def test_public_options_use_modelled_choices_without_inventing_topics(self):
         response = self.client.get(reverse("custom-video-options"), secure=True)
@@ -271,3 +288,91 @@ class CustomVideoRequestTests(TestCase):
 
         self.assertEqual(deliver_custom_video_invoice.run(), 0)
         self.assertEqual(len(mail.outbox), 1)
+
+    def test_feature_fails_closed_without_persistent_storage(self):
+        with override_settings(CUSTOM_VIDEO_PERSISTENT_STORAGE=False):
+            options = self.client.get(reverse("custom-video-options"), secure=True)
+            self.assertEqual(options.status_code, 200)
+            self.assertFalse(options.json()["enabled"])
+
+            with self.assertRaises(CustomVideoValidationError):
+                self.create_request(key="custom-video-storage-off-001")
+
+    def test_other_student_cannot_read_or_checkout_request(self):
+        request_record = self.create_request()
+        other_student = StudentRecord.objects.create(
+            supabase_user_id=uuid.UUID("00000000-0000-4000-8000-000000000302"),
+            email="other.video.student@example.test",
+            first_name="Other",
+            last_name="Student",
+        )
+        client = self.authenticated_client(other_student)
+
+        status_response = client.get(
+            reverse(
+                "custom-video-request-status",
+                kwargs={"reference": request_record.reference},
+            ),
+            secure=True,
+        )
+        checkout_response = client.post(
+            reverse(
+                "custom-video-checkout",
+                kwargs={"reference": request_record.reference},
+            ),
+            secure=True,
+        )
+
+        self.assertEqual(status_response.status_code, 404)
+        self.assertEqual(checkout_response.status_code, 404)
+
+    def test_delivery_email_is_sent_once_after_verified_payment(self):
+        request_record = self.create_request()
+        create_custom_video_checkout(
+            student=self.student,
+            request_record=request_record,
+        )
+        result = process_custom_video_notification(
+            self.callback(request_record),
+            gateway=MockPayFastGateway(True),
+        )
+        self.assertTrue(result.accepted)
+
+        request_record.refresh_from_db()
+        request_record.status = CustomVideoRequest.Status.DELIVERED
+        request_record.delivery_url = "https://video.example.test/private/custom-video"
+        request_record.save(update_fields=("status", "delivery_url", "updated_at"))
+
+        delivered = deliver_custom_video_delivery.run()
+
+        self.assertEqual(delivered, 1)
+        request_record.refresh_from_db()
+        self.assertIsNotNone(request_record.delivery_sent_at)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(request_record.reference, mail.outbox[0].subject)
+        self.assertIn(request_record.delivery_url, mail.outbox[0].body)
+
+        self.assertEqual(deliver_custom_video_delivery.run(), 0)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_duplicate_verified_callback_is_idempotent(self):
+        request_record = self.create_request()
+        create_custom_video_checkout(
+            student=self.student,
+            request_record=request_record,
+        )
+        gateway = MockPayFastGateway(True)
+
+        first = process_custom_video_notification(
+            self.callback(request_record),
+            gateway=gateway,
+        )
+        duplicate = process_custom_video_notification(
+            self.callback(request_record),
+            gateway=gateway,
+        )
+
+        self.assertTrue(first.accepted)
+        self.assertTrue(duplicate.accepted)
+        self.assertTrue(duplicate.duplicate)
+        self.assertEqual(CustomVideoInvoice.objects.filter(request=request_record).count(), 1)
