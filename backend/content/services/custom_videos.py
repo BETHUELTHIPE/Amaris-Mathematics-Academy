@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from django.conf import settings as django_settings
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.utils import timezone
 
 from content.models import (
