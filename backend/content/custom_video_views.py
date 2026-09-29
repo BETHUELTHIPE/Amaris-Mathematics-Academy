@@ -62,17 +62,12 @@ class CustomVideoOptionsView(APIView):
                 "max_files": settings.max_files if settings else 5,
                 "max_file_size_mb": settings.max_file_size_mb if settings else 15,
                 "curricula": [
-                    {"value": value, "label": label}
-                    for value, label in TutorAvailabilitySlot.Programme.choices
+                    {"value": value, "label": label} for value, label in TutorAvailabilitySlot.Programme.choices
                 ],
                 "subjects": [
-                    {"value": value, "label": label}
-                    for value, label in TutorAvailabilitySlot.Subject.choices
+                    {"value": value, "label": label} for value, label in TutorAvailabilitySlot.Subject.choices
                 ],
-                "grades": [
-                    {"value": value, "label": label}
-                    for value, label in CustomVideoRequest.Grade.choices
-                ],
+                "grades": [{"value": value, "label": label} for value, label in CustomVideoRequest.Grade.choices],
                 "topic_mode": "free_text",
                 "modelled_topics": [],
                 "topic_note": (
@@ -84,9 +79,7 @@ class CustomVideoOptionsView(APIView):
 
 
 class CustomVideoRequestCreateSerializer(serializers.Serializer):
-    curriculum = serializers.ChoiceField(
-        choices=TutorAvailabilitySlot.Programme.choices
-    )
+    curriculum = serializers.ChoiceField(choices=TutorAvailabilitySlot.Programme.choices)
     subject = serializers.ChoiceField(choices=TutorAvailabilitySlot.Subject.choices)
     grade = serializers.ChoiceField(choices=CustomVideoRequest.Grade.choices)
     topic = serializers.CharField(min_length=2, max_length=220, trim_whitespace=True)
@@ -155,9 +148,7 @@ def _request_payload(request_record: CustomVideoRequest) -> dict:
         "invoice_number": invoice.invoice_number if invoice is not None else None,
         "invoice_pdf_url": invoice_url,
         "delivery_url": (
-            request_record.delivery_url
-            if request_record.status == CustomVideoRequest.Status.DELIVERED
-            else ""
+            request_record.delivery_url if request_record.status == CustomVideoRequest.Status.DELIVERED else ""
         ),
     }
 
@@ -238,9 +229,7 @@ class CustomVideoCheckoutView(CustomVideoStudentAPIView):
     )
     def post(self, request, reference: str):
         try:
-            request_record = CustomVideoRequest.objects.prefetch_related(
-                "attachments"
-            ).get(
+            request_record = CustomVideoRequest.objects.prefetch_related("attachments").get(
                 reference=reference,
                 student=request.user.student,
             )
@@ -270,11 +259,7 @@ class CustomVideoCheckoutView(CustomVideoStudentAPIView):
                     "subject": request_record.get_subject_display(),
                     "grade": request_record.get_grade_display(),
                     "topic": request_record.topic,
-                    "amount": (
-                        f"{request_record.amount:.2f}"
-                        if request_record.amount is not None
-                        else ""
-                    ),
+                    "amount": (f"{request_record.amount:.2f}" if request_record.amount is not None else ""),
                     "currency": request_record.currency,
                     "attachment_count": request_record.attachments.count(),
                 },
