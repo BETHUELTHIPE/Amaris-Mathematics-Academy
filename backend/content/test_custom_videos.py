@@ -114,7 +114,11 @@ class CustomVideoRequestTests(TestCase):
         return payload
 
     @staticmethod
-    def authenticated_client(student: StudentRecord) -> APIClient:
+    def authenticated_client(
+        student: StudentRecord,
+        *,
+        provider: str = "test",
+    ) -> APIClient:
         client = APIClient()
         client.force_authenticate(
             user=SupabaseStudentPrincipal(
@@ -122,7 +126,7 @@ class CustomVideoRequestTests(TestCase):
                 supabase_user_id=str(student.supabase_user_id),
                 email=student.email,
             ),
-            token={"provider": "test"},
+            token={"provider": provider},
         )
         return client
 
@@ -376,3 +380,35 @@ class CustomVideoRequestTests(TestCase):
         self.assertTrue(duplicate.accepted)
         self.assertTrue(duplicate.duplicate)
         self.assertEqual(CustomVideoInvoice.objects.filter(request=request_record).count(), 1)
+
+
+    def test_staging_acceptance_payment_requires_github_oidc_and_completes_sandbox_request(self):
+        request_record = self.create_request(key="custom-video-acceptance-001")
+        create_custom_video_checkout(
+            student=self.student,
+            request_record=request_record,
+        )
+        url = reverse(
+            "custom-video-acceptance-payment-complete",
+            kwargs={"reference": request_record.reference},
+        )
+
+        ordinary_client = self.authenticated_client(self.student)
+        rejected = ordinary_client.post(url, {}, format="json", secure=True)
+        self.assertEqual(rejected.status_code, 403)
+
+        acceptance_client = self.authenticated_client(
+            self.student,
+            provider="github-actions-oidc",
+        )
+        completed = acceptance_client.post(url, {}, format="json", secure=True)
+
+        self.assertEqual(completed.status_code, 200)
+        body = completed.json()
+        self.assertEqual(body["request_reference"], request_record.reference)
+        self.assertEqual(body["status"], CustomVideoRequest.Status.PAID)
+        self.assertTrue(body["invoice_number"].startswith("INV-VIDEO-"))
+
+        request_record.refresh_from_db()
+        self.assertEqual(request_record.status, CustomVideoRequest.Status.PAID)
+        self.assertIsNotNone(request_record.gateway_verified_at)
