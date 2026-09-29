@@ -113,7 +113,7 @@ export default async function CustomVideoCheckoutPage({
           </dl>
 
           <p className="mt-5 text-sm leading-7 text-[#60708a]">
-            The price shown here comes from the academy's server-side configuration.
+            The price shown here comes from the academy&apos;s server-side configuration.
             Your invoice is issued only after PayFast verifies the payment callback.
           </p>
 
