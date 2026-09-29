@@ -337,11 +337,7 @@ class CustomVideoRequestTests(TestCase):
             if path.is_file()
         }
         self.assertEqual(after, before)
-        self.assertFalse(
-            CustomVideoRequest.objects.filter(
-                idempotency_key="custom-video-cleanup-001"
-            ).exists()
-        )
+        self.assertFalse(CustomVideoRequest.objects.filter(idempotency_key="custom-video-cleanup-001").exists())
 
     def test_payment_urls_fail_closed_without_notification_endpoint(self):
         with patch.dict(
