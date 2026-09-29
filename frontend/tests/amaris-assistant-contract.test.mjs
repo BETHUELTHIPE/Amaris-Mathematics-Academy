@@ -7,11 +7,17 @@ const component = await readFile(
   new URL("../components/site/amaris-assistant.tsx", import.meta.url),
   "utf8",
 );
+const launcher = await readFile(
+  new URL("../components/site/amaris-assistant-launcher.tsx", import.meta.url),
+  "utf8",
+);
 const route = await readFile(new URL("../app/api/assistant/route.ts", import.meta.url), "utf8");
 
-test("homepage surfaces Amaris Assistant", () => {
-  assert.match(home, /<AmarisAssistant\s*\/>/);
-  assert.match(home, /components\/site\/amaris-assistant/);
+test("homepage surfaces Amaris Assistant without loading the full client on first paint", () => {
+  assert.match(home, /<AmarisAssistantLauncher\s*\/>/);
+  assert.match(home, /components\/site\/amaris-assistant-launcher/);
+  assert.match(launcher, /import\("\.\/amaris-assistant"\)/);
+  assert.match(launcher, /<Assistant initialOpen\s*\/>/);
 });
 
 test("assistant requires the user to choose chat or voice mode", () => {
