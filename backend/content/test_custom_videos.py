@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import uuid
 from decimal import Decimal
+from pathlib import Path
+from unittest.mock import patch
 
 from django.core import mail
 from django.core.exceptions import ValidationError
@@ -20,10 +23,12 @@ from content.models import (
 )
 from content.services.custom_videos import (
     CustomVideoValidationError,
+    _validated_payment_urls,
     create_custom_video_checkout,
     create_custom_video_request,
     process_custom_video_notification,
 )
+from content.services.payments import PaymentSecurityError
 from content.tasks import deliver_custom_video_delivery, deliver_custom_video_invoice
 
 
@@ -300,6 +305,60 @@ class CustomVideoRequestTests(TestCase):
 
             with self.assertRaises(CustomVideoValidationError):
                 self.create_request(key="custom-video-storage-off-001")
+
+    def test_failed_attachment_database_save_removes_uploaded_object(self):
+        before = {
+            path.relative_to(self.media_directory.name)
+            for path in Path(self.media_directory.name).rglob("*")
+            if path.is_file()
+        }
+        with patch(
+            "content.models.CustomVideoRequestAttachment.save",
+            side_effect=RuntimeError("synthetic database write failure"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.create_request(key="custom-video-cleanup-001")
+
+        after = {
+            path.relative_to(self.media_directory.name)
+            for path in Path(self.media_directory.name).rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual(after, before)
+        self.assertFalse(
+            CustomVideoRequest.objects.filter(
+                idempotency_key="custom-video-cleanup-001"
+            ).exists()
+        )
+
+    def test_payment_urls_fail_closed_without_notification_endpoint(self):
+        with patch.dict(
+            os.environ,
+            {
+                "PUBLIC_SITE_URL": "https://students.example.test",
+                "PUBLIC_API_URL": "",
+                "PAYFAST_NOTIFY_URL": "",
+            },
+            clear=False,
+        ):
+            with self.assertRaises(PaymentSecurityError):
+                _validated_payment_urls()
+
+    def test_live_payment_urls_require_https(self):
+        with (
+            patch("content.services.custom_videos._payfast_mode", return_value="live"),
+            patch.dict(
+                os.environ,
+                {
+                    "PAYFAST_CUSTOM_VIDEO_RETURN_URL": "http://students.example.test/request-your-own-video/confirmation",
+                    "PAYFAST_CUSTOM_VIDEO_CANCEL_URL": "http://students.example.test/payments/cancelled",
+                    "PAYFAST_NOTIFY_URL": "http://api.example.test/api/v1/payfast/itn/",
+                },
+                clear=False,
+            ),
+        ):
+            with self.assertRaises(PaymentSecurityError):
+                _validated_payment_urls()
 
     def test_other_student_cannot_read_or_checkout_request(self):
         request_record = self.create_request()
