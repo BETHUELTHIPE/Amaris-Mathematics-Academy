@@ -130,9 +130,7 @@ def validate_supporting_files(
     if not uploads:
         raise CustomVideoValidationError("Upload at least one supporting file.")
     if len(uploads) > settings.max_files:
-        raise CustomVideoValidationError(
-            f"Upload no more than {settings.max_files} supporting files."
-        )
+        raise CustomVideoValidationError(f"Upload no more than {settings.max_files} supporting files.")
 
     max_bytes = int(settings.max_file_size_mb) * 1024 * 1024
     for uploaded_file in uploads:
@@ -142,9 +140,7 @@ def validate_supporting_files(
         content_type = str(getattr(uploaded_file, "content_type", "") or "").lower()
 
         if extension not in ALLOWED_SUPPORT_EXTENSIONS:
-            raise CustomVideoValidationError(
-                f"{name or 'A file'} has an unsupported file type."
-            )
+            raise CustomVideoValidationError(f"{name or 'A file'} has an unsupported file type.")
         if size <= 0:
             raise CustomVideoValidationError(f"{name} is empty.")
         if size > max_bytes:
@@ -154,13 +150,9 @@ def validate_supporting_files(
 
         expected_types = EXPECTED_CONTENT_TYPES.get(extension, set())
         if content_type and content_type not in expected_types:
-            raise CustomVideoValidationError(
-                f"{name} does not match an allowed content type."
-            )
+            raise CustomVideoValidationError(f"{name} does not match an allowed content type.")
         if not _signature_matches(extension, _file_header(uploaded_file)):
-            raise CustomVideoValidationError(
-                f"{name} does not contain the expected file signature."
-            )
+            raise CustomVideoValidationError(f"{name} does not contain the expected file signature.")
     return uploads
 
 
@@ -176,13 +168,9 @@ def create_custom_video_request(
 ) -> CustomVideoRequest:
     settings = get_custom_video_settings()
     if settings is None or not settings.enabled:
-        raise CustomVideoValidationError(
-            "Custom-video requests are not currently accepting submissions."
-        )
+        raise CustomVideoValidationError("Custom-video requests are not currently accepting submissions.")
     if settings.flat_fee is None:
-        raise CustomVideoValidationError(
-            "Custom-video pricing has not been configured by the academy."
-        )
+        raise CustomVideoValidationError("Custom-video pricing has not been configured by the academy.")
     if not student.is_active:
         raise CustomVideoValidationError("Inactive students cannot request custom videos.")
 
@@ -216,9 +204,7 @@ def create_custom_video_request(
             and existing.topic == cleaned_topic
         )
         if not same_request:
-            raise CustomVideoValidationError(
-                "This request key is already bound to another custom-video request."
-            )
+            raise CustomVideoValidationError("This request key is already bound to another custom-video request.")
         return existing
 
     request_record = None
@@ -349,9 +335,7 @@ def process_custom_video_notification(
         return NotificationResult(False, "pending_payment", reason="missing_required_fields")
 
     try:
-        request_record = CustomVideoRequest.objects.select_related("student").get(
-            reference=reference
-        )
+        request_record = CustomVideoRequest.objects.select_related("student").get(reference=reference)
     except CustomVideoRequest.DoesNotExist:
         return NotificationResult(False, "pending_payment", reason="unknown_custom_video_request")
 
@@ -417,9 +401,7 @@ def process_custom_video_notification(
             request_record.status,
             reason="tampered_amount",
         )
-    if str(payload.get("custom_str1", "")).strip() != str(
-        request_record.student.supabase_user_id
-    ):
+    if str(payload.get("custom_str1", "")).strip() != str(request_record.student.supabase_user_id):
         return NotificationResult(
             False,
             request_record.status,
@@ -431,11 +413,7 @@ def process_custom_video_notification(
             request_record.status,
             reason="wrong_service",
         )
-    if (
-        CustomVideoRequest.objects.filter(provider_reference=provider_reference)
-        .exclude(pk=request_record.pk)
-        .exists()
-    ):
+    if CustomVideoRequest.objects.filter(provider_reference=provider_reference).exclude(pk=request_record.pk).exists():
         return NotificationResult(
             False,
             request_record.status,
@@ -443,9 +421,9 @@ def process_custom_video_notification(
         )
 
     with transaction.atomic():
-        request_record = CustomVideoRequest.objects.select_for_update().select_related(
-            "student"
-        ).get(pk=request_record.pk)
+        request_record = (
+            CustomVideoRequest.objects.select_for_update().select_related("student").get(pk=request_record.pk)
+        )
         request_record.provider_reference = provider_reference
         request_record.gateway_verified_at = timezone.now()
 
@@ -453,8 +431,7 @@ def process_custom_video_notification(
             request_record.status = CustomVideoRequest.Status.PAID
             request_record.paid_at = timezone.now()
             invoice_number = (
-                f"INV-VIDEO-{request_record.paid_at:%Y%m%d}-"
-                f"{str(request_record.pk).replace('-', '')[:10].upper()}"
+                f"INV-VIDEO-{request_record.paid_at:%Y%m%d}-" f"{str(request_record.pk).replace('-', '')[:10].upper()}"
             )
             CustomVideoInvoice.objects.get_or_create(
                 request=request_record,
