@@ -60,8 +60,8 @@ function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   return browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition ?? null;
 }
 
-export function AmarisAssistant() {
-  const [open, setOpen] = useState(false);
+export function AmarisAssistant({ initialOpen = false }: { initialOpen?: boolean } = {}) {
+  const [open, setOpen] = useState(initialOpen);
   const [mode, setMode] = useState<AssistantMode | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([welcome]);
   const [draft, setDraft] = useState("");
