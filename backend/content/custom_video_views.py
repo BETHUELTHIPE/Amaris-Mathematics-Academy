@@ -305,13 +305,9 @@ class CustomVideoAcceptancePaymentCompleteView(CustomVideoStudentAPIView):
     def post(self, request, reference: str):
         auth = request.auth if isinstance(request.auth, dict) else {}
         if auth.get("provider") != "github-actions-oidc":
-            raise PermissionDenied(
-                "Synthetic custom-video payment completion is restricted to GitHub Actions OIDC."
-            )
+            raise PermissionDenied("Synthetic custom-video payment completion is restricted to GitHub Actions OIDC.")
         if os.getenv("PAYFAST_MODE", "sandbox").strip().lower() != "sandbox":
-            raise PermissionDenied(
-                "Synthetic custom-video payment completion requires PayFast sandbox mode."
-            )
+            raise PermissionDenied("Synthetic custom-video payment completion requires PayFast sandbox mode.")
         if not reference.startswith("CVR-"):
             raise PermissionDenied("Only custom-video acceptance payments can be completed.")
 
