@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin, messages
 from django.utils import timezone
 
@@ -8,6 +9,10 @@ from .models import (
     Course,
     CourseCategory,
     CourseModule,
+    CustomVideoInvoice,
+    CustomVideoRequest,
+    CustomVideoRequestAttachment,
+    CustomVideoSettings,
     Enrollment,
     Lesson,
     LiveClassBooking,
@@ -278,6 +283,224 @@ class ContactEnquiryAdmin(TimeStampedAdmin):
     @admin.action(description="Mark selected enquiries resolved")
     def mark_resolved(self, request, queryset):
         queryset.update(status=ContactEnquiry.Status.RESOLVED, resolved_at=timezone.now())
+
+
+@admin.register(CustomVideoSettings)
+class CustomVideoSettingsAdmin(TimeStampedAdmin):
+    list_display = (
+        "enabled",
+        "flat_fee",
+        "currency",
+        "max_files",
+        "max_file_size_mb",
+        "updated_at",
+    )
+    fieldsets = (
+        (
+            "Availability and pricing",
+            {
+                "fields": (
+                    "enabled",
+                    "flat_fee",
+                    "currency",
+                    "max_files",
+                    "max_file_size_mb",
+                )
+            },
+        ),
+        ("Audit", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+    )
+
+    def has_add_permission(self, request):
+        return not CustomVideoSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class CustomVideoRequestAdminForm(forms.ModelForm):
+    class Meta:
+        model = CustomVideoRequest
+        fields = "__all__"
+
+    def clean(self):
+        cleaned = super().clean()
+        status = cleaned.get("status") or self.instance.status
+        delivery_url = str(cleaned.get("delivery_url") or "").strip()
+
+        if self.instance.pk:
+            allowed_transitions = {
+                CustomVideoRequest.Status.PENDING_PAYMENT: {
+                    CustomVideoRequest.Status.PENDING_PAYMENT,
+                    CustomVideoRequest.Status.CANCELLED,
+                },
+                CustomVideoRequest.Status.PAID: {
+                    CustomVideoRequest.Status.PAID,
+                    CustomVideoRequest.Status.IN_PROGRESS,
+                },
+                CustomVideoRequest.Status.IN_PROGRESS: {
+                    CustomVideoRequest.Status.PAID,
+                    CustomVideoRequest.Status.IN_PROGRESS,
+                    CustomVideoRequest.Status.DELIVERED,
+                },
+                CustomVideoRequest.Status.DELIVERED: {
+                    CustomVideoRequest.Status.DELIVERED,
+                },
+                CustomVideoRequest.Status.CANCELLED: {
+                    CustomVideoRequest.Status.CANCELLED,
+                },
+            }
+            allowed = allowed_transitions.get(self.instance.status, {self.instance.status})
+            if status not in allowed:
+                raise forms.ValidationError(
+                    f"Unsafe status transition from {self.instance.get_status_display()} "
+                    f"to {dict(CustomVideoRequest.Status.choices).get(status, status)}."
+                )
+
+        if status in {
+            CustomVideoRequest.Status.PAID,
+            CustomVideoRequest.Status.IN_PROGRESS,
+            CustomVideoRequest.Status.DELIVERED,
+        } and not (self.instance.gateway_verified_at and self.instance.paid_at):
+            raise forms.ValidationError(
+                "Paid or fulfilment statuses require a server-verified payment. "
+                "Do not mark an unpaid request as paid from the admin."
+            )
+
+        if status == CustomVideoRequest.Status.DELIVERED and not delivery_url:
+            self.add_error(
+                "delivery_url",
+                "Add the private delivery URL before marking the request delivered.",
+            )
+        return cleaned
+
+
+class CustomVideoAttachmentInline(admin.TabularInline):
+    model = CustomVideoRequestAttachment
+    extra = 0
+    fields = (
+        "original_name",
+        "content_type",
+        "size_bytes",
+        "file",
+        "created_at",
+    )
+    readonly_fields = fields
+    can_delete = False
+
+
+@admin.register(CustomVideoRequestAttachment)
+class CustomVideoRequestAttachmentAdmin(TimeStampedAdmin):
+    list_display = (
+        "request",
+        "original_name",
+        "content_type",
+        "size_bytes",
+        "created_at",
+    )
+    search_fields = (
+        "request__reference",
+        "request__student__email",
+        "original_name",
+        "content_type",
+    )
+    readonly_fields = (
+        "request",
+        "file",
+        "original_name",
+        "content_type",
+        "size_bytes",
+        "created_at",
+        "updated_at",
+    )
+    autocomplete_fields = ("request",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return request.method in ("GET", "HEAD", "OPTIONS")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CustomVideoRequest)
+class CustomVideoRequestAdmin(TimeStampedAdmin):
+    form = CustomVideoRequestAdminForm
+    list_display = (
+        "reference",
+        "student",
+        "curriculum",
+        "subject",
+        "grade",
+        "topic",
+        "amount",
+        "status",
+        "paid_at",
+        "invoice_sent_at",
+    )
+    list_filter = ("status", "curriculum", "subject", "grade", "created_at")
+    search_fields = (
+        "reference",
+        "student__email",
+        "student__first_name",
+        "student__last_name",
+        "topic",
+        "provider_reference",
+    )
+    readonly_fields = (
+        "id",
+        "reference",
+        "idempotency_key",
+        "student",
+        "curriculum",
+        "subject",
+        "grade",
+        "topic",
+        "amount",
+        "currency",
+        "provider_reference",
+        "gateway_verified_at",
+        "paid_at",
+        "invoice_sent_at",
+        "delivery_sent_at",
+        "created_at",
+        "updated_at",
+    )
+    inlines = (CustomVideoAttachmentInline,)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CustomVideoInvoice)
+class CustomVideoInvoiceAdmin(TimeStampedAdmin):
+    list_display = ("invoice_number", "request", "amount", "currency", "issued_at")
+    search_fields = (
+        "invoice_number",
+        "request__reference",
+        "request__student__email",
+    )
+    readonly_fields = (
+        "request",
+        "invoice_number",
+        "amount",
+        "currency",
+        "issued_at",
+        "pdf_file",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 class EnrollmentInline(admin.TabularInline):

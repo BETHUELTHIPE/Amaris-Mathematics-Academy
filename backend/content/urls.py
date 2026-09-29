@@ -1,6 +1,13 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .custom_video_views import (
+    CustomVideoAcceptancePaymentCompleteView,
+    CustomVideoCheckoutView,
+    CustomVideoOptionsView,
+    CustomVideoRequestCreateView,
+    CustomVideoRequestStatusView,
+)
 from .live_class_views import LiveClassBookingStatusView, LiveClassCheckoutView, LiveClassSlotView
 from .payfast_views import PayFastITNView
 from .student_views import (
@@ -40,6 +47,23 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("custom-video/options/", CustomVideoOptionsView.as_view(), name="custom-video-options"),
+    path("student/custom-video/requests/", CustomVideoRequestCreateView.as_view(), name="custom-video-request-create"),
+    path(
+        "student/custom-video/requests/<str:reference>/",
+        CustomVideoRequestStatusView.as_view(),
+        name="custom-video-request-status",
+    ),
+    path(
+        "student/custom-video/requests/<str:reference>/checkout/",
+        CustomVideoCheckoutView.as_view(),
+        name="custom-video-checkout",
+    ),
+    path(
+        "student/acceptance/custom-video/<str:reference>/complete/",
+        CustomVideoAcceptancePaymentCompleteView.as_view(),
+        name="custom-video-acceptance-payment-complete",
+    ),
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
