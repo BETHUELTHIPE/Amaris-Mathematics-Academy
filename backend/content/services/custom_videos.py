@@ -279,7 +279,7 @@ def _public_urls() -> tuple[str, str, str]:
 
 
 def _validated_payment_urls() -> tuple[str, str, str]:
-    return_url, cancel_url, notify_url = _validated_payment_urls()
+    return_url, cancel_url, notify_url = _public_urls()
     mode = _payfast_mode()
     for label, value in (
         ("return", return_url),
