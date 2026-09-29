@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import urlparse
 
 from django.conf import settings as django_settings
 from django.db import transaction
@@ -239,8 +240,11 @@ def create_custom_video_request(
                     uploaded_file,
                     save=False,
                 )
-                attachment.save()
+                # File storage is not part of the database transaction. Track the
+                # uploaded object before saving the model so a database failure
+                # cannot leave an orphaned private object behind.
                 created_attachments.append(attachment)
+                attachment.save()
         return request_record
     except Exception:
         for attachment in created_attachments:
@@ -265,8 +269,28 @@ def _public_urls() -> tuple[str, str, str]:
     ).strip()
     notify_url = os.getenv(
         "PAYFAST_NOTIFY_URL",
-        f"{api_url}/api/v1/payfast/itn/" if api_url else "",
+        f"{api_url}/payfast/itn/" if api_url.endswith("/api/v1") else (
+            f"{api_url}/api/v1/payfast/itn/" if api_url else ""
+        ),
     ).strip()
+    return return_url, cancel_url, notify_url
+
+
+def _validated_payment_urls() -> tuple[str, str, str]:
+    return_url, cancel_url, notify_url = _validated_payment_urls()
+    mode = _payfast_mode()
+    for label, value in (
+        ("return", return_url),
+        ("cancel", cancel_url),
+        ("notification", notify_url),
+    ):
+        if not value:
+            raise PaymentSecurityError(f"PayFast {label} URL is not configured.")
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise PaymentSecurityError(f"PayFast {label} URL is invalid.")
+        if mode == "live" and parsed.scheme != "https":
+            raise PaymentSecurityError(f"PayFast {label} URL must use HTTPS in live mode.")
     return return_url, cancel_url, notify_url
 
 
