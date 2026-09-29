@@ -381,7 +381,6 @@ class CustomVideoRequestTests(TestCase):
         self.assertTrue(duplicate.duplicate)
         self.assertEqual(CustomVideoInvoice.objects.filter(request=request_record).count(), 1)
 
-
     def test_staging_acceptance_payment_requires_github_oidc_and_completes_sandbox_request(self):
         request_record = self.create_request(key="custom-video-acceptance-001")
         create_custom_video_checkout(
