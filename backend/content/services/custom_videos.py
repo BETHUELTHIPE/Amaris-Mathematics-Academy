@@ -9,6 +9,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from django.conf import settings as django_settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -167,6 +168,10 @@ def create_custom_video_request(
     files: Iterable,
 ) -> CustomVideoRequest:
     settings = get_custom_video_settings()
+    if not bool(getattr(django_settings, "CUSTOM_VIDEO_PERSISTENT_STORAGE", False)):
+        raise CustomVideoValidationError(
+            "Custom-video requests are unavailable until persistent private storage is configured."
+        )
     if settings is None or not settings.enabled:
         raise CustomVideoValidationError("Custom-video requests are not currently accepting submissions.")
     if settings.flat_fee is None:
@@ -277,6 +282,10 @@ def create_custom_video_checkout(
         raise PaymentSecurityError("Upload supporting files before payment.")
 
     settings = get_custom_video_settings()
+    if not bool(getattr(django_settings, "CUSTOM_VIDEO_PERSISTENT_STORAGE", False)):
+        raise PaymentSecurityError(
+            "Custom-video checkout is unavailable until persistent private storage is configured."
+        )
     if settings is None or not settings.enabled or settings.flat_fee is None:
         raise PaymentSecurityError("Custom-video pricing is not currently available.")
 
