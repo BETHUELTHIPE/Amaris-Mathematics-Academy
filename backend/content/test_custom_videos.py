@@ -12,7 +12,6 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from content.authentication import SupabaseStudentPrincipal
-
 from content.models import (
     CustomVideoInvoice,
     CustomVideoRequest,
