@@ -294,8 +294,7 @@ def deliver_custom_video_invoice(_self) -> int:
             f"Amount paid: R{invoice.amount:.2f}",
         ]
         status_url = (
-            f"{settings.PUBLIC_SITE_URL}/request-your-own-video/confirmation"
-            f"?reference={request_record.reference}"
+            f"{settings.PUBLIC_SITE_URL}/request-your-own-video/confirmation" f"?reference={request_record.reference}"
         )
         text_body = "\n".join(
             [
