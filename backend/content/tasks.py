@@ -3,6 +3,7 @@ from html import escape
 
 from celery import shared_task
 from django.apps import apps
+from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, send_mail
 from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
@@ -292,6 +293,10 @@ def deliver_custom_video_invoice(_self) -> int:
             f"Invoice: {invoice.invoice_number}",
             f"Amount paid: R{invoice.amount:.2f}",
         ]
+        status_url = (
+            f"{settings.PUBLIC_SITE_URL}/request-your-own-video/confirmation"
+            f"?reference={request_record.reference}"
+        )
         text_body = "\n".join(
             [
                 name,
@@ -302,6 +307,7 @@ def deliver_custom_video_invoice(_self) -> int:
                 *details,
                 "",
                 "Your request is now queued for preparation by the Amaris team.",
+                f"Track request: {status_url}",
             ]
         )
         html_details = "".join(f"<p>{escape(line)}</p>" for line in details)
@@ -316,6 +322,7 @@ def deliver_custom_video_invoice(_self) -> int:
             f'<h1 style="font-size:24px;margin-top:0">{escape(heading)}</h1>'
             f"{html_details}"
             "<p>Your request is now queued for preparation by the Amaris team.</p>"
+            f'<p><a href="{escape(status_url)}">Track your request</a></p>'
             "</div></div>"
         )
 
@@ -337,6 +344,91 @@ def deliver_custom_video_invoice(_self) -> int:
 
         request_record.invoice_sent_at = timezone.now()
         request_record.save(update_fields=("invoice_sent_at", "updated_at"))
+        return 1
+
+
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    autoretry_for=(OSError, OperationalError, InterfaceError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 6},
+)
+def deliver_custom_video_delivery(_self) -> int:
+    with transaction.atomic():
+        request_record = (
+            CustomVideoRequest.objects.select_for_update(skip_locked=True)
+            .select_related("student")
+            .filter(
+                status=CustomVideoRequest.Status.DELIVERED,
+                delivery_sent_at__isnull=True,
+            )
+            .exclude(delivery_url="")
+            .order_by("updated_at", "created_at")
+            .first()
+        )
+        if request_record is None:
+            return 0
+
+        name, email, phone = _live_class_brand()
+        heading = "Your custom Amaris teaching video is ready"
+        status_url = (
+            f"{settings.PUBLIC_SITE_URL}/request-your-own-video/confirmation"
+            f"?reference={request_record.reference}"
+        )
+        details = [
+            f"Request: {request_record.reference}",
+            f"Curriculum: {request_record.get_curriculum_display()}",
+            f"Subject: {request_record.get_subject_display()}",
+            f"Grade: {request_record.get_grade_display()}",
+            f"Topic: {request_record.topic}",
+        ]
+        text_body = "\n".join(
+            [
+                name,
+                f"{email} | {phone}",
+                "",
+                heading,
+                "",
+                *details,
+                "",
+                f"Watch your video: {request_record.delivery_url}",
+                f"Request status: {status_url}",
+            ]
+        )
+        html_details = "".join(f"<p>{escape(line)}</p>" for line in details)
+        html_body = (
+            '<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;'
+            'border:1px solid #dce4ef;border-radius:18px;overflow:hidden">'
+            '<div style="background:#07152d;color:#fff;padding:24px">'
+            f'<div style="font-size:22px;font-weight:700">{escape(name)}</div>'
+            f'<div style="margin-top:6px;color:#dce4ef">{escape(email)} · {escape(phone)}</div>'
+            "</div>"
+            '<div style="padding:28px;color:#1d2d44">'
+            f'<h1 style="font-size:24px;margin-top:0">{escape(heading)}</h1>'
+            f"{html_details}"
+            f'<p><a href="{escape(request_record.delivery_url)}" '
+            'style="display:inline-block;background:#0b2a5b;color:#fff;'
+            'padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:700">'
+            "Watch your custom video</a></p>"
+            f'<p><a href="{escape(status_url)}">View request status</a></p>'
+            "</div></div>"
+        )
+        message = EmailMultiAlternatives(
+            subject=f"Your Amaris custom video is ready — {request_record.reference}",
+            body=text_body,
+            from_email=None,
+            to=[request_record.student.email],
+        )
+        message.attach_alternative(html_body, "text/html")
+        sent = message.send(fail_silently=False)
+        if sent != 1:
+            raise OSError("Transactional email backend did not accept the custom-video delivery message.")
+
+        request_record.delivery_sent_at = timezone.now()
+        request_record.save(update_fields=("delivery_sent_at", "updated_at"))
         return 1
 
 
