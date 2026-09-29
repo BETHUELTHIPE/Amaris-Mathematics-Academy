@@ -46,6 +46,17 @@ class MockPayFastGateway:
 class CustomVideoRequestTests(TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.environment_override = patch.dict(
+            os.environ,
+            {
+                "PAYFAST_MODE": "sandbox",
+                "PUBLIC_SITE_URL": "https://students.example.test",
+                "PUBLIC_API_URL": "https://api.example.test/api/v1",
+                "PAYFAST_NOTIFY_URL": "https://api.example.test/api/v1/payfast/itn/",
+            },
+            clear=False,
+        )
+        cls.environment_override.start()
         cls.media_directory = tempfile.TemporaryDirectory()
         cls.settings_override = override_settings(
             MEDIA_ROOT=cls.media_directory.name,
@@ -69,6 +80,7 @@ class CustomVideoRequestTests(TestCase):
         super().tearDownClass()
         cls.settings_override.disable()
         cls.media_directory.cleanup()
+        cls.environment_override.stop()
 
     def setUp(self):
         self.student = StudentRecord.objects.create(
