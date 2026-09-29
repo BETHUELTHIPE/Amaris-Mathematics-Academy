@@ -269,8 +269,10 @@ def _public_urls() -> tuple[str, str, str]:
     ).strip()
     notify_url = os.getenv(
         "PAYFAST_NOTIFY_URL",
-        f"{api_url}/payfast/itn/" if api_url.endswith("/api/v1") else (
-            f"{api_url}/api/v1/payfast/itn/" if api_url else ""
+        (
+            f"{api_url}/payfast/itn/"
+            if api_url.endswith("/api/v1")
+            else (f"{api_url}/api/v1/payfast/itn/" if api_url else "")
         ),
     ).strip()
     return return_url, cancel_url, notify_url
