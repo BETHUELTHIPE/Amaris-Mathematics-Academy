@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.db.models import Count, Prefetch, Q
 from django.utils import timezone
@@ -42,6 +44,8 @@ from .serializers import (
     TestimonialSerializer,
 )
 from .services.assistant import answer_website_question
+
+logger = logging.getLogger(__name__)
 
 
 def public_cache(seconds: int):
@@ -214,6 +218,7 @@ class AmarisAssistantView(generics.GenericAPIView):
             )
 
         if not getattr(settings, "OPENAI_API_KEY", ""):
+            logger.warning("Amaris Assistant unavailable: OPENAI_API_KEY is not configured")
             return Response(
                 {"detail": "Amaris Assistant is temporarily unavailable."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -221,7 +226,8 @@ class AmarisAssistantView(generics.GenericAPIView):
 
         try:
             answer, _response_id = answer_website_question(message)
-        except (RuntimeError, ValueError):
+        except (RuntimeError, ValueError) as exc:
+            logger.warning("Amaris Assistant unavailable: %s", type(exc).__name__)
             return Response(
                 {"detail": "Amaris Assistant is temporarily unavailable."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,

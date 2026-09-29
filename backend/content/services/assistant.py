@@ -73,8 +73,10 @@ def answer_website_question(question: str) -> tuple[str, str]:
             response_payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         detail = exc.read(1200).decode("utf-8", errors="replace")
+        logger.warning("Amaris Assistant upstream returned HTTP %d", exc.code)
         raise RuntimeError(f"OpenAI request failed with HTTP {exc.code}: {detail}") from exc
     except (URLError, TimeoutError) as exc:
+        logger.warning("Amaris Assistant upstream timed out or was unreachable: %s", type(exc).__name__)
         raise RuntimeError("OpenAI request timed out or was unreachable.") from exc
 
     answer = _extract_output_text(response_payload)
