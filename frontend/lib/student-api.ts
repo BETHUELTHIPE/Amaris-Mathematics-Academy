@@ -135,7 +135,11 @@ async function accessToken(): Promise<string> {
   return token;
 }
 
-async function studentFetch<T>(\n  path: string,\n  init: RequestInit = {},\n  timeoutMs = 8_000,\n): Promise<T> {
+async function studentFetch<T>(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = 8_000,
+): Promise<T> {
   const token = await accessToken();
   const isFormData =
     typeof FormData !== "undefined" && init.body instanceof FormData;
