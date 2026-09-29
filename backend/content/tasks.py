@@ -374,8 +374,7 @@ def deliver_custom_video_delivery(_self) -> int:
         name, email, phone = _live_class_brand()
         heading = "Your custom Amaris teaching video is ready"
         status_url = (
-            f"{settings.PUBLIC_SITE_URL}/request-your-own-video/confirmation"
-            f"?reference={request_record.reference}"
+            f"{settings.PUBLIC_SITE_URL}/request-your-own-video/confirmation" f"?reference={request_record.reference}"
         )
         details = [
             f"Request: {request_record.reference}",
