@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, FileText, ShieldCheck, Upload } from "lucide-react";
 import type { CustomVideoOptions } from "@/lib/custom-videos";
 
@@ -25,19 +26,16 @@ const acceptedExtensions = [
 ];
 
 export function CustomVideoRequestWizard({ options }: Props) {
+  const router = useRouter();
   const [step, setStep] = useState(1);
   const [curriculum, setCurriculum] = useState("");
   const [subject, setSubject] = useState("");
   const [grade, setGrade] = useState("");
   const [topic, setTopic] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [requestKey, setRequestKey] = useState("");
+  const requestKeyRef = useRef<string | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    setRequestKey(`video-${crypto.randomUUID().replaceAll("-", "")}`.slice(0, 64));
-  }, []);
 
   const amount = useMemo(() => {
     if (!options.amount) return "Price not configured";
@@ -79,7 +77,7 @@ export function CustomVideoRequestWizard({ options }: Props) {
       setStep(2);
       return;
     }
-    if (!canContinueAcademic || !requestKey) {
+    if (!canContinueAcademic) {
       setError("Complete the curriculum, subject, grade and topic fields.");
       setStep(1);
       return;
@@ -88,6 +86,8 @@ export function CustomVideoRequestWizard({ options }: Props) {
     setSubmitting(true);
     try {
       const formData = new FormData(event.currentTarget);
+      requestKeyRef.current ??= `video-${crypto.randomUUID().replaceAll("-", "")}`.slice(0, 64);
+      formData.set("idempotency_key", requestKeyRef.current);
       const response = await fetch("/api/custom-video/requests", {
         method: "POST",
         body: formData,
@@ -99,7 +99,7 @@ export function CustomVideoRequestWizard({ options }: Props) {
       if (!response.ok || !payload.request_reference) {
         throw new Error(payload.detail || "Request could not be created.");
       }
-      window.location.assign(
+      router.push(
         `/request-your-own-video/checkout?reference=${encodeURIComponent(payload.request_reference)}`,
       );
     } catch (caught) {
@@ -117,7 +117,6 @@ export function CustomVideoRequestWizard({ options }: Props) {
       onSubmit={submit}
       className="mt-8 rounded-[2rem] border border-[#dce4ef] bg-white p-6 shadow-[0_22px_70px_rgba(9,35,75,.08)] sm:p-8"
     >
-      <input type="hidden" name="idempotency_key" value={requestKey} />
       <ol
         className="grid gap-3 md:grid-cols-5"
         aria-label="Custom video request steps"
@@ -342,7 +341,7 @@ export function CustomVideoRequestWizard({ options }: Props) {
           </button>
           <button
             type="submit"
-            disabled={submitting || !requestKey}
+            disabled={submitting}
             className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#0b2a5b] px-7 py-3 font-bold text-white disabled:cursor-wait disabled:opacity-55"
           >
             {submitting ? "Saving request…" : "Continue to secure payment"}
