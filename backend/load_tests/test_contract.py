@@ -1,3 +1,4 @@
+import io
 import os
 import unittest
 from pathlib import Path
@@ -64,6 +65,24 @@ class LoadTestSafetyTests(unittest.TestCase):
 
 
 class CapacityContractTests(unittest.TestCase):
+    def test_expiring_oidc_credential_is_renewed_without_reusing_old_token(self):
+        from load_tests import capacity_locustfile as capacity
+
+        with (
+            patch.object(capacity, "ACCEPTANCE_HEADER", True),
+            patch.object(capacity, "OIDC_REQUEST_URL", "https://example.test/oidc?x=1"),
+            patch.object(capacity, "OIDC_REQUEST_TOKEN", "runner-request-token"),
+            patch.object(capacity, "AUTH_BEARER", "old-token"),
+            patch.object(capacity, "_OIDC_REFRESH_AT", 0),
+            patch.object(capacity, "urlopen", return_value=io.BytesIO(b'{"value":"renewed-token"}')) as open_token,
+        ):
+            first = capacity._request_headers(protected=True, synthetic_student="synthetic-id")
+            second = capacity._request_headers(protected=True, synthetic_student="synthetic-id")
+        self.assertEqual(first["Authorization"], "Bearer renewed-token")
+        self.assertEqual(second["Authorization"], "Bearer renewed-token")
+        self.assertEqual(first["X-Amaris-Acceptance-Student"], "synthetic-id")
+        open_token.assert_called_once()
+
     @staticmethod
     def _workflow_text() -> str:
         workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "capacity.yml"
@@ -189,7 +208,8 @@ class CapacityContractTests(unittest.TestCase):
 
     def test_capacity_fast_http_auth_is_applied_per_request(self):
         text = self._capacity_locust_text()
-        self.assertIn("headers=_request_headers(protected=protected)", text)
+        self.assertIn('synthetic_student=getattr(user, "synthetic_student", "")', text)
+        self.assertIn("headers=_request_headers(", text)
         self.assertNotIn("self.client.headers.update", text)
 
     def test_capacity_requires_sustained_hold_and_fast_http_users(self):
