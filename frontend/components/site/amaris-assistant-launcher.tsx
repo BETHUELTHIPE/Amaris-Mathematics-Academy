@@ -13,8 +13,8 @@ export function AmarisAssistantLauncher() {
 
     setLoading(true);
     try {
-      const module = await import("@/components/site/amaris-assistant");
-      setAssistant(() => module.AmarisAssistant);
+      const assistantModule = await import("@/components/site/amaris-assistant");
+      setAssistant(() => assistantModule.AmarisAssistant);
     } finally {
       setLoading(false);
     }
