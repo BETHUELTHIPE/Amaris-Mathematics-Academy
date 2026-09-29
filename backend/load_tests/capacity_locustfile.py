@@ -7,10 +7,8 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
-from urllib.request import Request, urlopen
 
 import gevent
-from gevent.lock import Semaphore
 from locust import LoadTestShape, between, events, task
 from locust.contrib.fasthttp import FastHttpUser
 from locust.env import Environment
@@ -18,6 +16,7 @@ from locust.runners import MasterRunner, WorkerRunner
 
 from load_tests.capacity import CapacityThresholds, env_int, validate_capacity_level
 from load_tests.config import Endpoints, env_bool, env_csv, validate_target
+from load_tests.oidc import ActionsOidcBearer
 
 LOGGER = logging.getLogger(__name__)
 
@@ -40,9 +39,11 @@ COOKIE_HEADER = os.getenv("LOADTEST_COOKIE_HEADER", "").strip()
 SESSION_COOKIE_NAME = os.getenv("LOADTEST_SESSION_COOKIE_NAME", "").strip()
 SESSION_COOKIE_VALUE = os.getenv("LOADTEST_SESSION_COOKIE_VALUE", "").strip()
 ACCEPTANCE_HEADER = env_bool("LOADTEST_ACCEPTANCE_HEADER", False)
-_OIDC_BEARER = AUTH_BEARER
-_OIDC_REFRESH_AT = time.monotonic() + 90
-_OIDC_LOCK = Semaphore()
+OIDC_BEARER = ActionsOidcBearer(
+    initial_token=AUTH_BEARER,
+    request_url=OIDC_REQUEST_URL if ACCEPTANCE_HEADER else "",
+    request_token=OIDC_REQUEST_TOKEN if ACCEPTANCE_HEADER else "",
+)
 
 _STARTED_AT = 0.0
 _MAX_USERS_OBSERVED = 0
@@ -59,35 +60,12 @@ def _auth_available() -> bool:
     return bool(AUTH_BEARER or COOKIE_HEADER or (SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE))
 
 
-def _current_bearer() -> str:
-    """Renew short-lived Actions OIDC tokens during sustained staging tests."""
-    global _OIDC_BEARER, _OIDC_REFRESH_AT
-    if not (ACCEPTANCE_HEADER and OIDC_REQUEST_URL and OIDC_REQUEST_TOKEN):
-        return AUTH_BEARER
-    if time.monotonic() < _OIDC_REFRESH_AT:
-        return _OIDC_BEARER
-    with _OIDC_LOCK:
-        if time.monotonic() >= _OIDC_REFRESH_AT:
-            separator = "&" if "?" in OIDC_REQUEST_URL else "?"
-            request = Request(
-                f"{OIDC_REQUEST_URL}{separator}audience=amaris-staging",
-                headers={"Authorization": f"Bearer {OIDC_REQUEST_TOKEN}"},
-            )
-            with urlopen(request, timeout=10) as response:
-                token = json.load(response).get("value", "")
-            if not isinstance(token, str) or not token:
-                raise RuntimeError("GitHub Actions did not issue a staging OIDC token.")
-            _OIDC_BEARER = token
-            _OIDC_REFRESH_AT = time.monotonic() + 90
-    return _OIDC_BEARER
-
-
 def _request_headers(*, protected: bool, synthetic_student: str = "") -> dict[str, str]:
     if not protected:
         return {}
     headers: dict[str, str] = {}
     if AUTH_BEARER:
-        headers["Authorization"] = f"Bearer {_current_bearer()}"
+        headers["Authorization"] = f"Bearer {OIDC_BEARER.current()}"
         if ACCEPTANCE_HEADER:
             headers["X-Amaris-Acceptance"] = "github-actions"
             if synthetic_student:

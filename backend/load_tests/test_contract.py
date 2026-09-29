@@ -66,21 +66,19 @@ class LoadTestSafetyTests(unittest.TestCase):
 
 class CapacityContractTests(unittest.TestCase):
     def test_expiring_oidc_credential_is_renewed_without_reusing_old_token(self):
-        from load_tests import capacity_locustfile as capacity
+        from load_tests.oidc import ActionsOidcBearer
 
-        with (
-            patch.object(capacity, "ACCEPTANCE_HEADER", True),
-            patch.object(capacity, "OIDC_REQUEST_URL", "https://example.test/oidc?x=1"),
-            patch.object(capacity, "OIDC_REQUEST_TOKEN", "runner-request-token"),
-            patch.object(capacity, "AUTH_BEARER", "old-token"),
-            patch.object(capacity, "_OIDC_REFRESH_AT", 0),
-            patch.object(capacity, "urlopen", return_value=io.BytesIO(b'{"value":"renewed-token"}')) as open_token,
-        ):
-            first = capacity._request_headers(protected=True, synthetic_student="synthetic-id")
-            second = capacity._request_headers(protected=True, synthetic_student="synthetic-id")
-        self.assertEqual(first["Authorization"], "Bearer renewed-token")
-        self.assertEqual(second["Authorization"], "Bearer renewed-token")
-        self.assertEqual(first["X-Amaris-Acceptance-Student"], "synthetic-id")
+        bearer = ActionsOidcBearer(
+            initial_token="old-token",
+            request_url="https://example.test/oidc?x=1",
+            request_token="runner-request-token",
+        )
+        bearer._refresh_at = 0
+        with patch("load_tests.oidc.urlopen", return_value=io.BytesIO(b'{"value":"renewed-token"}')) as open_token:
+            first = bearer.current()
+            second = bearer.current()
+        self.assertEqual(first, "renewed-token")
+        self.assertEqual(second, "renewed-token")
         open_token.assert_called_once()
 
     @staticmethod

@@ -44,7 +44,7 @@ class AcceptanceIdentityTests(APITestCase):
                     "HTTP_X_AMARIS_ACCEPTANCE": "github-actions",
                     "HTTP_X_AMARIS_ACCEPTANCE_STUDENT": identity,
                 }
-                seed = self.client.post(reverse("student-acceptance-seed"), {}, format="json", **headers)
+                seed = self.client.post(reverse("student-acceptance-seed"), {}, format="json", secure=True, **headers)
                 self.assertEqual(seed.status_code, 200)
                 checkout = self.client.post(
                     reverse("student-checkout"),
@@ -53,12 +53,13 @@ class AcceptanceIdentityTests(APITestCase):
                         "idempotency_key": f"capacity-{identity.replace('-', '')}",
                     },
                     format="json",
+                    secure=True,
                     **headers,
                 )
                 self.assertEqual(checkout.status_code, 201)
                 reference = checkout.data["payment_reference"]
                 references.append(reference)
-                own = self.client.get(reverse("student-payment-status", args=[reference]), **headers)
+                own = self.client.get(reverse("student-payment-status", args=[reference]), secure=True, **headers)
                 self.assertEqual(own.status_code, 200)
                 self.assertEqual(own.data["status"], "pending")
             other_student_headers = {
@@ -67,7 +68,9 @@ class AcceptanceIdentityTests(APITestCase):
                 "HTTP_X_AMARIS_ACCEPTANCE_STUDENT": identities[0],
             }
             cross_user = self.client.get(
-                reverse("student-payment-status", args=[references[1]]), **other_student_headers
+                reverse("student-payment-status", args=[references[1]]),
+                secure=True,
+                **other_student_headers,
             )
             self.assertEqual(cross_user.status_code, 404)
 
