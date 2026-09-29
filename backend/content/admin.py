@@ -3,17 +3,17 @@ from django.contrib import admin, messages
 from django.utils import timezone
 
 from .models import (
-    FAQ,
     Announcement,
     ContactEnquiry,
+    Course,
+    CourseCategory,
+    CourseModule,
     CustomVideoInvoice,
     CustomVideoRequest,
     CustomVideoRequestAttachment,
     CustomVideoSettings,
-    Course,
-    CourseCategory,
-    CourseModule,
     Enrollment,
+    FAQ,
     Lesson,
     LiveClassBooking,
     NavigationItem,
