@@ -492,7 +492,31 @@ jobs:
 
           lesson=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/lessons/$course_slug/$lesson_slug/")
           python -c 'import json,sys; p=json.load(sys.stdin); assert p["lesson"]["slug"]=="acceptance-algebra"; assert p["resume"]["last_position_seconds"]==347' <<<"$lesson"
-          echo "Real staging search/checkout/synthetic-paid/status/progress/resume/lesson journey passed without a real PayFast charge."
+
+          video_options=$(curl --fail --silent --show-error "$STAGING_BASE_URL/api/v1/custom-video/options/")
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["enabled"] is True; assert p["pricing_configured"] is True; assert float(p["amount"]) > 0' <<<"$video_options"
+
+          tmp_pdf=$(mktemp)
+          printf '%s\n' '%PDF-1.4' '1 0 obj' '<<>>' 'endobj' '%%EOF' > "$tmp_pdf"
+          video_key="video-${GITHUB_SHA:0:32}"
+          video_request=$(curl --fail --silent --show-error "${auth[@]}" \
+            -F "curriculum=caps" -F "subject=mathematics" -F "grade=12" \
+            -F "topic=Acceptance differential calculus" -F "idempotency_key=$video_key" \
+            -F "files=@$tmp_pdf;type=application/pdf;filename=acceptance-question.pdf" \
+            "$STAGING_BASE_URL/api/v1/student/custom-video/requests/")
+          rm -f "$tmp_pdf"
+          video_reference=$(python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="pending_payment"; assert p["attachment_count"]==1; print(p["request_reference"])' <<<"$video_request")
+
+          video_checkout=$(curl --fail --silent --show-error "${auth[@]}" -X POST "$STAGING_BASE_URL/api/v1/student/custom-video/requests/$video_reference/checkout/")
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="pending_payment"; assert "sandbox.payfast.co.za" in p["gateway_url"]; assert float(p["request"]["amount"]) > 0' <<<"$video_checkout"
+
+          video_completed=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$STAGING_BASE_URL/api/v1/student/acceptance/custom-video/$video_reference/complete/" -d '{}')
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="paid"; assert p["invoice_number"].startswith("INV-VIDEO-")' <<<"$video_completed"
+
+          video_status=$(curl --fail --silent --show-error "${auth[@]}" "$STAGING_BASE_URL/api/v1/student/custom-video/requests/$video_reference/")
+          python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="paid"; assert p["invoice_number"].startswith("INV-VIDEO-"); assert p["attachment_count"]==1' <<<"$video_status"
+
+          echo "Real staging course and custom-video sandbox journeys passed without a real PayFast charge."
 
       - uses: actions/setup-python@v5
         with:
