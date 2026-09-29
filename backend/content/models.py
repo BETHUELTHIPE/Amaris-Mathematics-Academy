@@ -638,6 +638,7 @@ class CustomVideoRequest(TimeStampedModel):
     gateway_verified_at = models.DateTimeField(blank=True, null=True)
     paid_at = models.DateTimeField(blank=True, null=True)
     invoice_sent_at = models.DateTimeField(blank=True, null=True)
+    delivery_sent_at = models.DateTimeField(blank=True, null=True)
     delivery_url = models.URLField(blank=True)
     admin_notes = models.TextField(blank=True)
 
