@@ -17,11 +17,11 @@ export default async function Home() {
       <section className="relative isolate overflow-hidden bg-[#07152d] text-white">
         {/* Direct delivery avoids the Vinext image optimizer path while keeping the LCP image discoverable in the initial HTML. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="sync" className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
+        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,#07152d_0%,rgba(7,21,45,.95)_34%,rgba(7,21,45,.66)_54%,rgba(7,21,45,.04)_100%)]" />
-        <div className="graph-paper absolute inset-0 opacity-15" />
-        <div className="relative mx-auto grid min-h-[690px] max-w-7xl items-center px-5 py-20 lg:px-8">
-          <div className="max-w-2xl rounded-[2rem] bg-[#07152d] p-6 shadow-[0_28px_90px_rgba(0,0,0,.24)] sm:p-9">
+        <div className="graph-paper absolute inset-0 hidden opacity-15 sm:block" />
+        <div className="relative mx-auto grid min-h-[600px] max-w-7xl items-center px-5 py-16 sm:min-h-[690px] sm:py-20 lg:px-8">
+          <div className="max-w-2xl rounded-[2rem] bg-[#07152d] p-6 sm:p-9 sm:shadow-[0_28px_90px_rgba(0,0,0,.24)]">
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 py-2 text-sm text-white/80"><span className="size-2 rounded-full bg-[#ffcc66]" /> Mathematics for school, TVET & university</div>
             <h1 className="text-5xl font-semibold leading-[1.02] tracking-[-0.055em] sm:text-6xl lg:text-[5.4rem]">Master mathematics,<br /><span className="text-[#ffcc66]">one clear step</span> at a time.</h1>
             <p className="mt-7 max-w-xl text-lg leading-8 text-white/70">Structured lessons, worked examples and deliberate practice—built to turn uncertainty into confident problem-solving.</p>
