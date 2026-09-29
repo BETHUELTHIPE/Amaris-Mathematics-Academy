@@ -64,7 +64,7 @@ class CustomVideoOptionsView(APIView):
             {
                 "enabled": bool(video_settings and video_settings.enabled and storage_ready),
                 "pricing_configured": bool(video_settings and video_settings.flat_fee is not None),
-                "amount": video_settings.flat_fee if video_settings else None,
+                "amount": format(video_settings.flat_fee, ".2f") if video_settings and video_settings.flat_fee is not None else None,
                 "currency": video_settings.currency if video_settings else "ZAR",
                 "max_files": video_settings.max_files if video_settings else 5,
                 "max_file_size_mb": video_settings.max_file_size_mb if video_settings else 15,
