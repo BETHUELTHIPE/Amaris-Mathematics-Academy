@@ -36,7 +36,7 @@ export function AmarisAssistantLauncher() {
       >
         <span
           aria-hidden="true"
-          className="grid size-7 place-items-center rounded-full bg-[#ffcc66] text-base font-bold text-[#07152d]"
+          className="grid size-7 place-items-center rounded-full bg-white text-base font-bold text-[#07152d]"
         >
           ✦
         </span>
