@@ -57,7 +57,15 @@ _STOP_SAMPLING = False
 
 
 def _auth_available() -> bool:
-    return bool(AUTH_BEARER or COOKIE_HEADER or (SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE))
+    oidc_available = bool(
+        ACCEPTANCE_HEADER and OIDC_REQUEST_URL and OIDC_REQUEST_TOKEN
+    )
+    return bool(
+        AUTH_BEARER
+        or COOKIE_HEADER
+        or (SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE)
+        or oidc_available
+    )
 
 
 def _request_headers(*, protected: bool, synthetic_student: str = "") -> dict[str, str]:
