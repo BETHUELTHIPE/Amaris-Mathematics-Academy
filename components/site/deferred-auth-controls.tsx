@@ -8,7 +8,8 @@ type NavigationLink = {
   open_in_new_tab: boolean;
 };
 
-type AuthResult = { authenticated?: boolean };
+type AuthResult = { authenticated?: boolean; emailVerified?: boolean };
+type ResolvedAuthState = "anonymous" | "unverified" | "verified";
 
 const LazyAuthControls = lazy(() =>
   import("@/components/site/auth-controls").then((module) => ({
@@ -69,7 +70,7 @@ function AnonymousAuthControls({ links, checking = false }: { links: NavigationL
 }
 
 export function DeferredAuthControls({ links }: { links: NavigationLink[] }) {
-  const [authenticated, setAuthenticated] = useState(false);
+  const [authState, setAuthState] = useState<ResolvedAuthState>("anonymous");
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
@@ -85,7 +86,10 @@ export function DeferredAuthControls({ links }: { links: NavigationLink[] }) {
         .then(async (response): Promise<AuthResult | null> =>
           response.ok ? ((await response.json()) as AuthResult) : null,
         )
-        .then((result) => setAuthenticated(result?.authenticated === true))
+        .then((result) => {
+          if (!result?.authenticated) setAuthState("anonymous");
+          else setAuthState(result.emailVerified ? "verified" : "unverified");
+        })
         .catch(() => undefined)
         .finally(() => {
           if (!controller.signal.aborted) setChecking(false);
@@ -106,11 +110,13 @@ export function DeferredAuthControls({ links }: { links: NavigationLink[] }) {
     };
   }, []);
 
-  if (!authenticated) return <AnonymousAuthControls links={links} checking={checking} />;
+  if (checking || authState === "anonymous") {
+    return <AnonymousAuthControls links={links} checking={checking} />;
+  }
 
   return (
     <Suspense fallback={<AnonymousAuthControls links={links} />}>
-      <LazyAuthControls links={links} />
+      <LazyAuthControls links={links} initialState={authState} />
     </Suspense>
   );
 }
