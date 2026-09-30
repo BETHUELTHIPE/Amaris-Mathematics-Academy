@@ -169,6 +169,7 @@ def _s3_storage(bucket_name: str) -> dict:
         "querystring_auth": True,
         "file_overwrite": False,
         "addressing_style": SUPABASE_S3_ADDRESSING_STYLE,
+        "signature_version": "s3v4",
     }
     if SUPABASE_S3_ENDPOINT_URL:
         options["endpoint_url"] = SUPABASE_S3_ENDPOINT_URL
