@@ -211,17 +211,43 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
-if AWS_STORAGE_BUCKET_NAME:
+CMS_STORAGE_BUCKET_NAME = os.getenv("CMS_STORAGE_BUCKET_NAME") or os.getenv("AWS_STORAGE_BUCKET_NAME", "")
+STUDENT_STORAGE_BUCKET_NAME = os.getenv("STUDENT_STORAGE_BUCKET_NAME", "")
+AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL", "")
+AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
+AWS_S3_ADDRESSING_STYLE = os.getenv(
+    "AWS_S3_ADDRESSING_STYLE",
+    "path" if AWS_S3_ENDPOINT_URL else "",
+)
+
+if CMS_STORAGE_BUCKET_NAME and STUDENT_STORAGE_BUCKET_NAME:
+    s3_common_options = {
+        "region_name": AWS_S3_REGION_NAME,
+        "default_acl": None,
+        "querystring_auth": True,
+        "file_overwrite": False,
+        "signature_version": "s3v4",
+    }
+    if AWS_S3_ENDPOINT_URL:
+        s3_common_options["endpoint_url"] = AWS_S3_ENDPOINT_URL
+    if AWS_S3_ADDRESSING_STYLE:
+        s3_common_options["addressing_style"] = AWS_S3_ADDRESSING_STYLE
+
     STORAGES = {
+        # Django Admin/CMS uploads: branding, pages, course media, resources, testimonials.
         "default": {
             "BACKEND": "storages.backends.s3.S3Storage",
             "OPTIONS": {
-                "bucket_name": AWS_STORAGE_BUCKET_NAME,
-                "region_name": os.getenv("AWS_S3_REGION_NAME", "af-south-1"),
-                "default_acl": None,
-                "querystring_auth": True,
-                "file_overwrite": False,
+                **s3_common_options,
+                "bucket_name": CMS_STORAGE_BUCKET_NAME,
+            },
+        },
+        # Student-owned/generated documents must opt in to this named storage.
+        "student_data": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                **s3_common_options,
+                "bucket_name": STUDENT_STORAGE_BUCKET_NAME,
             },
         },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
@@ -229,6 +255,13 @@ if AWS_STORAGE_BUCKET_NAME:
 else:
     STORAGES = {
         "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "student_data": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": BASE_DIR / "media" / "student-data",
+                "base_url": f"{MEDIA_URL}student-data/",
+            },
+        },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 
