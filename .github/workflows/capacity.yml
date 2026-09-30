@@ -1,6 +1,11 @@
 name: Capacity Verification
 
 on:
+  push:
+    branches:
+      - capacity/repeat-1000-20260930
+    paths:
+      - ".github/workflows/capacity.yml"
   workflow_dispatch:
     inputs:
       max_users:
@@ -44,7 +49,7 @@ concurrency:
 jobs:
   progressive-capacity:
     name: Progressive capacity verification
-    runs-on: ${{ inputs.load_generator == 'self-hosted' && 'capacity-load-generator' || 'ubuntu-latest' }}
+    runs-on: ${{ (inputs.load_generator || 'github-hosted') == 'self-hosted' && 'capacity-load-generator' || 'ubuntu-latest' }}
     timeout-minutes: 240
     environment: capacity
     env:
@@ -57,9 +62,9 @@ jobs:
       CAPACITY_TARGET_IMAGE: ${{ vars.CAPACITY_TARGET_IMAGE }}
       CAPACITY_PROMETHEUS_URL: ${{ vars.CAPACITY_PROMETHEUS_URL }}
       CAPACITY_PROMETHEUS_BEARER: ${{ secrets.CAPACITY_PROMETHEUS_BEARER }}
-      CAPACITY_RAMP_SECONDS: ${{ inputs.ramp_seconds }}
-      CAPACITY_HOLD_SECONDS: ${{ inputs.hold_seconds }}
-      CAPACITY_LOCUST_PROCESSES: ${{ inputs.locust_processes }}
+      CAPACITY_RAMP_SECONDS: ${{ inputs.ramp_seconds || '120' }}
+      CAPACITY_HOLD_SECONDS: ${{ inputs.hold_seconds || '600' }}
+      CAPACITY_LOCUST_PROCESSES: ${{ inputs.locust_processes || '4' }}
       CAPACITY_REQUIRE_AUTH: "true"
       CAPACITY_MAX_FAILURE_PCT: "1.0"
       CAPACITY_MAX_5XX_PCT: "0.1"
@@ -104,8 +109,8 @@ jobs:
             echo "runner=${RUNNER_NAME}"
             echo "os=${RUNNER_OS}"
             echo "arch=${RUNNER_ARCH}"
-            echo "requested_generator=${{ inputs.load_generator }}"
-            echo "locust_processes=${{ inputs.locust_processes }}"
+            echo "requested_generator=${{ inputs.load_generator || 'github-hosted' }}"
+            echo "locust_processes=${{ inputs.locust_processes || '4' }}"
             echo "cpu_count=$(nproc)"
             echo "memory_kib=$(awk '/MemTotal/ {print $2}' /proc/meminfo)"
             echo "open_file_limit=$(ulimit -n)"
@@ -126,7 +131,25 @@ jobs:
             echo "CAPACITY_ALLOWED_HOSTS must explicitly allow the isolated capacity target." >&2
             exit 1
           fi
-          if (( ${{ inputs.max_users }} > 1000 )) && [[ "${{ inputs.load_generator }}" != "self-hosted" ]]; then
+          target_host="$(python - <<'PY'
+from urllib.parse import urlparse
+import os
+print((urlparse(os.environ["LOADTEST_TARGET_URL"]).hostname or "").lower())
+PY
+)"
+          case "$target_host" in
+            amaris-mathematics-academy-staging.onrender.com|amaris-mathematics-academy-staging-x4ax.onrender.com)
+              ;;
+            *)
+              echo "Repeat capacity run is staging-only; refusing target host: $target_host" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "${CAPACITY_TARGET_GIT_SHA:-}" != "29dcddbf579965ddf403769da87bb88aba6d6097" ]]; then
+            echo "CAPACITY_TARGET_GIT_SHA must match the currently deployed staging SHA 29dcddbf579965ddf403769da87bb88aba6d6097." >&2
+            exit 1
+          fi
+          if (( ${{ inputs.max_users || '1000' }} > 1000 )) && [[ "${{ inputs.load_generator || 'github-hosted' }}" != "self-hosted" ]]; then
             echo "Capacity stages above 1,000 users require a dedicated self-hosted load generator." >&2
             exit 1
           fi
@@ -147,7 +170,7 @@ jobs:
           from load_tests.capacity import CapacityThresholds, progressive_levels, validate_capacity_level
           from load_tests.config import env_csv, validate_target
 
-          requested = validate_capacity_level(int("${{ inputs.max_users }}"))
+          requested = validate_capacity_level(int("${{ inputs.max_users || '1000' }}"))
           print("Progressive stages:", ", ".join(f"{value:,}" for value in progressive_levels(requested)))
           validate_target(
               os.environ["LOADTEST_TARGET_URL"],
@@ -171,7 +194,7 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          requested="${{ inputs.max_users }}"
+          requested="${{ inputs.max_users || '1000' }}"
           stages=(100 500 1000 2500 5000 10000 25000 50000)
           result=0
 
