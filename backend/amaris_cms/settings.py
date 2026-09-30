@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 from pathlib import Path
 
@@ -137,6 +138,9 @@ DATABASES = {
     )
 }
 if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    database_schema = os.getenv("DATABASE_SCHEMA", "").strip()
+    if database_schema and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", database_schema):
+        raise RuntimeError("DATABASE_SCHEMA must be a simple Postgres schema identifier.")
     DATABASES["default"].setdefault("OPTIONS", {}).update(
         {
             "connect_timeout": int(os.getenv("DATABASE_CONNECT_TIMEOUT", "5")),
@@ -147,6 +151,7 @@ if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
                         "-c idle_in_transaction_session_timeout="
                         f"{int(os.getenv('DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS', '30000'))}"
                     ),
+                    *([f"-c search_path={database_schema}"] if database_schema else []),
                 ]
             ),
         }

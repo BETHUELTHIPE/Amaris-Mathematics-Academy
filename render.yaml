@@ -61,6 +61,8 @@ services:
         value: https://amaris-production-web.onrender.com/api/v1/payfast/itn/
       - key: DATABASE_URL
         sync: false # Supabase Postgres session-pooler URL, supplied in Render secrets
+      - key: DATABASE_SCHEMA
+        value: amaris_app
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: DATABASE_CONN_MAX_AGE
@@ -118,6 +120,8 @@ services:
           type: web
           name: amaris-production-web
           envVarKey: DATABASE_URL
+      - key: DATABASE_SCHEMA
+        value: amaris_app
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: DJANGO_CACHE_URL
@@ -160,6 +164,8 @@ services:
           type: web
           name: amaris-production-web
           envVarKey: DATABASE_URL
+      - key: DATABASE_SCHEMA
+        value: amaris_app
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: CELERY_BROKER_URL
@@ -213,6 +219,8 @@ services:
           type: web
           name: amaris-production-web
           envVarKey: DATABASE_URL
+      - key: DATABASE_SCHEMA
+        value: amaris_app
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: CELERY_BROKER_URL
