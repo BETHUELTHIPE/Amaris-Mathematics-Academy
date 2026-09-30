@@ -25,6 +25,7 @@ jobs:
       LOADTEST_TARGET_URL: https://amaris-mathematics-academy-staging.onrender.com
       LOADTEST_ALLOWED_HOSTS: amaris-mathematics-academy-staging.onrender.com
       LOADTEST_PROFILE: spike
+      LOCUST_BIN: locust
       LOADTEST_REQUIRE_FULL_JOURNEY: "false"
       LOADTEST_ALLOW_WRITES: "false"
       LOADTEST_ALLOW_PRODUCTION: "false"
