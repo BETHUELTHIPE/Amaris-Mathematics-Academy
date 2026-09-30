@@ -22,8 +22,8 @@ jobs:
     environment: staging
     env:
       LOADTEST_ENVIRONMENT: staging
-      LOADTEST_TARGET_URL: ${{ vars.LOADTEST_TARGET_URL }}
-      LOADTEST_ALLOWED_HOSTS: ${{ vars.LOADTEST_ALLOWED_HOSTS }}
+      LOADTEST_TARGET_URL: https://amaris-mathematics-academy-staging.onrender.com
+      LOADTEST_ALLOWED_HOSTS: amaris-mathematics-academy-staging.onrender.com
       LOADTEST_PROFILE: spike
       LOADTEST_REQUIRE_FULL_JOURNEY: "false"
       LOADTEST_ALLOW_WRITES: "false"
@@ -52,14 +52,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${LOADTEST_TARGET_URL:-}" ]]; then
-            echo "LOADTEST_TARGET_URL is required in the staging environment." >&2
-            exit 1
-          fi
-          if [[ -z "${LOADTEST_ALLOWED_HOSTS:-}" ]]; then
-            echo "LOADTEST_ALLOWED_HOSTS is required in the staging environment." >&2
-            exit 1
-          fi
           python - <<'PY'
           import os
           from load_tests.config import env_csv, validate_target
@@ -103,6 +95,7 @@ jobs:
           echo "## Staging stress test" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Profile: spike" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Peak configured users: 200" >> "$GITHUB_STEP_SUMMARY"
           echo "- Production target allowed: no" >> "$GITHUB_STEP_SUMMARY"
           echo "- Live PayFast allowed: no" >> "$GITHUB_STEP_SUMMARY"
           if [[ -f backend/load_tests/results/spike_stats.csv ]]; then
