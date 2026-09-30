@@ -20,10 +20,18 @@ type IdleWindow = Window & {
   cancelIdleCallback?: (handle: number) => void;
 };
 
-export function AuthControls({ links }: { links: NavigationLink[] }) {
-  const [state, setState] = useState<AuthState>("loading");
+export function AuthControls({
+  links,
+  initialState = "loading",
+}: {
+  links: NavigationLink[];
+  initialState?: AuthState;
+}) {
+  const [state, setState] = useState<AuthState>(initialState);
 
   useEffect(() => {
+    if (initialState !== "loading") return;
+
     const controller = new AbortController();
     const idleWindow = window as IdleWindow;
     let idleHandle: number | undefined;
@@ -58,7 +66,7 @@ export function AuthControls({ links }: { links: NavigationLink[] }) {
       if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
       if (timeoutHandle !== undefined) window.clearTimeout(timeoutHandle);
     };
-  }, []);
+  }, [initialState]);
 
   const authenticated = state === "verified" || state === "unverified";
   const primaryHref = state === "verified" ? "/dashboard" : state === "unverified" ? "/verify-email" : "/register";
