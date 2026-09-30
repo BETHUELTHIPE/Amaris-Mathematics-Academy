@@ -13,5 +13,8 @@ permissions:
 jobs:
   canary:
     runs-on: ubuntu-latest
+    environment: capacity
+    env:
+      TARGET_PRESENT: ${{ vars.CAPACITY_TARGET_URL != '' }}
     steps:
-      - run: echo "capacity-actions-canary-ok"
+      - run: echo "capacity-actions-canary-ok target_present=${TARGET_PRESENT}"
