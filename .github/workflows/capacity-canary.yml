@@ -1,0 +1,17 @@
+name: Capacity Actions Canary
+
+on:
+  push:
+    branches:
+      - capacity/repeat-1000-20260930
+    paths:
+      - ".github/workflows/capacity-canary.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "capacity-actions-canary-ok"
