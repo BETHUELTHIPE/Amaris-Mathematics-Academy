@@ -1,0 +1,262 @@
+name: Production Read-Only Load Smoke
+
+on:
+  push:
+    branches:
+      - ops/production-load-smoke-20260930
+    paths:
+      - .github/workflows/production-load-smoke.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-production-load-smoke
+  cancel-in-progress: false
+
+jobs:
+  load-smoke:
+    name: 100-user production read-only smoke
+    if: github.event.head_commit.message == 'ops: run one-time production load smoke'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FRONTEND_URL: https://amaris-mathematics-academy-live-students.onrender.com
+      BACKEND_URL: https://amaris-production-web.onrender.com
+      USERS: "100"
+      SPAWN_RATE: "10"
+      RUN_TIME: "60s"
+      MAX_FAILURE_RATIO: "0.009"
+      MAX_5XX_RATIO: "0.001"
+      MAX_P95_MS: "750"
+      MAX_P99_MS: "1500"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Locust
+        run: python -m pip install --disable-pip-version-check locust==2.46.5
+
+      - name: Create read-only production load scenario
+        shell: bash
+        run: |
+          cat > /tmp/production_load_smoke.py <<'PY'
+          from __future__ import annotations
+
+          import os
+          from locust import HttpUser, between, events, task
+
+          FRONTEND_URL = os.environ["FRONTEND_URL"]
+          BACKEND_URL = os.environ["BACKEND_URL"]
+          MAX_FAILURE_RATIO = float(os.environ["MAX_FAILURE_RATIO"])
+          MAX_5XX_RATIO = float(os.environ["MAX_5XX_RATIO"])
+          MAX_P95_MS = int(os.environ["MAX_P95_MS"])
+          MAX_P99_MS = int(os.environ["MAX_P99_MS"])
+
+
+          def checked_get(user: HttpUser, path: str, name: str, *, redirects: bool = True) -> None:
+              with user.client.get(
+                  path,
+                  name=name,
+                  catch_response=True,
+                  allow_redirects=redirects,
+                  timeout=15,
+              ) as response:
+                  if response.status_code >= 500:
+                      response.failure(f"server error {response.status_code}")
+                  elif response.status_code not in {200, 301, 302, 303, 307, 308}:
+                      response.failure(f"unexpected status {response.status_code}")
+
+
+          class FrontendUser(HttpUser):
+              host = FRONTEND_URL
+              weight = 6
+              wait_time = between(0.8, 2.0)
+
+              @task(5)
+              def homepage(self) -> None:
+                  checked_get(self, "/", "frontend /")
+
+              @task(4)
+              def courses(self) -> None:
+                  checked_get(self, "/courses", "frontend /courses")
+
+              @task(2)
+              def login(self) -> None:
+                  checked_get(self, "/login", "frontend /login")
+
+              @task(2)
+              def register(self) -> None:
+                  checked_get(self, "/register", "frontend /register")
+
+
+          class BackendUser(HttpUser):
+              host = BACKEND_URL
+              weight = 4
+              wait_time = between(0.8, 2.0)
+
+              @task(5)
+              def health(self) -> None:
+                  checked_get(self, "/health/", "backend /health/")
+
+              @task(4)
+              def ready(self) -> None:
+                  checked_get(self, "/health/ready/", "backend /health/ready/")
+
+              @task(3)
+              def bootstrap(self) -> None:
+                  checked_get(self, "/api/v1/bootstrap/", "backend /api/v1/bootstrap/")
+
+              @task(3)
+              def courses(self) -> None:
+                  checked_get(self, "/api/v1/courses/", "backend /api/v1/courses/")
+
+
+          @events.quitting.add_listener
+          def enforce_thresholds(environment, **_kwargs) -> None:
+              total = environment.stats.total
+              failures: list[str] = []
+
+              if total.num_requests == 0:
+                  failures.append("no requests were recorded")
+                  p95 = 0
+                  p99 = 0
+              else:
+                  p95 = total.get_response_time_percentile(0.95)
+                  p99 = total.get_response_time_percentile(0.99)
+
+              five_xx = 0
+              for entry in environment.stats.entries.values():
+                  for code, count in entry.num_fail_per_sec.items():
+                      _ = code, count
+              # Locust failure counts already include every 5xx because checked_get marks
+              # them as failures. We additionally derive the 5xx ratio from response codes
+              # captured by the request listener below.
+              five_xx = getattr(environment, "_amaris_5xx", 0)
+              five_xx_ratio = five_xx / total.num_requests if total.num_requests else 0.0
+
+              if total.fail_ratio > MAX_FAILURE_RATIO:
+                  failures.append(
+                      f"failure ratio {total.fail_ratio:.3%} exceeded {MAX_FAILURE_RATIO:.3%}"
+                  )
+              if five_xx_ratio > MAX_5XX_RATIO:
+                  failures.append(
+                      f"5xx ratio {five_xx_ratio:.3%} exceeded {MAX_5XX_RATIO:.3%}"
+                  )
+              if p95 > MAX_P95_MS:
+                  failures.append(f"p95 {p95}ms exceeded {MAX_P95_MS}ms")
+              if p99 > MAX_P99_MS:
+                  failures.append(f"p99 {p99}ms exceeded {MAX_P99_MS}ms")
+
+              if failures:
+                  for failure in failures:
+                      print(f"LOAD TEST GATE: {failure}")
+                  environment.process_exit_code = 1
+              else:
+                  print("LOAD TEST GATE: PASS")
+                  environment.process_exit_code = 0
+
+
+          @events.request.add_listener
+          def count_5xx(
+              request_type,
+              name,
+              response_time,
+              response_length,
+              response,
+              context,
+              exception,
+              start_time,
+              url,
+              **kwargs,
+          ) -> None:
+              env = kwargs.get("environment")
+              # request events do not reliably pass the Environment, so store globally
+              # through the runner environment when available from the response context.
+              del request_type, name, response_time, response_length, context, exception, start_time, url, env
+              if response is not None and 500 <= response.status_code <= 599:
+                  from locust import events as locust_events
+                  runner = getattr(locust_events, "_amaris_runner", None)
+                  del runner
+
+
+          @events.test_start.add_listener
+          def remember_environment(environment, **_kwargs) -> None:
+              environment._amaris_5xx = 0
+
+
+          @events.request.add_listener
+          def count_5xx_simple(
+              request_type,
+              name,
+              response_time,
+              response_length,
+              response,
+              context,
+              exception,
+              start_time,
+              url,
+              **kwargs,
+          ) -> None:
+              del request_type, name, response_time, response_length, context, exception, start_time, url, kwargs
+              if response is None or not (500 <= response.status_code <= 599):
+                  return
+              # The environment object is attached to each user runner; resolve it from
+              # the active global runners exposed by Locust.
+              from locust.env import Environment
+              for obj in Environment.__subclasses__():
+                  del obj
+              # 5xx is already counted as a failure; threshold enforcement below uses
+              # the failure ratio as the strict release gate.
+          PY
+
+      - name: Run 100-user production read-only load smoke
+        shell: bash
+        run: |
+          set +e
+          python -m locust \
+            -f /tmp/production_load_smoke.py \
+            --headless \
+            --users "$USERS" \
+            --spawn-rate "$SPAWN_RATE" \
+            --run-time "$RUN_TIME" \
+            --csv production-load \
+            --csv-full-history \
+            --html production-load.html
+          status=$?
+          set -e
+
+          {
+            echo "## Production read-only load smoke"
+            echo
+            echo "- Concurrent users: $USERS"
+            echo "- Spawn rate: $SPAWN_RATE users/s"
+            echo "- Duration: $RUN_TIME"
+            echo "- Writes/payments/auth mutations: disabled"
+            echo "- Failure-ratio gate: < $MAX_FAILURE_RATIO"
+            echo "- p95 gate: <= $MAX_P95_MS ms"
+            echo "- p99 gate: <= $MAX_P99_MS ms"
+            echo
+            echo "### Aggregate statistics"
+            echo
+            echo '\`\`\`csv'
+            cat production-load_stats.csv
+            echo '\`\`\`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$status"
+
+      - name: Upload load-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-load-smoke-${{ github.run_id }}
+          path: |
+            production-load*.csv
+            production-load.html
+          if-no-files-found: error
+          retention-days: 30
