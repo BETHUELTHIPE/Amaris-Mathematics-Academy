@@ -62,6 +62,7 @@ export type LiveClassBookingStatus = {
   amount: string;
   currency: string;
   invoice_number: string | null;
+  invoice_ready: boolean;
   zoom_join_url: string;
 };
 
@@ -170,6 +171,18 @@ export async function getStudentLiveClassBooking(
 ): Promise<LiveClassBookingStatus> {
   return studentFetch<LiveClassBookingStatus>(
     `/student/live-classes/bookings/${encodeURIComponent(reference)}/`,
+  );
+}
+
+export async function downloadStudentLiveClassInvoice(reference: string): Promise<Response> {
+  const token = await accessToken();
+  return fetch(
+    `${cmsBaseUrl()}/student/live-classes/bookings/${encodeURIComponent(reference)}/invoice/`,
+    {
+      headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    },
   );
 }
 

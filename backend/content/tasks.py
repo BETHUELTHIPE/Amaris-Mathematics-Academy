@@ -3,13 +3,14 @@ from html import escape
 
 from celery import shared_task
 from django.apps import apps
-from django.core.mail import EmailMultiAlternatives, send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
 
 from content.models import LiveClassBooking, SiteSettings
 from content.payment_models import NotificationOutbox
+from content.services.invoices import archive_invoice_pdf
 from content.services.reconciliation import reconcile_verified_payments
 
 
@@ -106,13 +107,15 @@ def deliver_transactional_email(_self) -> int:
             f"Ticket: {ticket_number}\n\n"
             "Log in to your Amaris student dashboard to continue learning."
         )
-        sent = send_mail(
+        email = EmailMultiAlternatives(
             subject=subject,
-            message=message,
+            body=message,
             from_email=None,
-            recipient_list=[outbox.destination],
-            fail_silently=False,
+            to=[outbox.destination],
         )
+        invoice = outbox.payment.invoice
+        email.attach(f"{invoice.invoice_number}.pdf", archive_invoice_pdf(invoice), "application/pdf")
+        sent = email.send(fail_silently=False)
         if sent != 1:
             raise OSError("Transactional email backend did not accept the message.")
 
@@ -174,28 +177,10 @@ def _send_live_class_message(
     )
     message.attach_alternative(html, "text/html")
     if attach_invoice and booking.invoice_number:
-        invoice_text = "\n".join(
-            [
-                name,
-                "LIVE CLASS INVOICE",
-                f"Invoice: {booking.invoice_number}",
-                f"Booking: {booking.reference}",
-                f"Student: {booking.student.first_name} {booking.student.last_name}",
-                f"Programme: {booking.get_programme_display()}",
-                f"Subject: {booking.get_subject_display()}",
-                f"Level: {booking.level}",
-                f"Topic: {booking.topic}",
-                f"Tutor: {booking.slot.tutor_display_name}",
-                f"Class: {_booking_when(booking)}",
-                f"Amount: R{booking.amount:.2f}",
-                f"Currency: {booking.currency}",
-                "Payment status: Paid and verified by PayFast",
-            ]
-        )
         message.attach(
-            f"{booking.invoice_number}.txt",
-            invoice_text,
-            "text/plain",
+            f"{booking.invoice_number}.pdf",
+            archive_invoice_pdf(booking),
+            "application/pdf",
         )
     sent = message.send(fail_silently=False)
     if sent != 1:

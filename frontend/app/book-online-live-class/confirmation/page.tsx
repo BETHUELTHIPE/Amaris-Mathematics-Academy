@@ -111,6 +111,15 @@ export default async function LiveClassConfirmationPage({
                 </a>
               )}
 
+              {confirmed && booking.invoice_ready && booking.invoice_number && (
+                <a
+                  href={`/book-online-live-class/invoice?reference=${encodeURIComponent(reference)}`}
+                  className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-[#b7c5d8] px-6 py-3 font-bold text-[#0b2a5b]"
+                >
+                  <FileText className="size-4" /> Download invoice PDF
+                </a>
+              )}
+
               {confirmed && (
                 <div className="mt-5 grid gap-3 text-sm leading-7 text-[#60708a]">
                   <p className="flex items-start gap-2"><FileText className="mt-1 size-4 shrink-0 text-[#1f5bbd]" />A confirmation email and invoice are queued for your registered email address.</p>

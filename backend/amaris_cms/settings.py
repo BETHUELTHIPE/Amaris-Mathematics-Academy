@@ -219,24 +219,50 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
-if AWS_STORAGE_BUCKET_NAME:
+SUPABASE_S3_ENDPOINT_URL = os.getenv("SUPABASE_S3_ENDPOINT_URL", "").strip()
+SUPABASE_S3_ACCESS_KEY_ID = os.getenv("SUPABASE_S3_ACCESS_KEY_ID", "").strip()
+SUPABASE_S3_SECRET_ACCESS_KEY = os.getenv("SUPABASE_S3_SECRET_ACCESS_KEY", "").strip()
+SUPABASE_S3_ADMIN_BUCKET = os.getenv("SUPABASE_S3_ADMIN_BUCKET", "").strip()
+SUPABASE_S3_STUDENT_BUCKET = os.getenv("SUPABASE_S3_STUDENT_BUCKET", "").strip()
+_supabase_s3_values = (
+    SUPABASE_S3_ENDPOINT_URL,
+    SUPABASE_S3_ACCESS_KEY_ID,
+    SUPABASE_S3_SECRET_ACCESS_KEY,
+    SUPABASE_S3_ADMIN_BUCKET,
+    SUPABASE_S3_STUDENT_BUCKET,
+)
+if env_bool("SUPABASE_S3_REQUIRED", False) or any(_supabase_s3_values):
+    if not all(_supabase_s3_values) or not SUPABASE_S3_ENDPOINT_URL.startswith("https://"):
+        raise RuntimeError("Both private Supabase S3 buckets, HTTPS endpoint, and server-side S3 keys are required.")
+    _s3_options = {
+        "endpoint_url": SUPABASE_S3_ENDPOINT_URL,
+        "region_name": os.getenv("SUPABASE_S3_REGION", "us-east-1"),
+        "access_key": SUPABASE_S3_ACCESS_KEY_ID,
+        "secret_key": SUPABASE_S3_SECRET_ACCESS_KEY,
+        "addressing_style": "path",
+        "signature_version": "s3v4",
+        "default_acl": None,
+        "querystring_auth": True,
+        "querystring_expire": 300,
+    }
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-                "bucket_name": AWS_STORAGE_BUCKET_NAME,
-                "region_name": os.getenv("AWS_S3_REGION_NAME", "af-south-1"),
-                "default_acl": None,
-                "querystring_auth": True,
-                "file_overwrite": False,
-            },
+            "OPTIONS": {**_s3_options, "bucket_name": SUPABASE_S3_ADMIN_BUCKET, "file_overwrite": False},
+        },
+        "student_private": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {**_s3_options, "bucket_name": SUPABASE_S3_STUDENT_BUCKET, "file_overwrite": True},
         },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 else:
     STORAGES = {
         "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "student_private": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": MEDIA_ROOT / "student-private", "allow_overwrite": True},
+        },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 

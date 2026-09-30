@@ -1,6 +1,8 @@
 import uuid
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -235,9 +237,57 @@ class LiveClassBookingTests(TestCase):
         self.assertIn(self.slot.zoom_join_url, message.body)
         self.assertIn(booking.invoice_number, message.body)
         self.assertEqual(len(message.attachments), 1)
+        self.assertEqual(message.attachments[0][2], "application/pdf")
+        self.assertTrue(message.attachments[0][1].startswith(b"%PDF"))
 
         self.assertEqual(deliver_live_class_confirmation.run(), 0)
         self.assertEqual(len(mail.outbox), 1)
+
+    def test_invoice_archive_and_download_are_student_owned(self):
+        checkout = self.checkout()
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+
+        with TemporaryDirectory() as directory, override_settings(
+            STORAGES={
+                "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+                "default": {
+                    "BACKEND": "django.core.files.storage.FileSystemStorage",
+                    "OPTIONS": {"location": str(Path(directory) / "admin")},
+                },
+                "student_private": {
+                    "BACKEND": "django.core.files.storage.FileSystemStorage",
+                    "OPTIONS": {"location": str(Path(directory) / "student"), "allow_overwrite": True},
+                },
+            }
+        ):
+            owner = APIClient()
+            owner.force_authenticate(user=SupabaseStudentPrincipal(
+                student=self.student,
+                supabase_user_id=str(self.student.supabase_user_id),
+                email=self.student.email,
+            ))
+            other = APIClient()
+            other.force_authenticate(user=SupabaseStudentPrincipal(
+                student=self.other_student,
+                supabase_user_id=str(self.other_student.supabase_user_id),
+                email=self.other_student.email,
+            ))
+            url = reverse("live-class-invoice-download", args=[booking.reference])
+            self.assertEqual(owner.get(url, secure=True).status_code, 404)
+            self.assertEqual(deliver_live_class_confirmation.run(), 1)
+            booking.refresh_from_db()
+
+            key = Path("invoices") / str(self.student.supabase_user_id) / f"{booking.invoice_number}.pdf"
+            archived = Path(directory, "student", key).read_bytes()
+            self.assertTrue(archived.startswith(b"%PDF"))
+            self.assertFalse(Path(directory, "admin", key).exists())
+            self.assertEqual(archived, mail.outbox[-1].attachments[0][1])
+            self.assertEqual(other.get(url, secure=True).status_code, 404)
+            response = owner.get(url, secure=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response["Cache-Control"], "private, no-store")
+            self.assertEqual(b"".join(response.streaming_content), archived)
 
     def test_reminder_is_sent_once_inside_thirty_minute_window(self):
         checkout = self.checkout()
