@@ -15,9 +15,9 @@ const authControlsSource = await readFile(
 const requiredLinks = [
   ["/courses", "Courses"],
   ["/how-it-works", "How it works"],
-  ["/book-online-live-class", "Book online live class"],
   ["/pricing", "Pricing"],
   ["/about", "About"],
+  ["/book-online-live-class", "Book online live class"],
   ["/contact", "Contact"],
 ];
 
@@ -27,7 +27,17 @@ test("keeps all core public pages in managed navigation", () => {
     assert.ok(cmsSource.includes(`url: "${url}"`), `missing ${url} URL`);
   }
   assert.match(cmsSource, /location: "both" as const/);
+  assert.match(cmsSource, /order: requiredItem\.order/);
   assert.match(cmsSource, /return \[\.\.\.requiredItems, \.\.\.customItems\]/);
+});
+
+test("keeps Book online live class immediately next to Contact", () => {
+  assert.match(
+    cmsSource,
+    /label: "Book online live class"[\s\S]*order: 45[\s\S]*label: "Contact"[\s\S]*order: 50/,
+  );
+  assert.match(cmsSource, /function keepBookingNextToContact/);
+  assert.match(cmsSource, /return keepBookingNextToContact\(items\)/);
 });
 
 test("renders managed links in desktop and mobile header navigation", () => {
