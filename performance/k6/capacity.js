@@ -54,6 +54,7 @@ export const failures = new Rate("amaris_failures");
 export const serverErrors = new Rate("amaris_5xx");
 export const requests = new Counter("amaris_requests");
 export const responseTimes = new Trend("amaris_response_time", true);
+export const timeToFirstByte = new Trend("amaris_ttfb", true);
 
 export const options = {
   scenarios: {
@@ -96,6 +97,7 @@ export default function capacityJourney() {
 
   requests.add(1);
   responseTimes.add(response.timings.duration);
+  timeToFirstByte.add(response.timings.waiting);
   failures.add(!ok);
   serverErrors.add(response.status >= 500 && response.status <= 599);
   sleep(thinkSeconds);
@@ -111,6 +113,7 @@ export function handleSummary(data) {
   const metric = (name) => data.metrics[name] || {};
   const httpDuration = metric("http_req_duration").values || {};
   const requestRate = (metric("http_reqs").values || {}).rate || 0;
+  const ttfb = metric("amaris_ttfb").values || {};
   const failureRate = (metric("amaris_failures").values || {}).rate || 0;
   const fiveXxRate = (metric("amaris_5xx").values || {}).rate || 0;
   const thresholdsPassed = ["amaris_failures", "amaris_5xx", "http_req_duration"].every(
@@ -126,6 +129,10 @@ export function handleSummary(data) {
     p90_ms: httpDuration["p(90)"] ?? null,
     p95_ms: httpDuration["p(95)"] ?? null,
     p99_ms: httpDuration["p(99)"] ?? null,
+    ttfb_p50_ms: ttfb.med ?? null,
+    ttfb_p90_ms: ttfb["p(90)"] ?? null,
+    ttfb_p95_ms: ttfb["p(95)"] ?? null,
+    ttfb_p99_ms: ttfb["p(99)"] ?? null,
     failure_percent: failureRate * 100,
     http_5xx_percent: fiveXxRate * 100,
     thresholds_passed: thresholdsPassed,
