@@ -27,7 +27,7 @@ class LiveClassSlotFilterSerializer(serializers.Serializer):
 
 
 class LiveClassSlotResponseSerializer(serializers.Serializer):
-    id = serializers.UUIDField()
+    id = serializers.IntegerField(min_value=1)
     programme = serializers.CharField()
     programme_label = serializers.CharField()
     subject = serializers.CharField()
@@ -85,7 +85,7 @@ class LiveClassSlotView(APIView):
 
         payload = [
             {
-                "id": str(slot.pk),
+                "id": slot.pk,
                 "programme": slot.programme,
                 "programme_label": slot.get_programme_display(),
                 "subject": slot.subject,
@@ -107,7 +107,7 @@ class LiveClassSlotView(APIView):
 
 
 class LiveClassCheckoutRequestSerializer(serializers.Serializer):
-    slot_id = serializers.UUIDField()
+    slot_id = serializers.IntegerField(min_value=1)
     topic = serializers.CharField(min_length=2, max_length=180, trim_whitespace=True)
     idempotency_key = serializers.RegexField(r"^[A-Za-z0-9_-]{8,64}$")
 

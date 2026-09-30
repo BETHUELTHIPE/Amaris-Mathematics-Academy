@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlparse
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -98,39 +99,8 @@ def create_live_class_checkout(
                 raise PaymentSecurityError("This booking key is already bound to another live class.")
             if existing.status == LiveClassBooking.Status.CONFIRMED:
                 raise PaymentSecurityError("This live class is already confirmed.")
-            if existing.status in {
-                LiveClassBooking.Status.EXPIRED,
-                LiveClassBooking.Status.CANCELLED,
-            }:
-                if (
-                    LiveClassBooking.objects.filter(
-                        slot=locked_slot,
-                        status__in=(
-                            LiveClassBooking.Status.PENDING_PAYMENT,
-                            LiveClassBooking.Status.CONFIRMED,
-                        ),
-                    )
-                    .exclude(pk=existing.pk)
-                    .exists()
-                ):
-                    raise PaymentSecurityError("This tutor slot has already been booked.")
-                existing.status = LiveClassBooking.Status.PENDING_PAYMENT
-                existing.hold_expires_at = now + timedelta(minutes=30)
-                existing.provider_reference = ""
-                existing.paid_at = None
-                existing.gateway_verified_at = None
-                existing.invoice_number = None
-                existing.save(
-                    update_fields=(
-                        "status",
-                        "hold_expires_at",
-                        "provider_reference",
-                        "paid_at",
-                        "gateway_verified_at",
-                        "invoice_number",
-                        "updated_at",
-                    )
-                )
+            if existing.status != LiveClassBooking.Status.PENDING_PAYMENT:
+                raise PaymentSecurityError("This checkout attempt has ended. Choose an available tutor time again.")
             booking = existing
         else:
             if LiveClassBooking.objects.filter(
@@ -160,6 +130,11 @@ def create_live_class_checkout(
 
     merchant_id, merchant_key, passphrase = _payfast_credentials()
     return_url, cancel_url, notify_url = _public_urls()
+    if _payfast_mode() == "live" and any(
+        urlparse(url).scheme != "https" or not urlparse(url).netloc
+        for url in (return_url, cancel_url, notify_url)
+    ):
+        raise PaymentSecurityError("Live PayFast return, cancel, and notification URLs must be configured for HTTPS.")
     fields = {
         "merchant_id": merchant_id,
         "merchant_key": merchant_key,
@@ -222,11 +197,6 @@ def process_live_class_notification(
             duplicate=True,
         )
 
-    if booking.status == LiveClassBooking.Status.PENDING_PAYMENT and booking.hold_expires_at <= timezone.now():
-        booking.status = LiveClassBooking.Status.EXPIRED
-        booking.save(update_fields=("status", "updated_at"))
-        return NotificationResult(False, booking.status, reason="booking_hold_expired")
-
     try:
         verified = gateway.verify_notification(payload)
     except TimeoutError:
@@ -269,24 +239,36 @@ def process_live_class_notification(
 
     with transaction.atomic():
         booking = LiveClassBooking.objects.select_for_update().select_related("student", "slot").get(pk=booking.pk)
+        if booking.status == LiveClassBooking.Status.CONFIRMED:
+            if booking.provider_reference == provider_reference:
+                return NotificationResult(True, booking.status, reason="duplicate_callback", duplicate=True)
+            return NotificationResult(False, booking.status, reason="provider_reference_replay")
+        if booking.provider_reference and booking.provider_reference != provider_reference:
+            return NotificationResult(False, booking.status, reason="provider_reference_replay")
+        if booking.status == LiveClassBooking.Status.PAYMENT_REVIEW:
+            return NotificationResult(True, booking.status, reason="payment_requires_manual_resolution", duplicate=True)
+
         booking.provider_reference = provider_reference
         booking.gateway_verified_at = timezone.now()
 
         if gateway_status == "COMPLETE":
-            if booking.slot.starts_at <= timezone.now():
-                return NotificationResult(
-                    False,
-                    booking.status,
-                    reason="class_already_started",
-                )
-            booking.status = LiveClassBooking.Status.CONFIRMED
             booking.paid_at = timezone.now()
-            if not booking.invoice_number:
+            if (
+                booking.status != LiveClassBooking.Status.PENDING_PAYMENT
+                or booking.hold_expires_at <= booking.paid_at
+                or booking.slot.starts_at <= booking.paid_at
+            ):
+                # Record the verified charge without issuing a Zoom link or occupying
+                # a slot that might already belong to another student.
+                booking.status = LiveClassBooking.Status.PAYMENT_REVIEW
+            else:
+                booking.status = LiveClassBooking.Status.CONFIRMED
                 booking.invoice_number = (
                     f"INV-LIVE-{booking.paid_at:%Y%m%d}-{str(booking.pk).replace('-', '')[:10].upper()}"
                 )
         elif gateway_status in {"FAILED", "CANCELLED"}:
-            booking.status = LiveClassBooking.Status.CANCELLED
+            if booking.status == LiveClassBooking.Status.PENDING_PAYMENT:
+                booking.status = LiveClassBooking.Status.CANCELLED
 
         booking.save(
             update_fields=(
@@ -299,4 +281,8 @@ def process_live_class_notification(
             )
         )
 
-    return NotificationResult(True, booking.status)
+    return NotificationResult(
+        True,
+        booking.status,
+        reason="payment_requires_manual_resolution" if booking.status == LiveClassBooking.Status.PAYMENT_REVIEW else "",
+    )

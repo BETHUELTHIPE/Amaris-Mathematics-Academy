@@ -60,6 +60,7 @@ export default async function LiveClassConfirmationPage({
   }
 
   const confirmed = booking?.status === "confirmed";
+  const needsReview = booking?.status === "payment_review";
 
   return (
     <main className="min-h-screen bg-[#f5f7fb]">
@@ -73,7 +74,7 @@ export default async function LiveClassConfirmationPage({
           )}
           <p className="eyebrow mt-7">Live class booking</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-[-.045em]">
-            {confirmed ? "Your Zoom class is confirmed." : "Payment confirmation is being verified."}
+            {confirmed ? "Your Zoom class is confirmed." : needsReview ? "Your payment needs booking support." : "Payment confirmation is being verified."}
           </h1>
 
           {!booking ? (
@@ -83,6 +84,11 @@ export default async function LiveClassConfirmationPage({
             </p>
           ) : (
             <>
+              {needsReview && (
+                <p className="mt-5 text-sm leading-7 text-[#60708a]">
+                  PayFast verified your payment after the tutor slot could no longer be reserved. Keep your booking reference and contact us to arrange a new class or a refund. We have not issued a Zoom link for this slot.
+                </p>
+              )}
               <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm">
                 <div><dt className="font-semibold">Booking reference</dt><dd className="mt-1 font-mono text-[#60708a]">{booking.booking_reference}</dd></div>
                 <div><dt className="font-semibold">Status</dt><dd className="mt-1 capitalize text-[#60708a]">{booking.status.replaceAll("_", " ")}</dd></div>

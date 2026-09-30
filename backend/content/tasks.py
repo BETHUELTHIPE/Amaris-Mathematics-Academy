@@ -212,6 +212,15 @@ def _send_live_class_message(
     retry_kwargs={"max_retries": 6},
 )
 def deliver_live_class_confirmation(_self) -> int:
+    delivered = 0
+    for _ in range(100):
+        if not _deliver_one_live_class_confirmation():
+            break
+        delivered += 1
+    return delivered
+
+
+def _deliver_one_live_class_confirmation() -> bool:
     with transaction.atomic():
         booking = (
             LiveClassBooking.objects.select_for_update(skip_locked=True)
@@ -224,7 +233,7 @@ def deliver_live_class_confirmation(_self) -> int:
             .first()
         )
         if booking is None:
-            return 0
+            return False
 
         _send_live_class_message(
             booking,
@@ -245,7 +254,7 @@ def deliver_live_class_confirmation(_self) -> int:
         )
         booking.confirmation_sent_at = timezone.now()
         booking.save(update_fields=("confirmation_sent_at", "updated_at"))
-        return 1
+        return True
 
 
 @shared_task(
@@ -258,6 +267,15 @@ def deliver_live_class_confirmation(_self) -> int:
     retry_kwargs={"max_retries": 6},
 )
 def deliver_live_class_reminder(_self) -> int:
+    delivered = 0
+    for _ in range(100):
+        if not _deliver_one_live_class_reminder():
+            break
+        delivered += 1
+    return delivered
+
+
+def _deliver_one_live_class_reminder() -> bool:
     now = timezone.now()
     with transaction.atomic():
         booking = (
@@ -274,7 +292,7 @@ def deliver_live_class_reminder(_self) -> int:
             .first()
         )
         if booking is None:
-            return 0
+            return False
 
         _send_live_class_message(
             booking,
@@ -290,7 +308,7 @@ def deliver_live_class_reminder(_self) -> int:
         )
         booking.reminder_sent_at = timezone.now()
         booking.save(update_fields=("reminder_sent_at", "updated_at"))
-        return 1
+        return True
 
 
 @shared_task(
