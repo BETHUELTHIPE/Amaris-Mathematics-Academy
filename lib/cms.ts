@@ -50,6 +50,7 @@ async function cmsFetch<T>(path: string): Promise<T | null> {
   try {
     const response = await fetch(`${cmsBaseUrl}${path}`, {
       headers: { Accept: "application/json" },
+      cache: "force-cache",
       next: { revalidate: 60 },
       signal: AbortSignal.timeout(900),
     });
@@ -128,12 +129,12 @@ function mapCourse(course: CmsCourse): Course {
   };
 }
 
-export async function getManagedCourses(): Promise<Course[]> {
+export const getManagedCourses = cache(async (): Promise<Course[]> => {
   const response = await cmsFetch<Paginated<CmsCourse>>("/courses/?page_size=100");
   return response?.results?.length ? response.results.map(mapCourse) : courses;
-}
+});
 
-export async function getManagedCourse(slug: string): Promise<Course | undefined> {
+export const getManagedCourse = cache(async (slug: string): Promise<Course | undefined> => {
   const course = await cmsFetch<CmsCourse>(`/courses/${encodeURIComponent(slug)}/`);
   return course ? mapCourse(course) : courses.find((item) => item.slug === slug);
-}
+});
