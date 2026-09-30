@@ -126,7 +126,7 @@ WSGI_APPLICATION = "amaris_cms.wsgi.application"
 ASGI_APPLICATION = "amaris_cms.asgi.application"
 
 if not DEBUG and not os.getenv("DATABASE_URL"):
-    raise RuntimeError("DATABASE_URL must be set to the production Postgres connection string.")
+    raise RuntimeError("DATABASE_URL must be set to the production Supabase Postgres connection string.")
 
 DATABASES = {
     "default": dj_database_url.config(
