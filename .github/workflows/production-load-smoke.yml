@@ -1,9 +1,9 @@
 name: Production Read-Only Load Smoke
 
 on:
-  push:
+  pull_request:
     branches:
-      - ops/production-load-smoke-20260930
+      - main
     paths:
       - .github/workflows/production-load-smoke.yml
 
@@ -17,7 +17,7 @@ concurrency:
 jobs:
   load-smoke:
     name: 100-user production read-only smoke
-    if: github.event.head_commit.message == 'ops: run one-time production load smoke'
+    if: github.event.pull_request.head.ref == 'ops/production-load-smoke-20260930'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -57,13 +57,16 @@ jobs:
           MAX_P95_MS = int(os.environ["MAX_P95_MS"])
           MAX_P99_MS = int(os.environ["MAX_P99_MS"])
 
+          FIVE_XX = 0
+          RESPONSES = 0
 
-          def checked_get(user: HttpUser, path: str, name: str, *, redirects: bool = True) -> None:
+
+          def checked_get(user: HttpUser, path: str, name: str) -> None:
               with user.client.get(
                   path,
                   name=name,
                   catch_response=True,
-                  allow_redirects=redirects,
+                  allow_redirects=True,
                   timeout=15,
               ) as response:
                   if response.status_code >= 500:
@@ -116,6 +119,26 @@ jobs:
                   checked_get(self, "/api/v1/courses/", "backend /api/v1/courses/")
 
 
+          @events.request.add_listener
+          def count_responses(
+              request_type,
+              name,
+              response_time,
+              response_length,
+              response,
+              context,
+              exception,
+              start_time,
+              url,
+              **kwargs,
+          ) -> None:
+              del request_type, name, response_time, response_length, context, exception, start_time, url, kwargs
+              global FIVE_XX, RESPONSES
+              RESPONSES += 1
+              if response is not None and 500 <= response.status_code <= 599:
+                  FIVE_XX += 1
+
+
           @events.quitting.add_listener
           def enforce_thresholds(environment, **_kwargs) -> None:
               total = environment.stats.total
@@ -129,15 +152,19 @@ jobs:
                   p95 = total.get_response_time_percentile(0.95)
                   p99 = total.get_response_time_percentile(0.99)
 
-              five_xx = 0
-              for entry in environment.stats.entries.values():
-                  for code, count in entry.num_fail_per_sec.items():
-                      _ = code, count
-              # Locust failure counts already include every 5xx because checked_get marks
-              # them as failures. We additionally derive the 5xx ratio from response codes
-              # captured by the request listener below.
-              five_xx = getattr(environment, "_amaris_5xx", 0)
-              five_xx_ratio = five_xx / total.num_requests if total.num_requests else 0.0
+              five_xx_ratio = FIVE_XX / RESPONSES if RESPONSES else 0.0
+
+              print(
+                  "PRODUCTION_LOAD_RESULT "
+                  f"requests={total.num_requests} "
+                  f"failures={total.num_failures} "
+                  f"failure_ratio={total.fail_ratio:.6f} "
+                  f"5xx={FIVE_XX} "
+                  f"5xx_ratio={five_xx_ratio:.6f} "
+                  f"p95_ms={p95} "
+                  f"p99_ms={p99} "
+                  f"rps={total.current_rps:.2f}"
+              )
 
               if total.fail_ratio > MAX_FAILURE_RATIO:
                   failures.append(
@@ -159,59 +186,6 @@ jobs:
               else:
                   print("LOAD TEST GATE: PASS")
                   environment.process_exit_code = 0
-
-
-          @events.request.add_listener
-          def count_5xx(
-              request_type,
-              name,
-              response_time,
-              response_length,
-              response,
-              context,
-              exception,
-              start_time,
-              url,
-              **kwargs,
-          ) -> None:
-              env = kwargs.get("environment")
-              # request events do not reliably pass the Environment, so store globally
-              # through the runner environment when available from the response context.
-              del request_type, name, response_time, response_length, context, exception, start_time, url, env
-              if response is not None and 500 <= response.status_code <= 599:
-                  from locust import events as locust_events
-                  runner = getattr(locust_events, "_amaris_runner", None)
-                  del runner
-
-
-          @events.test_start.add_listener
-          def remember_environment(environment, **_kwargs) -> None:
-              environment._amaris_5xx = 0
-
-
-          @events.request.add_listener
-          def count_5xx_simple(
-              request_type,
-              name,
-              response_time,
-              response_length,
-              response,
-              context,
-              exception,
-              start_time,
-              url,
-              **kwargs,
-          ) -> None:
-              del request_type, name, response_time, response_length, context, exception, start_time, url, kwargs
-              if response is None or not (500 <= response.status_code <= 599):
-                  return
-              # The environment object is attached to each user runner; resolve it from
-              # the active global runners exposed by Locust.
-              from locust.env import Environment
-              for obj in Environment.__subclasses__():
-                  del obj
-              # 5xx is already counted as a failure; threshold enforcement below uses
-              # the failure ratio as the strict release gate.
           PY
 
       - name: Run 100-user production read-only load smoke
@@ -224,6 +198,7 @@ jobs:
             --users "$USERS" \
             --spawn-rate "$SPAWN_RATE" \
             --run-time "$RUN_TIME" \
+            --stop-timeout 5 \
             --csv production-load \
             --csv-full-history \
             --html production-load.html
@@ -237,7 +212,8 @@ jobs:
             echo "- Spawn rate: $SPAWN_RATE users/s"
             echo "- Duration: $RUN_TIME"
             echo "- Writes/payments/auth mutations: disabled"
-            echo "- Failure-ratio gate: < $MAX_FAILURE_RATIO"
+            echo "- Failure-ratio gate: <= 0.9%"
+            echo "- 5xx gate: <= 0.1%"
             echo "- p95 gate: <= $MAX_P95_MS ms"
             echo "- p99 gate: <= $MAX_P99_MS ms"
             echo
