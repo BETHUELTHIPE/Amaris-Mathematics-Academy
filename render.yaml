@@ -98,26 +98,6 @@ services:
       - key: AWS_S3_ADDRESSING_STYLE
         value: path
       - key: AWS_ACCESS_KEY_ID
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_ACCESS_KEY_ID
-      - key: AWS_SECRET_ACCESS_KEY
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_SECRET_ACCESS_KEY
-      - key: CMS_STORAGE_BUCKET_NAME
-        value: amaris-cms-files
-      - key: STUDENT_STORAGE_BUCKET_NAME
-        value: Amaris Mathematics Academy
-      - key: AWS_S3_ENDPOINT_URL
-        value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
-      - key: AWS_S3_REGION_NAME
-        value: us-east-1
-      - key: AWS_S3_ADDRESSING_STYLE
-        value: path
-      - key: AWS_ACCESS_KEY_ID
         sync: false
       - key: AWS_SECRET_ACCESS_KEY
         sync: false
@@ -290,6 +270,26 @@ services:
           type: keyvalue
           name: amaris-production-broker
           property: connectionString
+      - key: CMS_STORAGE_BUCKET_NAME
+        value: amaris-cms-files
+      - key: STUDENT_STORAGE_BUCKET_NAME
+        value: Amaris Mathematics Academy
+      - key: AWS_S3_ENDPOINT_URL
+        value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
+      - key: AWS_S3_REGION_NAME
+        value: us-east-1
+      - key: AWS_S3_ADDRESSING_STYLE
+        value: path
+      - key: AWS_ACCESS_KEY_ID
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: AWS_ACCESS_KEY_ID
+      - key: AWS_SECRET_ACCESS_KEY
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: AWS_SECRET_ACCESS_KEY
 
   - type: keyvalue
     name: amaris-production-broker
