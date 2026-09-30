@@ -141,26 +141,73 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
-if AWS_STORAGE_BUCKET_NAME:
-    STORAGES = {
-        "default": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-                "bucket_name": AWS_STORAGE_BUCKET_NAME,
-                "region_name": os.getenv("AWS_S3_REGION_NAME", "af-south-1"),
-                "default_acl": None,
-                "querystring_auth": True,
-                "file_overwrite": False,
-            },
-        },
-        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+# File storage is intentionally split by trust boundary:
+# - cms/default: Django Admin managed website/course assets
+# - student_data: private student-owned documents and generated student files
+#
+# AWS_STORAGE_BUCKET_NAME remains as a backward-compatible CMS fallback while
+# production moves to the explicit dual-bucket names.
+CMS_STORAGE_BUCKET_NAME = os.getenv("CMS_STORAGE_BUCKET_NAME", os.getenv("AWS_STORAGE_BUCKET_NAME", ""))
+STUDENT_DATA_BUCKET_NAME = os.getenv("STUDENT_DATA_BUCKET_NAME", "")
+SUPABASE_S3_ENDPOINT_URL = os.getenv("SUPABASE_S3_ENDPOINT_URL", "").rstrip("/")
+SUPABASE_S3_REGION = os.getenv("SUPABASE_S3_REGION", os.getenv("AWS_S3_REGION_NAME", "us-east-1"))
+SUPABASE_S3_ADDRESSING_STYLE = os.getenv("SUPABASE_S3_ADDRESSING_STYLE", "path").strip().lower()
+
+if (
+    CMS_STORAGE_BUCKET_NAME
+    and STUDENT_DATA_BUCKET_NAME
+    and CMS_STORAGE_BUCKET_NAME == STUDENT_DATA_BUCKET_NAME
+):
+    raise RuntimeError("CMS_STORAGE_BUCKET_NAME and STUDENT_DATA_BUCKET_NAME must be different buckets.")
+
+
+def _s3_storage(bucket_name: str) -> dict:
+    options = {
+        "bucket_name": bucket_name,
+        "region_name": SUPABASE_S3_REGION,
+        "default_acl": None,
+        "querystring_auth": True,
+        "file_overwrite": False,
+        "addressing_style": SUPABASE_S3_ADDRESSING_STYLE,
     }
-else:
-    STORAGES = {
-        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    if SUPABASE_S3_ENDPOINT_URL:
+        options["endpoint_url"] = SUPABASE_S3_ENDPOINT_URL
+    return {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": options,
     }
+
+
+def _local_storage(subdirectory: str) -> dict:
+    return {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {"location": str(MEDIA_ROOT / subdirectory)},
+    }
+
+
+cms_storage = (
+    _s3_storage(CMS_STORAGE_BUCKET_NAME)
+    if CMS_STORAGE_BUCKET_NAME
+    else _local_storage("cms")
+)
+student_storage = (
+    _s3_storage(STUDENT_DATA_BUCKET_NAME)
+    if STUDENT_DATA_BUCKET_NAME
+    else _local_storage("student-data")
+)
+
+STORAGES = {
+    # Existing Django FileField/ImageField instances are Admin-managed content,
+    # so default storage intentionally routes to the CMS bucket.
+    "default": cms_storage,
+    "cms": _s3_storage(CMS_STORAGE_BUCKET_NAME) if CMS_STORAGE_BUCKET_NAME else _local_storage("cms"),
+    # Student-facing code must explicitly use storages["student_data"].
+    "student_data": student_storage,
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
+
+# Backward compatibility for code/tests that still inspect this setting.
+AWS_STORAGE_BUCKET_NAME = CMS_STORAGE_BUCKET_NAME
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
