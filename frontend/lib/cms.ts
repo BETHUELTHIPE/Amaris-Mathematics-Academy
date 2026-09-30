@@ -98,7 +98,7 @@ export const getManagedBrand = cache(async (): Promise<AcademyBrand> => {
   };
 });
 
-const fallbackNavigation: CmsNavigationItem[] = [
+const requiredPublicNavigation: CmsNavigationItem[] = [
   { label: "Courses", url: "/courses", location: "both", order: 10, open_in_new_tab: false },
   { label: "How it works", url: "/how-it-works", location: "both", order: 20, open_in_new_tab: false },
   { label: "Book online live class", url: "/book-online-live-class", location: "both", order: 25, open_in_new_tab: false },
@@ -107,20 +107,26 @@ const fallbackNavigation: CmsNavigationItem[] = [
   { label: "Contact", url: "/contact", location: "both", order: 50, open_in_new_tab: false },
 ];
 
+function mergeRequiredNavigation(
+  managedItems: CmsNavigationItem[] | null | undefined,
+): CmsNavigationItem[] {
+  if (!managedItems?.length) return requiredPublicNavigation;
+
+  const managedByUrl = new Map(managedItems.map((item) => [item.url, item]));
+  const requiredUrls = new Set(requiredPublicNavigation.map((item) => item.url));
+  const requiredItems = requiredPublicNavigation.map((requiredItem) => {
+    const managedItem = managedByUrl.get(requiredItem.url);
+    return managedItem
+      ? { ...requiredItem, ...managedItem, location: "both" as const }
+      : requiredItem;
+  });
+  const customItems = managedItems.filter((item) => !requiredUrls.has(item.url));
+  return [...requiredItems, ...customItems];
+}
+
 export const getManagedNavigation = cache(async (location: "header" | "footer") => {
   const managedItems = (await getManagedBootstrap())?.navigation;
-  const sourceItems = managedItems?.length ? managedItems : fallbackNavigation;
-  const bookingLink: CmsNavigationItem = {
-    label: "Book online live class",
-    url: "/book-online-live-class",
-    location: "both",
-    order: 25,
-    open_in_new_tab: false,
-  };
-  const items = sourceItems.some((item) => item.url === bookingLink.url)
-    ? sourceItems
-    : [...sourceItems, bookingLink];
-  return items
+  return mergeRequiredNavigation(managedItems)
     .filter((item) => item.location === location || item.location === "both")
     .sort((a, b) => a.order - b.order);
 });
