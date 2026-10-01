@@ -209,7 +209,7 @@ if SUPABASE_STORAGE_ENABLED:
 
     STORAGES = {
         "default": {
-            "BACKEND": "storages.backends.s3.S3Storage",
+            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
             "OPTIONS": {
                 "bucket_name": SUPABASE_STORAGE_BUCKET_NAME,
                 "region_name": SUPABASE_STORAGE_S3_REGION,
@@ -226,7 +226,7 @@ if SUPABASE_STORAGE_ENABLED:
             },
         },
         "student_documents": {
-            "BACKEND": "storages.backends.s3.S3Storage",
+            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
             "OPTIONS": {
                 "bucket_name": SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME,
                 "region_name": SUPABASE_STORAGE_S3_REGION,
