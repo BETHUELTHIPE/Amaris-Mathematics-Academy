@@ -220,14 +220,35 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-SUPABASE_S3_ENDPOINT_URL = (os.getenv("SUPABASE_S3_ENDPOINT_URL") or os.getenv("AWS_S3_ENDPOINT_URL", "")).strip()
-SUPABASE_S3_ACCESS_KEY_ID = (os.getenv("SUPABASE_S3_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID", "")).strip()
-SUPABASE_S3_SECRET_ACCESS_KEY = (
-    os.getenv("SUPABASE_S3_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", "")
+SUPABASE_S3_ENDPOINT_URL = (
+    os.getenv("SUPABASE_S3_ENDPOINT_URL")
+    or os.getenv("SUPABASE_STORAGE_S3_ENDPOINT")
+    or os.getenv("AWS_S3_ENDPOINT_URL")
+    or ""
 ).strip()
-SUPABASE_S3_ADMIN_BUCKET = (os.getenv("SUPABASE_S3_ADMIN_BUCKET") or os.getenv("CMS_STORAGE_BUCKET_NAME", "")).strip()
+SUPABASE_S3_ACCESS_KEY_ID = (
+    os.getenv("SUPABASE_S3_ACCESS_KEY_ID")
+    or os.getenv("SUPABASE_STORAGE_S3_ACCESS_KEY_ID")
+    or os.getenv("AWS_ACCESS_KEY_ID")
+    or ""
+).strip()
+SUPABASE_S3_SECRET_ACCESS_KEY = (
+    os.getenv("SUPABASE_S3_SECRET_ACCESS_KEY")
+    or os.getenv("SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY")
+    or os.getenv("AWS_SECRET_ACCESS_KEY")
+    or ""
+).strip()
+SUPABASE_S3_ADMIN_BUCKET = (
+    os.getenv("SUPABASE_S3_ADMIN_BUCKET")
+    or os.getenv("SUPABASE_STORAGE_BUCKET_NAME")
+    or os.getenv("CMS_STORAGE_BUCKET_NAME")
+    or ""
+).strip()
 SUPABASE_S3_STUDENT_BUCKET = (
-    os.getenv("SUPABASE_S3_STUDENT_BUCKET") or os.getenv("STUDENT_STORAGE_BUCKET_NAME", "")
+    os.getenv("SUPABASE_S3_STUDENT_BUCKET")
+    or os.getenv("SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME")
+    or os.getenv("STUDENT_STORAGE_BUCKET_NAME")
+    or ""
 ).strip()
 _supabase_s3_values = (
     SUPABASE_S3_ENDPOINT_URL,
@@ -252,11 +273,16 @@ if env_bool("SUPABASE_S3_REQUIRED", False) or any(_supabase_s3_values):
     }
     STORAGES = {
         "default": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {**_s3_options, "bucket_name": SUPABASE_S3_ADMIN_BUCKET, "file_overwrite": False},
+            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
+            "OPTIONS": {
+                **_s3_options,
+                "bucket_name": SUPABASE_S3_ADMIN_BUCKET,
+                "file_overwrite": False,
+                "location": "cms" if env_bool("SUPABASE_STORAGE_ENABLED", False) else "",
+            },
         },
         "student_private": {
-            "BACKEND": "storages.backends.s3.S3Storage",
+            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
             "OPTIONS": {**_s3_options, "bucket_name": SUPABASE_S3_STUDENT_BUCKET, "file_overwrite": True},
         },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
@@ -274,6 +300,7 @@ else:
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 STORAGES["student_data"] = STORAGES["student_private"]
+STORAGES["student_documents"] = STORAGES["student_private"]
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
