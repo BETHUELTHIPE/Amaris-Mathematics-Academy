@@ -182,6 +182,8 @@ class PayFastPaymentAuthorityTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, [self.student.email])
         self.assertIn(self.course.title, mail.outbox[0].subject)
+        self.assertEqual(mail.outbox[0].attachments[0][2], "application/pdf")
+        self.assertTrue(mail.outbox[0].attachments[0][1].startswith(b"%PDF"))
 
         self.assertEqual(deliver_transactional_email.run(), 0)
         self.assertEqual(len(mail.outbox), 1)

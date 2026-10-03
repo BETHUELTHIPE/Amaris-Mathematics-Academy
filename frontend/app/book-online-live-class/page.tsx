@@ -62,13 +62,14 @@ export default async function BookOnlineLiveClassPage({
     ? subject
     : "";
 
-  const availableSlots =
+  const availability =
     validProgramme && validSubject
       ? await getLiveClassSlots({
           programme: validProgramme,
           subject: validSubject,
         })
-      : [];
+      : { slots: [], unavailable: false };
+  const availableSlots = availability.slots;
 
   const levels = [...new Set(availableSlots.map((slot) => slot.level))].sort(
     (left, right) => left.localeCompare(right, "en-ZA", { numeric: true }),
@@ -207,6 +208,10 @@ export default async function BookOnlineLiveClassPage({
             <div className="mt-5 rounded-2xl border border-[#dce4ef] bg-white p-6 text-sm leading-7 text-[#60708a]">
               Complete the programme, subject, grade/level and topic fields above to choose a tutor slot.
             </div>
+          ) : availability.unavailable ? (
+            <div className="mt-5 rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-6 text-sm leading-7 text-[#765314]">
+              Tutor availability is temporarily unavailable. Please try again later before making a payment.
+            </div>
           ) : matchingSlots.length === 0 ? (
             <div className="mt-5 rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-6 text-sm leading-7 text-[#765314]">
               No open tutor slot currently matches this selection. Choose another grade/level or check again later.
@@ -215,7 +220,7 @@ export default async function BookOnlineLiveClassPage({
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               {matchingSlots.map((slot) => {
                 const checkoutUrl =
-                  `/book-online-live-class/checkout?slot=${encodeURIComponent(slot.id)}&topic=${encodeURIComponent(topic)}`;
+                  `/book-online-live-class/checkout?slot=${encodeURIComponent(String(slot.id))}&topic=${encodeURIComponent(topic)}&attempt=${crypto.randomUUID()}`;
                 return (
                   <article key={slot.id} className="rounded-2xl border border-[#dce4ef] bg-white p-6">
                     <div className="flex items-start justify-between gap-4">

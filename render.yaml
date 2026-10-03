@@ -35,12 +35,6 @@ services:
         value: https://epkcuseloinygkakxxdu.supabase.co
       - key: SUPABASE_PUBLISHABLE_KEY
         sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_ASSISTANT_MODEL
-        value: gpt-5.6-luna
-      - key: OPENAI_ASSISTANT_TIMEOUT_SECONDS
-        value: "10"
       - key: SUPABASE_AUTH_TIMEOUT_SECONDS
         value: "4"
       - key: SUPABASE_AUTH_CACHE_SECONDS
@@ -66,13 +60,13 @@ services:
       - key: PAYFAST_NOTIFY_URL
         value: https://amaris-production-web.onrender.com/api/v1/payfast/itn/
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        sync: false # Supabase Postgres session-pooler URL, supplied in Render secrets
+      - key: DATABASE_SCHEMA
+        value: amaris_app
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: DATABASE_CONN_MAX_AGE
-        value: "600"
+        value: "60"
       - key: DJANGO_CACHE_URL
         fromService:
           type: keyvalue
@@ -93,19 +87,19 @@ services:
           type: keyvalue
           name: amaris-production-broker
           property: connectionString
-      - key: CMS_STORAGE_BUCKET_NAME
-        value: amaris-cms-files
-      - key: STUDENT_STORAGE_BUCKET_NAME
-        value: Amaris Mathematics Academy
-      - key: AWS_S3_ENDPOINT_URL
+      - key: SUPABASE_S3_REQUIRED
+        value: "true"
+      - key: SUPABASE_S3_ENDPOINT_URL
         value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
-      - key: AWS_S3_REGION_NAME
+      - key: SUPABASE_S3_REGION
         value: us-east-1
-      - key: AWS_S3_ADDRESSING_STYLE
-        value: path
-      - key: AWS_ACCESS_KEY_ID
+      - key: SUPABASE_S3_ADMIN_BUCKET
+        value: amaris-cms-files
+      - key: SUPABASE_S3_STUDENT_BUCKET
+        value: Amaris Mathematics Academy
+      - key: SUPABASE_S3_ACCESS_KEY_ID
         sync: false
-      - key: AWS_SECRET_ACCESS_KEY
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
         sync: false
 
   - type: worker
@@ -128,11 +122,37 @@ services:
           name: amaris-production-web
           envVarKey: DJANGO_SECRET_KEY
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: DATABASE_URL
+      - key: DATABASE_SCHEMA
+        value: amaris_app
       - key: DATABASE_SSL_REQUIRED
         value: "true"
+      - key: SUPABASE_S3_REQUIRED
+        value: "true"
+      - key: SUPABASE_S3_ENDPOINT_URL
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_ENDPOINT_URL
+      - key: SUPABASE_S3_REGION
+        value: us-east-1
+      - key: SUPABASE_S3_ADMIN_BUCKET
+        value: amaris-cms-files
+      - key: SUPABASE_S3_STUDENT_BUCKET
+        value: Amaris Mathematics Academy
+      - key: SUPABASE_S3_ACCESS_KEY_ID
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_ACCESS_KEY_ID
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_SECRET_ACCESS_KEY
       - key: DJANGO_CACHE_URL
         fromService:
           type: keyvalue
@@ -148,26 +168,6 @@ services:
           type: keyvalue
           name: amaris-production-broker
           property: connectionString
-      - key: CMS_STORAGE_BUCKET_NAME
-        value: amaris-cms-files
-      - key: STUDENT_STORAGE_BUCKET_NAME
-        value: Amaris Mathematics Academy
-      - key: AWS_S3_ENDPOINT_URL
-        value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
-      - key: AWS_S3_REGION_NAME
-        value: us-east-1
-      - key: AWS_S3_ADDRESSING_STYLE
-        value: path
-      - key: AWS_ACCESS_KEY_ID
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_ACCESS_KEY_ID
-      - key: AWS_SECRET_ACCESS_KEY
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_SECRET_ACCESS_KEY
 
   - type: worker
     name: amaris-production-notification-worker
@@ -189,11 +189,37 @@ services:
           name: amaris-production-web
           envVarKey: DJANGO_SECRET_KEY
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: DATABASE_URL
+      - key: DATABASE_SCHEMA
+        value: amaris_app
       - key: DATABASE_SSL_REQUIRED
         value: "true"
+      - key: SUPABASE_S3_REQUIRED
+        value: "true"
+      - key: SUPABASE_S3_ENDPOINT_URL
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_ENDPOINT_URL
+      - key: SUPABASE_S3_REGION
+        value: us-east-1
+      - key: SUPABASE_S3_ADMIN_BUCKET
+        value: amaris-cms-files
+      - key: SUPABASE_S3_STUDENT_BUCKET
+        value: Amaris Mathematics Academy
+      - key: SUPABASE_S3_ACCESS_KEY_ID
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_ACCESS_KEY_ID
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_SECRET_ACCESS_KEY
       - key: CELERY_BROKER_URL
         fromService:
           type: keyvalue
@@ -204,39 +230,8 @@ services:
           type: keyvalue
           name: amaris-production-broker
           property: connectionString
-      - key: CMS_STORAGE_BUCKET_NAME
-        value: amaris-cms-files
-      - key: STUDENT_STORAGE_BUCKET_NAME
-        value: Amaris Mathematics Academy
-      - key: AWS_S3_ENDPOINT_URL
-        value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
-      - key: AWS_S3_REGION_NAME
-        value: us-east-1
-      - key: AWS_S3_ADDRESSING_STYLE
-        value: path
-      - key: AWS_ACCESS_KEY_ID
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_ACCESS_KEY_ID
-      - key: AWS_SECRET_ACCESS_KEY
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_SECRET_ACCESS_KEY
       - key: EMAIL_BACKEND
         value: django.core.mail.backends.smtp.EmailBackend
-      - key: AI_ENQUIRY_AUTOREPLY_ENABLED
-        value: "true"
-      - key: OPENAI_API_KEY
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: OPENAI_API_KEY
-      - key: OPENAI_ENQUIRY_MODEL
-        value: gpt-5.6-luna
-      - key: OPENAI_ENQUIRY_TIMEOUT_SECONDS
-        value: "10"
       - key: EMAIL_HOST
         sync: false
       - key: EMAIL_PORT
@@ -272,9 +267,12 @@ services:
           name: amaris-production-web
           envVarKey: DJANGO_SECRET_KEY
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: DATABASE_URL
+      - key: DATABASE_SCHEMA
+        value: amaris_app
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: CELERY_BROKER_URL
@@ -287,26 +285,6 @@ services:
           type: keyvalue
           name: amaris-production-broker
           property: connectionString
-      - key: CMS_STORAGE_BUCKET_NAME
-        value: amaris-cms-files
-      - key: STUDENT_STORAGE_BUCKET_NAME
-        value: Amaris Mathematics Academy
-      - key: AWS_S3_ENDPOINT_URL
-        value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
-      - key: AWS_S3_REGION_NAME
-        value: us-east-1
-      - key: AWS_S3_ADDRESSING_STYLE
-        value: path
-      - key: AWS_ACCESS_KEY_ID
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_ACCESS_KEY_ID
-      - key: AWS_SECRET_ACCESS_KEY
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_SECRET_ACCESS_KEY
 
   - type: keyvalue
     name: amaris-production-broker
@@ -323,10 +301,3 @@ services:
     maxmemoryPolicy: allkeys-lru
     persistenceMode: off
     ipAllowList: []
-
-databases:
-  - name: amaris-production-postgres
-    plan: basic-1gb
-    region: frankfurt
-    postgresMajorVersion: "17"
-    connectionPool: pgbouncer
