@@ -4,7 +4,8 @@ from django.core.files.storage import storages
 from django.db.models import Q
 from django.http import FileResponse
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -244,6 +245,13 @@ class LiveClassBookingStatusView(LiveClassStudentAPIView):
 
 
 class LiveClassInvoiceDownloadView(LiveClassStudentAPIView):
+    @extend_schema(
+        responses={
+            (200, "application/pdf"): OpenApiTypes.BINARY,
+            404: OpenApiResponse(description="Invoice not found for this student."),
+            503: OpenApiResponse(description="Invoice storage is temporarily unavailable."),
+        }
+    )
     def get(self, request, reference: str):
         booking = LiveClassBooking.objects.filter(
             reference=reference,
