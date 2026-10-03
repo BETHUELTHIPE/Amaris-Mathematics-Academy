@@ -96,18 +96,29 @@ export const getManagedBrand = cache(async (): Promise<AcademyBrand> => {
   };
 });
 
-const fallbackNavigation: CmsNavigationItem[] = [
+const requiredPublicNavigation: CmsNavigationItem[] = [
   { label: "Courses", url: "/courses", location: "both", order: 10, open_in_new_tab: false },
   { label: "How it works", url: "/how-it-works", location: "both", order: 20, open_in_new_tab: false },
   { label: "Pricing", url: "/pricing", location: "both", order: 30, open_in_new_tab: false },
   { label: "About", url: "/about", location: "both", order: 40, open_in_new_tab: false },
+  { label: "Book online live class", url: "/book-online-live-class", location: "both", order: 45, open_in_new_tab: false },
   { label: "Contact", url: "/contact", location: "both", order: 50, open_in_new_tab: false },
 ];
 
 export const getManagedNavigation = cache(async (location: "header" | "footer") => {
-  const managedItems = (await getManagedBootstrap())?.navigation;
-  const items = managedItems?.length ? managedItems : fallbackNavigation;
-  return items
+  const managedItems = (await getManagedBootstrap())?.navigation ?? [];
+  const requiredUrls = new Set(requiredPublicNavigation.map((item) => item.url));
+  const requiredItems = requiredPublicNavigation.map((requiredItem) => {
+    const managedItem = managedItems.find((item) => item.url === requiredItem.url);
+    return {
+      ...requiredItem,
+      ...managedItem,
+      location: "both" as const,
+      order: requiredItem.order,
+    };
+  });
+  const customItems = managedItems.filter((item) => !requiredUrls.has(item.url));
+  return [...requiredItems, ...customItems]
     .filter((item) => item.location === location || item.location === "both")
     .sort((a, b) => a.order - b.order);
 });
