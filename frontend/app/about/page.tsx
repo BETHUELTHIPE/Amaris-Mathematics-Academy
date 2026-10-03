@@ -13,6 +13,7 @@ export default function AboutPage() { return <main className="min-h-screen bg-[#
     { label: "Facebook", href: "https://www.facebook.com/share/19dqWUxjvh" },
     { label: "YouTube", href: "https://www.youtube.com/@bethuelthipe-moukangwe7786" },
     { label: "GitHub", href: "https://github.com/BETHUELTHIPE" },
+    { label: "Facebook", href: "https://www.facebook.com/share/19dqWUxjvh/" },
   ].map(({ label, href }) => (
     <a
       key={label}
