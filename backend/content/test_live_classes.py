@@ -138,11 +138,13 @@ class LiveClassBookingTests(TestCase):
         slot_id = slot_response.json()[0]["id"]
         self.assertEqual(slot_id, self.slot.pk)
         client = APIClient()
-        client.force_authenticate(user=SupabaseStudentPrincipal(
-            student=self.student,
-            supabase_user_id=str(self.student.supabase_user_id),
-            email=self.student.email,
-        ))
+        client.force_authenticate(
+            user=SupabaseStudentPrincipal(
+                student=self.student,
+                supabase_user_id=str(self.student.supabase_user_id),
+                email=self.student.email,
+            )
+        )
         response = client.post(
             reverse("live-class-checkout"),
             {"slot_id": slot_id, "topic": "Differential calculus", "idempotency_key": "api-liveclass-001"},
@@ -248,31 +250,38 @@ class LiveClassBookingTests(TestCase):
         booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
         process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
 
-        with TemporaryDirectory() as directory, override_settings(
-            STORAGES={
-                "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
-                "default": {
-                    "BACKEND": "django.core.files.storage.FileSystemStorage",
-                    "OPTIONS": {"location": str(Path(directory) / "admin")},
-                },
-                "student_private": {
-                    "BACKEND": "django.core.files.storage.FileSystemStorage",
-                    "OPTIONS": {"location": str(Path(directory) / "student"), "allow_overwrite": True},
-                },
-            }
+        with (
+            TemporaryDirectory() as directory,
+            override_settings(
+                STORAGES={
+                    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+                    "default": {
+                        "BACKEND": "django.core.files.storage.FileSystemStorage",
+                        "OPTIONS": {"location": str(Path(directory) / "admin")},
+                    },
+                    "student_private": {
+                        "BACKEND": "django.core.files.storage.FileSystemStorage",
+                        "OPTIONS": {"location": str(Path(directory) / "student"), "allow_overwrite": True},
+                    },
+                }
+            ),
         ):
             owner = APIClient()
-            owner.force_authenticate(user=SupabaseStudentPrincipal(
-                student=self.student,
-                supabase_user_id=str(self.student.supabase_user_id),
-                email=self.student.email,
-            ))
+            owner.force_authenticate(
+                user=SupabaseStudentPrincipal(
+                    student=self.student,
+                    supabase_user_id=str(self.student.supabase_user_id),
+                    email=self.student.email,
+                )
+            )
             other = APIClient()
-            other.force_authenticate(user=SupabaseStudentPrincipal(
-                student=self.other_student,
-                supabase_user_id=str(self.other_student.supabase_user_id),
-                email=self.other_student.email,
-            ))
+            other.force_authenticate(
+                user=SupabaseStudentPrincipal(
+                    student=self.other_student,
+                    supabase_user_id=str(self.other_student.supabase_user_id),
+                    email=self.other_student.email,
+                )
+            )
             url = reverse("live-class-invoice-download", args=[booking.reference])
             self.assertEqual(owner.get(url, secure=True).status_code, 404)
             self.assertEqual(deliver_live_class_confirmation.run(), 1)

@@ -209,6 +209,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+
 LANGUAGE_CODE = "en-za"
 TIME_ZONE = "Africa/Johannesburg"
 USE_I18N = True
@@ -219,11 +220,15 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-SUPABASE_S3_ENDPOINT_URL = os.getenv("SUPABASE_S3_ENDPOINT_URL", "").strip()
-SUPABASE_S3_ACCESS_KEY_ID = os.getenv("SUPABASE_S3_ACCESS_KEY_ID", "").strip()
-SUPABASE_S3_SECRET_ACCESS_KEY = os.getenv("SUPABASE_S3_SECRET_ACCESS_KEY", "").strip()
-SUPABASE_S3_ADMIN_BUCKET = os.getenv("SUPABASE_S3_ADMIN_BUCKET", "").strip()
-SUPABASE_S3_STUDENT_BUCKET = os.getenv("SUPABASE_S3_STUDENT_BUCKET", "").strip()
+SUPABASE_S3_ENDPOINT_URL = (os.getenv("SUPABASE_S3_ENDPOINT_URL") or os.getenv("AWS_S3_ENDPOINT_URL", "")).strip()
+SUPABASE_S3_ACCESS_KEY_ID = (os.getenv("SUPABASE_S3_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID", "")).strip()
+SUPABASE_S3_SECRET_ACCESS_KEY = (
+    os.getenv("SUPABASE_S3_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", "")
+).strip()
+SUPABASE_S3_ADMIN_BUCKET = (os.getenv("SUPABASE_S3_ADMIN_BUCKET") or os.getenv("CMS_STORAGE_BUCKET_NAME", "")).strip()
+SUPABASE_S3_STUDENT_BUCKET = (
+    os.getenv("SUPABASE_S3_STUDENT_BUCKET") or os.getenv("STUDENT_STORAGE_BUCKET_NAME", "")
+).strip()
 _supabase_s3_values = (
     SUPABASE_S3_ENDPOINT_URL,
     SUPABASE_S3_ACCESS_KEY_ID,
@@ -267,6 +272,8 @@ else:
     }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+STORAGES["student_data"] = STORAGES["student_private"]
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],

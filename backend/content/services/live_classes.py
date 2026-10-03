@@ -131,8 +131,7 @@ def create_live_class_checkout(
     merchant_id, merchant_key, passphrase = _payfast_credentials()
     return_url, cancel_url, notify_url = _public_urls()
     if _payfast_mode() == "live" and any(
-        urlparse(url).scheme != "https" or not urlparse(url).netloc
-        for url in (return_url, cancel_url, notify_url)
+        urlparse(url).scheme != "https" or not urlparse(url).netloc for url in (return_url, cancel_url, notify_url)
     ):
         raise PaymentSecurityError("Live PayFast return, cancel, and notification URLs must be configured for HTTPS.")
     fields = {

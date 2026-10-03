@@ -29,22 +29,30 @@ def _invoice_details(invoice: Invoice | LiveClassBooking) -> tuple[str, str, lis
         if invoice.status != LiveClassBooking.Status.CONFIRMED or not invoice.invoice_number:
             raise ValueError("Only verified, confirmed bookings receive invoices.")
         starts_at = timezone.localtime(invoice.slot.starts_at).strftime("%d %B %Y at %H:%M SAST")
-        return invoice.invoice_number, invoice.student.email, [
+        return (
+            invoice.invoice_number,
+            invoice.student.email,
+            [
+                f"Student: {invoice.student.first_name} {invoice.student.last_name}",
+                f"Booking: {invoice.reference}",
+                f"Class: {invoice.get_programme_display()} / {invoice.get_subject_display()} / {invoice.level}",
+                f"Topic: {invoice.topic}",
+                f"Tutor: {invoice.slot.tutor_display_name}",
+                f"Date: {starts_at}",
+                f"Amount paid: R{invoice.amount:.2f} {invoice.currency}",
+            ],
+        )
+    return (
+        invoice.invoice_number,
+        invoice.student.email,
+        [
             f"Student: {invoice.student.first_name} {invoice.student.last_name}",
-            f"Booking: {invoice.reference}",
-            f"Class: {invoice.get_programme_display()} / {invoice.get_subject_display()} / {invoice.level}",
-            f"Topic: {invoice.topic}",
-            f"Tutor: {invoice.slot.tutor_display_name}",
-            f"Date: {starts_at}",
+            f"Payment: {invoice.payment.reference}",
+            f"Course: {invoice.course.title}",
+            f"Date: {timezone.localtime(invoice.issued_at):%d %B %Y}",
             f"Amount paid: R{invoice.amount:.2f} {invoice.currency}",
-        ]
-    return invoice.invoice_number, invoice.student.email, [
-        f"Student: {invoice.student.first_name} {invoice.student.last_name}",
-        f"Payment: {invoice.payment.reference}",
-        f"Course: {invoice.course.title}",
-        f"Date: {timezone.localtime(invoice.issued_at):%d %B %Y}",
-        f"Amount paid: R{invoice.amount:.2f} {invoice.currency}",
-    ]
+        ],
+    )
 
 
 def render_invoice_pdf(invoice: Invoice | LiveClassBooking) -> bytes:
