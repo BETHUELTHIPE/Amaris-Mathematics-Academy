@@ -66,9 +66,11 @@ def env_list(name: str, default: str = "") -> list[str]:
 
 
 DEBUG = env_bool("DJANGO_DEBUG", True)
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+SECRET_KEY = os.getenv("DJANGO_SIGNING_KEY") or os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY and not DEBUG:
-    raise RuntimeError("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false.")
+    raise RuntimeError(
+        "DJANGO_SIGNING_KEY or DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false."
+    )
 if not SECRET_KEY:
     SECRET_KEY = secrets.token_urlsafe(64)
 
@@ -124,6 +126,13 @@ TEMPLATES = [
 ]
 WSGI_APPLICATION = "amaris_cms.wsgi.application"
 ASGI_APPLICATION = "amaris_cms.asgi.application"
+
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if not DATABASE_URL and not DEBUG:
+    raise RuntimeError(
+        "DATABASE_URL must be set when DJANGO_DEBUG is false; "
+        "refusing to fall back to ephemeral SQLite."
+    )
 
 DATABASES = {
     "default": dj_database_url.config(
