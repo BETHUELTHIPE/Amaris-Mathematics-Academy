@@ -58,7 +58,7 @@ jobs:
           set -euo pipefail
           body=$(mktemp)
           code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --max-time 20 \
-            'https://amaris-mathematics-academy-staging.onrender.com/api/live-classes/slots/?programme=caps&subject=mathematics')
+            'https://amaris-mathematics-academy-staging.onrender.com/api/v1/live-classes/slots/?programme=caps&subject=mathematics')
           cat "$body"
           test "$code" = "200"
           python - "$body" <<'PY'
