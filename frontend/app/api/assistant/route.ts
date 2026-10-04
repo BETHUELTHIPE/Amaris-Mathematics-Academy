@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import { NextResponse, type NextRequest } from "next/server";
 
 type AssistantResponse = {
@@ -7,8 +6,7 @@ type AssistantResponse = {
 };
 
 function cmsBaseUrl(): string {
-  const workerBindings = env as unknown as { CMS_API_URL?: string };
-  return (workerBindings.CMS_API_URL || process.env.CMS_API_URL || "").replace(/\/$/, "");
+  return (process.env.CMS_API_URL || "").replace(/\/$/, "");
 }
 
 export async function POST(request: NextRequest) {

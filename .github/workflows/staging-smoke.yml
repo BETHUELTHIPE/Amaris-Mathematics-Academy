@@ -11,7 +11,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: Wait for staging readiness
         shell: bash
@@ -24,15 +24,17 @@ jobs:
             if [ "$live" = "200" ] && [ "$ready" = "200" ]; then
               cat /tmp/live.json
               cat /tmp/ready.json
-              exit 0
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Staging did not become healthy in the allowed window." >&2
+              cat /tmp/live.json 2>/dev/null || true
+              cat /tmp/ready.json 2>/dev/null || true
+              exit 1
             fi
             echo "attempt=$attempt live=$live ready=$ready"
             sleep 10
           done
-          echo "Staging did not become healthy in the allowed window." >&2
-          cat /tmp/live.json 2>/dev/null || true
-          cat /tmp/ready.json 2>/dev/null || true
-          exit 1
 
       - name: Verify dependency endpoint without requiring noncritical cache health
         shell: bash
@@ -49,3 +51,53 @@ jobs:
               payload = json.load(fh)
           assert payload['dependencies']['postgresql'] is True
           PY
+
+      - name: Verify live-class booking backend contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          body=$(mktemp)
+          code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --max-time 20 \
+            'https://amaris-mathematics-academy-staging.onrender.com/api/v1/live-classes/slots/?programme=caps&subject=mathematics')
+          cat "$body"
+          test "$code" = "200"
+          python - "$body" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding='utf-8') as fh:
+              payload = json.load(fh)
+          assert isinstance(payload, list), payload
+          for slot in payload:
+              assert 'zoom_join_url' not in slot
+              assert slot.get('price') == '250.00'
+          PY
+
+      - name: Verify booking page is routable on staging frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
+          body=$(mktemp)
+          code=$(curl --silent --show-error --location --output "$body" --write-out '%{http_code}' --max-time 30 \
+            "$base/book-online-live-class")
+          test "$code" = "200"
+          grep -qi "Book online live class" "$body"
+          grep -qi "R250" "$body"
+          ! grep -qi "We could not find that page" "$body"
+
+      - name: Verify old booking link redirects instead of returning 404
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
+          headers=$(mktemp)
+          code=$(curl --silent --show-error --output /dev/null --dump-header "$headers" --write-out '%{http_code}' --max-time 20 \
+            "$base/book-online-class")
+          case "$code" in
+            301|302|303|307|308) ;;
+            *)
+              echo "Expected redirect for legacy booking URL, received HTTP $code" >&2
+              cat "$headers" >&2
+              exit 1
+              ;;
+          esac
+          grep -Eqi '^location: .*/book-online-live-class' "$headers"
