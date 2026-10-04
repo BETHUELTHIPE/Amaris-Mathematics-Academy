@@ -73,7 +73,8 @@ jobs:
           base="https://amaris-mathematics-academy-staging.onrender.com"
           body=$(mktemp)
           code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --max-time 20 \
-            "$base/api/live-classes/slots/?programme=caps&subject=mathematics")
+            "$base/api/v1/live-classes/slots/?programme=caps&subject=mathematics")
+          cat "$body"
           test "$code" = "200"
           python - "$body" <<'PY'
           import json, sys
