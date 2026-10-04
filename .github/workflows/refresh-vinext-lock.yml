@@ -1,0 +1,51 @@
+name: Refresh Vinext Lockfile
+
+on:
+  push:
+    branches:
+      - fix/booking-production-readiness-20261004
+    paths:
+      - frontend/package.json
+      - .github/workflows/refresh-vinext-lock.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-vinext-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh-lockfile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Refresh lockfile for the pinned package manifest
+        working-directory: frontend
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Verify clean immutable install
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Commit refreshed lockfile
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- frontend/package-lock.json; then
+            echo "package-lock.json is already synchronized"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package-lock.json
+          git commit -m "build: refresh frontend lockfile for vinext 1.0.0"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
