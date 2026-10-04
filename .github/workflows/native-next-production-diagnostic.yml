@@ -38,7 +38,7 @@ jobs:
 
       - name: Install locked dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --include=dev
 
       - name: Build with native Next.js
         working-directory: frontend
