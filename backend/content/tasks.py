@@ -3,13 +3,14 @@ from html import escape
 
 from celery import shared_task
 from django.apps import apps
-from django.core.mail import EmailMultiAlternatives, send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
 
 from content.models import LiveClassBooking, SiteSettings
-from content.payment_models import NotificationOutbox
+from content.payment_models import Invoice, NotificationOutbox
+from content.services.invoices import archive_invoice_pdf, mark_invoice_archive_failure
 from content.services.reconciliation import reconcile_verified_payments
 
 
@@ -106,13 +107,15 @@ def deliver_transactional_email(_self) -> int:
             f"Ticket: {ticket_number}\n\n"
             "Log in to your Amaris student dashboard to continue learning."
         )
-        sent = send_mail(
+        email = EmailMultiAlternatives(
             subject=subject,
-            message=message,
+            body=message,
             from_email=None,
-            recipient_list=[outbox.destination],
-            fail_silently=False,
+            to=[outbox.destination],
         )
+        invoice = outbox.payment.invoice
+        email.attach(f"{invoice.invoice_number}.pdf", archive_invoice_pdf(invoice), "application/pdf")
+        sent = email.send(fail_silently=False)
         if sent != 1:
             raise OSError("Transactional email backend did not accept the message.")
 
@@ -174,28 +177,10 @@ def _send_live_class_message(
     )
     message.attach_alternative(html, "text/html")
     if attach_invoice and booking.invoice_number:
-        invoice_text = "\n".join(
-            [
-                name,
-                "LIVE CLASS INVOICE",
-                f"Invoice: {booking.invoice_number}",
-                f"Booking: {booking.reference}",
-                f"Student: {booking.student.first_name} {booking.student.last_name}",
-                f"Programme: {booking.get_programme_display()}",
-                f"Subject: {booking.get_subject_display()}",
-                f"Level: {booking.level}",
-                f"Topic: {booking.topic}",
-                f"Tutor: {booking.slot.tutor_display_name}",
-                f"Class: {_booking_when(booking)}",
-                f"Amount: R{booking.amount:.2f}",
-                f"Currency: {booking.currency}",
-                "Payment status: Paid and verified by PayFast",
-            ]
-        )
         message.attach(
-            f"{booking.invoice_number}.txt",
-            invoice_text,
-            "text/plain",
+            f"{booking.invoice_number}.pdf",
+            archive_invoice_pdf(booking),
+            "application/pdf",
         )
     sent = message.send(fail_silently=False)
     if sent != 1:
@@ -212,6 +197,15 @@ def _send_live_class_message(
     retry_kwargs={"max_retries": 6},
 )
 def deliver_live_class_confirmation(_self) -> int:
+    delivered = 0
+    for _ in range(100):
+        if not _deliver_one_live_class_confirmation():
+            break
+        delivered += 1
+    return delivered
+
+
+def _deliver_one_live_class_confirmation() -> bool:
     with transaction.atomic():
         booking = (
             LiveClassBooking.objects.select_for_update(skip_locked=True)
@@ -224,7 +218,7 @@ def deliver_live_class_confirmation(_self) -> int:
             .first()
         )
         if booking is None:
-            return 0
+            return False
 
         _send_live_class_message(
             booking,
@@ -245,7 +239,7 @@ def deliver_live_class_confirmation(_self) -> int:
         )
         booking.confirmation_sent_at = timezone.now()
         booking.save(update_fields=("confirmation_sent_at", "updated_at"))
-        return 1
+        return True
 
 
 @shared_task(
@@ -258,6 +252,15 @@ def deliver_live_class_confirmation(_self) -> int:
     retry_kwargs={"max_retries": 6},
 )
 def deliver_live_class_reminder(_self) -> int:
+    delivered = 0
+    for _ in range(100):
+        if not _deliver_one_live_class_reminder():
+            break
+        delivered += 1
+    return delivered
+
+
+def _deliver_one_live_class_reminder() -> bool:
     now = timezone.now()
     with transaction.atomic():
         booking = (
@@ -274,7 +277,7 @@ def deliver_live_class_reminder(_self) -> int:
             .first()
         )
         if booking is None:
-            return 0
+            return False
 
         _send_live_class_message(
             booking,
@@ -290,7 +293,7 @@ def deliver_live_class_reminder(_self) -> int:
         )
         booking.reminder_sent_at = timezone.now()
         booking.save(update_fields=("reminder_sent_at", "updated_at"))
-        return 1
+        return True
 
 
 @shared_task(
@@ -307,3 +310,38 @@ def expire_live_class_holds(_self) -> int:
         status=LiveClassBooking.Status.PENDING_PAYMENT,
         hold_expires_at__lte=timezone.now(),
     ).update(status=LiveClassBooking.Status.EXPIRED)
+
+
+@shared_task(bind=True, ignore_result=True, max_retries=6)
+def archive_invoice_pdf_task(self, invoice_id: int) -> str:
+    """Generate and archive one verified paid invoice in private Supabase Storage."""
+
+    try:
+        return archive_invoice_pdf(invoice_id)
+    except Exception as exc:
+        mark_invoice_archive_failure(invoice_id, exc)
+        countdown = min(300, 2 ** min(self.request.retries + 1, 8))
+        raise self.retry(exc=exc, countdown=countdown) from exc
+
+
+@shared_task(bind=True, ignore_result=True)
+def archive_missing_invoice_pdfs(_self) -> int:
+    """Recovery sweep for verified invoices whose PDF was not archived yet."""
+
+    invoice_ids = list(
+        Invoice.objects.filter(
+            payment__status="paid",
+            payment__gateway_verified_at__isnull=False,
+            pdf_storage_path="",
+        )
+        .order_by("issued_at")
+        .values_list("pk", flat=True)[:100]
+    )
+    queued = 0
+    for invoice_id in invoice_ids:
+        try:
+            archive_invoice_pdf_task.delay(invoice_id)
+            queued += 1
+        except Exception:
+            continue
+    return queued

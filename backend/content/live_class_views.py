@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from django.core.files.storage import storages
 from django.db.models import Q
+from django.http import FileResponse
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -10,6 +13,7 @@ from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
 from .models import LiveClassBooking, TutorAvailabilitySlot
+from .services.invoices import student_invoice_key
 from .services.live_classes import create_live_class_checkout
 from .services.payments import PaymentSecurityError
 
@@ -27,7 +31,7 @@ class LiveClassSlotFilterSerializer(serializers.Serializer):
 
 
 class LiveClassSlotResponseSerializer(serializers.Serializer):
-    id = serializers.UUIDField()
+    id = serializers.IntegerField(min_value=1)
     programme = serializers.CharField()
     programme_label = serializers.CharField()
     subject = serializers.CharField()
@@ -85,7 +89,7 @@ class LiveClassSlotView(APIView):
 
         payload = [
             {
-                "id": str(slot.pk),
+                "id": slot.pk,
                 "programme": slot.programme,
                 "programme_label": slot.get_programme_display(),
                 "subject": slot.subject,
@@ -107,7 +111,7 @@ class LiveClassSlotView(APIView):
 
 
 class LiveClassCheckoutRequestSerializer(serializers.Serializer):
-    slot_id = serializers.UUIDField()
+    slot_id = serializers.IntegerField(min_value=1)
     topic = serializers.CharField(min_length=2, max_length=180, trim_whitespace=True)
     idempotency_key = serializers.RegexField(r"^[A-Za-z0-9_-]{8,64}$")
 
@@ -133,6 +137,7 @@ class LiveClassBookingStatusSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     currency = serializers.CharField()
     invoice_number = serializers.CharField(allow_blank=True, allow_null=True)
+    invoice_ready = serializers.BooleanField()
     zoom_join_url = serializers.URLField(allow_blank=True)
 
 
@@ -231,8 +236,39 @@ class LiveClassBookingStatusView(LiveClassStudentAPIView):
                 "amount": booking.amount,
                 "currency": booking.currency,
                 "invoice_number": booking.invoice_number,
+                "invoice_ready": bool(booking.confirmation_sent_at),
                 "zoom_join_url": (
                     booking.slot.zoom_join_url if booking.status == LiveClassBooking.Status.CONFIRMED else ""
                 ),
             }
         )
+
+
+class LiveClassInvoiceDownloadView(LiveClassStudentAPIView):
+    @extend_schema(
+        responses={
+            (200, "application/pdf"): OpenApiTypes.BINARY,
+            404: OpenApiResponse(description="Invoice not found for this student."),
+            503: OpenApiResponse(description="Invoice storage is temporarily unavailable."),
+        }
+    )
+    def get(self, request, reference: str):
+        booking = LiveClassBooking.objects.filter(
+            reference=reference,
+            student=request.user.student,
+            status=LiveClassBooking.Status.CONFIRMED,
+            confirmation_sent_at__isnull=False,
+        ).first()
+        if booking is None or not booking.invoice_number:
+            return Response({"detail": "Invoice not found."}, status=status.HTTP_404_NOT_FOUND)
+        key = student_invoice_key(booking.student.supabase_user_id, booking.invoice_number)
+        try:
+            document = storages["student_private"].open(key, "rb")
+        except (OSError, ValueError):
+            return Response(
+                {"detail": "Invoice is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        response = FileResponse(document, as_attachment=True, filename=f"{booking.invoice_number}.pdf")
+        response["Cache-Control"] = "private, no-store"
+        return response
