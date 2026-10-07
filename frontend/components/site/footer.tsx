@@ -35,7 +35,7 @@ export async function Footer() {
           </div>
         </div>
       </div>
-      <div className="border-t border-white/10 px-5 py-5 text-xs text-white/65"><div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 sm:flex-row"><span>© {new Date().getFullYear()} Amaris Mathematics Academy. Mathematics, taught with clarity.</span><span className="flex gap-5"><a href="/terms" className="hover:text-white">Student terms</a><a href="/privacy" className="hover:text-white">Privacy</a></span></div></div>
+      <div className="border-t border-white/10 px-5 py-5 text-xs text-white/65"><div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 sm:flex-row"><span>© {new Date().getFullYear()} Amaris Mathematics Academy. Mathematics, taught with clarity.</span><span className="flex flex-wrap gap-5"><a href="/terms" className="hover:text-white">Student terms</a><a href="/privacy" className="hover:text-white">Privacy</a><a href="/payment-policy" className="hover:text-white">Payment policy</a><a href="/working-policy" className="hover:text-white">How we work</a></span></div></div>
     </footer>
   );
 }

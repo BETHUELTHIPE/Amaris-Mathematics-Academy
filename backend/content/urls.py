@@ -1,7 +1,12 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .live_class_views import LiveClassBookingStatusView, LiveClassCheckoutView, LiveClassSlotView
+from .live_class_views import (
+    LiveClassBookingStatusView,
+    LiveClassCheckoutView,
+    LiveClassInvoiceDownloadView,
+    LiveClassSlotView,
+)
 from .payfast_views import PayFastITNView
 from .student_views import (
     AcceptancePaymentCompleteView,
@@ -57,6 +62,11 @@ urlpatterns = [
         "student/live-classes/bookings/<str:reference>/",
         LiveClassBookingStatusView.as_view(),
         name="live-class-booking-status",
+    ),
+    path(
+        "student/live-classes/bookings/<str:reference>/invoice/",
+        LiveClassInvoiceDownloadView.as_view(),
+        name="live-class-invoice-download",
     ),
     path("student/payments/<str:reference>/", PaymentStatusView.as_view(), name="student-payment-status"),
     path("student/progress/", ProgressView.as_view(), name="student-progress"),
