@@ -23,6 +23,7 @@ from .models import (
     Testimonial,
     TutorAvailabilitySlot,
     VideoAsset,
+    VideoRequest,
 )
 
 admin.site.site_header = "Amaris Mathematics Academy"
@@ -465,3 +466,135 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(VideoRequest)
+class VideoRequestAdmin(TimeStampedAdmin):
+    list_display = (
+        "reference",
+        "student",
+        "programme",
+        "subject",
+        "level",
+        "topic",
+        "amount",
+        "status",
+        "video",
+        "paid_at",
+        "fulfilled_at",
+        "delivery_sent_at",
+    )
+    list_filter = ("status", "programme", "subject", "paid_at", "created_at")
+    search_fields = (
+        "reference",
+        "student__email",
+        "student__first_name",
+        "student__last_name",
+        "topic",
+        "invoice_number",
+    )
+    autocomplete_fields = ("video",)
+    actions = ("mark_fulfilled",)
+    readonly_fields = (
+        "id",
+        "reference",
+        "idempotency_key",
+        "student",
+        "programme",
+        "subject",
+        "level",
+        "topic",
+        "details",
+        "amount",
+        "currency",
+        "status",
+        "hold_expires_at",
+        "provider_reference",
+        "paid_at",
+        "gateway_verified_at",
+        "invoice_number",
+        "fulfilled_at",
+        "confirmation_sent_at",
+        "delivery_sent_at",
+        "created_at",
+        "updated_at",
+    )
+    fieldsets = (
+        (
+            "Request",
+            {
+                "fields": (
+                    "id",
+                    "reference",
+                    "student",
+                    "programme",
+                    "subject",
+                    "level",
+                    "topic",
+                    "details",
+                )
+            },
+        ),
+        (
+            "Payment",
+            {
+                "fields": (
+                    "amount",
+                    "currency",
+                    "status",
+                    "hold_expires_at",
+                    "provider_reference",
+                    "paid_at",
+                    "gateway_verified_at",
+                    "invoice_number",
+                )
+            },
+        ),
+        (
+            "Fulfilment",
+            {
+                "fields": (
+                    "video",
+                    "fulfilled_at",
+                    "confirmation_sent_at",
+                    "delivery_sent_at",
+                ),
+                "description": (
+                    "Attach the produced video, save, then run "
+                    "\u201cMark selected paid requests as fulfilled\u201d to notify the student."
+                ),
+            },
+        ),
+        ("Audit", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.action(description="Mark selected paid requests as fulfilled")
+    def mark_fulfilled(self, request, queryset):
+        fulfilled = 0
+        skipped = 0
+        for video_request in queryset:
+            if video_request.status != VideoRequest.Status.PAID or video_request.video_id is None:
+                skipped += 1
+                continue
+            video_request.status = VideoRequest.Status.FULFILLED
+            video_request.fulfilled_at = timezone.now()
+            video_request.save(update_fields=("status", "fulfilled_at", "updated_at"))
+            fulfilled += 1
+        if fulfilled:
+            self.message_user(
+                request,
+                f"Marked {fulfilled} request(s) fulfilled. The student will be emailed shortly.",
+                messages.SUCCESS,
+            )
+        if skipped:
+            self.message_user(
+                request,
+                f"Skipped {skipped} request(s): only paid requests with an attached video can be fulfilled.",
+                messages.WARNING,
+            )

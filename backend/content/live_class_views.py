@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
 from .models import LiveClassBooking, TutorAvailabilitySlot
-from .services.live_classes import create_live_class_checkout
+from .services.live_classes import LIVE_CLASS_PRICE, create_live_class_checkout
 from .services.payments import PaymentSecurityError
 
 
@@ -98,7 +98,7 @@ class LiveClassSlotView(APIView):
                     0,
                     int((slot.ends_at - slot.starts_at).total_seconds() // 60),
                 ),
-                "price": "250.00",
+                "price": f"{LIVE_CLASS_PRICE:.2f}",
                 "currency": "ZAR",
             }
             for slot in queryset

@@ -13,6 +13,11 @@ from .student_views import (
     StudentCoursesView,
     StudentLessonView,
 )
+from .video_request_views import (
+    VideoRequestCheckoutView,
+    VideoRequestInfoView,
+    VideoRequestStatusView,
+)
 from .views import (
     AmarisAssistantView,
     AnnouncementViewSet,
@@ -42,6 +47,7 @@ router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 urlpatterns = [
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
+    path("video-requests/info/", VideoRequestInfoView.as_view(), name="video-request-info"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
     path(
@@ -57,6 +63,16 @@ urlpatterns = [
         "student/live-classes/bookings/<str:reference>/",
         LiveClassBookingStatusView.as_view(),
         name="live-class-booking-status",
+    ),
+    path(
+        "student/video-requests/checkout/",
+        VideoRequestCheckoutView.as_view(),
+        name="video-request-checkout",
+    ),
+    path(
+        "student/video-requests/<str:reference>/",
+        VideoRequestStatusView.as_view(),
+        name="video-request-status",
     ),
     path("student/payments/<str:reference>/", PaymentStatusView.as_view(), name="student-payment-status"),
     path("student/progress/", ProgressView.as_view(), name="student-progress"),

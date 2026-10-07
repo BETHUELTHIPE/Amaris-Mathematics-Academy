@@ -544,6 +544,73 @@ class LiveClassBooking(TimeStampedModel):
         return self.reference
 
 
+def video_request_hold_expiry():
+    return timezone.now() + timedelta(minutes=30)
+
+
+class VideoRequest(TimeStampedModel):
+    """A paid, student-requested custom maths video, fulfilled asynchronously.
+
+    The lifecycle mirrors the paid live-class booking: the price is server
+    owned, the slot/hold protects a pending checkout, PayFast must verify the
+    payment before the request becomes ``PAID``, and a tutor later attaches the
+    produced :class:`VideoAsset` and marks it ``FULFILLED`` so the student is
+    notified. Access to the video itself is only ever released from a verified
+    backend state, never from a browser redirect.
+    """
+
+    class Status(models.TextChoices):
+        PENDING_PAYMENT = "pending_payment", "Pending payment"
+        PAID = "paid", "Paid"
+        FULFILLED = "fulfilled", "Fulfilled"
+        EXPIRED = "expired", "Expired"
+        CANCELLED = "cancelled", "Cancelled"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reference = models.CharField(max_length=100, unique=True)
+    idempotency_key = models.CharField(max_length=64, unique=True, editable=False)
+    student = models.ForeignKey(StudentRecord, related_name="video_requests", on_delete=models.PROTECT)
+    programme = models.CharField(max_length=20, choices=TutorAvailabilitySlot.Programme.choices)
+    subject = models.CharField(max_length=32, choices=TutorAvailabilitySlot.Subject.choices)
+    level = models.CharField(max_length=80)
+    topic = models.CharField(max_length=180)
+    details = models.TextField(blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default="150.00")
+    currency = models.CharField(max_length=3, default="ZAR")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING_PAYMENT,
+        db_index=True,
+    )
+    hold_expires_at = models.DateTimeField(default=video_request_hold_expiry, db_index=True)
+    provider_reference = models.CharField(max_length=160, blank=True)
+    paid_at = models.DateTimeField(blank=True, null=True)
+    gateway_verified_at = models.DateTimeField(blank=True, null=True)
+    invoice_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
+    video = models.ForeignKey(
+        VideoAsset,
+        related_name="video_requests",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        help_text="Attach the produced video, then mark the request fulfilled to notify the student.",
+    )
+    fulfilled_at = models.DateTimeField(blank=True, null=True)
+    confirmation_sent_at = models.DateTimeField(blank=True, null=True)
+    delivery_sent_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=("student", "status", "-created_at"), name="videoreq_student_status_idx"),
+            models.Index(fields=("status", "hold_expires_at"), name="videoreq_hold_status_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.reference
+
+
 class Enrollment(TimeStampedModel):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending payment"

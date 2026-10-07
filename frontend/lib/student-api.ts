@@ -65,6 +65,44 @@ export type LiveClassBookingStatus = {
   zoom_join_url: string;
 };
 
+export type VideoRequestCheckoutSession = {
+  request_reference: string;
+  status: string;
+  gateway_url: string;
+  fields: Record<string, string>;
+  request: {
+    programme: string;
+    subject: string;
+    level: string;
+    topic: string;
+    details: string;
+    amount: string;
+    currency: string;
+  };
+};
+
+export type VideoRequestVideo = {
+  title: string;
+  provider: string;
+  duration_seconds: number;
+  youtube_video_id?: string;
+  youtube_url?: string;
+};
+
+export type VideoRequestStatus = {
+  request_reference: string;
+  status: string;
+  programme: string;
+  subject: string;
+  level: string;
+  topic: string;
+  details: string;
+  amount: string;
+  currency: string;
+  invoice_number: string | null;
+  video: VideoRequestVideo | null;
+};
+
 export type ProtectedLesson = {
   course_slug: string;
   course_title: string;
@@ -169,6 +207,59 @@ export async function getStudentLiveClassBooking(
 ): Promise<LiveClassBookingStatus> {
   return studentFetch<LiveClassBookingStatus>(
     `/student/live-classes/bookings/${encodeURIComponent(reference)}/`,
+  );
+}
+
+async function videoRequestCheckoutKey(
+  programme: string,
+  subject: string,
+  level: string,
+  topic: string,
+): Promise<string> {
+  const student = await requireVerifiedStudent();
+  const normalizedLevel = level.trim().replace(/\s+/g, " ").toLowerCase();
+  const normalizedTopic = topic.trim().replace(/\s+/g, " ").toLowerCase();
+  const bytes = new TextEncoder().encode(
+    `${student.id}:${programme}:${subject}:${normalizedLevel}:${normalizedTopic}`,
+  );
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const hex = Array.from(new Uint8Array(digest))
+    .slice(0, 20)
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+  return `videoreq-${hex}`;
+}
+
+export async function createStudentVideoRequestCheckout(input: {
+  programme: string;
+  subject: string;
+  level: string;
+  topic: string;
+  details: string;
+}): Promise<VideoRequestCheckoutSession> {
+  return studentFetch<VideoRequestCheckoutSession>("/student/video-requests/checkout/", {
+    method: "POST",
+    body: JSON.stringify({
+      programme: input.programme,
+      subject: input.subject,
+      level: input.level.trim(),
+      topic: input.topic.trim(),
+      details: input.details.trim(),
+      idempotency_key: await videoRequestCheckoutKey(
+        input.programme,
+        input.subject,
+        input.level,
+        input.topic,
+      ),
+    }),
+  });
+}
+
+export async function getStudentVideoRequest(
+  reference: string,
+): Promise<VideoRequestStatus> {
+  return studentFetch<VideoRequestStatus>(
+    `/student/video-requests/${encodeURIComponent(reference)}/`,
   );
 }
 

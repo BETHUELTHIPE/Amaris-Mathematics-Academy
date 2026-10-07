@@ -390,6 +390,24 @@ CELERY_BEAT_SCHEDULE = {
         "task": "content.tasks.expire_live_class_holds",
         "schedule": 300.0,
     },
+    "complete-live-class-bookings": {
+        "task": "content.tasks.complete_live_class_bookings",
+        "schedule": 300.0,
+    },
+    "deliver-video-request-confirmation": {
+        "task": "content.tasks.deliver_video_request_confirmation",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
+    "deliver-video-request-delivery": {
+        "task": "content.tasks.deliver_video_request_delivery",
+        "schedule": 60.0,
+        "options": {"queue": "notifications"},
+    },
+    "expire-video-request-holds": {
+        "task": "content.tasks.expire_video_request_holds",
+        "schedule": 300.0,
+    },
 }
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -442,6 +460,7 @@ JAZZMIN_SETTINGS = {
         "content.enrollment",
         "content.payment",
         "content.paymentreconciliationrun",
+        "content.videorequest",
     ],
     "icons": {
         "content.SiteSettings": "fas fa-sliders-h",
@@ -463,6 +482,7 @@ JAZZMIN_SETTINGS = {
         "content.Enrollment": "fas fa-user-check",
         "content.Payment": "fas fa-credit-card",
         "content.PaymentReconciliationRun": "fas fa-sync-alt",
+        "content.VideoRequest": "fas fa-photo-video",
     },
     "related_modal_active": True,
     "changeform_format": "horizontal_tabs",
