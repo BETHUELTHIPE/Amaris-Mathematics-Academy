@@ -406,6 +406,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "content.tasks.reconcile_payments",
         "schedule": 300.0,
     },
+    "archive-issued-invoices": {
+        "task": "content.tasks.archive_missing_invoice_pdfs",
+        "schedule": 120.0,
+        "options": {"queue": "notifications"},
+    },
     "deliver-transactional-email": {
         "task": "content.tasks.deliver_transactional_email",
         "schedule": 30.0,

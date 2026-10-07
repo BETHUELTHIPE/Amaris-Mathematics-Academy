@@ -5,9 +5,10 @@ from __future__ import annotations
 import io
 import re
 import textwrap
+from typing import overload
 
 from django.core.files.base import ContentFile
-from django.core.files.storage import storages
+from django.core.files.storage import Storage, storages
 from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -16,6 +17,18 @@ from reportlab.pdfgen import canvas
 
 from content.models import LiveClassBooking, SiteSettings
 from content.payment_models import Invoice
+from content.services.course_invoice_archive import (
+    InvoiceArchiveError as InvoiceArchiveError,
+)
+from content.services.course_invoice_archive import (
+    archive_invoice_pdf as archive_course_invoice_pdf,
+)
+from content.services.course_invoice_archive import (
+    invoice_storage_path as invoice_storage_path,
+)
+from content.services.course_invoice_archive import (
+    mark_invoice_archive_failure as mark_invoice_archive_failure,
+)
 
 
 def student_invoice_key(student_id: object, invoice_number: str) -> str:
@@ -103,8 +116,26 @@ def render_invoice_pdf(invoice: Invoice | LiveClassBooking) -> bytes:
     return output.getvalue()
 
 
-def archive_invoice_pdf(invoice: Invoice | LiveClassBooking) -> bytes:
+@overload
+def archive_invoice_pdf(invoice: int, *, storage: Storage | None = None) -> str: ...
+
+
+@overload
+def archive_invoice_pdf(invoice: Invoice | LiveClassBooking, *, storage: Storage | None = None) -> bytes: ...
+
+
+def archive_invoice_pdf(invoice: int | Invoice | LiveClassBooking, *, storage: Storage | None = None) -> str | bytes:
     """Write the PDF to the private student bucket before delivery is marked sent."""
+    if isinstance(invoice, int):
+        return archive_course_invoice_pdf(invoice, storage=storage)
+    if isinstance(invoice, Invoice):
+        course_storage = storage or storages["student_private"]
+        try:
+            path = archive_course_invoice_pdf(invoice.pk, storage=course_storage)
+            with course_storage.open(path, "rb") as archived:
+                return archived.read()
+        except Exception as exc:
+            raise OSError("Student invoice archive is unavailable.") from exc
     document = render_invoice_pdf(invoice)
     invoice_number, _, _ = _invoice_details(invoice)
     key = student_invoice_key(invoice.student.supabase_user_id, invoice_number)

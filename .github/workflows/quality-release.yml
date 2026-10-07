@@ -184,6 +184,7 @@ jobs:
   responsive-browser:
     name: Responsive browser E2E
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
@@ -204,6 +205,7 @@ jobs:
       - name: Install Playwright test dependency
         run: python -m pip install --upgrade pip && pip install -r e2e/requirements.txt
       - name: Install Chromium, Firefox, and WebKit
+        timeout-minutes: 10
         run: python -m playwright install --with-deps chromium firefox webkit
       - name: Run mobile, tablet, and desktop browser tests
         shell: bash

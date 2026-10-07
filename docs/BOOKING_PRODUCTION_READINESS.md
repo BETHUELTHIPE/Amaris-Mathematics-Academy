@@ -27,6 +27,8 @@ The live student origin is `https://amaris-mathematics-academy-live-students.onr
 
 ## Remaining deployment gates
 
+Inspection on 2026-10-07 confirms that the production broker and cache exist, but no critical worker, notification worker or beat scheduler is provisioned. Supabase has applied `0007_invoice_pdf_archive`, but neither booking table exists. The candidate now retains that invoice migration and its metadata/recovery behavior, merges it with booking migration history, and includes a PostgreSQL migration to keep the new booking tables private from Data API roles. No confirmation/reminder evidence was found in the connected test inbox. The Render connector cannot create background workers or change existing service source branches/build configuration; completing these operations requires Dashboard access.
+
 1. Back up Supabase before migration. Confirm the target without logging credentials, then apply migrations and verify `content_tutoravailabilityslot` and `content_liveclassbooking` exist alongside the current data.
 2. Configure private production secrets: Supabase session-pooler `DATABASE_URL`, Auth publishable key, S3 keys, PayFast merchant values and SMTP credentials. Keep both Supabase buckets private.
 3. Provision and start `amaris-production-critical-worker`, `amaris-production-notification-worker` and `amaris-production-beat`. These are recurring-cost Render services and require explicit approval before creation.
