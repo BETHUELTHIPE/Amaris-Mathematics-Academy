@@ -2,7 +2,7 @@ groups:
   - name: amaris-platform-availability
     rules:
       - alert: AmarisPublicSiteUnavailable
-        expr: probe_success{job="blackbox_http", instance=~"https://.*chatgpt.site/"} == 0
+        expr: probe_success{job="blackbox_http", instance=~"https://amaris-mathematics-academy-live-students\\.onrender\\.com/"} == 0
         for: 2m
         labels: {severity: critical}
         annotations:

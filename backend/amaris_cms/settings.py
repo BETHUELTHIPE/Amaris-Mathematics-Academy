@@ -293,7 +293,7 @@ SPECTACULAR_SETTINGS = {
 
 CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
-    "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site",
+    "https://amaris-mathematics-academy-live-students.onrender.com",
 )
 CORS_ALLOW_CREDENTIALS = False
 
@@ -431,7 +431,7 @@ JAZZMIN_SETTINGS = {
     "topmenu_links": [
         {
             "name": "View website",
-            "url": "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site",
+            "url": "https://amaris-mathematics-academy-live-students.onrender.com",
             "new_window": True,
         },
         {"model": "content.course"},

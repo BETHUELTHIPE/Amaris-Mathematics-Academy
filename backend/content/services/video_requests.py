@@ -40,7 +40,7 @@ class VideoRequestCheckoutSession:
 def _public_urls() -> tuple[str, str, str]:
     site_url = os.getenv(
         "PUBLIC_SITE_URL",
-        "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site",
+        "https://amaris-mathematics-academy-live-students.onrender.com",
     ).rstrip("/")
     api_url = os.getenv("PUBLIC_API_URL", "").rstrip("/")
     return_url = os.getenv(

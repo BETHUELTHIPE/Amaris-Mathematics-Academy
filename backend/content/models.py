@@ -38,7 +38,7 @@ class SiteSettings(TimeStampedModel):
     email = models.EmailField(default="bethuelmoukangwe8@gmail.com")
     address = models.TextField(default="27 Tshivhase Street, Atteridgeville, Pretoria, Gauteng, 0008")
     business_hours = models.CharField(max_length=120, default="Mon–Sun, 07:00–20:00")
-    website_url = models.URLField(default="https://amaris-mathematics-academy.bethuelthipe.chatgpt.site")
+    website_url = models.URLField(default="https://amaris-mathematics-academy-live-students.onrender.com")
     footer_description = models.TextField(
         default="Structured mathematics courses for South African school, TVET and university students."
     )
