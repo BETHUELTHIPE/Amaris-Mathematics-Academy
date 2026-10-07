@@ -20,6 +20,7 @@ from content.services.payments import (
     PAYMENT_CANCELLED,
     PaymentSecurityError,
     authoritative_payment_status,
+    build_payfast_notify_url,
     create_checkout,
     process_payfast_notification,
 )
@@ -39,6 +40,20 @@ class MockPayFastGateway:
         if isinstance(outcome, BaseException):
             raise outcome
         return bool(outcome)
+
+
+class PayFastUrlConfigurationTests(TestCase):
+    def test_notify_url_accepts_backend_origin(self):
+        self.assertEqual(
+            build_payfast_notify_url("https://amaris-production-web.onrender.com"),
+            "https://amaris-production-web.onrender.com/api/v1/payfast/itn/",
+        )
+
+    def test_notify_url_does_not_duplicate_api_prefix(self):
+        self.assertEqual(
+            build_payfast_notify_url("https://amaris-production-web.onrender.com/api/v1/"),
+            "https://amaris-production-web.onrender.com/api/v1/payfast/itn/",
+        )
 
 
 class PayFastPaymentAuthorityTests(TestCase):

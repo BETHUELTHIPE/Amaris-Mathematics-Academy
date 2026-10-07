@@ -14,6 +14,7 @@ from django.utils import timezone
 from content.models import LiveClassBooking, StudentRecord, TutorAvailabilitySlot
 
 from .payments import (
+    DEFAULT_PUBLIC_SITE_URL,
     PAYFAST_LIVE_URL,
     PAYFAST_SANDBOX_URL,
     NotificationResult,
@@ -21,6 +22,7 @@ from .payments import (
     PaymentSecurityError,
     _payfast_credentials,
     _payfast_mode,
+    build_payfast_notify_url,
     generate_payfast_signature,
 )
 
@@ -37,7 +39,7 @@ class LiveClassCheckoutSession:
 def _public_urls() -> tuple[str, str, str]:
     site_url = os.getenv(
         "PUBLIC_SITE_URL",
-        "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site",
+        DEFAULT_PUBLIC_SITE_URL,
     ).rstrip("/")
     api_url = os.getenv("PUBLIC_API_URL", "").rstrip("/")
     return_url = os.getenv(
@@ -50,7 +52,7 @@ def _public_urls() -> tuple[str, str, str]:
     ).strip()
     notify_url = os.getenv(
         "PAYFAST_NOTIFY_URL",
-        f"{api_url}/api/v1/payfast/itn/" if api_url else "",
+        build_payfast_notify_url(api_url),
     ).strip()
     return return_url, cancel_url, notify_url
 
