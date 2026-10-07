@@ -106,6 +106,20 @@ export default async function VideoRequestConfirmationPage({
                   </div>
                 </div>
               )}
+              {fulfilled && video?.provider === "vimeo" && video.vimeo_video_id && (
+                <div className="mt-6">
+                  <h2 className="text-lg font-semibold text-[#0b2a5b]">{video.title}</h2>
+                  <div className="mt-3 aspect-video overflow-hidden rounded-2xl bg-black">
+                    <iframe
+                      title={video.title}
+                      className="h-full w-full"
+                      src={`https://player.vimeo.com/video/${video.vimeo_video_id}${video.vimeo_hash ? `?h=${video.vimeo_hash}` : ""}`}
+                      allow="autoplay; fullscreen; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                </div>
+              )}
 
               {paid && (
                 <div className="mt-5 grid gap-3 text-sm leading-7 text-[#60708a]">

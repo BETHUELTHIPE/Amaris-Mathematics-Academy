@@ -5,6 +5,7 @@ from django.apps import apps
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core.cache import caches
+from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -329,3 +330,60 @@ class PaymentReconciliationTests(TestCase):
         enrollment.refresh_from_db()
         self.assertEqual(enrollment.status, Enrollment.Status.CANCELLED)
         self.assertEqual(run.unresolved_count, 1)
+
+
+class VideoAssetVimeoTests(TestCase):
+    def test_vimeo_url_variants_parse_to_id_and_hash(self):
+        cases = [
+            ("https://vimeo.com/123456789", "123456789", ""),
+            ("https://vimeo.com/123456789/abc123def", "123456789", "abc123def"),
+            ("https://player.vimeo.com/video/123456789?h=zzz999", "123456789", "zzz999"),
+            ("https://vimeo.com/channels/staffpicks/123456789", "123456789", ""),
+            ("https://www.vimeo.com/123456789/hashvalue", "123456789", "hashvalue"),
+        ]
+        for url, expected_id, expected_hash in cases:
+            with self.subTest(url=url):
+                video = VideoAsset(
+                    title="Custom requested video",
+                    provider=VideoAsset.Provider.VIMEO,
+                    vimeo_url=url,
+                )
+                video.full_clean()
+                self.assertEqual(video.vimeo_video_id, expected_id)
+                self.assertEqual(video.vimeo_hash, expected_hash)
+
+    def test_explicit_hash_field_is_preserved_over_url_parsing(self):
+        video = VideoAsset(
+            title="Custom requested video",
+            provider=VideoAsset.Provider.VIMEO,
+            vimeo_url="https://vimeo.com/123456789/urlhash",
+            vimeo_hash="adminhash",
+        )
+        video.full_clean()
+        self.assertEqual(video.vimeo_video_id, "123456789")
+        self.assertEqual(video.vimeo_hash, "adminhash")
+
+    def test_non_vimeo_url_is_rejected(self):
+        video = VideoAsset(
+            title="Bad video",
+            provider=VideoAsset.Provider.VIMEO,
+            vimeo_url="https://example.com/not-a-vimeo-123",
+        )
+        with self.assertRaises(ValidationError):
+            video.full_clean()
+
+    def test_vimeo_requires_a_link_or_id(self):
+        video = VideoAsset(title="Empty", provider=VideoAsset.Provider.VIMEO)
+        with self.assertRaises(ValidationError):
+            video.full_clean()
+
+    def test_a_valid_vimeo_video_can_be_saved_and_published(self):
+        video = VideoAsset.objects.create(
+            title="Published Vimeo lesson",
+            provider=VideoAsset.Provider.VIMEO,
+            vimeo_video_id="123456789",
+            vimeo_hash="abc123",
+            is_published=True,
+        )
+        self.assertEqual(video.provider, "vimeo")
+        self.assertEqual(video.vimeo_video_id, "123456789")

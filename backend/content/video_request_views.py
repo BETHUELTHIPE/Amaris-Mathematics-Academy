@@ -96,6 +96,9 @@ def _video_payload(request_obj: VideoRequest) -> dict | None:
     if video.provider == video.Provider.YOUTUBE:
         payload["youtube_video_id"] = video.youtube_video_id
         payload["youtube_url"] = video.youtube_url
+    elif video.provider == video.Provider.VIMEO:
+        payload["vimeo_video_id"] = video.vimeo_video_id
+        payload["vimeo_hash"] = video.vimeo_hash
     return payload
 
 

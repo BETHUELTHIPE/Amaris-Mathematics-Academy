@@ -87,6 +87,8 @@ export type VideoRequestVideo = {
   duration_seconds: number;
   youtube_video_id?: string;
   youtube_url?: string;
+  vimeo_video_id?: string;
+  vimeo_hash?: string;
 };
 
 export type VideoRequestStatus = {
@@ -117,6 +119,8 @@ export type ProtectedLesson = {
     video: null | {
       provider: string;
       youtube_video_id: string;
+      vimeo_video_id?: string;
+      vimeo_hash?: string;
       duration_seconds: number;
     };
   };

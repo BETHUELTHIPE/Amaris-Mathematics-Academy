@@ -212,11 +212,22 @@ class VideoAssetAdmin(PublishableAdmin):
     list_display = ("title", "provider", "duration_seconds", "allow_preview", "is_published", "updated_at")
     list_filter = PublishableAdmin.list_filter + ("provider", "allow_preview")
     list_editable = ("allow_preview", "is_published")
-    search_fields = ("title", "youtube_video_id", "youtube_url", "transcript")
+    search_fields = ("title", "youtube_video_id", "youtube_url", "vimeo_video_id", "vimeo_url", "transcript")
     readonly_fields = ("id", "created_at", "updated_at")
     fieldsets = (
         ("Video", {"fields": ("id", "title", "provider", "duration_seconds", "thumbnail")}),
         ("Private YouTube", {"fields": ("youtube_video_id", "youtube_url")}),
+        (
+            "Private Vimeo",
+            {
+                "fields": ("vimeo_video_id", "vimeo_url", "vimeo_hash"),
+                "description": (
+                    "Paste the private/unlisted Vimeo link (e.g. "
+                    "https://vimeo.com/123456789/abc123). The numeric ID and access "
+                    "token are parsed on save; leave the ID blank to auto-fill it."
+                ),
+            },
+        ),
         ("Private S3 upload", {"fields": ("source_file", "captions_file")}),
         ("Learning content", {"fields": ("transcript", "allow_preview")}),
         ("Publishing", {"fields": ("is_published", "publish_at")}),
