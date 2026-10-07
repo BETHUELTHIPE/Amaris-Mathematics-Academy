@@ -38,7 +38,7 @@ class SiteSettings(TimeStampedModel):
     email = models.EmailField(default="bethuelmoukangwe8@gmail.com")
     address = models.TextField(default="27 Tshivhase Street, Atteridgeville, Pretoria, Gauteng, 0008")
     business_hours = models.CharField(max_length=120, default="Mon–Sun, 07:00–20:00")
-    website_url = models.URLField(default="https://amaris-mathematics-academy.bethuelthipe.chatgpt.site")
+    website_url = models.URLField(default="https://amaris-mathematics-academy-live-students.onrender.com")
     footer_description = models.TextField(
         default="Structured mathematics courses for South African school, TVET and university students."
     )
@@ -225,6 +225,7 @@ class CourseModule(TimeStampedModel):
 class VideoAsset(PublishableModel):
     class Provider(models.TextChoices):
         YOUTUBE = "youtube", "Private YouTube"
+        VIMEO = "vimeo", "Private Vimeo"
         S3 = "s3", "Private S3 upload"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -232,6 +233,13 @@ class VideoAsset(PublishableModel):
     provider = models.CharField(max_length=12, choices=Provider.choices, default=Provider.YOUTUBE)
     youtube_video_id = models.CharField(max_length=32, blank=True)
     youtube_url = models.URLField(blank=True)
+    vimeo_video_id = models.CharField(max_length=32, blank=True)
+    vimeo_url = models.URLField(blank=True)
+    vimeo_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="Unlisted/private Vimeo access token (the 'h' value), required to embed private videos.",
+    )
     source_file = models.FileField(upload_to="videos/%Y/%m/", blank=True)
     thumbnail = models.ImageField(upload_to="videos/thumbnails/", blank=True)
     captions_file = models.FileField(upload_to="videos/captions/", blank=True)
@@ -255,8 +263,48 @@ class VideoAsset(PublishableModel):
                     self.youtube_video_id = parse_qs(parsed.query).get("v", [""])[0]
             if not self.youtube_video_id:
                 raise ValidationError("The YouTube URL does not contain a valid video ID.")
+        elif self.provider == self.Provider.VIMEO:
+            if not self.vimeo_video_id and not self.vimeo_url:
+                raise ValidationError("Add a private Vimeo video ID or URL.")
+            if self.vimeo_url and not self.vimeo_video_id:
+                parsed_id, parsed_hash = self._parse_vimeo(self.vimeo_url)
+                self.vimeo_video_id = parsed_id
+                if parsed_hash and not self.vimeo_hash:
+                    self.vimeo_hash = parsed_hash
+            if not self.vimeo_video_id or not self.vimeo_video_id.isdigit():
+                raise ValidationError("The Vimeo URL does not contain a valid numeric video ID.")
         elif not self.source_file:
             raise ValidationError("Upload a private video file for S3-hosted videos.")
+
+    @staticmethod
+    def _parse_vimeo(url: str) -> tuple[str, str]:
+        """Return ``(video_id, access_hash)`` parsed from a Vimeo URL.
+
+        Supports the public, player, channel and unlisted/private link shapes,
+        e.g. ``vimeo.com/123456789``, ``vimeo.com/123456789/abc123``,
+        ``player.vimeo.com/video/123456789?h=abc123`` and
+        ``vimeo.com/channels/name/123456789``. Non-Vimeo hosts yield empties.
+        """
+
+        parsed = urlparse(url)
+        if parsed.hostname not in {"vimeo.com", "www.vimeo.com", "player.vimeo.com"}:
+            return "", ""
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        if segments and segments[0] == "video":
+            segments = segments[1:]
+        video_id = ""
+        access_hash = ""
+        for index, segment in enumerate(segments):
+            if segment.isdigit():
+                video_id = segment
+                remainder = segments[index + 1 :]
+                if remainder and not remainder[0].isdigit():
+                    access_hash = remainder[0]
+                break
+        query_hash = parse_qs(parsed.query).get("h", [""])[0].strip()
+        if query_hash:
+            access_hash = query_hash
+        return video_id, access_hash
 
     def __str__(self) -> str:
         return self.title
@@ -538,6 +586,73 @@ class LiveClassBooking(TimeStampedModel):
         indexes = [
             models.Index(fields=("student", "status", "-created_at"), name="liveclass_student_status_idx"),
             models.Index(fields=("status", "hold_expires_at"), name="liveclass_hold_status_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.reference
+
+
+def video_request_hold_expiry():
+    return timezone.now() + timedelta(minutes=30)
+
+
+class VideoRequest(TimeStampedModel):
+    """A paid, student-requested custom maths video, fulfilled asynchronously.
+
+    The lifecycle mirrors the paid live-class booking: the price is server
+    owned, the slot/hold protects a pending checkout, PayFast must verify the
+    payment before the request becomes ``PAID``, and a tutor later attaches the
+    produced :class:`VideoAsset` and marks it ``FULFILLED`` so the student is
+    notified. Access to the video itself is only ever released from a verified
+    backend state, never from a browser redirect.
+    """
+
+    class Status(models.TextChoices):
+        PENDING_PAYMENT = "pending_payment", "Pending payment"
+        PAID = "paid", "Paid"
+        FULFILLED = "fulfilled", "Fulfilled"
+        EXPIRED = "expired", "Expired"
+        CANCELLED = "cancelled", "Cancelled"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reference = models.CharField(max_length=100, unique=True)
+    idempotency_key = models.CharField(max_length=64, unique=True, editable=False)
+    student = models.ForeignKey(StudentRecord, related_name="video_requests", on_delete=models.PROTECT)
+    programme = models.CharField(max_length=20, choices=TutorAvailabilitySlot.Programme.choices)
+    subject = models.CharField(max_length=32, choices=TutorAvailabilitySlot.Subject.choices)
+    level = models.CharField(max_length=80)
+    topic = models.CharField(max_length=180)
+    details = models.TextField(blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default="150.00")
+    currency = models.CharField(max_length=3, default="ZAR")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING_PAYMENT,
+        db_index=True,
+    )
+    hold_expires_at = models.DateTimeField(default=video_request_hold_expiry, db_index=True)
+    provider_reference = models.CharField(max_length=160, blank=True)
+    paid_at = models.DateTimeField(blank=True, null=True)
+    gateway_verified_at = models.DateTimeField(blank=True, null=True)
+    invoice_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
+    video = models.ForeignKey(
+        VideoAsset,
+        related_name="video_requests",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        help_text="Attach the produced video, then mark the request fulfilled to notify the student.",
+    )
+    fulfilled_at = models.DateTimeField(blank=True, null=True)
+    confirmation_sent_at = models.DateTimeField(blank=True, null=True)
+    delivery_sent_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=("student", "status", "-created_at"), name="videoreq_student_status_idx"),
+            models.Index(fields=("status", "hold_expires_at"), name="videoreq_hold_status_idx"),
         ]
 
     def __str__(self) -> str:

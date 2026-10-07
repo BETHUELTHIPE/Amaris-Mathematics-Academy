@@ -50,6 +50,17 @@ export default async function LessonPage({
             />
           </div>
         )}
+        {data.lesson.video?.provider === "vimeo" && data.lesson.video.vimeo_video_id && (
+          <div className="mt-8 aspect-video overflow-hidden rounded-2xl bg-black">
+            <iframe
+              title={data.lesson.title}
+              className="h-full w-full"
+              src={`https://player.vimeo.com/video/${data.lesson.video.vimeo_video_id}${data.lesson.video.vimeo_hash ? `?h=${data.lesson.video.vimeo_hash}` : ""}#t=${requestedPosition}s`}
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        )}
         <article className="prose prose-slate mt-8 max-w-none whitespace-pre-wrap">{data.lesson.lesson_body || "Lesson content is being prepared."}</article>
         <form action={saveLessonProgressAction} className="mt-8 flex flex-wrap items-center gap-3">
           <input type="hidden" name="courseSlug" value={courseSlug} />

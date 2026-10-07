@@ -305,6 +305,8 @@ class StudentCourseEnrollmentSerializer(serializers.Serializer):
 class LessonVideoSerializer(serializers.Serializer):
     provider = serializers.CharField()
     youtube_video_id = serializers.CharField(allow_blank=True)
+    vimeo_video_id = serializers.CharField(allow_blank=True, required=False)
+    vimeo_hash = serializers.CharField(allow_blank=True, required=False)
     duration_seconds = serializers.IntegerField()
 
 
