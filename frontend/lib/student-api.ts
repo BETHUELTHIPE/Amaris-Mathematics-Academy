@@ -62,6 +62,7 @@ export type LiveClassBookingStatus = {
   amount: string;
   currency: string;
   invoice_number: string | null;
+  invoice_ready: boolean;
   zoom_join_url: string;
 };
 
@@ -138,10 +139,10 @@ export async function createStudentCheckout(courseSlug: string): Promise<Checkou
   });
 }
 
-async function liveClassCheckoutKey(slotId: string, topic: string): Promise<string> {
+async function liveClassCheckoutKey(slotId: string, topic: string, attempt: string): Promise<string> {
   const student = await requireVerifiedStudent();
   const normalizedTopic = topic.trim().replace(/\s+/g, " ").toLowerCase();
-  const bytes = new TextEncoder().encode(`${student.id}:${slotId}:${normalizedTopic}`);
+  const bytes = new TextEncoder().encode(`${student.id}:${slotId}:${normalizedTopic}:${attempt}`);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   const hex = Array.from(new Uint8Array(digest))
     .slice(0, 20)
@@ -153,13 +154,14 @@ async function liveClassCheckoutKey(slotId: string, topic: string): Promise<stri
 export async function createStudentLiveClassCheckout(
   slotId: string,
   topic: string,
+  attempt: string,
 ): Promise<LiveClassCheckoutSession> {
   return studentFetch<LiveClassCheckoutSession>("/student/live-classes/checkout/", {
     method: "POST",
     body: JSON.stringify({
       slot_id: slotId,
       topic: topic.trim(),
-      idempotency_key: await liveClassCheckoutKey(slotId, topic),
+      idempotency_key: await liveClassCheckoutKey(slotId, topic, attempt),
     }),
   });
 }
@@ -169,6 +171,18 @@ export async function getStudentLiveClassBooking(
 ): Promise<LiveClassBookingStatus> {
   return studentFetch<LiveClassBookingStatus>(
     `/student/live-classes/bookings/${encodeURIComponent(reference)}/`,
+  );
+}
+
+export async function downloadStudentLiveClassInvoice(reference: string): Promise<Response> {
+  const token = await accessToken();
+  return fetch(
+    `${cmsBaseUrl()}/student/live-classes/bookings/${encodeURIComponent(reference)}/invoice/`,
+    {
+      headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    },
   );
 }
 

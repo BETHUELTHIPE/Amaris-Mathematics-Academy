@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 from pathlib import Path
 
@@ -125,6 +126,9 @@ TEMPLATES = [
 WSGI_APPLICATION = "amaris_cms.wsgi.application"
 ASGI_APPLICATION = "amaris_cms.asgi.application"
 
+if not DEBUG and not os.getenv("DATABASE_URL"):
+    raise RuntimeError("DATABASE_URL must be set to the production Supabase Postgres connection string.")
+
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
@@ -134,6 +138,9 @@ DATABASES = {
     )
 }
 if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    database_schema = os.getenv("DATABASE_SCHEMA", "").strip()
+    if database_schema and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", database_schema):
+        raise RuntimeError("DATABASE_SCHEMA must be a simple Postgres schema identifier.")
     DATABASES["default"].setdefault("OPTIONS", {}).update(
         {
             "connect_timeout": int(os.getenv("DATABASE_CONNECT_TIMEOUT", "5")),
@@ -144,6 +151,7 @@ if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
                         "-c idle_in_transaction_session_timeout="
                         f"{int(os.getenv('DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS', '30000'))}"
                     ),
+                    *([f"-c search_path={database_schema}"] if database_schema else []),
                 ]
             ),
         }
@@ -201,6 +209,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+
 LANGUAGE_CODE = "en-za"
 TIME_ZONE = "Africa/Johannesburg"
 USE_I18N = True
@@ -211,61 +220,87 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-CMS_STORAGE_BUCKET_NAME = os.getenv("CMS_STORAGE_BUCKET_NAME") or os.getenv("AWS_STORAGE_BUCKET_NAME", "")
-STUDENT_STORAGE_BUCKET_NAME = os.getenv("STUDENT_STORAGE_BUCKET_NAME", "")
-AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL", "")
-AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
-AWS_S3_ADDRESSING_STYLE = os.getenv(
-    "AWS_S3_ADDRESSING_STYLE",
-    "path" if AWS_S3_ENDPOINT_URL else "",
+SUPABASE_S3_ENDPOINT_URL = (
+    os.getenv("SUPABASE_S3_ENDPOINT_URL")
+    or os.getenv("SUPABASE_STORAGE_S3_ENDPOINT")
+    or os.getenv("AWS_S3_ENDPOINT_URL")
+    or ""
+).strip()
+SUPABASE_S3_ACCESS_KEY_ID = (
+    os.getenv("SUPABASE_S3_ACCESS_KEY_ID")
+    or os.getenv("SUPABASE_STORAGE_S3_ACCESS_KEY_ID")
+    or os.getenv("AWS_ACCESS_KEY_ID")
+    or ""
+).strip()
+SUPABASE_S3_SECRET_ACCESS_KEY = (
+    os.getenv("SUPABASE_S3_SECRET_ACCESS_KEY")
+    or os.getenv("SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY")
+    or os.getenv("AWS_SECRET_ACCESS_KEY")
+    or ""
+).strip()
+SUPABASE_S3_ADMIN_BUCKET = (
+    os.getenv("SUPABASE_S3_ADMIN_BUCKET")
+    or os.getenv("SUPABASE_STORAGE_BUCKET_NAME")
+    or os.getenv("CMS_STORAGE_BUCKET_NAME")
+    or ""
+).strip()
+SUPABASE_S3_STUDENT_BUCKET = (
+    os.getenv("SUPABASE_S3_STUDENT_BUCKET")
+    or os.getenv("SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME")
+    or os.getenv("STUDENT_STORAGE_BUCKET_NAME")
+    or ""
+).strip()
+_supabase_s3_values = (
+    SUPABASE_S3_ENDPOINT_URL,
+    SUPABASE_S3_ACCESS_KEY_ID,
+    SUPABASE_S3_SECRET_ACCESS_KEY,
+    SUPABASE_S3_ADMIN_BUCKET,
+    SUPABASE_S3_STUDENT_BUCKET,
 )
-
-if CMS_STORAGE_BUCKET_NAME and STUDENT_STORAGE_BUCKET_NAME:
-    s3_common_options = {
-        "region_name": AWS_S3_REGION_NAME,
+if env_bool("SUPABASE_S3_REQUIRED", False) or any(_supabase_s3_values):
+    if not all(_supabase_s3_values) or not SUPABASE_S3_ENDPOINT_URL.startswith("https://"):
+        raise RuntimeError("Both private Supabase S3 buckets, HTTPS endpoint, and server-side S3 keys are required.")
+    _s3_options = {
+        "endpoint_url": SUPABASE_S3_ENDPOINT_URL,
+        "region_name": os.getenv("SUPABASE_S3_REGION", "us-east-1"),
+        "access_key": SUPABASE_S3_ACCESS_KEY_ID,
+        "secret_key": SUPABASE_S3_SECRET_ACCESS_KEY,
+        "addressing_style": "path",
+        "signature_version": "s3v4",
         "default_acl": None,
         "querystring_auth": True,
-        "file_overwrite": False,
-        "signature_version": "s3v4",
+        "querystring_expire": 300,
     }
-    if AWS_S3_ENDPOINT_URL:
-        s3_common_options["endpoint_url"] = AWS_S3_ENDPOINT_URL
-    if AWS_S3_ADDRESSING_STYLE:
-        s3_common_options["addressing_style"] = AWS_S3_ADDRESSING_STYLE
-
     STORAGES = {
-        # Django Admin/CMS uploads: branding, pages, course media, resources, testimonials.
         "default": {
-            "BACKEND": "storages.backends.s3.S3Storage",
+            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
             "OPTIONS": {
-                **s3_common_options,
-                "bucket_name": CMS_STORAGE_BUCKET_NAME,
+                **_s3_options,
+                "bucket_name": SUPABASE_S3_ADMIN_BUCKET,
+                "file_overwrite": False,
+                "location": "cms" if env_bool("SUPABASE_STORAGE_ENABLED", False) else "",
             },
         },
-        # Student-owned/generated documents must opt in to this named storage.
-        "student_data": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-                **s3_common_options,
-                "bucket_name": STUDENT_STORAGE_BUCKET_NAME,
-            },
+        "student_private": {
+            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
+            "OPTIONS": {**_s3_options, "bucket_name": SUPABASE_S3_STUDENT_BUCKET, "file_overwrite": True},
         },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 else:
     STORAGES = {
         "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-        "student_data": {
+        "student_private": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
-            "OPTIONS": {
-                "location": BASE_DIR / "media" / "student-data",
-                "base_url": f"{MEDIA_URL}student-data/",
-            },
+            "OPTIONS": {"location": MEDIA_ROOT / "student-private", "allow_overwrite": True},
         },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+STORAGES["student_data"] = STORAGES["student_private"]
+STORAGES["student_documents"] = STORAGES["student_private"]
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
@@ -370,6 +405,11 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-verified-payments": {
         "task": "content.tasks.reconcile_payments",
         "schedule": 300.0,
+    },
+    "archive-issued-invoices": {
+        "task": "content.tasks.archive_missing_invoice_pdfs",
+        "schedule": 120.0,
+        "options": {"queue": "notifications"},
     },
     "deliver-transactional-email": {
         "task": "content.tasks.deliver_transactional_email",

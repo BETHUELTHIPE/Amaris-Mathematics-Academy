@@ -500,6 +500,7 @@ class LiveClassBooking(TimeStampedModel):
         EXPIRED = "expired", "Expired"
         CANCELLED = "cancelled", "Cancelled"
         COMPLETED = "completed", "Completed"
+        PAYMENT_REVIEW = "payment_review", "Paid booking requiring review"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reference = models.CharField(max_length=100, unique=True)
