@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
+      - uses: actions/checkout@v4
       - name: Verify staging readiness
         shell: bash
         run: |
@@ -88,23 +89,4 @@ jobs:
           PY
 
       - name: Verify booking page on deployed staging frontend
-        shell: bash
-        run: |
-          set -euo pipefail
-          base="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
-          body=$(mktemp)
-          code=$(curl --silent --show-error --location --output "$body" --write-out '%{http_code}' --max-time 30 \
-            "$base/book-online-live-class")
-          if [ "$code" != "200" ]; then
-            echo "booking page returned HTTP $code" >&2
-            exit 1
-          fi
-          if grep -qi "We could not find that page" "$body"; then
-            echo "booking page rendered the branded 404 response" >&2
-            exit 1
-          fi
-          if ! grep -Eqi 'Book online live class|Choose your programme|Available Zoom slots|R250' "$body"; then
-            echo "booking route is HTTP 200 but expected booking content was not found" >&2
-            head -c 1200 "$body" | tr '\n' ' ' >&2
-            exit 1
-          fi
+        run: node frontend/scripts/verify-booking-page.mjs https://amaris-mathematics-academy-staging-x4ax.onrender.com

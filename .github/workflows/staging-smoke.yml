@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
+      - uses: actions/checkout@v4
       - name: Wait for staging readiness
         shell: bash
         run: |
@@ -72,18 +73,8 @@ jobs:
               assert slot.get('price') == '250.00'
           PY
 
-      - name: Verify booking page is routable on staging frontend
-        shell: bash
-        run: |
-          set -euo pipefail
-          base="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
-          body=$(mktemp)
-          code=$(curl --silent --show-error --location --output "$body" --write-out '%{http_code}' --max-time 30 \
-            "$base/book-online-live-class")
-          test "$code" = "200"
-          grep -qi "Book online live class" "$body"
-          grep -qi "R250" "$body"
-          ! grep -qi "We could not find that page" "$body"
+      - name: Verify booking page on deployed staging frontend
+        run: node frontend/scripts/verify-booking-page.mjs https://amaris-mathematics-academy-staging-x4ax.onrender.com
 
       - name: Verify old booking link redirects instead of returning 404
         shell: bash

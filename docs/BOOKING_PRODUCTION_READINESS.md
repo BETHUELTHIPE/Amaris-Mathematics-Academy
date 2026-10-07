@@ -2,6 +2,12 @@
 
 Status on 2026-10-07: **release candidate**. The application path is implemented, but production must remain closed until the staging payment and delivery gates below pass and the required workers are running.
 
+## Staging route verification on 2026-10-07
+
+The deployed staging frontend at `f27e7fc1f1439f09aa4b551b2a251b8f8740016a` returns HTTP 200 for `/book-online-live-class` with programme selection, available Zoom slots and R250 pricing. A cold request took 54.86 seconds; Render runtime logs show startup after the earlier acceptance test's 30-second timeout. React also serializes an unused not-found boundary into the page's script data, so matching all response bytes for 404 text rejects a valid page.
+
+Both staging workflows now use a shared bounded route check: up to four 30-second attempts with five seconds between transient failures. It still requires HTTP 200 and the rendered booking content, and immediately rejects an actual 404, HTTP 500, missing content or incorrect pricing. These checks verify route delivery only; no authenticated checkout, PayFast sandbox payment, invoice delivery or reminder has been accepted by this observation.
+
 ## Production contract
 
 - Students choose CAPS, IEB, TVET or University; Mathematics or Mathematical Literacy; level, topic, tutor and an available one-hour Zoom slot.
