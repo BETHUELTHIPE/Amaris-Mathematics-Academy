@@ -27,7 +27,7 @@ Frontend-specific tools and code must stay in `frontend/`. Backend-specific tool
 - Forgot-password and secure password-update flows
 - Private student dashboards and student-owned Supabase profile records
 - Row Level Security policies that restrict each profile to its authenticated owner
-- Cloudflare D1 support for course progress and contact enquiries
+- Supabase PostgreSQL persistence for student profiles and Django-managed data, including contact enquiries
 - Branded student documents, letterhead and invoice previews
 - Django CMS with a branded Jazzmin administration dashboard
 - Admin-managed courses, modules, lessons, videos, resources, pages, pricing and enquiries
@@ -39,7 +39,7 @@ Frontend-specific tools and code must stay in `frontend/`. Backend-specific tool
 - Next.js 16, React 19 and Vinext
 - TypeScript and Tailwind CSS
 - Supabase Auth and PostgreSQL
-- Cloudflare Workers, D1 and Sites hosting
+- Render Node hosting, with Cloudflare Workers support for local builds
 - Vite, Lighthouse, Pa11y and Playwright browser testing
 
 ### Backend
@@ -73,6 +73,10 @@ Apply the SQL files in `frontend/supabase/migrations/` in timestamp order. In Su
 3. Add the production site URL and `/auth/confirm` callback to the redirect allow list.
 4. Configure custom SMTP for delivery to external student email addresses.
 5. Use `{{ .Token }}` in the confirmation email template when six-digit codes are required. The secure confirmation link is also supported.
+
+The Render Django services must use the Supabase **session pooler** connection from the project's Connect panel (port 5432). Store `DATABASE_URL` privately in Render, set `DATABASE_SSL_REQUIRED=true`, `SUPABASE_DATABASE_REQUIRED=true`, and `SUPABASE_DATABASE_PROJECT_REF=epkcuseloinygkakxxdu`. The backend rejects SQLite and connections to a different Supabase project. `/health/dependencies/` identifies the database engine and provider without exposing credentials.
+
+Keep staging Django tables in a separate `amaris_staging` schema, with a dedicated login role and `DATABASE_SCHEMA=amaris_staging`. Run Django migrations there before switching staging traffic. Preserve the existing production schema and data. Frontend contact writes go through `CMS_API_URL`; signup profiles are created by the Supabase Auth trigger. Legacy D1 schema files remain as migration history and are not used by these runtime flows.
 
 ## Frontend development
 

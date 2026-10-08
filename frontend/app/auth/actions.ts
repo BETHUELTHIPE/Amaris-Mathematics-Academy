@@ -5,8 +5,6 @@ import { z } from "zod";
 import { getSiteUrl } from "@/lib/supabase/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeRelativePath } from "@/lib/auth";
-import { getDb } from "@/db";
-import { studentProfiles } from "@/db/schema";
 
 const passwordSchema = z
   .string()
@@ -116,30 +114,6 @@ export async function registerAction(formData: FormData) {
   }
 
   // Supabase creates the authoritative profile in its auth.users trigger.
-  // Only mirror an authenticated, verified identity. Duplicate signup can
-  // return an obfuscated user, and unverified retries must not overwrite names.
-  if (data.session && data.user.email_confirmed_at) {
-    try {
-      await getDb()
-        .insert(studentProfiles)
-        .values({
-          userId: data.user.id,
-          email: values.email,
-          displayName: `${values.firstName} ${values.lastName}`,
-        })
-        .onConflictDoUpdate({
-          target: studentProfiles.userId,
-          set: {
-            email: values.email,
-            displayName: `${values.firstName} ${values.lastName}`,
-            updatedAt: new Date().toISOString(),
-          },
-        });
-    } catch {
-      // Authentication remains available if the non-critical profile mirror is delayed.
-    }
-  }
-
   if (data.session && data.user?.email_confirmed_at) {
     redirect("/dashboard?registered=1");
   }

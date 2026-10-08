@@ -17,6 +17,8 @@ def health_live(_request):
 
 
 def _postgresql_available():
+    if connection.vendor != "postgresql":
+        return False
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
@@ -54,7 +56,18 @@ def health_dependencies(_request):
     critical_healthy = dependencies["postgresql"]
     state = "ok" if all(dependencies.values()) else ("degraded" if critical_healthy else "unavailable")
     return JsonResponse(
-        {"status": state, "dependencies": dependencies},
+        {
+            "status": state,
+            "dependencies": dependencies,
+            "database": {
+                "engine": connection.vendor,
+                "provider": (
+                    "supabase"
+                    if settings.SUPABASE_DATABASE_REQUIRED and connection.vendor == "postgresql"
+                    else "unverified"
+                ),
+            },
+        },
         status=200 if critical_healthy else 503,
     )
 
