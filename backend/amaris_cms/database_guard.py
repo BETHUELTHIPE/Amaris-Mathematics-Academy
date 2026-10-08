@@ -2,6 +2,7 @@
 
 Never include a DATABASE_URL or password in diagnostic errors.
 """
+
 from urllib.parse import urlsplit
 
 
