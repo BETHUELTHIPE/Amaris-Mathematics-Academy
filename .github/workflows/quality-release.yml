@@ -12,6 +12,12 @@ on:
         required: true
         type: boolean
         default: false
+      production_approval:
+        description: Explicitly authorize production promotion after green staging
+        required: true
+        type: choice
+        options: [DO_NOT_DEPLOY, APPROVE_PRODUCTION]
+        default: DO_NOT_DEPLOY
       migration_risk:
         description: Database migration risk for this release
         required: true
@@ -99,8 +105,14 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
       - name: Apply migrations in CI
         run: python manage.py migrate --noinput
+      - name: Verify CI migration state is fully applied
+        run: python manage.py migrate --check --noinput
+      - name: Verify safe migration command with no pending operations
+        run: python manage.py safe_migrate
       - name: Collect production static assets
         run: python manage.py collectstatic --noinput
+      - name: Staging schema and safe-migration contract tests
+        run: python manage.py test content.test_release_health content.test_safe_migrate
       - name: Unit tests
         run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests
       - name: Integration tests
@@ -450,6 +462,39 @@ jobs:
           cat /tmp/version.json 2>/dev/null || true
           exit 1
 
+      - name: DATABASE GATE - PostgreSQL, migrations, and Redis on exact staging SHA
+        shell: bash
+        env:
+          STAGING_BASE_URL: https://amaris-mathematics-academy-staging.onrender.com
+        run: |
+          set -euo pipefail
+          oidc_response=$(curl --fail --silent --show-error -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=amaris-staging")
+          oidc_token=$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$oidc_response")
+          echo "::add-mask::$oidc_token"
+          schema_http=$(curl --silent --show-error --output /tmp/staging-schema-check.json --write-out '%{http_code}' --max-time 20 -H "Authorization: Bearer $oidc_token" -H "X-Amaris-Acceptance: github-actions" "$STAGING_BASE_URL/api/v1/student/acceptance/schema/")
+          if [ "$schema_http" != "200" ]; then
+            echo "Staging PostgreSQL schema is not ready or the GitHub OIDC staging identity was rejected (HTTP $schema_http)." >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          with open("/tmp/staging-schema-check.json", encoding="utf-8") as handle:
+              data = json.load(handle)
+          assert data.get("status") == "ready", "Staging schema not ready"
+          assert data.get("database") == "postgresql", "Staging is not using PostgreSQL"
+          assert data.get("pending_migrations") == 0, "Staging migrations still pending"
+          PY
+          curl --fail --silent --show-error --max-time 20 "$STAGING_BASE_URL/health/dependencies/" -o /tmp/staging-dependencies.json
+          python - <<'PY'
+          import json
+          with open("/tmp/staging-dependencies.json", encoding="utf-8") as handle:
+              data = json.load(handle)
+          dependencies = data.get("dependencies", {})
+          assert dependencies.get("postgresql") is True, "Staging PostgreSQL failed"
+          assert dependencies.get("redis") is True, "Staging Redis failed"
+          assert data.get("status") == "ok", "Staging dependencies degraded"
+          PY
+
       - name: Verify real staging checkout and resume journey
         shell: bash
         env:
@@ -560,7 +605,7 @@ jobs:
 
   deploy-production:
     name: Approve, deploy, and verify production
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy_production == true
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy_production == true && inputs.production_approval == 'APPROVE_PRODUCTION'
     runs-on: ubuntu-latest
     needs: [publish-image, deploy-staging]
     environment:
@@ -568,6 +613,8 @@ jobs:
       url: ${{ vars.PRODUCTION_URL }}
     steps:
       - uses: actions/checkout@v4
+      - name: Verify explicit production approval
+        run: test "${{ inputs.production_approval }}" = "APPROVE_PRODUCTION"
       - name: Verify all professional acceptance evidence
         run: python scripts/release/verify_acceptance.py acceptance/criteria.json
       - name: Create recovery point before high-risk migration
