@@ -1,4 +1,5 @@
 """Supabase-only production routing regression tests (no network or credentials)."""
+
 from django.test import SimpleTestCase
 
 from amaris_cms.database_guard import validate_supabase_database_url
