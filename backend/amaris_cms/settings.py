@@ -142,8 +142,7 @@ DATABASES = {
 
 SUPABASE_DATABASE_REQUIRED = bool(os.getenv("RENDER")) or env_bool("SUPABASE_DATABASE_REQUIRED", False)
 SUPABASE_DATABASE_PROJECT_REF = (
-    os.getenv("SUPABASE_DATABASE_PROJECT_REF")
-    or os.getenv("SUPABASE_PROJECT_REF", "")
+    os.getenv("SUPABASE_DATABASE_PROJECT_REF") or os.getenv("SUPABASE_PROJECT_REF", "")
 ).strip()
 if not DEBUG and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
     raise RuntimeError("PostgreSQL is required when DJANGO_DEBUG is false.")
