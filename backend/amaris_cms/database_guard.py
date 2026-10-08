@@ -21,7 +21,7 @@ def validate_supabase_database_url(url: str, *, ssl_required: bool, project_ref:
         port = parsed.port
         username = parsed.username or ""
         has_password = bool(parsed.password)
-    except ValueError as exc:
+    except ValueError:
         raise RuntimeError("Invalid Supabase DATABASE_URL.") from None
 
     if parsed.scheme not in {"postgresql", "postgres"} or not username or not has_password:
