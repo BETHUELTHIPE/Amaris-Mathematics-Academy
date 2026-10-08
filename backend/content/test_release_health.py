@@ -70,9 +70,7 @@ class StagingSchemaReadinessTests(SimpleTestCase):
 
     @patch.dict(os.environ, {"ACCEPTANCE_GITHUB_OIDC_ENABLED": "true"})
     def test_non_oidc_student_is_denied(self):
-        response = StagingSchemaReadinessView.as_view()(
-            self.make_request(provider="supabase")
-        )
+        response = StagingSchemaReadinessView.as_view()(self.make_request(provider="supabase"))
         self.assertEqual(response.status_code, 403)
 
     @patch.dict(os.environ, {"ACCEPTANCE_GITHUB_OIDC_ENABLED": "false"})
