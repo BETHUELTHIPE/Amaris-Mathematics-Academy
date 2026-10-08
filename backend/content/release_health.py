@@ -44,9 +44,7 @@ class StagingSchemaReadinessView(APIView):
         }
         auth = request.auth if isinstance(request.auth, dict) else {}
         if not enabled or auth.get("provider") != "github-actions-oidc":
-            raise PermissionDenied(
-                "Staging schema checks require the configured GitHub Actions identity."
-            )
+            raise PermissionDenied("Staging schema checks require the configured GitHub Actions identity.")
 
         if connection.vendor != "postgresql":
             return Response(
