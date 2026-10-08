@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .release_health import StagingSchemaReadinessView
 from .live_class_views import LiveClassBookingStatusView, LiveClassCheckoutView, LiveClassSlotView
 from .payfast_views import PayFastITNView
 from .student_views import (
@@ -43,6 +44,11 @@ urlpatterns = [
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
+    path(
+        "student/acceptance/schema/",
+        StagingSchemaReadinessView.as_view(),
+        name="staging-schema-readiness",
+    ),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
     path(
         "student/acceptance/payments/<str:reference>/complete/",
