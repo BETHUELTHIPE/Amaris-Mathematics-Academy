@@ -31,8 +31,8 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
   }
 
   const workerBindings = env as unknown as { CMS_API_URL?: string };
-  const cmsBaseUrl = (workerBindings.CMS_API_URL || process.env.CMS_API_URL)?.replace(/\\/$/, "");
-  if (!cmsBaseUrl || !/^https:\\/\\//.test(cmsBaseUrl)) {
+  const cmsBaseUrl = (workerBindings.CMS_API_URL || process.env.CMS_API_URL)?.replace(/\/$/, "");
+  if (!cmsBaseUrl || !cmsBaseUrl.startsWith("https://")) {
     console.error("contact_enquiry_service_unconfigured");
     return { status: "error", message: "We could not send your enquiry right now. Please try again or contact us by phone or email." };
   }
