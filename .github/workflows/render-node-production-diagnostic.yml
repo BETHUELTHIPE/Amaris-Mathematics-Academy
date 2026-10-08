@@ -117,6 +117,14 @@ jobs:
           code=$(curl --silent --show-error --output /tmp/video-checkout.json --write-out '%{http_code}' --max-time 20 \
             -X POST -F 'topic=Synthetic test only' http://127.0.0.1:4100/api/video-requests/checkout)
           test "$code" = "401"
+          code=$(curl --silent --show-error --output /tmp/video-checkout-same-origin.json --write-out '%{http_code}' --max-time 20 \
+            -X POST -H 'Origin: https://127.0.0.1:4100' -H 'X-Forwarded-Proto: https' \
+            http://127.0.0.1:4100/api/video-requests/checkout)
+          test "$code" = "401"
+          code=$(curl --silent --show-error --output /tmp/video-checkout-cross-origin.json --write-out '%{http_code}' --max-time 20 \
+            -X POST -H 'Origin: https://attacker.invalid' -H 'X-Forwarded-Proto: https' \
+            http://127.0.0.1:4100/api/video-requests/checkout)
+          test "$code" = "403"
 
       - name: Stop production server
         if: always()
