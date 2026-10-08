@@ -43,8 +43,7 @@ class Command(BaseCommand):
         if blockers:
             unique = ", ".join(sorted(set(blockers)))
             raise CommandError(
-                "Automatic migration blocked: manual review and backup required "
-                f"for operation types: {unique}."
+                "Automatic migration blocked: manual review and backup required " f"for operation types: {unique}."
             )
 
         self.stdout.write(f"Safe migration preflight passed ({len(pending)} pending).")
