@@ -1,5 +1,5 @@
 const DEFAULT_SITE_URL =
-  "https://amaris-mathematics-academy-live-students.onrender.com";
+  "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site";
 
 function readEnvironmentValue(key: string): string | undefined {
   if (typeof process !== "undefined") {

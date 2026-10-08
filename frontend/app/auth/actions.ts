@@ -77,7 +77,7 @@ export async function registerAction(formData: FormData) {
       email: values.email,
       password: values.password,
       options: {
-        emailRedirectTo: `${getSiteUrl()}/login?verified=1`,
+        emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
         data: {
           first_name: values.firstName,
           last_name: values.lastName,
@@ -161,12 +161,12 @@ export async function verifyEmailAction(formData: FormData) {
   const { error } = await supabase.auth.verifyOtp({
     email,
     token,
-    type: "email",
+    type: "signup",
   });
 
   if (error) {
     redirect(
-      `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("This verification code is no longer active. If you already used the confirmation link, your email is verified — log in to continue. Otherwise, request a new verification email.")}`,
+      `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("That code is invalid or has expired. Request a new code and try again.")}`,
     );
   }
 
@@ -190,7 +190,7 @@ export async function resendVerificationAction(formData: FormData) {
       type: "signup",
       email,
       options: {
-        emailRedirectTo: `${getSiteUrl()}/login?verified=1`,
+        emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/dashboard`,
       },
     });
   } catch {
@@ -213,7 +213,7 @@ export async function loginAction(formData: FormData) {
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
-    next: String(formData.get("next") ?? ""),
+    next: formData.get("next"),
   });
   if (!parsed.success) {
     redirectWithMessage(
@@ -246,106 +246,6 @@ export async function loginAction(formData: FormData) {
   redirect(safeRelativePath(parsed.data.next));
 }
 
-export async function googleAuthAction(formData: FormData) {
-  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
-    },
-  });
-
-  if (error || !data.url) {
-    console.error("student_google_auth_failed", {
-      code: safeAuthErrorCode(error?.code),
-      status: error?.status,
-    });
-    redirectWithMessage(
-      "/login",
-      "error",
-      "Google sign-in is temporarily unavailable. Please use your email and password or try again shortly.",
-    );
-  }
-
-  redirect(data.url);
-}
-
-export async function linkedInAuthAction(formData: FormData) {
-  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "linkedin_oidc",
-    options: {
-      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
-    },
-  });
-
-  if (error || !data.url) {
-    console.error("student_linkedin_auth_failed", {
-      code: safeAuthErrorCode(error?.code),
-      status: error?.status,
-    });
-    redirectWithMessage(
-      "/login",
-      "error",
-      "LinkedIn sign-in is temporarily unavailable. Please use Google, email and password, or try again shortly.",
-    );
-  }
-
-  redirect(data.url);
-}
-
-export async function facebookAuthAction(formData: FormData) {
-  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "facebook",
-    options: {
-      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
-    },
-  });
-
-  if (error || !data.url) {
-    console.error("student_facebook_auth_failed", {
-      code: safeAuthErrorCode(error?.code),
-      status: error?.status,
-    });
-    redirectWithMessage(
-      "/login",
-      "error",
-      "Facebook sign-in is temporarily unavailable. Please use Google, LinkedIn, GitHub, email and password, or try again shortly.",
-    );
-  }
-
-  redirect(data.url);
-}
-
-export async function githubAuthAction(formData: FormData) {
-  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "github",
-    options: {
-      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
-    },
-  });
-
-  if (error || !data.url) {
-    console.error("student_github_auth_failed", {
-      code: safeAuthErrorCode(error?.code),
-      status: error?.status,
-    });
-    redirectWithMessage(
-      "/login",
-      "error",
-      "GitHub sign-in is temporarily unavailable. Please use Google, LinkedIn, Facebook, email and password, or try again shortly.",
-    );
-  }
-
-  redirect(data.url);
-}
-
 export async function forgotPasswordAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!z.string().email().safeParse(email).success) {
@@ -361,15 +261,8 @@ export async function forgotPasswordAction(formData: FormData) {
     redirectTo: `${getSiteUrl()}/auth/confirm?next=/reset-password`,
   });
 
-  if (error) {
-    if (/rate limit|too many/i.test(error.message)) {
-      redirect("/errors/429");
-    }
-    redirectWithMessage(
-      "/forgot-password",
-      "error",
-      "We could not request a reset email right now. Please try again.",
-    );
+  if (error && /rate limit|too many/i.test(error.message)) {
+    redirect("/errors/429");
   }
 
   // The same response is shown whether the account exists or not.

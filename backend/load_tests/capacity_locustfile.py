@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ from locust.runners import MasterRunner, WorkerRunner
 
 from load_tests.capacity import CapacityThresholds, env_int, validate_capacity_level
 from load_tests.config import Endpoints, env_bool, env_csv, validate_target
+from load_tests.oidc import ActionsOidcBearer
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,10 +33,17 @@ RESULT_PATH = Path(
 
 ENDPOINTS = Endpoints.from_environment()
 AUTH_BEARER = os.getenv("LOADTEST_AUTH_BEARER", "").strip()
+OIDC_REQUEST_URL = os.getenv("ACTIONS_ID_TOKEN_REQUEST_URL", "").strip()
+OIDC_REQUEST_TOKEN = os.getenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "").strip()
 COOKIE_HEADER = os.getenv("LOADTEST_COOKIE_HEADER", "").strip()
 SESSION_COOKIE_NAME = os.getenv("LOADTEST_SESSION_COOKIE_NAME", "").strip()
 SESSION_COOKIE_VALUE = os.getenv("LOADTEST_SESSION_COOKIE_VALUE", "").strip()
 ACCEPTANCE_HEADER = env_bool("LOADTEST_ACCEPTANCE_HEADER", False)
+OIDC_BEARER = ActionsOidcBearer(
+    initial_token=AUTH_BEARER,
+    request_url=OIDC_REQUEST_URL if ACCEPTANCE_HEADER else "",
+    request_token=OIDC_REQUEST_TOKEN if ACCEPTANCE_HEADER else "",
+)
 
 _STARTED_AT = 0.0
 _MAX_USERS_OBSERVED = 0
@@ -51,14 +60,16 @@ def _auth_available() -> bool:
     return bool(AUTH_BEARER or COOKIE_HEADER or (SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE))
 
 
-def _request_headers(*, protected: bool) -> dict[str, str]:
+def _request_headers(*, protected: bool, synthetic_student: str = "") -> dict[str, str]:
     if not protected:
         return {}
     headers: dict[str, str] = {}
     if AUTH_BEARER:
-        headers["Authorization"] = f"Bearer {AUTH_BEARER}"
+        headers["Authorization"] = f"Bearer {OIDC_BEARER.current()}"
         if ACCEPTANCE_HEADER:
             headers["X-Amaris-Acceptance"] = "github-actions"
+            if synthetic_student:
+                headers["X-Amaris-Acceptance-Student"] = synthetic_student
     elif COOKIE_HEADER:
         headers["Cookie"] = COOKIE_HEADER
     return headers
@@ -76,7 +87,10 @@ def _checked_get(
     with user.client.get(
         path,
         name=name,
-        headers=_request_headers(protected=protected),
+        headers=_request_headers(
+            protected=protected,
+            synthetic_student=getattr(user, "synthetic_student", ""),
+        ),
         catch_response=True,
         allow_redirects=not protected,
     ) as response:
@@ -115,6 +129,36 @@ class CapacityStudentUser(FastHttpUser):
     wait_time = between(1.0, 2.0)
 
     def on_start(self) -> None:
+        self.payment_status_path = ENDPOINTS.payment_status
+        if ACCEPTANCE_HEADER:
+            self.synthetic_student = str(uuid.uuid4())
+            headers = _request_headers(protected=True, synthetic_student=self.synthetic_student)
+            with self.client.post(
+                "/api/v1/student/acceptance/seed/",
+                headers=headers,
+                json={},
+                name="00 Synthetic student setup",
+                catch_response=True,
+            ) as response:
+                if response.status_code != 200:
+                    response.failure(f"synthetic student seed returned {response.status_code}")
+                    raise RuntimeError("Could not seed a distinct synthetic student.")
+                course_slug = response.json()["course_slug"]
+            with self.client.post(
+                "/api/v1/student/checkout/",
+                headers=_request_headers(protected=True, synthetic_student=self.synthetic_student),
+                json={
+                    "course_slug": course_slug,
+                    "idempotency_key": f"capacity-{self.synthetic_student.replace('-', '')}",
+                },
+                name="00 Synthetic pending checkout",
+                catch_response=True,
+            ) as response:
+                if response.status_code != 201:
+                    response.failure(f"synthetic checkout returned {response.status_code}")
+                    raise RuntimeError("Could not create a synthetic pending checkout.")
+                reference = response.json()["payment_reference"]
+            self.payment_status_path = f"/api/v1/student/payments/{reference}/"
         if SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE and not (AUTH_BEARER or COOKIE_HEADER):
             self.client.cookies.set(
                 SESSION_COOKIE_NAME,
@@ -143,7 +187,7 @@ class CapacityStudentUser(FastHttpUser):
     def payment_status_polling(self) -> None:
         _checked_get(
             self,
-            ENDPOINTS.payment_status,
+            self.payment_status_path,
             "11 Payment-status polling",
             protected=True,
         )

@@ -144,24 +144,53 @@ class CeleryIntegrationTests(SimpleTestCase):
 
 
 class StorageIntegrationTests(SimpleTestCase):
-    def test_django_storage_abstraction_round_trip_uses_safe_local_adapter(self):
+    def test_runtime_exposes_separate_cms_and_student_storage_aliases(self):
+        self.assertIn("default", settings.STORAGES)
+        self.assertIn("student_data", settings.STORAGES)
+
+    def test_django_storage_abstraction_round_trip_keeps_cms_and_student_data_separate(self):
         with tempfile.TemporaryDirectory(prefix="amaris-storage-integration-") as media_root:
+            cms_root = Path(media_root) / "cms"
+            student_root = Path(media_root) / "student-data"
             storage_settings = {
-                "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+                "default": {
+                    "BACKEND": "django.core.files.storage.FileSystemStorage",
+                    "OPTIONS": {"location": cms_root},
+                },
+                "student_data": {
+                    "BACKEND": "django.core.files.storage.FileSystemStorage",
+                    "OPTIONS": {"location": student_root},
+                },
                 "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
             }
             with override_settings(MEDIA_ROOT=media_root, STORAGES=storage_settings):
-                storage = storages["default"]
                 payload = b"amaris-storage-integration"
-                saved_name = storage.save(
+                cms_storage = storages["default"]
+                student_storage = storages["student_data"]
+
+                cms_name = cms_storage.save(
                     f"integration/{uuid.uuid4().hex}.txt",
                     ContentFile(payload),
                 )
-                self.assertTrue(storage.exists(saved_name))
-                with storage.open(saved_name, "rb") as stored_file:
+                student_name = student_storage.save(
+                    f"integration/{uuid.uuid4().hex}.txt",
+                    ContentFile(payload),
+                )
+
+                self.assertTrue(cms_storage.exists(cms_name))
+                self.assertTrue(student_storage.exists(student_name))
+                self.assertTrue((cms_root / cms_name).exists())
+                self.assertTrue((student_root / student_name).exists())
+
+                with cms_storage.open(cms_name, "rb") as stored_file:
                     self.assertEqual(stored_file.read(), payload)
-                storage.delete(saved_name)
-                self.assertFalse(storage.exists(saved_name))
+                with student_storage.open(student_name, "rb") as stored_file:
+                    self.assertEqual(stored_file.read(), payload)
+
+                cms_storage.delete(cms_name)
+                student_storage.delete(student_name)
+                self.assertFalse(cms_storage.exists(cms_name))
+                self.assertFalse(student_storage.exists(student_name))
 
 
 class FrontendApiContractIntegrationTests(TestCase):

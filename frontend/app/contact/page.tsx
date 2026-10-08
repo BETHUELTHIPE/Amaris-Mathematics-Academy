@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Clock3, Mail, MapPin, Phone } from "lucide-react";
+import { Clock3, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { EnquiryForm } from "@/components/site/enquiry-form";
@@ -14,6 +14,7 @@ export default async function ContactPage() {
   const academyBrand = await getManagedBrand();
   const contactCards = [
     { Icon: Phone, label: "Call us", value: academyBrand.phoneDisplay, href: academyBrand.phoneHref },
+    { Icon: MessageCircle, label: "WhatsApp", value: academyBrand.whatsappDisplay, href: academyBrand.whatsappHref },
     { Icon: Mail, label: "Email us", value: academyBrand.email, href: academyBrand.emailHref },
     { Icon: Clock3, label: "Support hours", value: academyBrand.hours },
     { Icon: MapPin, label: "Registered office", value: academyBrand.address, href: academyBrand.addressHref },
