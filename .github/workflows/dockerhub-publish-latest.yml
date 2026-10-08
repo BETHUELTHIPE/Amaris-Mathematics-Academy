@@ -1,0 +1,104 @@
+name: Docker Hub Publish Latest
+
+on:
+  push:
+    branches:
+      - ops/dockerhub-publish-20261008
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-publish-latest
+  cancel-in-progress: false
+
+env:
+  REGISTRY_IMAGE: docker.io/bethuelm/amaris-mathematics-academy
+  SOURCE_SHA: 19a47edf7ffcb1e7961f69887263ecee13d676c3
+
+jobs:
+  build-scan-push:
+    name: Build, scan, and push immutable + latest image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build local scan candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --platform linux/amd64 \
+            --label org.opencontainers.image.revision="$SOURCE_SHA" \
+            --tag amaris-backend:scan \
+            backend
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: amaris-backend:scan
+          format: cyclonedx-json
+          output-file: amaris-backend-sbom.cdx.json
+
+      - name: Scan fixable HIGH and CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: amaris-backend:scan
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          scanners: vuln
+
+      - name: Store SBOM evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: dockerhub-publish-sbom-${{ env.SOURCE_SHA }}
+          path: amaris-backend-sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: bethuelm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - id: push
+        name: Build and push multi-platform release image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          provenance: true
+          sbom: true
+          tags: |
+            ${{ env.REGISTRY_IMAGE }}:${{ env.SOURCE_SHA }}
+            ${{ env.REGISTRY_IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.revision=${{ env.SOURCE_SHA }}
+            org.opencontainers.image.source=https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+
+      - name: Verify remote immutable and latest manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "$REGISTRY_IMAGE:$SOURCE_SHA"
+          docker buildx imagetools inspect "$REGISTRY_IMAGE:latest"
+
+      - name: Pull back immutable amd64 image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull --platform linux/amd64 "$REGISTRY_IMAGE:$SOURCE_SHA"
+          revision="$(docker image inspect "$REGISTRY_IMAGE:$SOURCE_SHA" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+          test "$revision" = "$SOURCE_SHA"
