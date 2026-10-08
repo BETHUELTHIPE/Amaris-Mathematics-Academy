@@ -1,4 +1,4 @@
-import { requireVerifiedStudent } from "@/lib/auth";
+import { getStudentIdentity } from "@/lib/auth";
 import { streamStudentRequestedVideo } from "@/lib/student-api";
 
 export const dynamic = "force-dynamic";
@@ -6,12 +6,29 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   const reference = new URL(request.url).searchParams.get("reference")?.trim() ?? "";
   if (!/^[A-Za-z0-9_-]{1,120}$/.test(reference)) {
-    return new Response("Invalid video request reference.", { status: 400 });
+    return new Response("Invalid video request reference.", {
+      status: 400,
+      headers: { "Cache-Control": "private, no-store" },
+    });
   }
-  await requireVerifiedStudent(`/request-a-video/confirmation?reference=${encodeURIComponent(reference)}`);
+  const student = await getStudentIdentity();
+  if (!student || !student.emailVerified) {
+    const location = student
+      ? `/verify-email?email=${encodeURIComponent(student.email)}`
+      : `/login?next=${encodeURIComponent(`/request-a-video/confirmation?reference=${encodeURIComponent(reference)}`)}`;
+    return new Response(null, {
+      status: 307,
+      headers: { Location: location, "Cache-Control": "private, no-store" },
+    });
+  }
   try {
     const video = await streamStudentRequestedVideo(reference);
-    if (!video.ok) return new Response("Video unavailable.", { status: 404 });
+    if (!video.ok) {
+      return new Response("Video unavailable.", {
+        status: 404,
+        headers: { "Cache-Control": "private, no-store" },
+      });
+    }
     return new Response(video.body, {
       status: 200,
       headers: {

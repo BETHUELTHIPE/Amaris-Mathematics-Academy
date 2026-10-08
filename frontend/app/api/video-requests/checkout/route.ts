@@ -6,8 +6,17 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin");
-  if (origin && origin !== request.nextUrl.origin) {
-    return NextResponse.json({ detail: "Cross-site video requests are not allowed." }, { status: 403 });
+  const expectedOrigin = new URL(request.nextUrl.toString());
+  // Render terminates HTTPS before forwarding the request to the Node server.
+  const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if (forwardedProtocol === "https" || forwardedProtocol === "http") {
+    expectedOrigin.protocol = `${forwardedProtocol}:`;
+  }
+  if (origin && origin !== expectedOrigin.origin) {
+    return NextResponse.json(
+      { detail: "Cross-site video requests are not allowed." },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
   }
   try {
     const student = await getStudentIdentity();
