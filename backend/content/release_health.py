@@ -8,7 +8,8 @@ import os
 
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from rest_framework import status
+from drf_spectacular.utils import extend_schema
+from rest_framework import serializers, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -17,10 +18,23 @@ from rest_framework.views import APIView
 from .authentication import SupabaseStudentAuthentication
 
 
+class StagingSchemaReadinessSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    database = serializers.CharField()
+    pending_migrations = serializers.IntegerField(allow_null=True)
+
+
 class StagingSchemaReadinessView(APIView):
     authentication_classes = (SupabaseStudentAuthentication,)
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        request=None,
+        responses={
+            200: StagingSchemaReadinessSerializer,
+            503: StagingSchemaReadinessSerializer,
+        },
+    )
     def get(self, request):
         enabled = os.getenv("ACCEPTANCE_GITHUB_OIDC_ENABLED", "").lower() in {
             "1",
@@ -30,7 +44,9 @@ class StagingSchemaReadinessView(APIView):
         }
         auth = request.auth if isinstance(request.auth, dict) else {}
         if not enabled or auth.get("provider") != "github-actions-oidc":
-            raise PermissionDenied("Staging schema checks require the configured GitHub Actions identity.")
+            raise PermissionDenied(
+                "Staging schema checks require the configured GitHub Actions identity."
+            )
 
         if connection.vendor != "postgresql":
             return Response(
