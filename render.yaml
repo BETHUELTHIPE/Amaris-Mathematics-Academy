@@ -73,6 +73,10 @@ services:
         value: https://amaris-production-web.onrender.com/api/v1/payfast/itn/
       - key: DATABASE_URL
         sync: false # Supabase Postgres session-pooler URL, supplied in Render secrets
+      - key: SUPABASE_DATABASE_REQUIRED
+        value: "true"
+      - key: SUPABASE_PROJECT_REF
+        value: epkcuseloinygkakxxdu
       - key: DATABASE_SCHEMA
         value: public
       - key: DATABASE_SSL_REQUIRED
