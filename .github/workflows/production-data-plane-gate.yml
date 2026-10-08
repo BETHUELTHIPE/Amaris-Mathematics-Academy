@@ -26,7 +26,9 @@ jobs:
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       DJANGO_CSRF_TRUSTED_ORIGINS: https://example.test
       CORS_ALLOWED_ORIGINS: https://example.test
+      DATABASE_URL: sqlite:////tmp/amaris-production-gate.sqlite3
       DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
       SUPABASE_STORAGE_ENABLED: "false"
       PAYFAST_MODE: sandbox
       PAYFAST_MERCHANT_ID: synthetic
@@ -45,6 +47,8 @@ jobs:
         run: python manage.py check --deploy
       - name: Migration consistency
         run: python manage.py makemigrations --check --dry-run
+      - name: Supabase-only database policy
+        run: python manage.py test tests.test_supabase_database_policy
       - name: Payment and invoice archive regression
         run: python manage.py test content.test_payments content.test_payfast_security content.test_invoice_archive
       - name: Student authorization regression
@@ -66,7 +70,6 @@ jobs:
 
           data = yaml.safe_load(pathlib.Path("render.yaml").read_text())
           services = {item["name"]: item for item in data["services"]}
-          databases = {item["name"]: item for item in data["databases"]}
 
           required_services = {
               "amaris-production-web",
@@ -78,7 +81,7 @@ jobs:
           }
           missing = required_services - services.keys()
           assert not missing, f"Missing services: {sorted(missing)}"
-          assert "amaris-production-postgres" in databases
+          assert not data.get("databases"), "Render Postgres must not be declared; protected environments use Supabase only"
 
           web = services["amaris-production-web"]
           assert web["runtime"] == "python"
@@ -89,20 +92,24 @@ jobs:
           assert "migrate --noinput" in web["preDeployCommand"]
 
           env = {item["key"]: item for item in web["envVars"]}
-          assert env["DATABASE_URL"]["fromDatabase"]["name"] == "amaris-production-postgres"
+          assert env["DATABASE_URL"].get("sync") is False, "DATABASE_URL must be a Render secret"
+          assert env["SUPABASE_DATABASE_REQUIRED"]["value"] == "true"
+          assert env["SUPABASE_PROJECT_REF"]["value"] == "epkcuseloinygkakxxdu"
+          assert env["DATABASE_SSL_REQUIRED"]["value"] == "true"
           assert env["CELERY_BROKER_URL"]["fromService"]["name"] == "amaris-production-broker"
           assert env["DJANGO_CACHE_URL"]["fromService"]["name"] == "amaris-production-cache"
-          assert env["SUPABASE_STORAGE_ENABLED"]["value"] == "true"
+          assert env["SUPABASE_S3_REQUIRED"]["value"] == "true"
           assert env["PAYFAST_MODE"]["value"] == "live"
 
           for name in (
-              "SUPABASE_STORAGE_S3_ACCESS_KEY_ID",
-              "SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY",
+              "DATABASE_URL",
+              "SUPABASE_S3_ACCESS_KEY_ID",
+              "SUPABASE_S3_SECRET_ACCESS_KEY",
               "PAYFAST_MERCHANT_ID",
               "PAYFAST_MERCHANT_KEY",
               "PAYFAST_PASSPHRASE",
           ):
               assert env[name].get("sync") is False, f"{name} must remain a Render secret"
 
-          print("Production Blueprint wiring validated.")
+          print("Production Blueprint wiring validated for Supabase-only PostgreSQL.")
           PY
