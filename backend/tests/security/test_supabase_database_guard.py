@@ -23,7 +23,7 @@ class SupabaseOnlyDatabaseGuardTests(SimpleTestCase):
         for url in (
             "sqlite:///db.sqlite3",
             "postgresql://user:password@render-postgres.internal:5432/amaris",
-            f"postgresql://postgres:password@db.otherproject.supabase.co:5432/postgres",
+            "postgresql://postgres:password@db.otherproject.supabase.co:5432/postgres",
             "",
         ):
             with self.subTest(url=url.split("@")[-1]), self.assertRaises(RuntimeError):
