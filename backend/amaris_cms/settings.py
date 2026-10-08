@@ -316,7 +316,13 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
-    "DEFAULT_THROTTLE_RATES": {"anon": "120/hour", "user": "1000/hour", "enquiries": "5/hour", "assistant": "30/hour"},
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "120/hour",
+        "user": "1000/hour",
+        "enquiries": "5/hour",
+        "assistant": "30/hour",
+        "video_requests": "20/hour",
+    },
 }
 
 SPECTACULAR_SETTINGS = {
@@ -428,6 +434,15 @@ CELERY_BEAT_SCHEDULE = {
     },
     "expire-live-class-holds": {
         "task": "content.tasks.expire_live_class_holds",
+        "schedule": 300.0,
+    },
+    "deliver-video-request-notifications": {
+        "task": "content.tasks.deliver_video_request_notifications",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
+    "expire-unpaid-video-requests": {
+        "task": "content.tasks.expire_unpaid_video_requests",
         "schedule": 300.0,
     },
 }

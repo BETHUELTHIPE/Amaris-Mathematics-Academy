@@ -24,20 +24,21 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
-const protectedPrefixes = ["/dashboard", "/documents", "/checkout", "/api/auth-state"];
+const protectedPrefixes = ["/dashboard", "/documents", "/checkout", "/book-online-live-class", "/request-a-video", "/api/video-requests", "/api/auth-state"];
 const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const csp = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
-  "form-action 'self'",
+  "form-action 'self' https://www.payfast.co.za https://sandbox.payfast.co.za",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self' 'unsafe-inline'",
   "connect-src 'self' https://*.supabase.co",
   "media-src 'self' https:",
+  "frame-src 'self' https://www.youtube-nocookie.com",
   "upgrade-insecure-requests",
   "report-uri /api/csp-report",
 ].join("; ");
@@ -56,7 +57,11 @@ async function rateLimitResponse(request: Request, env: Env, pathname: string): 
   } else if (pathname === "/forgot-password" || pathname === "/reset-password") {
     limiter = env.PASSWORD_RESET_RATE_LIMITER;
     scope = "password-reset";
-  } else if (pathname === "/checkout" || pathname.startsWith("/checkout/")) {
+  } else if (
+    pathname === "/checkout" || pathname.startsWith("/checkout/") ||
+    pathname === "/book-online-live-class/checkout" ||
+    pathname === "/api/video-requests/checkout"
+  ) {
     limiter = env.CHECKOUT_RATE_LIMITER;
     scope = "checkout";
   }
