@@ -6,6 +6,8 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
+from amaris_cms.database_policy import assert_supabase_database
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -137,6 +139,11 @@ DATABASES = {
         ssl_require=env_bool("DATABASE_SSL_REQUIRED", False),
     )
 }
+
+SUPABASE_DATABASE_REQUIRED = env_bool("SUPABASE_DATABASE_REQUIRED", False)
+SUPABASE_PROJECT_REF = os.getenv("SUPABASE_PROJECT_REF", "").strip()
+if SUPABASE_DATABASE_REQUIRED:
+    assert_supabase_database(DATABASES["default"], SUPABASE_PROJECT_REF)
 if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
     database_schema = os.getenv("DATABASE_SCHEMA", "").strip()
     if database_schema and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", database_schema):
