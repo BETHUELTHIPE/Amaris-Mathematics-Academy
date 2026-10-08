@@ -6,6 +6,8 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
+from .database import validate_supabase_database
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -137,6 +139,15 @@ DATABASES = {
         ssl_require=env_bool("DATABASE_SSL_REQUIRED", False),
     )
 }
+SUPABASE_DATABASE_REQUIRED = bool(os.getenv("RENDER")) or env_bool("SUPABASE_DATABASE_REQUIRED")
+if not DEBUG and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
+    raise RuntimeError("PostgreSQL is required when DJANGO_DEBUG is false.")
+if SUPABASE_DATABASE_REQUIRED:
+    validate_supabase_database(
+        DATABASES["default"],
+        os.getenv("SUPABASE_URL", ""),
+        os.getenv("SUPABASE_DATABASE_PROJECT_REF", ""),
+    )
 if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
     database_schema = os.getenv("DATABASE_SCHEMA", "").strip()
     if database_schema and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", database_schema):

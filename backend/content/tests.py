@@ -217,7 +217,8 @@ class PermissionTests(TestCase):
 
 
 class HealthAndMetricsTests(TestCase):
-    def test_liveness_and_readiness_do_not_disclose_infrastructure(self):
+    @patch("amaris_cms.urls._postgresql_available", return_value=True)
+    def test_liveness_and_readiness_do_not_disclose_infrastructure(self, _database):
         live = self.client.get(reverse("health-live"), secure=True)
         ready = self.client.get(reverse("health-ready"), secure=True)
 
@@ -229,7 +230,8 @@ class HealthAndMetricsTests(TestCase):
         self.assertNotContains(ready, "redis", status_code=200)
 
     @patch("amaris_cms.urls.Redis.from_url", side_effect=ConnectionError)
-    def test_redis_failure_degrades_dependencies_but_not_readiness(self, _redis):
+    @patch("amaris_cms.urls._postgresql_available", return_value=True)
+    def test_redis_failure_degrades_dependencies_but_not_readiness(self, _database, _redis):
         ready = self.client.get(reverse("health-ready"), secure=True)
         dependencies = self.client.get(reverse("health-dependencies"), secure=True)
 
@@ -238,6 +240,28 @@ class HealthAndMetricsTests(TestCase):
         self.assertEqual(dependencies.json()["status"], "degraded")
         self.assertTrue(dependencies.json()["dependencies"]["postgresql"])
         self.assertFalse(dependencies.json()["dependencies"]["redis"])
+
+    @patch("amaris_cms.urls.Redis.from_url", side_effect=ConnectionError)
+    @patch("amaris_cms.urls.connection")
+    def test_sqlite_never_passes_postgresql_readiness(self, database, _redis):
+        database.vendor = "sqlite"
+        self.assertEqual(self.client.get(reverse("health-ready"), secure=True).status_code, 503)
+        response = self.client.get(reverse("health-dependencies"), secure=True)
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["dependencies"]["postgresql"])
+        self.assertEqual(response.json()["database"]["engine"], "sqlite")
+        database.cursor.assert_not_called()
+
+    @override_settings(SUPABASE_DATABASE_REQUIRED=True)
+    @patch("amaris_cms.urls.Redis.from_url", side_effect=ConnectionError)
+    @patch("amaris_cms.urls.connection")
+    def test_configured_supabase_connection_is_queried_and_identified(self, database, _redis):
+        database.vendor = "postgresql"
+        database.cursor.return_value.__enter__.return_value.fetchone.return_value = (1,)
+        response = self.client.get(reverse("health-dependencies"), secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["database"], {"engine": "postgresql", "provider": "supabase"})
+        database.cursor.return_value.__enter__.return_value.execute.assert_called_once_with("SELECT 1")
 
     def test_prometheus_metrics_endpoint_is_available_to_private_scraper(self):
         response = self.client.get("/metrics", secure=True)

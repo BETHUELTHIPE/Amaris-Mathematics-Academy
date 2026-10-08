@@ -2,7 +2,6 @@
 
 import { z } from "zod";
 import { env } from "cloudflare:workers";
-import { getD1 } from "@/db";
 import type { EnquiryState } from "@/app/contact/state";
 
 const enquirySchema = z.object({
@@ -34,47 +33,27 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
   try {
     const workerBindings = env as unknown as { CMS_API_URL?: string };
     const cmsBaseUrl = (workerBindings.CMS_API_URL || process.env.CMS_API_URL)?.replace(/\/$/, "");
-    if (cmsBaseUrl) {
-      try {
-        const cmsResponse = await fetch(`${cmsBaseUrl}/enquiries/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({
-            name: parsed.data.fullName,
-            email: parsed.data.email.toLowerCase(),
-            phone: parsed.data.phone,
-            subject: parsed.data.enquiryType.replaceAll("-", " "),
-            message: parsed.data.message,
-          }),
-          signal: AbortSignal.timeout(6_000),
-        });
-        if (cmsResponse.ok) {
-          return { status: "success", message: "Thank you. Your enquiry has been received, and the Amaris team will respond as soon as possible." };
-        }
-        console.error("Django CMS rejected contact enquiry", cmsResponse.status);
-      } catch (cmsError) {
-        console.error("Django CMS contact endpoint unavailable", cmsError);
-      }
+    if (!cmsBaseUrl) {
+      throw new Error("Contact endpoint is not configured");
     }
-
-    const db = getD1();
-    await db.prepare(`
-      INSERT INTO contact_enquiries (id, full_name, email, phone, enquiry_type, message, consent_given, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      crypto.randomUUID(),
-      parsed.data.fullName,
-      parsed.data.email.toLowerCase(),
-      parsed.data.phone || null,
-      parsed.data.enquiryType,
-      parsed.data.message,
-      1,
-      "new",
-    ).run();
-
-    return { status: "success", message: "Thank you. Your enquiry has been received, and the Amaris team will respond as soon as possible." };
-  } catch (error) {
-    console.error("Unable to save contact enquiry", error);
-    return { status: "error", message: "We could not send your enquiry right now. Please try again or contact us by phone or email." };
+    const cmsResponse = await fetch(`${cmsBaseUrl}/enquiries/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        name: parsed.data.fullName,
+        email: parsed.data.email.toLowerCase(),
+        phone: parsed.data.phone,
+        subject: parsed.data.enquiryType.replaceAll("-", " "),
+        message: parsed.data.message,
+      }),
+      signal: AbortSignal.timeout(6_000),
+    });
+    if (cmsResponse.ok) {
+      return { status: "success", message: "Thank you. Your enquiry has been received, and the Amaris team will respond as soon as possible." };
+    }
+    console.error("Django CMS rejected contact enquiry", { status: cmsResponse.status });
+  } catch {
+    console.error("Contact endpoint unavailable");
   }
+  return { status: "error", message: "We could not send your enquiry right now. Please try again or contact us by phone or email." };
 }
