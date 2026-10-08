@@ -2,7 +2,7 @@
 
 import os
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
