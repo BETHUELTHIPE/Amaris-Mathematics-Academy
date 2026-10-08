@@ -1,9 +1,9 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .release_health import StagingSchemaReadinessView
 from .live_class_views import LiveClassBookingStatusView, LiveClassCheckoutView, LiveClassSlotView
 from .payfast_views import PayFastITNView
+from .release_health import StagingSchemaReadinessView
 from .student_views import (
     AcceptancePaymentCompleteView,
     AcceptanceSeedView,
