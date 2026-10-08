@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
+import { registerHooks } from "node:module";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === "cloudflare:workers") {
+      return {
+        shortCircuit: true,
+        url: "data:text/javascript,export const env = {};",
+      };
+    }
+    return nextResolve(specifier, context);
+  },
+});
 
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
@@ -88,7 +101,9 @@ test("renders branded recovery pages without technical details", async () => {
 test("keeps the optimized hero background photo visible on the homepage", async () => {
   const homepageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(homepageSource, /src="\/amaris-math-hero\.webp"/);
-  assert.match(homepageSource, /opacity-90/);
+  assert.match(homepageSource, /fetchPriority="high"/);
+  assert.match(homepageSource, /loading="eager"/);
+  assert.match(homepageSource, /decoding="async"/);
 });
 
 test("protected application responses are never publicly cacheable", async () => {
@@ -121,4 +136,11 @@ test("protected application responses are never publicly cacheable", async () =>
   for (const prefix of ["/dashboard", "/documents", "/checkout", "/api/auth-state"]) {
     assert.ok(workerSource.includes(prefix), `Missing protected prefix ${prefix}`);
   }
+});
+
+
+test("keeps the founder Facebook profile link on the About page", async () => {
+  const aboutSource = await readFile(new URL("../app/about/page.tsx", import.meta.url), "utf8");
+  assert.match(aboutSource, /https:\/\/www\.facebook\.com\/share\/19dqWUxjvh/);
+  assert.match(aboutSource, /label: "Facebook"/);
 });

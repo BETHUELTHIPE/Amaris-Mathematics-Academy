@@ -18,7 +18,5 @@ class SupabaseS3Storage(S3Storage):
     def _create_session(self):
         session = super()._create_session()
         session.events.unregister("before-parameter-build.s3", validate_bucket_name)
-        session.events.register(
-            "before-parameter-build.s3", validate_supabase_bucket_name
-        )
+        session.events.register("before-parameter-build.s3", validate_supabase_bucket_name)
         return session

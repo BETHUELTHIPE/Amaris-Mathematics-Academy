@@ -1,10 +1,61 @@
 import os
+import re
 import secrets
 from pathlib import Path
 
 import dj_database_url
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _load_render_secret_env_files() -> None:
+    """Load Render secret files without overriding explicit environment variables."""
+    candidates = [
+        Path("/etc/secrets/.env"),
+        Path("/etc/secrets/env"),
+        BASE_DIR / ".env",
+        BASE_DIR.parent / ".env",
+    ]
+    secret_dir = Path("/etc/secrets")
+    if secret_dir.is_dir():
+        candidates.extend(sorted(secret_dir.glob(".env*")))
+        candidates.extend(sorted(secret_dir.glob("*.env")))
+
+        expected_markers = (
+            "OPENAI_API_KEY=",
+            "OPENAI_KEY=",
+            "OPENAI_APIKEY=",
+            "EMAIL_HOST_USER=",
+            "EMAIL_HOST_PASSWORD=",
+            "GMAIL_USER=",
+            "GMAIL_EMAIL=",
+            "GMAIL_APP_PASSWORD=",
+            "DEFAULT_FROM_EMAIL=",
+        )
+        for secret_file in sorted(secret_dir.iterdir()):
+            if not secret_file.is_file() or secret_file in candidates:
+                continue
+            try:
+                preview = secret_file.read_text(encoding="utf-8", errors="ignore")[:8192]
+            except OSError:
+                continue
+            if any(marker in preview for marker in expected_markers):
+                candidates.append(secret_file)
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate
+        if resolved in seen or not candidate.is_file():
+            continue
+        seen.add(resolved)
+        load_dotenv(candidate, override=False)
+
+
+_load_render_secret_env_files()
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -75,10 +126,8 @@ TEMPLATES = [
 WSGI_APPLICATION = "amaris_cms.wsgi.application"
 ASGI_APPLICATION = "amaris_cms.asgi.application"
 
-PRODUCTION_MODE = env_bool("PRODUCTION_MODE", False)
-
-if PRODUCTION_MODE and not os.getenv("DATABASE_URL"):
-    raise RuntimeError("PRODUCTION_MODE requires DATABASE_URL; SQLite fallback is forbidden.")
+if not DEBUG and not os.getenv("DATABASE_URL"):
+    raise RuntimeError("DATABASE_URL must be set to the production Supabase Postgres connection string.")
 
 DATABASES = {
     "default": dj_database_url.config(
@@ -89,6 +138,9 @@ DATABASES = {
     )
 }
 if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    database_schema = os.getenv("DATABASE_SCHEMA", "").strip()
+    if database_schema and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", database_schema):
+        raise RuntimeError("DATABASE_SCHEMA must be a simple Postgres schema identifier.")
     DATABASES["default"].setdefault("OPTIONS", {}).update(
         {
             "connect_timeout": int(os.getenv("DATABASE_CONNECT_TIMEOUT", "5")),
@@ -99,21 +151,11 @@ if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
                         "-c idle_in_transaction_session_timeout="
                         f"{int(os.getenv('DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS', '30000'))}"
                     ),
+                    *([f"-c search_path={database_schema}"] if database_schema else []),
                 ]
             ),
         }
     )
-
-if PRODUCTION_MODE:
-    missing_runtime = [
-        key
-        for key in ("DJANGO_CACHE_URL", "CELERY_BROKER_URL", "CELERY_RESULT_BACKEND", "SUPABASE_URL")
-        if not os.getenv(key)
-    ]
-    if missing_runtime:
-        raise RuntimeError(
-            "PRODUCTION_MODE requires these runtime services: " + ", ".join(missing_runtime)
-        )
 
 CACHES = {
     "default": {
@@ -141,6 +183,10 @@ CACHES = {
 }
 PUBLIC_CONTENT_CACHE_SECONDS = int(os.getenv("PUBLIC_CONTENT_CACHE_SECONDS", "300"))
 SITE_BOOTSTRAP_CACHE_SECONDS = int(os.getenv("SITE_BOOTSTRAP_CACHE_SECONDS", "60"))
+PUBLIC_SITE_URL = os.getenv(
+    "PUBLIC_SITE_URL",
+    "https://amaris-mathematics-academy-live-students.onrender.com",
+).rstrip("/")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
@@ -163,6 +209,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+
 LANGUAGE_CODE = "en-za"
 TIME_ZONE = "Africa/Johannesburg"
 USE_I18N = True
@@ -173,105 +220,87 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-SUPABASE_STORAGE_ENABLED = env_bool("SUPABASE_STORAGE_ENABLED", False)
-SUPABASE_STORAGE_BUCKET_NAME = os.getenv("SUPABASE_STORAGE_BUCKET_NAME", "amaris-cms-files")
-SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME = os.getenv(
-    "SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME",
-    "Amaris Mathematics Academy",
+SUPABASE_S3_ENDPOINT_URL = (
+    os.getenv("SUPABASE_S3_ENDPOINT_URL")
+    or os.getenv("SUPABASE_STORAGE_S3_ENDPOINT")
+    or os.getenv("AWS_S3_ENDPOINT_URL")
+    or ""
+).strip()
+SUPABASE_S3_ACCESS_KEY_ID = (
+    os.getenv("SUPABASE_S3_ACCESS_KEY_ID")
+    or os.getenv("SUPABASE_STORAGE_S3_ACCESS_KEY_ID")
+    or os.getenv("AWS_ACCESS_KEY_ID")
+    or ""
+).strip()
+SUPABASE_S3_SECRET_ACCESS_KEY = (
+    os.getenv("SUPABASE_S3_SECRET_ACCESS_KEY")
+    or os.getenv("SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY")
+    or os.getenv("AWS_SECRET_ACCESS_KEY")
+    or ""
+).strip()
+SUPABASE_S3_ADMIN_BUCKET = (
+    os.getenv("SUPABASE_S3_ADMIN_BUCKET")
+    or os.getenv("SUPABASE_STORAGE_BUCKET_NAME")
+    or os.getenv("CMS_STORAGE_BUCKET_NAME")
+    or ""
+).strip()
+SUPABASE_S3_STUDENT_BUCKET = (
+    os.getenv("SUPABASE_S3_STUDENT_BUCKET")
+    or os.getenv("SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME")
+    or os.getenv("STUDENT_STORAGE_BUCKET_NAME")
+    or ""
+).strip()
+_supabase_s3_values = (
+    SUPABASE_S3_ENDPOINT_URL,
+    SUPABASE_S3_ACCESS_KEY_ID,
+    SUPABASE_S3_SECRET_ACCESS_KEY,
+    SUPABASE_S3_ADMIN_BUCKET,
+    SUPABASE_S3_STUDENT_BUCKET,
 )
-SUPABASE_STORAGE_S3_ENDPOINT = os.getenv("SUPABASE_STORAGE_S3_ENDPOINT", "")
-SUPABASE_STORAGE_S3_ACCESS_KEY_ID = os.getenv("SUPABASE_STORAGE_S3_ACCESS_KEY_ID", "")
-SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY = os.getenv("SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY", "")
-SUPABASE_STORAGE_S3_REGION = os.getenv("SUPABASE_STORAGE_S3_REGION", "us-east-1")
-
-AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
-
-if SUPABASE_STORAGE_ENABLED:
-    if not SUPABASE_STORAGE_S3_ENDPOINT:
-        project_ref = SUPABASE_URL.removeprefix("https://").split(".", 1)[0] if SUPABASE_URL else ""
-        if project_ref:
-            SUPABASE_STORAGE_S3_ENDPOINT = f"https://{project_ref}.storage.supabase.co/storage/v1/s3"
-
-    missing_supabase_storage = [
-        name
-        for name, value in {
-            "SUPABASE_STORAGE_S3_ENDPOINT": SUPABASE_STORAGE_S3_ENDPOINT,
-            "SUPABASE_STORAGE_S3_ACCESS_KEY_ID": SUPABASE_STORAGE_S3_ACCESS_KEY_ID,
-            "SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY": SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY,
-        }.items()
-        if not value
-    ]
-    if missing_supabase_storage:
-        raise RuntimeError(
-            "Supabase Storage is enabled but these server-only settings are missing: "
-            + ", ".join(missing_supabase_storage)
-        )
-
-    STORAGES = {
-        "default": {
-            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
-            "OPTIONS": {
-                "bucket_name": SUPABASE_STORAGE_BUCKET_NAME,
-                "region_name": SUPABASE_STORAGE_S3_REGION,
-                "endpoint_url": SUPABASE_STORAGE_S3_ENDPOINT,
-                "access_key": SUPABASE_STORAGE_S3_ACCESS_KEY_ID,
-                "secret_key": SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY,
-                "addressing_style": "path",
-                "signature_version": "s3v4",
-                "location": "cms",
-                "default_acl": None,
-                "querystring_auth": True,
-                "querystring_expire": 600,
-                "file_overwrite": False,
-            },
-        },
-        "student_documents": {
-            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
-            "OPTIONS": {
-                "bucket_name": SUPABASE_STUDENT_DOCUMENTS_BUCKET_NAME,
-                "region_name": SUPABASE_STORAGE_S3_REGION,
-                "endpoint_url": SUPABASE_STORAGE_S3_ENDPOINT,
-                "access_key": SUPABASE_STORAGE_S3_ACCESS_KEY_ID,
-                "secret_key": SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY,
-                "addressing_style": "path",
-                "signature_version": "s3v4",
-                "default_acl": None,
-                "querystring_auth": True,
-                "querystring_expire": 600,
-                "file_overwrite": True,
-            },
-        },
-        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+if env_bool("SUPABASE_S3_REQUIRED", False) or any(_supabase_s3_values):
+    if not all(_supabase_s3_values) or not SUPABASE_S3_ENDPOINT_URL.startswith("https://"):
+        raise RuntimeError("Both private Supabase S3 buckets, HTTPS endpoint, and server-side S3 keys are required.")
+    _s3_options = {
+        "endpoint_url": SUPABASE_S3_ENDPOINT_URL,
+        "region_name": os.getenv("SUPABASE_S3_REGION", "us-east-1"),
+        "access_key": SUPABASE_S3_ACCESS_KEY_ID,
+        "secret_key": SUPABASE_S3_SECRET_ACCESS_KEY,
+        "addressing_style": "path",
+        "signature_version": "s3v4",
+        "default_acl": None,
+        "querystring_auth": True,
+        "querystring_expire": 300,
     }
-elif AWS_STORAGE_BUCKET_NAME:
     STORAGES = {
         "default": {
-            "BACKEND": "storages.backends.s3.S3Storage",
+            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
             "OPTIONS": {
-                "bucket_name": AWS_STORAGE_BUCKET_NAME,
-                "region_name": os.getenv("AWS_S3_REGION_NAME", "af-south-1"),
-                "default_acl": None,
-                "querystring_auth": True,
+                **_s3_options,
+                "bucket_name": SUPABASE_S3_ADMIN_BUCKET,
                 "file_overwrite": False,
+                "location": "cms" if env_bool("SUPABASE_STORAGE_ENABLED", False) else "",
             },
         },
-        "student_documents": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "student_private": {
+            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
+            "OPTIONS": {**_s3_options, "bucket_name": SUPABASE_S3_STUDENT_BUCKET, "file_overwrite": True},
+        },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 else:
     STORAGES = {
         "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-        "student_documents": {
+        "student_private": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
-            "OPTIONS": {
-                "location": BASE_DIR / "media" / "student-documents",
-                "allow_overwrite": True,
-            },
+            "OPTIONS": {"location": MEDIA_ROOT / "student-private", "allow_overwrite": True},
         },
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+STORAGES["student_data"] = STORAGES["student_private"]
+STORAGES["student_documents"] = STORAGES["student_private"]
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
@@ -287,7 +316,13 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
-    "DEFAULT_THROTTLE_RATES": {"anon": "120/hour", "user": "1000/hour", "enquiries": "5/hour"},
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "120/hour",
+        "user": "1000/hour",
+        "enquiries": "5/hour",
+        "assistant": "30/hour",
+        "video_requests": "20/hour",
+    },
 }
 
 SPECTACULAR_SETTINGS = {
@@ -353,13 +388,20 @@ EMAIL_BACKEND = os.getenv(
 )
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER") or os.getenv("GMAIL_USER") or os.getenv("GMAIL_EMAIL", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD") or os.getenv("GMAIL_APP_PASSWORD", "")
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT_SECONDS", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@example.invalid>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+AI_ENQUIRY_AUTOREPLY_ENABLED = env_bool("AI_ENQUIRY_AUTOREPLY_ENABLED", True)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY") or os.getenv("OPENAI_APIKEY", "")
+OPENAI_ENQUIRY_MODEL = os.getenv("OPENAI_ENQUIRY_MODEL", "gpt-5.6-luna")
+OPENAI_ENQUIRY_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ENQUIRY_TIMEOUT_SECONDS", "10"))
+OPENAI_ASSISTANT_MODEL = os.getenv("OPENAI_ASSISTANT_MODEL", OPENAI_ENQUIRY_MODEL)
+OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
 CELERY_BEAT_SCHEDULE = {
     "publish-scheduled-content": {
@@ -373,11 +415,35 @@ CELERY_BEAT_SCHEDULE = {
     "archive-issued-invoices": {
         "task": "content.tasks.archive_missing_invoice_pdfs",
         "schedule": 120.0,
+        "options": {"queue": "notifications"},
     },
     "deliver-transactional-email": {
         "task": "content.tasks.deliver_transactional_email",
         "schedule": 30.0,
         "options": {"queue": "notifications"},
+    },
+    "deliver-live-class-confirmation": {
+        "task": "content.tasks.deliver_live_class_confirmation",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
+    "deliver-live-class-reminder": {
+        "task": "content.tasks.deliver_live_class_reminder",
+        "schedule": 60.0,
+        "options": {"queue": "notifications"},
+    },
+    "expire-live-class-holds": {
+        "task": "content.tasks.expire_live_class_holds",
+        "schedule": 300.0,
+    },
+    "deliver-video-request-notifications": {
+        "task": "content.tasks.deliver_video_request_notifications",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
+    "expire-unpaid-video-requests": {
+        "task": "content.tasks.expire_unpaid_video_requests",
+        "schedule": 300.0,
     },
 }
 
