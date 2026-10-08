@@ -72,7 +72,7 @@ test("valid registration passes all profile fields and waits for email verificat
     institution: "Synthetic School", academic_level: "Grade 12", terms_accepted_at: state.signup.options.data.terms_accepted_at,
   });
   assert.ok(Number.isFinite(Date.parse(state.signup.options.data.terms_accepted_at)));
-  assert.equal(state.signup.options.emailRedirectTo, "https://academy.example.test/login?verified=1");
+  assert.equal(state.signup.options.emailRedirectTo, "https://academy.example.test/auth/confirm?next=/dashboard");
   assert.equal(state.mirrorCalls, undefined);
 });
 
@@ -175,5 +175,5 @@ test("six-digit verification rejects invalid or expired codes and accepts valid 
   assert.equal((await redirectUrl(verifyEmailAction, form)).pathname, "/verify-email");
   state.otpError = null;
   assert.equal((await redirectUrl(verifyEmailAction, form)).pathname, "/dashboard");
-  assert.deepEqual(state.otp, { email: "student@example.test", token: "123456", type: "email" });
+  assert.deepEqual(state.otp, { email: "student@example.test", token: "123456", type: "signup" });
 });

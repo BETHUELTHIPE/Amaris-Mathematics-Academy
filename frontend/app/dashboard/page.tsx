@@ -9,12 +9,13 @@ import {
   LayoutDashboard,
   ShieldCheck,
   UserRound,
+  Video,
 } from "lucide-react";
 import { requireVerifiedStudent } from "@/lib/auth";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { courses } from "@/lib/courses";
-import { getStudentCourses } from "@/lib/student-api";
+import { getStudentCourses, getStudentVideoRequests } from "@/lib/student-api";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -30,10 +31,17 @@ export default async function DashboardPage() {
 
   let enrolledCourses: Awaited<ReturnType<typeof getStudentCourses>> = [];
   let courseServiceAvailable = true;
+  let videoRequests: Awaited<ReturnType<typeof getStudentVideoRequests>> = [];
+  let videoRequestServiceAvailable = true;
   try {
     enrolledCourses = await getStudentCourses();
   } catch {
     courseServiceAvailable = false;
+  }
+  try {
+    videoRequests = await getStudentVideoRequests();
+  } catch {
+    videoRequestServiceAvailable = false;
   }
 
   const lessonsStarted = enrolledCourses.filter((item) => item.resume.last_lesson).length;
@@ -74,10 +82,11 @@ export default async function DashboardPage() {
       </aside>
 
       <div className="min-w-0">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
             ["Active courses", String(enrolledCourses.length)],
             ["Lessons started", String(lessonsStarted)],
+            ["Video requests", String(videoRequests.length)],
             ["Certificates earned", "0"],
           ].map(([label, value]) => <div key={label} className="rounded-2xl border border-[#dce4ef] bg-white p-6">
             <p className="text-sm text-[#60708a]">{label}</p>
@@ -87,6 +96,10 @@ export default async function DashboardPage() {
 
         {!courseServiceAvailable && <div className="mt-6 rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-5 text-sm text-[#765314]">
           Course progress is temporarily unavailable. Your verified account remains secure; try again shortly.
+        </div>}
+
+        {!videoRequestServiceAvailable && <div className="mt-6 rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-5 text-sm text-[#765314]">
+          Video-request progress is temporarily unavailable. Your documents and paid tickets remain private; try again shortly.
         </div>}
 
         {enrolledCourses.length > 0 ? <section className="mt-6 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
@@ -121,6 +134,21 @@ export default async function DashboardPage() {
             <Link href="/courses" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3.5 font-bold text-white">Choose a course <ArrowRight className="size-4" /></Link>
           </div>
         </div>}
+
+        <section className="mt-8 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+            <div><p className="eyebrow">My requested videos</p><h2 className="mt-2 text-2xl font-semibold">Paid queue and completed lessons</h2></div>
+            <Link href="/request-a-video" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-5 font-bold text-white"><Video className="size-4" /> Request a video</Link>
+          </div>
+          {videoRequests.length ? <div className="mt-6 grid gap-3">
+            {videoRequests.map((item) => <Link key={item.request_reference} href={`/request-a-video/confirmation?reference=${encodeURIComponent(item.request_reference)}`} className="group rounded-2xl border border-[#dce4ef] p-5 transition hover:border-[#aac3ec] hover:bg-[#f8fbff]">
+              <div className="flex items-center justify-between gap-4">
+                <div><h3 className="font-semibold">{item.topic}</h3><p className="mt-1 text-sm text-[#60708a]">{item.status_label}{item.queue_position ? ` · Queue ${item.queue_position}` : ""}{item.ticket_number ? ` · ${item.ticket_number}` : ""}</p></div>
+                <ArrowRight className="size-5 text-[#1f5bbd] transition group-hover:translate-x-1" />
+              </div>
+            </Link>)}
+          </div> : <p className="mt-5 text-sm leading-7 text-[#60708a]">No video requests yet. Upload a question, assignment or past paper and choose the explanation you need.</p>}
+        </section>
 
         <section className="mt-8">
           <div className="flex items-end justify-between">

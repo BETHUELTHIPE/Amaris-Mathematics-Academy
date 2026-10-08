@@ -22,6 +22,7 @@ GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 GITHUB_OIDC_JWKS = "https://token.actions.githubusercontent.com/.well-known/jwks"
 GITHUB_ACCEPTANCE_STUDENT_ID = uuid.UUID("00000000-0000-4000-8000-000000009001")
 GITHUB_ACCEPTANCE_EMAIL = "acceptance.student@example.test"
+GITHUB_ACCEPTANCE_NAMESPACE = uuid.UUID("d510440b-815e-4d04-ac8e-99c869758e64")
 _GITHUB_JWK_CLIENT = PyJWKClient(
     GITHUB_OIDC_JWKS,
     cache_keys=True,
@@ -84,7 +85,7 @@ class SupabaseStudentAuthentication(BaseAuthentication):
             raise AuthenticationFailed("The access token is malformed.") from exc
 
         if request.headers.get("X-Amaris-Acceptance", "").strip().lower() == "github-actions":
-            return self._authenticate_github_acceptance(token)
+            return self._authenticate_github_acceptance(token, request)
 
         user_payload = self._validate_token(token)
         user_id = str(user_payload.get("id") or "").strip()
@@ -108,7 +109,7 @@ class SupabaseStudentAuthentication(BaseAuthentication):
     def authenticate_header(self, request):
         return "Bearer"
 
-    def _authenticate_github_acceptance(self, token: str):
+    def _authenticate_github_acceptance(self, token: str, request):
         if not bool(getattr(settings, "ACCEPTANCE_GITHUB_OIDC_ENABLED", False)):
             raise AuthenticationFailed("Synthetic acceptance authentication is disabled.")
 
@@ -145,19 +146,36 @@ class SupabaseStudentAuthentication(BaseAuthentication):
         if expected_ref and claims.get("ref") != expected_ref:
             raise AuthenticationFailed("Synthetic acceptance is restricted to the main branch.")
 
-        student, _ = StudentRecord.objects.update_or_create(
-            supabase_user_id=GITHUB_ACCEPTANCE_STUDENT_ID,
+        synthetic_id = request.headers.get("X-Amaris-Acceptance-Student", "").strip()
+        if synthetic_id:
+            try:
+                synthetic_id = str(uuid.UUID(synthetic_id))
+            except ValueError as exc:
+                raise AuthenticationFailed("The synthetic student identifier is invalid.") from exc
+            run_id = str(claims.get("run_id") or "")
+            if not run_id.isdecimal():
+                raise AuthenticationFailed("The synthetic acceptance run is invalid.")
+            student_id = uuid.uuid5(GITHUB_ACCEPTANCE_NAMESPACE, f"{run_id}:{synthetic_id}")
+            email = f"acceptance-{student_id.hex}@example.test"
+        else:
+            student_id = GITHUB_ACCEPTANCE_STUDENT_ID
+            email = GITHUB_ACCEPTANCE_EMAIL
+
+        student, _ = StudentRecord.objects.get_or_create(
+            supabase_user_id=student_id,
             defaults={
-                "email": GITHUB_ACCEPTANCE_EMAIL,
+                "email": email,
                 "first_name": "Acceptance",
                 "last_name": "Student",
                 "is_active": True,
             },
         )
+        if not student.is_active:
+            raise AuthenticationFailed("The synthetic student profile is inactive.")
         principal = SupabaseStudentPrincipal(
             student=student,
-            supabase_user_id=str(GITHUB_ACCEPTANCE_STUDENT_ID),
-            email=GITHUB_ACCEPTANCE_EMAIL,
+            supabase_user_id=str(student_id),
+            email=email,
         )
         return principal, {
             "provider": "github-actions-oidc",

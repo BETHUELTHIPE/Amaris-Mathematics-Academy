@@ -84,6 +84,8 @@ export const getManagedBrand = cache(async (): Promise<AcademyBrand> => {
     managingDirector: settings.managing_director,
     phoneDisplay: settings.phone,
     phoneHref: phoneHref(settings.phone),
+    whatsappDisplay: academyBrand.whatsappDisplay,
+    whatsappHref: academyBrand.whatsappHref,
     email: settings.email,
     emailHref: `mailto:${settings.email}`,
     address: settings.address,
@@ -101,26 +103,56 @@ const requiredPublicNavigation: CmsNavigationItem[] = [
   { label: "How it works", url: "/how-it-works", location: "both", order: 20, open_in_new_tab: false },
   { label: "Pricing", url: "/pricing", location: "both", order: 30, open_in_new_tab: false },
   { label: "About", url: "/about", location: "both", order: 40, open_in_new_tab: false },
+  { label: "Request a video", url: "/request-a-video", location: "both", order: 44, open_in_new_tab: false },
   { label: "Book online live class", url: "/book-online-live-class", location: "both", order: 45, open_in_new_tab: false },
   { label: "Contact", url: "/contact", location: "both", order: 50, open_in_new_tab: false },
 ];
 
-export const getManagedNavigation = cache(async (location: "header" | "footer") => {
-  const managedItems = (await getManagedBootstrap())?.navigation ?? [];
+function mergeRequiredNavigation(
+  managedItems: CmsNavigationItem[] | null | undefined,
+): CmsNavigationItem[] {
+  if (!managedItems?.length) return requiredPublicNavigation;
+
+  const managedByUrl = new Map(managedItems.map((item) => [item.url, item]));
   const requiredUrls = new Set(requiredPublicNavigation.map((item) => item.url));
   const requiredItems = requiredPublicNavigation.map((requiredItem) => {
-    const managedItem = managedItems.find((item) => item.url === requiredItem.url);
-    return {
-      ...requiredItem,
-      ...managedItem,
-      location: "both" as const,
-      order: requiredItem.order,
-    };
+    const managedItem = managedByUrl.get(requiredItem.url);
+    return managedItem
+      ? {
+          ...requiredItem,
+          ...managedItem,
+          order: requiredItem.order,
+          location: "both" as const,
+        }
+      : requiredItem;
   });
   const customItems = managedItems.filter((item) => !requiredUrls.has(item.url));
-  return [...requiredItems, ...customItems]
+  return [...requiredItems, ...customItems];
+}
+
+function keepBookingNextToContact(items: CmsNavigationItem[]): CmsNavigationItem[] {
+  const bookingIndex = items.findIndex((item) => item.url === "/book-online-live-class");
+  const contactIndex = items.findIndex((item) => item.url === "/contact");
+  if (bookingIndex < 0 || contactIndex < 0 || bookingIndex === contactIndex - 1) {
+    return items;
+  }
+
+  const bookingItem = items[bookingIndex];
+  const withoutBooking = items.filter((_, index) => index !== bookingIndex);
+  const newContactIndex = withoutBooking.findIndex((item) => item.url === "/contact");
+  return [
+    ...withoutBooking.slice(0, newContactIndex),
+    bookingItem,
+    ...withoutBooking.slice(newContactIndex),
+  ];
+}
+
+export const getManagedNavigation = cache(async (location: "header" | "footer") => {
+  const managedItems = (await getManagedBootstrap())?.navigation;
+  const items = mergeRequiredNavigation(managedItems)
     .filter((item) => item.location === location || item.location === "both")
     .sort((a, b) => a.order - b.order);
+  return keepBookingNextToContact(items);
 });
 
 function mapCourse(course: CmsCourse): Course {

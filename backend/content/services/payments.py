@@ -28,8 +28,11 @@ PAYFAST_LIVE_VALIDATE_URL = "https://www.payfast.co.za/eng/query/validate"
 PAYFAST_SANDBOX_MERCHANT_ID = "10000100"
 PAYFAST_SANDBOX_MERCHANT_KEY = "46f0cd694581a"
 PAYFAST_SANDBOX_PASSPHRASE = "jt7NOE43FZPn"
+DEFAULT_PUBLIC_SITE_URL = "https://amaris-mathematics-academy-live-students.onrender.com"
 PAYMENT_CANCELLED = "cancelled"
 PAYMENT_WEBHOOK_MAX_AGE_HOURS = int(os.getenv("PAYMENT_WEBHOOK_MAX_AGE_HOURS", "168"))
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,6 +81,16 @@ def _payfast_credentials() -> tuple[str, str, str]:
         if not merchant_id or not merchant_key:
             raise PaymentSecurityError("Live PayFast merchant credentials are not configured.")
     return merchant_id, merchant_key, passphrase
+
+
+def build_payfast_notify_url(api_url: str) -> str:
+    """Build the ITN endpoint from either an API origin or an /api/v1 base URL."""
+    normalized = api_url.strip().rstrip("/")
+    if not normalized:
+        return ""
+    if normalized.endswith("/api/v1"):
+        return f"{normalized}/payfast/itn/"
+    return f"{normalized}/api/v1/payfast/itn/"
 
 
 def _signature_parameter_string(fields: Mapping[str, str], passphrase: str = "") -> str:
@@ -134,11 +147,11 @@ def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: 
 
     merchant_id, merchant_key, passphrase = _payfast_credentials()
     mode = _payfast_mode()
-    site_url = os.getenv("PUBLIC_SITE_URL", "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site").rstrip("/")
+    site_url = os.getenv("PUBLIC_SITE_URL", DEFAULT_PUBLIC_SITE_URL).rstrip("/")
     api_url = os.getenv("PUBLIC_API_URL", "").rstrip("/")
     return_url = os.getenv("PAYFAST_RETURN_URL", f"{site_url}/payments/pending").strip()
     cancel_url = os.getenv("PAYFAST_CANCEL_URL", f"{site_url}/payments/cancelled").strip()
-    notify_url = os.getenv("PAYFAST_NOTIFY_URL", f"{api_url}/api/v1/payfast/itn/" if api_url else "").strip()
+    notify_url = os.getenv("PAYFAST_NOTIFY_URL", build_payfast_notify_url(api_url)).strip()
 
     fields = {
         "merchant_id": merchant_id,

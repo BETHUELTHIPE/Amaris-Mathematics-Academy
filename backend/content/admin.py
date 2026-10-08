@@ -10,6 +10,7 @@ from .models import (
     CourseModule,
     Enrollment,
     Lesson,
+    LiveClassBooking,
     NavigationItem,
     Page,
     PageSection,
@@ -20,7 +21,10 @@ from .models import (
     SiteSettings,
     StudentRecord,
     Testimonial,
+    TutorAvailabilitySlot,
     VideoAsset,
+    VideoRequest,
+    VideoRequestDocument,
 )
 
 admin.site.site_header = "Amaris Mathematics Academy"
@@ -384,6 +388,254 @@ class PaymentReconciliationRunAdmin(TimeStampedAdmin):
 
     def has_change_permission(self, request, obj=None):
         return request.method in ("GET", "HEAD", "OPTIONS")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(TutorAvailabilitySlot)
+class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
+    list_display = (
+        "tutor",
+        "programme",
+        "subject",
+        "level",
+        "starts_at",
+        "ends_at",
+        "is_active",
+    )
+    list_filter = ("programme", "subject", "level", "is_active", "starts_at")
+    search_fields = (
+        "tutor__username",
+        "tutor__first_name",
+        "tutor__last_name",
+        "level",
+    )
+    autocomplete_fields = ("tutor",)
+    list_editable = ("is_active",)
+    ordering = ("starts_at",)
+
+
+@admin.register(LiveClassBooking)
+class LiveClassBookingAdmin(TimeStampedAdmin):
+    list_display = (
+        "reference",
+        "student",
+        "slot",
+        "topic",
+        "amount",
+        "status",
+        "paid_at",
+        "confirmation_sent_at",
+        "reminder_sent_at",
+    )
+    list_filter = ("status", "programme", "subject", "slot__starts_at")
+    search_fields = (
+        "reference",
+        "student__email",
+        "student__first_name",
+        "student__last_name",
+        "topic",
+        "invoice_number",
+    )
+    readonly_fields = (
+        "id",
+        "reference",
+        "idempotency_key",
+        "student",
+        "slot",
+        "programme",
+        "subject",
+        "level",
+        "topic",
+        "amount",
+        "currency",
+        "status",
+        "hold_expires_at",
+        "provider_reference",
+        "paid_at",
+        "gateway_verified_at",
+        "invoice_number",
+        "confirmation_sent_at",
+        "reminder_sent_at",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class VideoRequestDocumentInline(admin.TabularInline):
+    model = VideoRequestDocument
+    extra = 0
+    can_delete = False
+    fields = ("original_name", "content_type", "size_bytes", "sha256", "storage_path", "created_at")
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(VideoRequestDocument)
+class VideoRequestDocumentAdmin(TimeStampedAdmin):
+    list_display = ("original_name", "request", "content_type", "size_bytes", "created_at")
+    list_filter = ("content_type", "created_at")
+    search_fields = ("original_name", "request__reference", "request__student__email")
+    readonly_fields = (
+        "request",
+        "original_name",
+        "storage_path",
+        "content_type",
+        "size_bytes",
+        "sha256",
+        "created_at",
+        "updated_at",
+    )
+    actions = None
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(VideoRequest)
+class VideoRequestAdmin(TimeStampedAdmin):
+    list_display = (
+        "ticket_number",
+        "student",
+        "request_type",
+        "programme",
+        "subject",
+        "level",
+        "status",
+        "assigned_tutor",
+        "queue_entered_at",
+        "video_ready_at",
+    )
+    list_filter = ("status", "request_type", "programme", "subject", "video_provider", "created_at")
+    search_fields = (
+        "reference",
+        "ticket_number",
+        "student__email",
+        "student__first_name",
+        "student__last_name",
+        "topic",
+        "invoice_number",
+    )
+    autocomplete_fields = ("assigned_tutor",)
+    readonly_fields = (
+        "id",
+        "reference",
+        "idempotency_key",
+        "student",
+        "programme",
+        "subject",
+        "level",
+        "topic",
+        "request_type",
+        "instructions",
+        "explanation_style",
+        "preferred_duration_minutes",
+        "amount",
+        "currency",
+        "payment_expires_at",
+        "provider_reference",
+        "paid_at",
+        "gateway_verified_at",
+        "queue_entered_at",
+        "priority_paid_at",
+        "ticket_number",
+        "invoice_number",
+        "confirmation_sent_at",
+        "position_one_sent_at",
+        "recording_sent_at",
+        "ready_notification_sent_at",
+        "created_at",
+        "updated_at",
+    )
+    fieldsets = (
+        (
+            "Student request",
+            {
+                "fields": (
+                    "reference",
+                    "ticket_number",
+                    "student",
+                    "request_type",
+                    "programme",
+                    "subject",
+                    "level",
+                    "topic",
+                    "instructions",
+                    "explanation_style",
+                    "preferred_duration_minutes",
+                )
+            },
+        ),
+        (
+            "Tutor fulfilment",
+            {
+                "fields": (
+                    "status",
+                    "assigned_tutor",
+                    "video_provider",
+                    "video_external_id",
+                    "video_ready_at",
+                )
+            },
+        ),
+        (
+            "Verified payment and queue",
+            {
+                "fields": (
+                    "amount",
+                    "currency",
+                    "payment_expires_at",
+                    "provider_reference",
+                    "paid_at",
+                    "gateway_verified_at",
+                    "queue_entered_at",
+                    "priority_paid_at",
+                    "invoice_number",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Notifications and audit",
+            {
+                "fields": (
+                    "confirmation_sent_at",
+                    "position_one_sent_at",
+                    "recording_sent_at",
+                    "ready_notification_sent_at",
+                    "id",
+                    "idempotency_key",
+                    "created_at",
+                    "updated_at",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+    inlines = (VideoRequestDocumentInline,)
+
+    def save_model(self, request, obj, form, change):
+        if obj.status == VideoRequest.Status.READY and obj.video_ready_at is None:
+            obj.video_ready_at = timezone.now()
+        super().save_model(request, obj, form, change)
+
+    def has_add_permission(self, request):
+        return False
 
     def has_delete_permission(self, request, obj=None):
         return False
