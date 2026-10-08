@@ -1,0 +1,135 @@
+name: Render Node Production Diagnostic
+
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches:
+      - fix/booking-production-readiness-20261004
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-node-production-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CMS_API_URL: https://amaris-mathematics-academy-staging.onrender.com/api/v1
+      SITE_URL: http://127.0.0.1:4100
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:4100
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: diagnostic-public-placeholder
+
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v5
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies
+        working-directory: frontend
+        env:
+          NODE_ENV: development
+        run: npm ci --include=dev
+
+      - name: Install Render build adapters
+        working-directory: frontend
+        env:
+          NODE_ENV: development
+        run: npm install --no-save nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+
+      - name: Build with the Render Node configuration
+        working-directory: frontend
+        env:
+          NODE_ENV: production
+          NITRO_PRESET: node
+        run: npx vite build --config vite.node.config.ts
+
+      - name: Start Render-compatible production server
+        working-directory: frontend
+        env:
+          NODE_ENV: production
+        run: |
+          set -euo pipefail
+          HOST=127.0.0.1 PORT=4100 node .output/server/index.mjs >/tmp/render-node.log 2>&1 &
+          echo $! >/tmp/render-node.pid
+          for attempt in $(seq 1 30); do
+            code=$(curl --silent --output /tmp/home.html --write-out '%{http_code}' --max-time 10 http://127.0.0.1:4100/ || true)
+            if [ "$code" = "200" ]; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat /tmp/render-node.log >&2 || true
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Verify booking routes on Render-compatible runtime
+        run: |
+          set -euo pipefail
+          body=$(mktemp)
+          code=$(curl --silent --show-error --location --output "$body" --write-out '%{http_code}' --max-time 20 \
+            http://127.0.0.1:4100/book-online-live-class)
+          echo "canonical booking -> HTTP $code"
+          test "$code" = "200"
+          ! grep -qi "We could not find that page" "$body"
+          grep -Eqi 'Book online live class|Choose your programme|Available Zoom slots' "$body"
+          grep -qi 'R250' "$body"
+
+          headers=$(mktemp)
+          legacy=$(curl --silent --show-error --output /dev/null --dump-header "$headers" --write-out '%{http_code}' --max-time 20 \
+            http://127.0.0.1:4100/book-online-class)
+          echo "legacy booking -> HTTP $legacy"
+          case "$legacy" in
+            301|302|303|307|308) ;;
+            *)
+              cat "$headers" >&2
+              exit 1
+              ;;
+          esac
+          grep -Eqi '^location: .*/book-online-live-class' "$headers"
+
+      - name: Verify protected video routes on Render-compatible runtime
+        run: |
+          set -euo pipefail
+          for path in /request-a-video /request-a-video/confirmation /request-a-video/invoice?reference=VRQ-test /request-a-video/video?reference=VRQ-test; do
+            headers=$(mktemp)
+            code=$(curl --silent --show-error --output /dev/null --dump-header "$headers" --write-out '%{http_code}' --max-time 20 "http://127.0.0.1:4100$path")
+            case "$code" in
+              301|302|303|307|308) ;;
+              *) cat "$headers" >&2; echo "Protected route $path returned $code" >&2; exit 1 ;;
+            esac
+            grep -Eqi '^location: /login\?next=' "$headers"
+            grep -Eqi '^cache-control: .*no-store' "$headers"
+          done
+          code=$(curl --silent --show-error --output /tmp/video-checkout.json --write-out '%{http_code}' --max-time 20 \
+            -X POST -F 'topic=Synthetic test only' http://127.0.0.1:4100/api/video-requests/checkout)
+          test "$code" = "401"
+          code=$(curl --silent --show-error --output /tmp/video-checkout-same-origin.json --write-out '%{http_code}' --max-time 20 \
+            -X POST -H 'Origin: https://127.0.0.1:4100' -H 'X-Forwarded-Proto: https' \
+            http://127.0.0.1:4100/api/video-requests/checkout)
+          test "$code" = "401"
+          code=$(curl --silent --show-error --output /tmp/video-checkout-cross-origin.json --write-out '%{http_code}' --max-time 20 \
+            -X POST -H 'Origin: https://attacker.invalid' -H 'X-Forwarded-Proto: https' \
+            http://127.0.0.1:4100/api/video-requests/checkout)
+          test "$code" = "403"
+
+      - name: Stop production server
+        if: always()
+        run: |
+          if [ -f /tmp/render-node.pid ]; then
+            kill "$(cat /tmp/render-node.pid)" 2>/dev/null || true
+          fi
+          tail -n 200 /tmp/render-node.log 2>/dev/null || true

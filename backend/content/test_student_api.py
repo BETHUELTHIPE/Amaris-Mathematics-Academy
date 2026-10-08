@@ -3,14 +3,130 @@ from __future__ import annotations
 import os
 import uuid
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.test import override_settings
 from django.urls import reverse
-from rest_framework.test import APITestCase
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.test import APIRequestFactory, APITestCase
 
-from content.authentication import SupabaseStudentPrincipal
+from content.authentication import SupabaseStudentAuthentication, SupabaseStudentPrincipal
 from content.models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment, StudentRecord
 from content.payment_models import Invoice, NotificationOutbox, ServiceTicket
+
+
+class AcceptanceIdentityTests(APITestCase):
+    @override_settings(ACCEPTANCE_GITHUB_OIDC_ENABLED=True)
+    def test_distinct_virtual_students_can_seed_checkout_and_poll_only_their_payment(self):
+        claims = {
+            "repository": "BETHUELTHIPE/Amaris-Mathematics-Academy",
+            "event_name": "push",
+            "environment": "staging",
+            "ref": "refs/heads/main",
+            "run_id": "36052676350",
+        }
+        identities = [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+        ]
+        references = []
+        with (
+            patch(
+                "content.authentication._GITHUB_JWK_CLIENT.get_signing_key_from_jwt",
+                return_value=SimpleNamespace(key="mock-key"),
+            ),
+            patch("content.authentication.decode_jwt", return_value=claims),
+        ):
+            for identity in identities:
+                headers = {
+                    "HTTP_AUTHORIZATION": "Bearer synthetic-test-token",
+                    "HTTP_X_AMARIS_ACCEPTANCE": "github-actions",
+                    "HTTP_X_AMARIS_ACCEPTANCE_STUDENT": identity,
+                }
+                seed = self.client.post(reverse("student-acceptance-seed"), {}, format="json", secure=True, **headers)
+                self.assertEqual(seed.status_code, 200)
+                checkout = self.client.post(
+                    reverse("student-checkout"),
+                    {
+                        "course_slug": seed.data["course_slug"],
+                        "idempotency_key": f"capacity-{identity.replace('-', '')}",
+                    },
+                    format="json",
+                    secure=True,
+                    **headers,
+                )
+                self.assertEqual(checkout.status_code, 201)
+                reference = checkout.data["payment_reference"]
+                references.append(reference)
+                own = self.client.get(reverse("student-payment-status", args=[reference]), secure=True, **headers)
+                self.assertEqual(own.status_code, 200)
+                self.assertEqual(own.data["status"], "pending")
+            other_student_headers = {
+                "HTTP_AUTHORIZATION": "Bearer synthetic-test-token",
+                "HTTP_X_AMARIS_ACCEPTANCE": "github-actions",
+                "HTTP_X_AMARIS_ACCEPTANCE_STUDENT": identities[0],
+            }
+            cross_user = self.client.get(
+                reverse("student-payment-status", args=[references[1]]),
+                secure=True,
+                **other_student_headers,
+            )
+            self.assertEqual(cross_user.status_code, 404)
+
+    @override_settings(ACCEPTANCE_GITHUB_OIDC_ENABLED=True)
+    def test_signed_run_has_isolated_synthetic_students_without_repeated_writes(self):
+        claims = {
+            "repository": "BETHUELTHIPE/Amaris-Mathematics-Academy",
+            "event_name": "push",
+            "environment": "staging",
+            "ref": "refs/heads/main",
+            "run_id": "36052676350",
+        }
+        factory = APIRequestFactory()
+        authenticator = SupabaseStudentAuthentication()
+
+        def principal(identifier):
+            request = factory.get(
+                "/api/v1/student/courses/",
+                HTTP_AUTHORIZATION="Bearer synthetic-test-token",
+                HTTP_X_AMARIS_ACCEPTANCE="github-actions",
+                HTTP_X_AMARIS_ACCEPTANCE_STUDENT=identifier,
+            )
+            return authenticator.authenticate(request)[0]
+
+        with (
+            patch(
+                "content.authentication._GITHUB_JWK_CLIENT.get_signing_key_from_jwt",
+                return_value=SimpleNamespace(key="mock-key"),
+            ),
+            patch("content.authentication.decode_jwt", return_value=claims),
+        ):
+            first = principal("00000000-0000-4000-8000-000000000001")
+            first_updated_at = first.student.updated_at
+            same = principal("00000000-0000-4000-8000-000000000001")
+            other = principal("00000000-0000-4000-8000-000000000002")
+            first.student.refresh_from_db()
+
+            self.assertEqual(first.pk, same.pk)
+            self.assertEqual(first.student.updated_at, first_updated_at)
+            self.assertNotEqual(first.pk, other.pk)
+            self.assertNotEqual(first.email, other.email)
+            self.assertEqual(StudentRecord.objects.count(), 2)
+
+            with self.assertRaises(AuthenticationFailed):
+                principal("invalid-student")
+
+    @override_settings(ACCEPTANCE_GITHUB_OIDC_ENABLED=False)
+    def test_synthetic_identity_cannot_be_enabled_by_headers_alone(self):
+        request = APIRequestFactory().get(
+            "/api/v1/student/courses/",
+            HTTP_AUTHORIZATION="Bearer synthetic-test-token",
+            HTTP_X_AMARIS_ACCEPTANCE="github-actions",
+            HTTP_X_AMARIS_ACCEPTANCE_STUDENT="00000000-0000-4000-8000-000000000001",
+        )
+        with self.assertRaises(AuthenticationFailed):
+            SupabaseStudentAuthentication().authenticate(request)
 
 
 class StudentJourneyApiTests(APITestCase):

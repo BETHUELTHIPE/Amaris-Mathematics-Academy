@@ -6,6 +6,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
@@ -14,6 +15,16 @@ from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
 from .models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment
+from .serializers import (
+    AcceptancePaymentCompleteResponseSerializer,
+    AcceptanceSeedResponseSerializer,
+    CheckoutResponseSerializer,
+    PaymentConflictResponseSerializer,
+    PaymentStatusResponseSerializer,
+    ResumeSerializer,
+    StudentCourseEnrollmentSerializer,
+    StudentLessonResponseSerializer,
+)
 from .services.payments import PaymentSecurityError, create_checkout, process_payfast_notification
 
 
@@ -39,6 +50,7 @@ class StudentAPIView(APIView):
 
 
 class StudentCoursesView(StudentAPIView):
+    @extend_schema(responses=StudentCourseEnrollmentSerializer(many=True))
     def get(self, request):
         enrollments = (
             Enrollment.objects.filter(
@@ -63,6 +75,7 @@ class StudentCoursesView(StudentAPIView):
 
 
 class StudentLessonView(StudentAPIView):
+    @extend_schema(responses=StudentLessonResponseSerializer)
     def get(self, request, course_slug: str, lesson_slug: str):
         enrollment = get_object_or_404(
             Enrollment.objects.select_related("course"),
@@ -111,6 +124,7 @@ class StudentLessonView(StudentAPIView):
 class AcceptanceSeedView(StudentAPIView):
     """Create deterministic synthetic staging data for protected release checks only."""
 
+    @extend_schema(request=None, responses={200: AcceptanceSeedResponseSerializer})
     def post(self, request):
         auth = request.auth if isinstance(request.auth, dict) else {}
         if auth.get("provider") != "github-actions-oidc":
@@ -195,6 +209,10 @@ class _AcceptancePayFastGateway:
 class AcceptancePaymentCompleteView(StudentAPIView):
     """Complete one synthetic staging payment through the real fulfillment path."""
 
+    @extend_schema(
+        request=None,
+        responses={200: AcceptancePaymentCompleteResponseSerializer, 409: PaymentConflictResponseSerializer},
+    )
     def post(self, request, reference: str):
         auth = request.auth if isinstance(request.auth, dict) else {}
         if auth.get("provider") != "github-actions-oidc":
@@ -237,6 +255,7 @@ class AcceptancePaymentCompleteView(StudentAPIView):
 
 
 class CheckoutView(StudentAPIView):
+    @extend_schema(request=CheckoutRequestSerializer, responses={201: CheckoutResponseSerializer})
     def post(self, request):
         serializer = CheckoutRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -270,6 +289,7 @@ class CheckoutView(StudentAPIView):
 
 
 class PaymentStatusView(StudentAPIView):
+    @extend_schema(responses=PaymentStatusResponseSerializer)
     def get(self, request, reference: str):
         payment = get_object_or_404(
             Payment.objects.select_related("enrollment", "course"),
@@ -288,6 +308,7 @@ class PaymentStatusView(StudentAPIView):
 
 
 class ProgressView(StudentAPIView):
+    @extend_schema(request=ProgressRequestSerializer, responses=ResumeSerializer)
     def patch(self, request):
         serializer = ProgressRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -321,6 +342,7 @@ class ProgressView(StudentAPIView):
 
 
 class ResumeView(StudentAPIView):
+    @extend_schema(responses=ResumeSerializer)
     def get(self, request, course_slug: str):
         enrollment = get_object_or_404(
             Enrollment.objects.select_related("course", "last_lesson", "last_lesson__module"),

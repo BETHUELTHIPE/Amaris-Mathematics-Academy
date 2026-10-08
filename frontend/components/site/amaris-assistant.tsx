@@ -8,7 +8,6 @@ import {
   type KeyboardEvent,
 } from "react";
 import { ArrowLeft, Bot, MessageCircle, Mic, Send, Sparkles, Volume2, X } from "lucide-react";
-import { websiteFallback } from "@/lib/assistant-fallback";
 
 type ChatMessage = {
   id: string;
@@ -61,8 +60,8 @@ function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   return browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition ?? null;
 }
 
-export function AmarisAssistant() {
-  const [open, setOpen] = useState(false);
+export function AmarisAssistant({ initialOpen = false }: { initialOpen?: boolean } = {}) {
+  const [open, setOpen] = useState(initialOpen);
   const [mode, setMode] = useState<AssistantMode | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([welcome]);
   const [draft, setDraft] = useState("");
@@ -108,7 +107,7 @@ export function AmarisAssistant() {
     setBusy(true);
     setVoiceError("");
 
-    let reply = websiteFallback(message);
+    let reply = "Amaris Assistant is temporarily unavailable. Please try again shortly.";
 
     try {
       const response = await fetch("/api/assistant/", {
@@ -120,11 +119,10 @@ export function AmarisAssistant() {
         answer?: string;
         detail?: string;
       };
-      if (response.ok && payload.answer) {
-        reply = payload.answer;
-      } else if (response.status !== 503) {
-        reply = payload.detail || reply;
-      }
+      reply =
+        response.ok && payload.answer
+          ? payload.answer
+          : payload.detail || reply;
     } catch {
       // Use the safe fallback response below.
     } finally {
