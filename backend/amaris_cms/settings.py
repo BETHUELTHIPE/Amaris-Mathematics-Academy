@@ -139,7 +139,7 @@ DATABASES = {
         ssl_require=env_bool("DATABASE_SSL_REQUIRED", False),
     )
 }
-SUPABASE_DATABASE_REQUIRED = env_bool("SUPABASE_DATABASE_REQUIRED", bool(os.getenv("RENDER")))
+SUPABASE_DATABASE_REQUIRED = bool(os.getenv("RENDER")) or env_bool("SUPABASE_DATABASE_REQUIRED")
 if not DEBUG and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
     raise RuntimeError("PostgreSQL is required when DJANGO_DEBUG is false.")
 if SUPABASE_DATABASE_REQUIRED:

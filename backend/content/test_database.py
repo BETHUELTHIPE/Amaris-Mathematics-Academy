@@ -1,4 +1,7 @@
+import subprocess
+import sys
 from copy import deepcopy
+from pathlib import Path
 
 from django.test import SimpleTestCase
 
@@ -47,3 +50,41 @@ class SupabaseDatabaseConfigurationTests(SimpleTestCase):
     def test_missing_project_identity_is_rejected(self):
         with self.assertRaises(RuntimeError):
             validate_supabase_database(self.database, "")
+
+    def settings_process(self, **overrides):
+        return subprocess.run(
+            [sys.executable, "-c", "import amaris_cms.settings"],
+            cwd=Path(__file__).resolve().parents[1],
+            env={
+                "DJANGO_DEBUG": "true",
+                "DJANGO_SECRET_KEY": "synthetic-settings-test-secret",
+                "DATABASE_URL": "sqlite:///:memory:",
+                "SUPABASE_URL": self.project_url,
+                "SUPABASE_DATABASE_REQUIRED": "false",
+                **overrides,
+            },
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+    def test_render_cannot_disable_supabase_requirement_with_local_env_flag(self):
+        result = self.settings_process(RENDER="true")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("The deployed database must use Supabase PostgreSQL", result.stderr)
+
+    def test_debug_false_rejects_sqlite_even_with_explicit_url(self):
+        result = self.settings_process(DJANGO_DEBUG="false")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("PostgreSQL is required", result.stderr)
+
+    def test_render_accepts_valid_supabase_settings_without_connecting(self):
+        result = self.settings_process(
+            RENDER="true",
+            DATABASE_URL=(
+                f"postgresql://amaris_staging_app.{self.project_ref}:synthetic-only"
+                "@aws-1-example.pooler.supabase.com:5432/postgres"
+            ),
+            DATABASE_SSL_REQUIRED="true",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
