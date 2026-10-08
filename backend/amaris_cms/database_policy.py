@@ -22,6 +22,4 @@ def assert_supabase_database(database: Mapping[str, Any], project_ref: str) -> N
     pooled_connection = host.endswith(".pooler.supabase.com") and user == expected_pooler_user
 
     if not (direct_connection or pooled_connection):
-        raise RuntimeError(
-            "Protected staging/production DATABASE_URL must point to the configured Supabase project."
-        )
+        raise RuntimeError("Protected staging/production DATABASE_URL must point to the configured Supabase project.")
