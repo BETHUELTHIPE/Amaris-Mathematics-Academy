@@ -15,7 +15,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
-from content.models import LiveClassBooking, SiteSettings
+from content.models import LiveClassBooking, SiteSettings, VideoRequest
 from content.payment_models import Invoice
 from content.services.course_invoice_archive import (
     InvoiceArchiveError as InvoiceArchiveError,
@@ -37,7 +37,7 @@ def student_invoice_key(student_id: object, invoice_number: str) -> str:
     return f"invoices/{student_id}/{invoice_number}.pdf"
 
 
-def _invoice_details(invoice: Invoice | LiveClassBooking) -> tuple[str, str, list[str]]:
+def _invoice_details(invoice: Invoice | LiveClassBooking | VideoRequest) -> tuple[str, str, list[str]]:
     if isinstance(invoice, LiveClassBooking):
         if invoice.status != LiveClassBooking.Status.CONFIRMED or not invoice.invoice_number:
             raise ValueError("Only verified, confirmed bookings receive invoices.")
@@ -55,6 +55,22 @@ def _invoice_details(invoice: Invoice | LiveClassBooking) -> tuple[str, str, lis
                 f"Amount paid: R{invoice.amount:.2f} {invoice.currency}",
             ],
         )
+    if isinstance(invoice, VideoRequest):
+        if invoice.gateway_verified_at is None or not invoice.invoice_number:
+            raise ValueError("Only verified video requests receive invoices.")
+        return (
+            invoice.invoice_number,
+            invoice.student.email,
+            [
+                f"Student: {invoice.student.first_name} {invoice.student.last_name}",
+                f"Video request: {invoice.reference}",
+                f"Ticket: {invoice.ticket_number}",
+                f"Package: {invoice.get_request_type_display()}",
+                f"Subject: {invoice.get_programme_display()} / {invoice.get_subject_display()} / {invoice.level}",
+                f"Topic: {invoice.topic}",
+                f"Amount paid: R{invoice.amount:.2f} {invoice.currency}",
+            ],
+        )
     return (
         invoice.invoice_number,
         invoice.student.email,
@@ -68,7 +84,7 @@ def _invoice_details(invoice: Invoice | LiveClassBooking) -> tuple[str, str, lis
     )
 
 
-def render_invoice_pdf(invoice: Invoice | LiveClassBooking) -> bytes:
+def render_invoice_pdf(invoice: Invoice | LiveClassBooking | VideoRequest) -> bytes:
     invoice_number, student_email, details = _invoice_details(invoice)
     site = SiteSettings.objects.first()
     name = site.site_name if site else "Amaris Mathematics Academy"
@@ -121,10 +137,18 @@ def archive_invoice_pdf(invoice: int, *, storage: Storage | None = None) -> str:
 
 
 @overload
-def archive_invoice_pdf(invoice: Invoice | LiveClassBooking, *, storage: Storage | None = None) -> bytes: ...
+def archive_invoice_pdf(
+    invoice: Invoice | LiveClassBooking | VideoRequest,
+    *,
+    storage: Storage | None = None,
+) -> bytes: ...
 
 
-def archive_invoice_pdf(invoice: int | Invoice | LiveClassBooking, *, storage: Storage | None = None) -> str | bytes:
+def archive_invoice_pdf(
+    invoice: int | Invoice | LiveClassBooking | VideoRequest,
+    *,
+    storage: Storage | None = None,
+) -> str | bytes:
     """Write the PDF to the private student bucket before delivery is marked sent."""
     if isinstance(invoice, int):
         return archive_course_invoice_pdf(invoice, storage=storage)

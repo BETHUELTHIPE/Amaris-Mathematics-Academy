@@ -1,6 +1,8 @@
 name: Render Node Production Diagnostic
 
 on:
+  pull_request:
+    branches: [main, staging]
   push:
     branches:
       - fix/booking-production-readiness-20261004
@@ -45,7 +47,7 @@ jobs:
         working-directory: frontend
         env:
           NODE_ENV: development
-        run: npm install --no-save nitro @tailwindcss/vite@4.3.3
+        run: npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
 
       - name: Build with the Render Node configuration
         working-directory: frontend
@@ -98,6 +100,22 @@ jobs:
               ;;
           esac
           grep -Eqi '^location: .*/book-online-live-class' "$headers"
+
+      - name: Verify protected video routes on Render-compatible runtime
+        run: |
+          set -euo pipefail
+          for path in /request-a-video /request-a-video/confirmation /request-a-video/invoice?reference=VRQ-test /request-a-video/video?reference=VRQ-test; do
+            headers=$(mktemp)
+            code=$(curl --silent --show-error --output /dev/null --dump-header "$headers" --write-out '%{http_code}' --max-time 20 "http://127.0.0.1:4100$path")
+            case "$code" in
+              301|302|303|307|308) ;;
+              *) cat "$headers" >&2; echo "Protected route $path returned $code" >&2; exit 1 ;;
+            esac
+            grep -Eqi '^location: .*/login\?next=' "$headers"
+          done
+          code=$(curl --silent --show-error --output /tmp/video-checkout.json --write-out '%{http_code}' --max-time 20 \
+            -X POST -F 'topic=Synthetic test only' http://127.0.0.1:4100/api/video-requests/checkout)
+          test "$code" = "401"
 
       - name: Stop production server
         if: always()

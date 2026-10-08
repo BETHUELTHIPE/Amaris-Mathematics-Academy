@@ -3,6 +3,7 @@
 /.next/
 /out/
 /dist/
+/.output/
 /coverage/
 /.lighthouseci/
 /.wrangler/

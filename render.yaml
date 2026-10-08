@@ -61,6 +61,14 @@ services:
         value: https://amaris-mathematics-academy-live-students.onrender.com/book-online-live-class/confirmation
       - key: PAYFAST_LIVE_CLASS_CANCEL_URL
         value: https://amaris-mathematics-academy-live-students.onrender.com/payments/cancelled
+      - key: PAYFAST_VIDEO_REQUEST_RETURN_URL
+        value: https://amaris-mathematics-academy-live-students.onrender.com/request-a-video/confirmation
+      - key: PAYFAST_VIDEO_REQUEST_CANCEL_URL
+        value: https://amaris-mathematics-academy-live-students.onrender.com/payments/cancelled
+      - key: VIDEO_REQUEST_DAILY_CAPACITY
+        value: "2"
+      - key: VIDEO_REQUEST_ETA_RANGE_DAYS
+        value: "2"
       - key: PAYFAST_NOTIFY_URL
         value: https://amaris-production-web.onrender.com/api/v1/payfast/itn/
       - key: DATABASE_URL
@@ -248,6 +256,10 @@ services:
         sync: false
       - key: EMAIL_PORT
         value: "587"
+      - key: VIDEO_REQUEST_DAILY_CAPACITY
+        value: "2"
+      - key: VIDEO_REQUEST_ETA_RANGE_DAYS
+        value: "2"
       - key: EMAIL_HOST_USER
         sync: false
       - key: EMAIL_HOST_PASSWORD

@@ -17,6 +17,7 @@ const requiredLinks = [
   ["/how-it-works", "How it works"],
   ["/pricing", "Pricing"],
   ["/about", "About"],
+  ["/request-a-video", "Request a video"],
   ["/book-online-live-class", "Book online live class"],
   ["/contact", "Contact"],
 ];

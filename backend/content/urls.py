@@ -18,6 +18,14 @@ from .student_views import (
     StudentCoursesView,
     StudentLessonView,
 )
+from .video_request_views import (
+    VideoRequestCheckoutView,
+    VideoRequestInvoiceDownloadView,
+    VideoRequestListView,
+    VideoRequestPackageView,
+    VideoRequestStatusView,
+    VideoRequestVideoDownloadView,
+)
 from .views import (
     AmarisAssistantView,
     AnnouncementViewSet,
@@ -47,6 +55,7 @@ router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 urlpatterns = [
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
+    path("video-requests/packages/", VideoRequestPackageView.as_view(), name="video-request-packages"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
     path(
@@ -58,6 +67,23 @@ urlpatterns = [
     path("student/lessons/<slug:course_slug>/<slug:lesson_slug>/", StudentLessonView.as_view(), name="student-lesson"),
     path("student/checkout/", CheckoutView.as_view(), name="student-checkout"),
     path("student/live-classes/checkout/", LiveClassCheckoutView.as_view(), name="live-class-checkout"),
+    path("student/video-requests/", VideoRequestListView.as_view(), name="video-request-list"),
+    path("student/video-requests/checkout/", VideoRequestCheckoutView.as_view(), name="video-request-checkout"),
+    path(
+        "student/video-requests/<str:reference>/",
+        VideoRequestStatusView.as_view(),
+        name="video-request-status",
+    ),
+    path(
+        "student/video-requests/<str:reference>/invoice/",
+        VideoRequestInvoiceDownloadView.as_view(),
+        name="video-request-invoice",
+    ),
+    path(
+        "student/video-requests/<str:reference>/video/",
+        VideoRequestVideoDownloadView.as_view(),
+        name="video-request-video",
+    ),
     path(
         "student/live-classes/bookings/<str:reference>/",
         LiveClassBookingStatusView.as_view(),
