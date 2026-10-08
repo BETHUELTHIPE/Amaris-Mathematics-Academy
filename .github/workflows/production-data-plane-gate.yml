@@ -87,7 +87,7 @@ jobs:
           assert web["runtime"] == "python"
           assert web["branch"] == "production-release-20260923"
           assert web["rootDir"] == "backend"
-          assert web["autoDeployTrigger"] == "off"
+          assert web["autoDeployTrigger"] in (False, "off"), "Production autodeploy must remain disabled"
           assert web["healthCheckPath"] == "/health/ready/"
           assert "migrate --noinput" in web["preDeployCommand"]
 
