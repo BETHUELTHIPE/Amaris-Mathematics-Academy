@@ -47,7 +47,7 @@ jobs:
         working-directory: frontend
         env:
           NODE_ENV: development
-        run: npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+        run: npm install --no-save nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
 
       - name: Build with the Render Node configuration
         working-directory: frontend

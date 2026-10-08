@@ -372,7 +372,7 @@ def deliver_video_request_notifications(_self) -> int:
 def _deliver_one_video_request_notification() -> bool:
     with transaction.atomic():
         item = (
-            VideoRequest.objects.select_for_update(skip_locked=True)
+            VideoRequest.objects.select_for_update(skip_locked=True, of=("self",))
             .select_related("student", "assigned_tutor")
             .filter(status=VideoRequest.Status.QUEUED, confirmation_sent_at__isnull=True)
             .order_by("queue_entered_at")
@@ -381,7 +381,7 @@ def _deliver_one_video_request_notification() -> bool:
         event = "confirmation"
         if item is None:
             for candidate in (
-                VideoRequest.objects.select_for_update(skip_locked=True)
+                VideoRequest.objects.select_for_update(skip_locked=True, of=("self",))
                 .select_related("student", "assigned_tutor")
                 .filter(status=VideoRequest.Status.QUEUED, position_one_sent_at__isnull=True)
                 .order_by("queue_entered_at")[:25]
@@ -392,7 +392,7 @@ def _deliver_one_video_request_notification() -> bool:
                     break
         if item is None:
             item = (
-                VideoRequest.objects.select_for_update(skip_locked=True)
+                VideoRequest.objects.select_for_update(skip_locked=True, of=("self",))
                 .select_related("student", "assigned_tutor")
                 .filter(status=VideoRequest.Status.RECORDING, recording_sent_at__isnull=True)
                 .order_by("updated_at")
@@ -401,7 +401,7 @@ def _deliver_one_video_request_notification() -> bool:
             event = "recording"
         if item is None:
             item = (
-                VideoRequest.objects.select_for_update(skip_locked=True)
+                VideoRequest.objects.select_for_update(skip_locked=True, of=("self",))
                 .select_related("student", "assigned_tutor")
                 .filter(status=VideoRequest.Status.READY, ready_notification_sent_at__isnull=True)
                 .order_by("video_ready_at", "updated_at")
