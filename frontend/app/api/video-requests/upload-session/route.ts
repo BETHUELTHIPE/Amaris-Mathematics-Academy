@@ -48,7 +48,9 @@ export async function POST(request: NextRequest) {
     const prefix = videoRequest.document_upload_prefix;
     if (videoRequest.status !== "pending_payment"
       || !prefix?.startsWith(student.id + "/video-requests/")
-      || !new RegExp("^" + student.id.replaceAll("-", "\\-") + "/video-requests/[a-f0-9-]{36}/documents/$").test(prefix)
+      || !new RegExp("^" + student.id + "/video-requests/[a-f0-9-]{36}/documents/$").test(prefix)
+      || !videoRequest.upload_expires_at
+      || new Date(videoRequest.upload_expires_at).getTime() <= Date.now()
       || videoRequest.document_count >= 5
       || videoRequest.document_total_bytes + fileSize > ONE_GIB) {
       return NextResponse.json({ detail: "Upload unavailable or document quota reached." }, {
@@ -64,10 +66,10 @@ export async function POST(request: NextRequest) {
       });
     }
     const projectUrl = new URL(requireSupabaseConfig().url);
-    if (projectUrl.protocol !== "https:" || !/^[a-z0-9-]+\\.supabase\\.co$/.test(projectUrl.hostname)) {
+    if (projectUrl.protocol !== "https:" || !/^[a-z0-9-]+\.supabase\.co$/.test(projectUrl.hostname)) {
       throw new Error("Supabase storage endpoint is invalid.");
     }
-    const storageHost = projectUrl.hostname.replace(/\\.supabase\\.co$/, ".storage.supabase.co");
+    const storageHost = projectUrl.hostname.replace(/\.supabase\.co$/, ".storage.supabase.co");
     return NextResponse.json({
       storage_endpoint: "https://" + storageHost + "/storage/v1/upload/resumable",
       token: data.token, path, bucket: BUCKET,
