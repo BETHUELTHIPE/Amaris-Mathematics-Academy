@@ -21,7 +21,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const success = params.verified
     ? "Your email has been verified. You can now log in."
     : params.password_updated
-      ? "Your password has been updated. Log in with your new password."
+      ? "Your password is now reset. Continue to log in with your new password."
       : params.signed_out
         ? "You have signed out securely."
         : null;
