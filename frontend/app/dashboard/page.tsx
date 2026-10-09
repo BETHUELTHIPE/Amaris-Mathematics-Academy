@@ -2,18 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
-  Bell,
-  BookOpen,
   CheckCircle2,
-  CreditCard,
-  LayoutDashboard,
   ShieldCheck,
-  UserRound,
   Video,
 } from "lucide-react";
 import { requireVerifiedStudent } from "@/lib/auth";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
+import { StudentDashboardNavigation } from "@/components/dashboard/student-navigation";
 import { courses } from "@/lib/courses";
 import { getStudentCourses, getStudentVideoRequests } from "@/lib/student-api";
 
@@ -45,6 +41,9 @@ export default async function DashboardPage() {
   }
 
   const lessonsStarted = enrolledCourses.filter((item) => item.resume.last_lesson).length;
+  const averageProgress = enrolledCourses.length
+    ? Math.round(enrolledCourses.reduce((total, item) => total + item.resume.progress_percent, 0) / enrolledCourses.length)
+    : 0;
 
   return <main className="min-h-screen bg-[#f5f7fb]">
     <Header />
@@ -63,23 +62,7 @@ export default async function DashboardPage() {
     </section>
 
     <section className="mx-auto grid max-w-7xl gap-7 px-5 py-10 lg:grid-cols-[240px_1fr] lg:px-8">
-      <aside className="h-fit rounded-2xl border border-[#dce4ef] bg-white p-3">
-        <nav className="grid gap-1" aria-label="Dashboard navigation">
-          {[
-            [LayoutDashboard, "Overview", null],
-            [BookOpen, "My courses", null],
-            [CreditCard, "Orders & payments", null],
-            [Bell, "Notifications", null],
-            [UserRound, "Profile & security", "/reset-password"],
-          ].map(([Icon, label, href], i) => {
-            const C = Icon as typeof LayoutDashboard;
-            const content = <><C className="size-4" />{label as string}</>;
-            return href
-              ? <Link key={label as string} href={href as string} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-[#60708a] hover:bg-[#edf3ff]">{content}</Link>
-              : <span key={label as string} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold ${i === 0 ? "bg-[#0b2a5b] text-white" : "text-[#60708a]"}`}>{content}</span>;
-          })}
-        </nav>
-      </aside>
+      <StudentDashboardNavigation currentPath="/dashboard" />
 
       <div className="min-w-0">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -87,7 +70,7 @@ export default async function DashboardPage() {
             ["Active courses", String(enrolledCourses.length)],
             ["Lessons started", String(lessonsStarted)],
             ["Video requests", String(videoRequests.length)],
-            ["Certificates earned", "0"],
+            ["Average course progress", `${averageProgress}%`],
           ].map(([label, value]) => <div key={label} className="rounded-2xl border border-[#dce4ef] bg-white p-6">
             <p className="text-sm text-[#60708a]">{label}</p>
             <p className="mt-3 text-4xl font-bold tracking-tight">{value}</p>
@@ -102,7 +85,7 @@ export default async function DashboardPage() {
           Video-request progress is temporarily unavailable. Your documents and paid tickets remain private; try again shortly.
         </div>}
 
-        {enrolledCourses.length > 0 ? <section className="mt-6 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
+        {courseServiceAvailable && (enrolledCourses.length > 0 ? <section className="mt-6 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
           <p className="eyebrow">My courses</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-.035em]">Continue where you stopped.</h2>
           <div className="mt-6 grid gap-4">
@@ -133,7 +116,7 @@ export default async function DashboardPage() {
             </div>
             <Link href="/courses" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3.5 font-bold text-white">Choose a course <ArrowRight className="size-4" /></Link>
           </div>
-        </div>}
+        </div>)}
 
         <section className="mt-8 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
