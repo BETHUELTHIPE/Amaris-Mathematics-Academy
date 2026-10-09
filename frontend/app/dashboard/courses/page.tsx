@@ -39,7 +39,9 @@ export default async function MyCoursesPage() {
                 const lesson = resume.last_lesson;
                 const href = lesson
                   ? `/learn/${encodeURIComponent(course.slug)}/${encodeURIComponent(lesson.slug)}?t=${resume.last_position_seconds}`
-                  : `/courses/${encodeURIComponent(course.slug)}`;
+                  : course.first_lesson_slug
+                    ? `/learn/${encodeURIComponent(course.slug)}/${encodeURIComponent(course.first_lesson_slug)}`
+                    : `/courses/${encodeURIComponent(course.slug)}`;
                 return (
                   <li key={course.slug} className="rounded-2xl border border-[#dce4ef] bg-white p-6">
                     <h2 className="text-xl font-semibold">{course.title}</h2>
