@@ -205,7 +205,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Audit production Node dependencies
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --audit-level=moderate
 
   secret-security:
     name: Repository secret scan
