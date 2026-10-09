@@ -37,10 +37,16 @@ export async function GET(request: NextRequest) {
   }
 
   if (error) {
-    const url = new URL("/login", request.url);
+    const recoveryFlow = next === "/reset-password";
+    const url = new URL(
+      recoveryFlow ? "/forgot-password" : "/login",
+      request.url,
+    );
     url.searchParams.set(
       "error",
-      "This email link is invalid or has expired. Please request a new one.",
+      recoveryFlow
+        ? "That password reset link is invalid or has expired. Request a new one."
+        : "This email link is invalid or has expired. Please request a new one.",
     );
     return NextResponse.redirect(url);
   }
