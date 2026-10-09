@@ -129,6 +129,15 @@ function mergeRequiredNavigation(
   return [...requiredItems, ...customItems];
 }
 
+function isStudentDocumentUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url, "https://amaris.local").pathname.replace(/\/+$/, "");
+    return pathname === "/documents" || pathname.startsWith("/documents/");
+  } catch {
+    return url === "/documents" || url.startsWith("/documents/");
+  }
+}
+
 function keepBookingNextToContact(items: CmsNavigationItem[]): CmsNavigationItem[] {
   const bookingIndex = items.findIndex((item) => item.url === "/book-online-live-class");
   const contactIndex = items.findIndex((item) => item.url === "/contact");
@@ -150,6 +159,7 @@ export const getManagedNavigation = cache(async (location: "header" | "footer") 
   const managedItems = (await getManagedBootstrap())?.navigation;
   const items = mergeRequiredNavigation(managedItems)
     .filter((item) => item.location === location || item.location === "both")
+    .filter((item) => !isStudentDocumentUrl(item.url))
     .sort((a, b) => a.order - b.order);
   return keepBookingNextToContact(items);
 });
