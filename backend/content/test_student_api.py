@@ -315,3 +315,42 @@ class StudentJourneyApiTests(APITestCase):
             secure=True,
         )
         self.assertEqual(response.status_code, 401)
+
+    def test_student_orders_hide_other_accounts_and_gateway_details(self):
+        own = Payment.objects.create(
+            reference="PF-student-orders-own", student=self.student, course=self.course,
+            provider=Payment.Provider.PAYFAST, amount=Decimal("950.00"), status=Payment.Status.PAID,
+            raw_response={"secret_field": "never-expose-this"},
+        )
+        Payment.objects.create(
+            reference="PF-student-orders-other", student=self.other, course=self.course,
+            provider=Payment.Provider.PAYFAST, amount=Decimal("950.00"), status=Payment.Status.PENDING,
+        )
+        self.client.force_authenticate(user=None)
+        anonymous = self.client.get(reverse("student-orders"), secure=True)
+        self.assertEqual(anonymous.status_code, 401)
+
+        self.authenticate()
+        response = self.client.get(reverse("student-orders"), secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        orders = response.data["orders"]
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders[0]["reference"], own.reference)
+        self.assertEqual(orders[0]["title"], self.course.title)
+        self.assertEqual(orders[0]["kind"], "course")
+        self.assertEqual(orders[0]["status"], Payment.Status.PAID)
+        self.assertEqual(set(orders[0]), {
+            "kind", "reference", "title", "status", "status_label",
+            "amount", "currency", "created_at",
+        })
+        self.assertNotIn("secret_field", str(orders))
+        self.assertEqual(self.client.post(reverse("student-orders"), {}, secure=True).status_code, 405)
+
+        self.authenticate(self.other)
+        other_response = self.client.get(reverse("student-orders"), secure=True)
+        self.assertEqual(other_response.status_code, 200)
+        self.assertEqual(
+            [order["reference"] for order in other_response.data["orders"]],
+            ["PF-student-orders-other"],
+        )
