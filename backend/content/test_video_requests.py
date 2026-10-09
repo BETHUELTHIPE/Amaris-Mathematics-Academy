@@ -142,10 +142,7 @@ class VideoRequestWorkflowTests(TestCase):
     def test_resumable_document_is_registered_only_after_private_storage_verification(self):
         checkout = self.create_checkout(key="video-large-doc-001")
         item = VideoRequest.objects.get(reference=checkout.request_reference)
-        path = (
-            f"{self.student.supabase_user_id}/video-requests/{item.pk}/documents/"
-            f"{uuid.uuid4()}.pdf"
-        )
+        path = f"{self.student.supabase_user_id}/video-requests/{item.pk}/documents/" f"{uuid.uuid4()}.pdf"
         body = b"%PDF-1.4\nSynthetic private file\n%%EOF\n"
         self.assertEqual(storages["student_private"].save(path, ContentFile(body)), path)
         payload = {
@@ -181,20 +178,30 @@ class VideoRequestWorkflowTests(TestCase):
         self.assertEqual(storages["student_private"].save(path, ContentFile(b"NOT A PDF")), path)
         url = reverse("video-request-document-register", args=[item.reference])
         metadata = {
-            "storage_path": path, "original_name": "notes.pdf",
-            "content_type": "application/pdf", "size_bytes": 9,
+            "storage_path": path,
+            "original_name": "notes.pdf",
+            "content_type": "application/pdf",
+            "size_bytes": 9,
         }
         bad_magic = self.authenticated_client().post(url, metadata, format="json", secure=True)
         self.assertEqual(bad_magic.status_code, 400)
         wrong_owner = self.authenticated_client().post(
             url,
-            {**metadata, "storage_path": metadata["storage_path"].replace(str(self.student.supabase_user_id), str(self.other_student.supabase_user_id))},
-            format="json", secure=True,
+            {
+                **metadata,
+                "storage_path": metadata["storage_path"].replace(
+                    str(self.student.supabase_user_id), str(self.other_student.supabase_user_id)
+                ),
+            },
+            format="json",
+            secure=True,
         )
         self.assertEqual(wrong_owner.status_code, 400)
         oversized = self.authenticated_client().post(
-            url, {**metadata, "size_bytes": 1024 * 1024 * 1024 + 1},
-            format="json", secure=True,
+            url,
+            {**metadata, "size_bytes": 1024 * 1024 * 1024 + 1},
+            format="json",
+            secure=True,
         )
         self.assertEqual(oversized.status_code, 400)
         self.assertFalse(item.documents.exists())
