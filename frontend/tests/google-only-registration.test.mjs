@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { getSiteUrl } from "../lib/supabase/config.ts";
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const registration = source("../app/register/page.tsx");
@@ -45,4 +46,22 @@ test("verified student identity uses the authoritative Supabase user record", ()
   assert.match(identity, /userData\.user\.id !== data\.claims\.sub/);
   assert.match(identity, /Boolean\(userData\.user\.email_confirmed_at\)/);
   assert.doesNotMatch(identity, /claims\.email_verified/);
+});
+
+
+test("Google callback URL uses the Render service origin unless SITE_URL overrides it", () => {
+  const originalSite = process.env.SITE_URL;
+  const originalRender = process.env.RENDER_EXTERNAL_URL;
+  try {
+    delete process.env.SITE_URL;
+    process.env.RENDER_EXTERNAL_URL = "https://staging-students.onrender.com";
+    assert.equal(getSiteUrl(), "https://staging-students.onrender.com");
+    process.env.SITE_URL = "https://students.example.test/";
+    assert.equal(getSiteUrl(), "https://students.example.test");
+  } finally {
+    if (originalSite === undefined) delete process.env.SITE_URL;
+    else process.env.SITE_URL = originalSite;
+    if (originalRender === undefined) delete process.env.RENDER_EXTERNAL_URL;
+    else process.env.RENDER_EXTERNAL_URL = originalRender;
+  }
 });
