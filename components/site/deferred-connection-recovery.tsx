@@ -19,11 +19,16 @@ export function DeferredConnectionRecovery() {
       setReady(true);
     };
 
-    if (!navigator.onLine) setReady(true);
+    // Defer the initial offline check to avoid a synchronous state update
+    // during effect setup while retaining immediate offline recovery.
+    const initialOfflineCheck = window.setTimeout(() => {
+      if (!navigator.onLine) activateRecovery();
+    }, 0);
     window.addEventListener("offline", activateRecovery, { once: true });
     document.addEventListener("submit", protectOfflineSubmission, true);
 
     return () => {
+      window.clearTimeout(initialOfflineCheck);
       window.removeEventListener("offline", activateRecovery);
       document.removeEventListener("submit", protectOfflineSubmission, true);
     };
