@@ -21,7 +21,7 @@ on:
 
 concurrency:
   group: amaris-release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # New PR/main-push evidence supersedes stale evidence. Explicit production workflow_dispatch runs are never auto-cancelled.\n  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 permissions:
   contents: read
