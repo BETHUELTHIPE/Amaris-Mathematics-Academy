@@ -1,5 +1,5 @@
 {
-  "name": "micromatch-safe-amaris",
+  "name": "micromatch",
   "version": "4.0.8-amaris.1",
   "private": true,
   "description": "Bounded, tested glob adapter for fast-glob while upstream braces GHSA-vfj7-8cjw-p6xm remains unpatched",
