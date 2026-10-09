@@ -77,19 +77,48 @@ test("login uses a generic error to reduce account-enumeration risk", () => {
   assert.doesNotMatch(actionsSource, /no account exists|email not found|user not found/i);
 });
 
-test("forgot-password response is enumeration safe", () => {
+test("forgot-password response is enumeration safe and uses the recovery callback", () => {
   expectSource(/resetPasswordForEmail\(/, "password reset must be delegated to Supabase Auth");
-  expectSource(/The same response is shown whether the account exists or not\./,
-    "reset flow should explicitly preserve account-enumeration safety");
+  expectSource(
+    /redirectTo:\s*\`\$\{getSiteUrl\(\)\}\/auth\/confirm\?next=\/reset-password\`/,
+    "password reset email must return to the recovery callback",
+  );
+  expectSource(
+    /Supabase returns the same successful response whether the account exists/,
+    "reset flow should explicitly preserve account-enumeration safety",
+  );
   expectSource(/redirect\("\/forgot-password\?sent=1"\)/,
     "reset request should return the same success state regardless of account existence");
+  expectSource(
+    /We could not send password reset instructions right now/,
+    "provider failures must have a safe generic recovery error",
+  );
 });
 
-test("reset requires an authenticated recovery session, updates password, then revokes sessions globally", () => {
+test("reset requires an authenticated recovery session, updates password, revokes sessions, and returns to login", () => {
   expectSource(/supabase\.auth\.getUser\(\)/, "reset must require a valid recovery session");
   expectSource(/That reset link has expired\. Request a new one\./, "expired reset sessions must be rejected");
   expectSource(/supabase\.auth\.updateUser\(\{ password \}\)/, "password must be changed through Supabase Auth");
   expectSource(/supabase\.auth\.signOut\(\{ scope: "global" \}\)/, "password reset must revoke existing sessions");
+  expectSource(
+    /redirect\("\/login\?password_updated=1"\)/,
+    "successful password reset must continue to the login confirmation state",
+  );
+
+  const loginPageSource = fs.readFileSync(path.join(process.cwd(), "app/login/page.tsx"), "utf8");
+  assert.match(
+    loginPageSource,
+    /Your password is now reset\. Continue to log in with your new password\./,
+    "login must clearly confirm the password reset before the student signs in",
+  );
+
+  const confirmRouteSource = fs.readFileSync(path.join(process.cwd(), "app/auth/confirm/route.ts"), "utf8");
+  assert.match(confirmRouteSource, /"recovery"/, "the auth callback must accept recovery links");
+  assert.match(
+    confirmRouteSource,
+    /recoveryFlow \? "\/forgot-password" : "\/login"/,
+    "expired recovery links must return the student to forgot-password rather than a generic login error",
+  );
 });
 
 test("logout invalidates the local session", () => {
