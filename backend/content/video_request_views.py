@@ -18,6 +18,7 @@ from .services.payments import PaymentSecurityError
 from .services.video_requests import (
     VIDEO_REQUEST_PRICES,
     create_video_request_checkout,
+    register_resumable_document,
     video_request_eta,
     video_request_queue_position,
 )
@@ -77,6 +78,7 @@ class VideoRequestStatusSerializer(serializers.Serializer):
     invoice_number = serializers.CharField(allow_blank=True, allow_null=True)
     invoice_ready = serializers.BooleanField()
     document_count = serializers.IntegerField()
+    document_upload_prefix = serializers.CharField(allow_blank=True, required=False)
     video = serializers.DictField(allow_null=True)
 
 
@@ -125,6 +127,10 @@ def _status_payload(request: VideoRequest) -> dict:
         "invoice_number": request.invoice_number,
         "invoice_ready": bool(request.invoice_number and request.confirmation_sent_at),
         "document_count": request.documents.count(),
+        "document_upload_prefix": (
+            f"{request.student.supabase_user_id}/video-requests/{request.pk}/documents/"
+            if request.status == VideoRequest.Status.PENDING_PAYMENT else ""
+        ),
         "video": video,
     }
 
@@ -184,6 +190,9 @@ class VideoRequestCheckoutView(VideoRequestStudentAPIView):
         return Response(
             {
                 "request_reference": video_request.reference,
+                "document_upload_prefix": (
+                    f"{video_request.student.supabase_user_id}/video-requests/{video_request.pk}/documents/"
+                ),
                 "status": video_request.status,
                 "gateway_url": checkout.gateway_url,
                 "fields": checkout.fields,
@@ -198,6 +207,40 @@ class VideoRequestCheckoutView(VideoRequestStudentAPIView):
                     "currency": video_request.currency,
                 },
             },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+
+class ResumableDocumentSerializer(serializers.Serializer):
+    storage_path = serializers.CharField(max_length=512)
+    original_name = serializers.CharField(max_length=255)
+    content_type = serializers.ChoiceField(choices=("application/pdf", "image/jpeg", "image/png"))
+    size_bytes = serializers.IntegerField(min_value=1, max_value=1024 * 1024 * 1024)
+
+
+class VideoRequestDocumentRegisterView(VideoRequestStudentAPIView):
+    """Register metadata only after verifying the uploaded object in private Supabase S3."""
+
+    @extend_schema(request=ResumableDocumentSerializer, responses={201: OpenApiTypes.OBJECT})
+    def post(self, request, reference: str):
+        serializer = ResumableDocumentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            document = register_resumable_document(
+                student=self.student,
+                reference=reference,
+                **serializer.validated_data,
+            )
+        except PaymentSecurityError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
+        except OSError:
+            return Response(
+                {"detail": "Private document storage is unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(
+            {"id": document.pk, "size_bytes": document.size_bytes},
             status=status.HTTP_201_CREATED,
         )
 
