@@ -16,8 +16,8 @@ from .student_views import (
     ProgressView,
     ResumeView,
     StudentCoursesView,
-    StudentOrdersView,
     StudentLessonView,
+    StudentOrdersView,
 )
 from .video_request_views import (
     VideoRequestCheckoutView,
