@@ -132,12 +132,12 @@ def _status_payload(request: VideoRequest) -> dict:
         "document_count": request.documents.count(),
         "document_total_bytes": sum(doc.size_bytes for doc in request.documents.all()),
         "upload_expires_at": (
-            request.payment_expires_at
-            if request.status == VideoRequest.Status.PENDING_PAYMENT else None
+            request.payment_expires_at if request.status == VideoRequest.Status.PENDING_PAYMENT else None
         ),
         "document_upload_prefix": (
             f"{request.student.supabase_user_id}/video-requests/{request.pk}/documents/"
-            if request.status == VideoRequest.Status.PENDING_PAYMENT else ""
+            if request.status == VideoRequest.Status.PENDING_PAYMENT
+            else ""
         ),
         "video": video,
     }
@@ -217,7 +217,6 @@ class VideoRequestCheckoutView(VideoRequestStudentAPIView):
             },
             status=status.HTTP_201_CREATED,
         )
-
 
 
 class ResumableDocumentSerializer(serializers.Serializer):
