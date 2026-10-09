@@ -237,11 +237,19 @@ export async function forgotPasswordAction(formData: FormData) {
     redirectTo: `${getSiteUrl()}/auth/confirm?next=/reset-password`,
   });
 
-  if (error && /rate limit|too many/i.test(error.message)) {
-    redirect("/errors/429");
+  if (error) {
+    if (/rate limit|too many/i.test(error.message)) {
+      redirect("/errors/429");
+    }
+    redirectWithMessage(
+      "/forgot-password",
+      "error",
+      "We could not send password reset instructions right now. Please try again in a few minutes.",
+    );
   }
 
-  // The same response is shown whether the account exists or not.
+  // Supabase returns the same successful response whether the account exists
+  // or not, so this state does not disclose account membership.
   redirect("/forgot-password?sent=1");
 }
 
