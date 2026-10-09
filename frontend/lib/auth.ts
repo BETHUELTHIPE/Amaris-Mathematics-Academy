@@ -36,7 +36,16 @@ export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null
   const { data, error } = await supabase.auth.getClaims();
 
   if (error || !data?.claims) return null;
-  return mapClaims(data.claims);
+
+  // getClaims() verifies the JWT signature. Confirm the authoritative Auth
+  // user record as well before granting access to private student surfaces.
+  // Supabase's standard JWT claims do not contain an email_verified claim.
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user || userData.user.id !== data.claims.sub) {
+    return null;
+  }
+
+  return mapClaims(data.claims, Boolean(userData.user.email_confirmed_at));
 });
 
 export async function requireVerifiedStudent(
@@ -82,7 +91,7 @@ export function safeRelativePath(value: string | null | undefined): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function mapClaims(claims: JwtPayload): StudentIdentity {
+function mapClaims(claims: JwtPayload, emailVerified: boolean): StudentIdentity {
   const metadata = claims.user_metadata ?? {};
   const firstName = cleanName(metadata.first_name) || "Student";
   const lastName = cleanName(metadata.last_name);
@@ -92,7 +101,7 @@ function mapClaims(claims: JwtPayload): StudentIdentity {
     firstName,
     lastName,
     displayName: [firstName, lastName].filter(Boolean).join(" "),
-    emailVerified: claims.email_verified === true,
+    emailVerified,
   };
 }
 
