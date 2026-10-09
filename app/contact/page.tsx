@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Clock3, Mail, MapPin, Phone } from "lucide-react";
 import { Header } from "@/components/site/header";
+import { FormCloseLink } from "@/components/site/form-close-link";
 import { Footer } from "@/components/site/footer";
 import { EnquiryForm } from "@/components/site/enquiry-form";
 import { getManagedBrand } from "@/lib/cms";
@@ -36,6 +37,7 @@ export default async function ContactPage() {
           </div>
           <div className="relative overflow-hidden rounded-[2rem] bg-white p-6 shadow-[0_22px_70px_rgba(9,35,75,.12)] ring-1 ring-[#dce4ef] sm:p-9">
             <div className="absolute right-0 top-0 h-2 w-36 bg-[#ffcc66]" />
+            <div className="relative z-10 mb-5 flex justify-end"><FormCloseLink /></div>
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#1f5bbd]">Enquiry form</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-.035em] text-[#0a1b36]">Send us a message</h2>
             <p className="mt-3 text-base leading-7 text-[#60708a]">Required fields are marked with an asterisk. We will use your details only to respond to this enquiry.</p>
