@@ -25,20 +25,14 @@ export default async function DashboardPage() {
   const profileSaved = user.emailVerified;
   const recommended = courses.slice(0, 2);
 
-  let enrolledCourses: Awaited<ReturnType<typeof getStudentCourses>> = [];
-  let courseServiceAvailable = true;
-  let videoRequests: Awaited<ReturnType<typeof getStudentVideoRequests>> = [];
-  let videoRequestServiceAvailable = true;
-  try {
-    enrolledCourses = await getStudentCourses();
-  } catch {
-    courseServiceAvailable = false;
-  }
-  try {
-    videoRequests = await getStudentVideoRequests();
-  } catch {
-    videoRequestServiceAvailable = false;
-  }
+  const [coursesResult, videosResult] = await Promise.allSettled([
+    getStudentCourses(),
+    getStudentVideoRequests(),
+  ]);
+  const courseServiceAvailable = coursesResult.status === "fulfilled";
+  const videoRequestServiceAvailable = videosResult.status === "fulfilled";
+  const enrolledCourses = courseServiceAvailable ? coursesResult.value : [];
+  const videoRequests = videoRequestServiceAvailable ? videosResult.value : [];
 
   const lessonsStarted = enrolledCourses.filter((item) => item.resume.last_lesson).length;
   const averageProgress = enrolledCourses.length
@@ -67,10 +61,10 @@ export default async function DashboardPage() {
       <div className="min-w-0">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            ["Active courses", String(enrolledCourses.length)],
-            ["Lessons started", String(lessonsStarted)],
-            ["Video requests", String(videoRequests.length)],
-            ["Average course progress", `${averageProgress}%`],
+            ["Active courses", courseServiceAvailable ? String(enrolledCourses.length) : "—"],
+            ["Lessons started", courseServiceAvailable ? String(lessonsStarted) : "—"],
+            ["Video requests", videoRequestServiceAvailable ? String(videoRequests.length) : "—"],
+            ["Average course progress", courseServiceAvailable ? `${averageProgress}%` : "—"],
           ].map(([label, value]) => <div key={label} className="rounded-2xl border border-[#dce4ef] bg-white p-6">
             <p className="text-sm text-[#60708a]">{label}</p>
             <p className="mt-3 text-4xl font-bold tracking-tight">{value}</p>
@@ -130,7 +124,7 @@ export default async function DashboardPage() {
                 <ArrowRight className="size-5 text-[#1f5bbd] transition group-hover:translate-x-1" />
               </div>
             </Link>)}
-          </div> : <p className="mt-5 text-sm leading-7 text-[#60708a]">No video requests yet. Upload a question, assignment or past paper and choose the explanation you need.</p>}
+          </div> : <p className="mt-5 text-sm leading-7 text-[#60708a]">{videoRequestServiceAvailable ? "No video requests yet. Upload a question, assignment or past paper and choose the explanation you need." : "Your video-request list is temporarily unavailable."}</p>}
         </section>
 
         <section className="mt-8">
