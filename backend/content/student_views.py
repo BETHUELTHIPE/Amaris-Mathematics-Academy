@@ -69,16 +69,31 @@ class StudentCoursesView(StudentAPIView):
             .select_related("course", "last_lesson", "last_lesson__module")
             .order_by("-enrolled_at")
         )
+        enrolled = list(enrollments)
+        course_ids = [enrollment.course_id for enrollment in enrolled]
+        first_lessons = {}
+        for course_id, lesson_slug in (
+            Lesson.objects.filter(
+                module__course_id__in=course_ids,
+                module__is_published=True,
+                is_published=True,
+            )
+            .filter(Q(publish_at__isnull=True) | Q(publish_at__lte=timezone.now()))
+            .order_by("module__course_id", "module__order", "order", "id")
+            .values_list("module__course_id", "slug")
+        ):
+            first_lessons.setdefault(course_id, lesson_slug)
         return Response(
             [
                 {
                     "course": {
                         "slug": enrollment.course.slug,
                         "title": enrollment.course.title,
+                        "first_lesson_slug": first_lessons.get(enrollment.course_id, ""),
                     },
                     "resume": _resume_payload(enrollment),
                 }
-                for enrollment in enrollments
+                for enrollment in enrolled
             ]
         )
 
