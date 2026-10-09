@@ -294,11 +294,7 @@ def register_resumable_document(
     """Attach only a completed, owner-scoped Supabase object; never buffer its payload."""
     if not settings.SUPABASE_S3_STUDENT_BUCKET or not settings.SUPABASE_S3_ENDPOINT_URL:
         raise OSError("Private Supabase student storage is not configured.")
-    if (
-        not isinstance(size_bytes, int)
-        or size_bytes <= 0
-        or size_bytes > MAX_RESUMABLE_DOCUMENT_SIZE
-    ):
+    if not isinstance(size_bytes, int) or size_bytes <= 0 or size_bytes > MAX_RESUMABLE_DOCUMENT_SIZE:
         raise PaymentSecurityError("Each supporting document must be between 1 byte and 1 GB.")
     if content_type not in ALLOWED_DOCUMENT_TYPES:
         raise PaymentSecurityError("Only PDF, JPEG and PNG supporting documents are allowed.")
@@ -307,11 +303,7 @@ def register_resumable_document(
         raise PaymentSecurityError("Invalid supporting document name.")
     extension = ALLOWED_DOCUMENT_TYPES[content_type]
     with transaction.atomic():
-        video_request = (
-            VideoRequest.objects.select_for_update()
-            .filter(reference=reference, student=student)
-            .first()
-        )
+        video_request = VideoRequest.objects.select_for_update().filter(reference=reference, student=student).first()
         if video_request is None:
             raise PaymentSecurityError("Video request was not found for this student.")
         if (
