@@ -107,6 +107,7 @@ export type StudentVideoRequest = {
   invoice_ready: boolean;
   document_count: number;
   document_total_bytes: number;
+  upload_expires_at: string | null;
   document_upload_prefix: string;
   video: null | {
     provider: "youtube" | "direct";
