@@ -171,10 +171,7 @@ class VideoRequestWorkflowTests(TestCase):
     )
     def test_resumable_document_rejects_spoofed_paths_types_and_sizes(self):
         item = VideoRequest.objects.get(reference=self.create_checkout(key="video-large-bad-001").request_reference)
-        path = (
-            f"{self.student.supabase_user_id}/video-requests/{item.pk}/documents/"
-            f"{uuid.uuid4()}.pdf"
-        )
+        path = f"{self.student.supabase_user_id}/video-requests/{item.pk}/documents/" f"{uuid.uuid4()}.pdf"
         self.assertEqual(storages["student_private"].save(path, ContentFile(b"NOT A PDF")), path)
         url = reverse("video-request-document-register", args=[item.reference])
         metadata = {
