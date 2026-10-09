@@ -1,0 +1,74 @@
+name: Refresh secure glob dependency lockfile
+
+on:
+  push:
+    branches:
+      - fix/minimal-dependency-security-main-20261009
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-amaris-security-lock
+  cancel-in-progress: false
+
+jobs:
+  refresh-lock:
+    name: Resolve secure alias, commit lockfile, and run full npm audit
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/minimal-dependency-security-main-20261009'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          ref: fix/minimal-dependency-security-main-20261009
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Resolve and verify safe replacement
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts --no-fund
+          node -e 'const l=require("./package-lock.json");console.log("resolved micromatch entry:",JSON.stringify(l.packages?.["node_modules/micromatch"] ?? null))'
+          npm ci
+          node scripts/security/report-node-dependency-provenance.mjs
+          node --test tests/secure-glob-dependency.test.mjs
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+          const packages = lock.packages ?? {};
+          if (Object.keys(packages).some(p => p === "node_modules/braces" || p.endsWith("/node_modules/braces"))) {
+            throw new Error("Unpatched braces GHSA-vfj7-8cjw-p6xm remains installed");
+          }
+          const adapter = packages["node_modules/micromatch"];
+          const source = adapter?.link ? packages[adapter.resolved] : adapter;
+          if (!adapter || source?.version !== "4.0.8-amaris.1") {
+            throw new Error("The bounded micromatch adapter did not resolve to exactly 4.0.8-amaris.1");
+          }
+          console.log("No vulnerable braces package in generated dependency graph");
+          NODE
+      - name: Save exact lockfile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: secure-glob-frontend-lockfile
+          path: frontend/package-lock.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Commit synchronized lockfile to the remediation branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- frontend/package-lock.json
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' \
+                -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                commit -m 'security(frontend): lock bounded glob adapter without vulnerable braces'
+            git push origin HEAD:refs/heads/fix/minimal-dependency-security-main-20261009
+          fi
+      - name: Full strict Node audit (no ignored advisories)
+        working-directory: frontend
+        run: npm audit --audit-level=high

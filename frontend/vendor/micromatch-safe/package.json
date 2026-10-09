@@ -1,0 +1,12 @@
+{
+  "name": "micromatch",
+  "version": "4.0.8-amaris.1",
+  "private": true,
+  "description": "Bounded, tested glob adapter for fast-glob while upstream braces GHSA-vfj7-8cjw-p6xm remains unpatched",
+  "main": "index.cjs",
+  "license": "MIT",
+  "dependencies": {
+    "picomatch": "4.0.7",
+    "@isaacs/brace-expansion": "5.0.1"
+  }
+}
