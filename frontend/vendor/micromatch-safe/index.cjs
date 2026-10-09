@@ -28,7 +28,7 @@ function safeBraces(patterns, options = {}) {
     }
     let depth = 0;
     for (let i = 0; i < pattern.length; i++) {
-      if (pattern[i] === "\\\\") { i++; continue; }
+      if (pattern[i] === "\\") { i++; continue; }
       if (pattern[i] === "{") depth++;
       if (pattern[i] === "}") depth--;
       if (depth > 64) throw new RangeError("Glob brace nesting exceeds safe limit");
