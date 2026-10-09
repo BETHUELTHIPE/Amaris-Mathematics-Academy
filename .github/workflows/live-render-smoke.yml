@@ -159,7 +159,7 @@ jobs:
                   )
               mobile.locator("summary", has_text="Menu").click()
               mobile_request_video = mobile.locator(
-                  'a[href="/request-a-video"]',
+                  'details a[href="/request-a-video"]',
                   has_text="Request a video",
               )
               if mobile_request_video.count() < 1:
