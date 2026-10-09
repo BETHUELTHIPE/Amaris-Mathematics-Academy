@@ -8,6 +8,7 @@ const login = source("../app/login/page.tsx");
 const actions = source("../app/auth/actions.ts");
 const callback = source("../app/auth/callback/route.ts");
 const button = source("../components/site/google-auth-button.tsx");
+const identity = source("../lib/auth.ts");
 
 test("registration shows Google as the only social provider", () => {
   assert.match(registration, /GoogleAuthButton label="Register with Google"/);
@@ -35,4 +36,13 @@ test("callback verifies the session and confines redirects to safe relative path
   assert.match(callback, /supabase.auth.getUser\(\)/);
   assert.match(callback, /safeRelativePath\(/);
   assert.match(callback, /email_confirmed_at/);
+});
+
+
+test("verified student identity uses the authoritative Supabase user record", () => {
+  assert.match(identity, /supabase\.auth\.getClaims\(\)/);
+  assert.match(identity, /supabase\.auth\.getUser\(\)/);
+  assert.match(identity, /userData\.user\.id !== data\.claims\.sub/);
+  assert.match(identity, /Boolean\(userData\.user\.email_confirmed_at\)/);
+  assert.doesNotMatch(identity, /claims\.email_verified/);
 });
