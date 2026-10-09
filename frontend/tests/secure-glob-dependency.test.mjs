@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 // glob-matching dependency. The ordinary lint/build/E2E gates must also pass.
 test("micromatch replacement uses bounded picomatch and safe brace expansion", () => {
   const manifest = require("micromatch/package.json");
-  assert.equal(manifest.name, "micromatch-safe-amaris");
+  assert.equal(manifest.name, "micromatch");
   assert.equal(manifest.version, "4.0.8-amaris.1");
   assert.equal(manifest.dependencies?.picomatch, "4.0.7");
   assert.equal(manifest.dependencies?.["@isaacs/brace-expansion"], "5.0.1");
