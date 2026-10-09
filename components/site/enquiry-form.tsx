@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { academyBrand } from "@/lib/brand";
 import { ClearSafeFormDraft, SafeFormDraft } from "@/components/site/safe-form-draft";
+import { FormCloseLink } from "@/components/site/form-close-link";
 
 function FieldError({ message }: { message?: string }) {
   return message ? <p className="mt-2 text-sm font-medium text-[#b42318]" role="alert">{message}</p> : null;
@@ -49,7 +50,7 @@ export function EnquiryForm() {
       </div>
       <div><div className="flex items-center justify-between gap-4"><label htmlFor="message" className="text-sm font-semibold text-[#263951]">How can we help? <span className="text-[#b42318]">*</span></label><span className="text-xs text-[#69778e]">20–2,000 characters</span></div><Textarea id="message" name="message" required minLength={20} maxLength={2000} aria-invalid={Boolean(state.errors?.message)} className="mt-2 min-h-40 resize-y rounded-xl border-[#cdd8e6] bg-[#fbfcfe] p-4 text-base leading-7" placeholder="Tell us what you need help with, including your study level or order reference when relevant." /><FieldError message={state.errors?.message} /></div>
       <div><label htmlFor="consent" className="flex items-start gap-3 text-sm leading-6 text-[#60708a]"><Checkbox id="consent" name="consent" required value="on" aria-label="Consent to use enquiry details" aria-invalid={Boolean(state.errors?.consent)} className="mt-1 border-[#9aabc0] data-[state=checked]:border-[#1f5bbd] data-[state=checked]:bg-[#1f5bbd]" /><span>I agree that Amaris Mathematics Academy may use these details to respond to my enquiry. <span className="text-[#b42318]">*</span></span></label><FieldError message={state.errors?.consent} /></div>
-      <div className="flex flex-col gap-4 border-t border-[#e4eaf2] pt-6 sm:flex-row sm:items-center sm:justify-between"><SubmitButton /><p className="text-sm text-[#69778e]">Prefer to speak? <a href={academyBrand.phoneHref} className="font-semibold text-[#1f5bbd] hover:underline">Call {academyBrand.phoneDisplay}</a></p></div>
+      <div className="flex flex-col gap-4 border-t border-[#e4eaf2] pt-6 sm:flex-row sm:items-center sm:justify-between"><div className="flex flex-wrap items-center gap-3"><SubmitButton /><FormCloseLink /></div><p className="text-sm text-[#69778e]">Prefer to speak? <a href={academyBrand.phoneHref} className="font-semibold text-[#1f5bbd] hover:underline">Call {academyBrand.phoneDisplay}</a></p></div>
     </form>
   );
 }
