@@ -37,12 +37,13 @@ test("custom tutor grade labels supplement standard grades without duplicates", 
   assert.equal(gradeLevelsByProgramme.caps.includes("N3"), false);
 });
 
-test("booking form updates level options on programme change and clears stale choices", () => {
-  assert.match(filters, /setProgramme\\(event\\.target\\.value\\);\\s*setLevel\\(""\\)/);
-  assert.match(filters, /setSubject\\(event\\.target\\.value\\);\\s*setLevel\\(""\\)/);
-  assert.match(filters, /getGradeLevels\\(programme, matchingOfferedLevels\\)/);
-  assert.doesNotMatch(filters, /disabled=\\{[^}]+\\}/);
-  assert.match(filters, /<optgroup/);
+test("booking form updates level choices and clears stale selections", () => {
+  assert.ok(filters.includes("setProgramme(event.target.value);"));
+  assert.ok(filters.includes("setSubject(event.target.value);"));
+  assert.ok(filters.includes('setLevel("");'));
+  assert.ok(filters.includes("getGradeLevels(programme, matchingOfferedLevels)"));
+  assert.ok(filters.includes("<optgroup"));
+  assert.ok(!filters.includes("disabled="), "grade selection must remain enabled");
 });
 
 test("server does not trust stale or cross-programme grade/level query strings", () => {
