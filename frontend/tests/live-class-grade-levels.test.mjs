@@ -38,7 +38,11 @@ test("custom tutor grade labels supplement standard grades without duplicates", 
 });
 
 test("booking form updates level options on programme change and clears stale choices", () => {
-  assert.match(filters, /setProgramme\(event\.target\.value\);\s*setLevel\(" "\.trim\(\)\)/); // placeholder
+  assert.match(filters, /setProgramme\\(event\\.target\\.value\\);\\s*setLevel\\(""\\)/);
+  assert.match(filters, /setSubject\\(event\\.target\\.value\\);\\s*setLevel\\(""\\)/);
+  assert.match(filters, /getGradeLevels\\(programme, matchingOfferedLevels\\)/);
+  assert.doesNotMatch(filters, /disabled=\\{[^}]+\\}/);
+  assert.match(filters, /<optgroup/);
 });
 
 test("server does not trust stale or cross-programme grade/level query strings", () => {
