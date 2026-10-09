@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
+import { FormCloseLink } from "@/components/site/form-close-link";
 import { getStudentIdentity } from "@/lib/auth";
 import { SafeFormDraft } from "@/components/site/safe-form-draft";
 
@@ -34,6 +35,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
         <div className="mt-8 flex items-start gap-3 rounded-2xl border border-[#dce4ef] bg-white p-5 text-sm leading-6 text-[#60708a]"><ShieldCheck className="mt-0.5 size-5 shrink-0 text-[#1f5bbd]" />Your password is handled by Supabase Auth and is never stored in the Amaris course database.</div>
       </div>
       <div className="rounded-[2rem] border border-[#dce4ef] bg-white p-6 shadow-[0_25px_75px_rgba(7,21,45,.1)] sm:p-9">
+        <div className="mb-5 flex justify-end"><FormCloseLink /></div>
         <div className="flex items-center gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LockKeyhole className="size-6" /></span><div><h2 className="text-2xl font-semibold tracking-[-.03em]">Registration details</h2><p className="mt-1 text-sm text-[#60708a]">All fields are required.</p></div></div>
         {error && <Alert variant="destructive" className="mt-6"><AlertDescription>{error}</AlertDescription></Alert>}
         <form action={registerAction} className="mt-7 grid gap-5">
