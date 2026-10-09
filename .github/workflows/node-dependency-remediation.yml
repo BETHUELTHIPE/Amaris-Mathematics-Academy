@@ -40,24 +40,22 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          npm audit --json > node-audit-before.json
-          status=$?
+          npm audit --json > node-audit-before.json || status=$?
           echo "Original npm audit exit status: $status"
           exit 0
+      - name: Refresh lockfile from the patched dependency manifest
+        run: npm install --package-lock-only --ignore-scripts --no-fund
       - name: Apply only compatible audit remediations to the lockfile
         shell: bash
         run: |
           set -uo pipefail
           # npm audit fix can exit nonzero if an advisory cannot be resolved without
           # a major version update. The strict audit step below still fails closed.
-          npm audit fix --package-lock-only --ignore-scripts --no-fund
-          status=$?
+          npm audit fix --package-lock-only --ignore-scripts --no-fund || status=$?
           echo "Compatible audit remediation exit status: $status"
           exit 0
       - name: Verify clean dependency installation
         run: npm ci
-      - name: Require zero moderate, high or critical Node vulnerabilities
-        run: npm audit --audit-level=moderate
       - name: Frontend lint
         run: npm run lint
       - name: Frontend TypeScript
@@ -128,3 +126,30 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "security: lock verified compatible Node dependency fixes"
           git push origin HEAD:refs/heads/security/owasp-test-suite
+
+  strict-dependency-audit:
+    name: Strict npm dependency security gate
+    needs: patch-and-verify
+    if: always() && needs.patch-and-verify.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Restore the verified updated dependency lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: node-dependency-security-evidence
+          path: /tmp/amaris-node-security
+      - name: Install dependencies from updated lockfile
+        shell: bash
+        run: |
+          cp /tmp/amaris-node-security/package-lock.json package-lock.json
+          npm ci
+      - name: Fail on remaining moderate, high or critical vulnerabilities
+        run: npm audit --audit-level=moderate
