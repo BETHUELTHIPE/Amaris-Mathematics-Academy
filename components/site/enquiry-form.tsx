@@ -1,9 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import Image from "next/image";
-import { CheckCircle2, LoaderCircle, Send } from "lucide-react";
+import { CheckCircle2, LoaderCircle, Send, X } from "lucide-react";
 import { submitEnquiry, initialEnquiryState } from "@/app/contact/actions";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,9 +24,14 @@ function SubmitButton() {
 
 export function EnquiryForm() {
   const [state, formAction] = useActionState(submitEnquiry, initialEnquiryState);
+  const confirmationHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    if (state.status === "success") confirmationHeadingRef.current?.focus();
+  }, [state.status]);
 
   if (state.status === "success") {
-    return <><ClearSafeFormDraft draftKey="contact-enquiry-v1" /><div className="mt-8 overflow-hidden rounded-2xl border border-[#a6d7be] bg-white" role="status"><div className="flex items-center gap-3 border-b border-[#dce4ef] bg-[#f6f8fc] px-5 py-4"><Image src={academyBrand.logoPath} alt="Amaris Mathematics Academy logo" width={48} height={48} unoptimized className="size-12 object-contain" /><div><p className="font-bold text-[#07152d]">{academyBrand.name}</p><p className="text-xs text-[#60708a]">{academyBrand.phoneDisplay} · {academyBrand.email}</p></div></div><div className="p-6"><CheckCircle2 className="size-8 text-[#147a4b]" /><h3 className="mt-4 text-xl font-semibold text-[#0a4d30]">Enquiry received</h3><p className="mt-2 text-base leading-7 text-[#396554]">{state.message}</p><p className="mt-4 text-sm text-[#557365]">For urgent support, call <a href={academyBrand.phoneHref} className="font-semibold underline">{academyBrand.phoneDisplay}</a>.</p><p className="mt-5 border-t border-[#dce4ef] pt-4 text-xs leading-5 text-[#60708a]">{academyBrand.address} · {academyBrand.website}</p></div></div></>;
+    return <><ClearSafeFormDraft draftKey="contact-enquiry-v1" /><div className="mt-8 overflow-hidden rounded-2xl border border-[#a6d7be] bg-white" role="status"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dce4ef] bg-[#f6f8fc] px-5 py-4"><div className="flex min-w-0 items-center gap-3"><Image src={academyBrand.logoPath} alt="Amaris Mathematics Academy logo" width={48} height={48} unoptimized className="size-12 object-contain" /><div><p className="font-bold text-[#07152d]">{academyBrand.name}</p><p className="text-xs text-[#60708a]">{academyBrand.phoneDisplay} · {academyBrand.email}</p></div></div><button type="button" aria-label="Close enquiry confirmation and return to contact form" onClick={() => window.location.assign("/contact")} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-[#cbd5e1] bg-white px-4 py-2 text-sm font-semibold text-[#0b2a5b] transition hover:bg-[#eaf1fb] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"><X className="size-4" aria-hidden="true" />Close</button></div><div className="p-6"><CheckCircle2 className="size-8 text-[#147a4b]" /><h3 ref={confirmationHeadingRef} tabIndex={-1} className="mt-4 text-xl font-semibold text-[#0a4d30] focus:outline-none">Enquiry received</h3><p className="mt-2 text-base leading-7 text-[#396554]">{state.message}</p><p className="mt-4 text-sm text-[#557365]">For urgent support, call <a href={academyBrand.phoneHref} className="font-semibold underline">{academyBrand.phoneDisplay}</a>.</p><p className="mt-5 border-t border-[#dce4ef] pt-4 text-xs leading-5 text-[#60708a]">{academyBrand.address} · {academyBrand.website}</p></div></div></>;
   }
 
   return (
