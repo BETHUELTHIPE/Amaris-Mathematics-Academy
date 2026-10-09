@@ -1,0 +1,129 @@
+name: Repair Node dependency vulnerabilities
+
+# This branch-only workflow proposes reproducible, compatible dependency security
+# fixes. It does not merge, release, or deploy the application.
+on:
+  push:
+    branches:
+      - security/owasp-test-suite
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/node-dependency-remediation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: node-dependency-remediation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  patch-and-verify:
+    if: github.ref == 'refs/heads/security/owasp-test-suite'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      changed: ${{ steps.change.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Record the original full dependency audit
+        shell: bash
+        run: |
+          set -uo pipefail
+          npm audit --json > node-audit-before.json
+          status=$?
+          echo "Original npm audit exit status: $status"
+          exit 0
+      - name: Apply only compatible audit remediations to the lockfile
+        shell: bash
+        run: |
+          set -uo pipefail
+          # npm audit fix can exit nonzero if an advisory cannot be resolved without
+          # a major version update. The strict audit step below still fails closed.
+          npm audit fix --package-lock-only --ignore-scripts --no-fund
+          status=$?
+          echo "Compatible audit remediation exit status: $status"
+          exit 0
+      - name: Verify clean dependency installation
+        run: npm ci
+      - name: Require zero moderate, high or critical Node vulnerabilities
+        run: npm audit --audit-level=moderate
+      - name: Frontend lint
+        run: npm run lint
+      - name: Frontend TypeScript
+        run: npm run typecheck
+      - name: Frontend unit tests
+        run: npm run test:unit
+      - name: Production frontend build
+        run: npm run build
+      - name: Detect lockfile changes
+        id: change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          if ! git diff --quiet -- package.json; then
+            echo "npm audit remediation must not change package.json automatically" >&2
+            exit 1
+          fi
+          if git diff --quiet -- package-lock.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Preserve audit and updated lockfile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-dependency-security-evidence
+          path: |
+            node-audit-before.json
+            package-lock.json
+          if-no-files-found: warn
+          retention-days: 30
+  commit-verified-lockfile:
+    needs: patch-and-verify
+    if: needs.patch-and-verify.result == 'success' && needs.patch-and-verify.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: security/owasp-test-suite
+          fetch-depth: 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: node-dependency-security-evidence
+          path: /tmp/amaris-node-remediation
+      - name: Commit only the verified dependency lockfile on the feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Never push a generated lockfile onto a newer/different branch head.
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}" || {
+            echo "Feature branch advanced; refusing stale dependency remediation" >&2
+            exit 1
+          }
+          cp /tmp/amaris-node-remediation/package-lock.json package-lock.json
+          git diff --check
+          git add -- package-lock.json
+          if git diff --cached --quiet; then
+            echo "No lockfile changes remain to commit"
+            exit 0
+          fi
+          test "$(git diff --cached --name-only)" = "package-lock.json" || exit 1
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "security: lock verified compatible Node dependency fixes"
+          git push origin HEAD:refs/heads/security/owasp-test-suite
