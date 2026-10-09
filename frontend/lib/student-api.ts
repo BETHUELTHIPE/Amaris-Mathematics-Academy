@@ -18,6 +18,17 @@ export type ResumeState = {
   progress_updated_at: string | null;
 };
 
+export type StudentOrder = {
+  kind: "course" | "live_class" | "video_request";
+  reference: string;
+  title: string;
+  status: string;
+  status_label: string;
+  amount: string;
+  currency: string;
+  created_at: string;
+};
+
 export type StudentCourse = {
   course: { slug: string; title: string };
   resume: ResumeState;
@@ -286,6 +297,11 @@ export async function downloadStudentLiveClassInvoice(reference: string): Promis
       signal: AbortSignal.timeout(8_000),
     },
   );
+}
+
+export async function getStudentOrders(): Promise<{ orders: StudentOrder[] }> {
+  if (__E2E_SYNTHETIC_STUDENT__) return { orders: [] };
+  return studentFetch<{ orders: StudentOrder[] }>("/student/orders/");
 }
 
 export async function getStudentCourses(): Promise<StudentCourse[]> {
