@@ -10,6 +10,9 @@ permissions:
 
 jobs:
   live-staging:
+    concurrency:
+      group: amaris-staging-runtime
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
