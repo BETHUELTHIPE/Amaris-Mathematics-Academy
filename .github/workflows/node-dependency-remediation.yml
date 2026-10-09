@@ -11,6 +11,7 @@ on:
       - package-lock.json
       - .github/workflows/node-dependency-remediation.yml
       - .github/workflows/quality-release.yml
+      - components/site/deferred-connection-recovery.tsx
   workflow_dispatch:
 
 permissions:
