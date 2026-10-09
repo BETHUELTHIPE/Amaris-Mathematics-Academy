@@ -14,9 +14,9 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Log In" };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; next?: string; password_updated?: string; signed_out?: string; verified?: string }> }) {
-  const student = await getStudentIdentity();
-  if (student?.emailVerified) redirect("/dashboard");
   const params = await searchParams;
+  const student = await getStudentIdentity();
+  if (student?.emailVerified && !params.verified) redirect("/dashboard");
   const next = safeRelativePath(params.next);
   const success = params.verified
     ? "Your email has been verified. You can now log in."
