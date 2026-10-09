@@ -81,6 +81,7 @@ export type VideoRequestCheckoutSession = {
     amount: string;
     currency: string;
   };
+  document_upload_prefix: string;
 };
 
 export type StudentVideoRequest = {
@@ -105,6 +106,8 @@ export type StudentVideoRequest = {
   invoice_number: string | null;
   invoice_ready: boolean;
   document_count: number;
+  document_total_bytes: number;
+  document_upload_prefix: string;
   video: null | {
     provider: "youtube" | "direct";
     youtube_video_id: string;
@@ -239,6 +242,23 @@ export async function createStudentVideoRequestCheckout(
     throw new Error(`Video request failed (${response.status}): ${body.slice(0, 240)}`);
   }
   return response.json() as Promise<VideoRequestCheckoutSession>;
+}
+
+export async function registerStudentVideoDocument(input: {
+  request_reference: string;
+  storage_path: string;
+  original_name: string;
+  content_type: string;
+  size_bytes: number;
+}): Promise<{ id: number; size_bytes: number }> {
+  const { request_reference, ...metadata } = input;
+  if (!/^VRQ-[A-Za-z0-9_-]{8,64}$/.test(request_reference)) {
+    throw new Error("Invalid video request reference.");
+  }
+  return studentFetch<{ id: number; size_bytes: number }>(
+    `/student/video-requests/${encodeURIComponent(request_reference)}/documents/`,
+    { method: "POST", body: JSON.stringify(metadata) },
+  );
 }
 
 export async function getStudentVideoRequests(): Promise<StudentVideoRequest[]> {
