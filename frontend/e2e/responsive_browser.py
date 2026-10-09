@@ -21,7 +21,7 @@ VIEWPORTS = {
 
 COURSE_PATH = "/courses/caps-grade-12-mathematics"
 AXE_CORE_PATH = Path(__file__).resolve().parents[1] / "node_modules" / "axe-core" / "axe.min.js"
-WCAG22_PATHS = ("/", "/courses", "/contact", "/login", "/register")
+WCAG22_PATHS = ("/", "/courses", "/contact", "/login", "/register", "/dashboard", "/dashboard/courses", "/dashboard/orders", "/dashboard/notifications", "/dashboard/profile")
 NAMED_DEVICES = ("Pixel 7", "iPhone 13")
 
 
