@@ -21,6 +21,7 @@ export async function Footer() {
           <div className="mt-4 grid gap-3 text-sm text-white/65">
             {links.map(({ label, url, open_in_new_tab }) => <a key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined}>{label}</a>)}
             <a href="/documents">Documents & invoices</a>
+            <a href="/amaris-admin" className="transition hover:text-white focus-visible:underline">Amaris Admin</a>
           </div>
         </div>
         <div>
