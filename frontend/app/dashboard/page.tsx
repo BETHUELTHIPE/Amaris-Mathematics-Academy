@@ -86,8 +86,10 @@ export default async function DashboardPage() {
             {enrolledCourses.map(({ course, resume }) => {
               const lesson = resume.last_lesson;
               const href = lesson
-                ? `/learn/${course.slug}/${lesson.slug}?t=${resume.last_position_seconds}`
-                : `/courses/${course.slug}`;
+                ? `/learn/${encodeURIComponent(course.slug)}/${encodeURIComponent(lesson.slug)}?t=${resume.last_position_seconds}`
+                : course.first_lesson_slug
+                  ? `/learn/${encodeURIComponent(course.slug)}/${encodeURIComponent(course.first_lesson_slug)}`
+                  : `/courses/${encodeURIComponent(course.slug)}`;
               return <Link key={course.slug} href={href} className="group rounded-2xl border border-[#dce4ef] p-5 transition hover:border-[#aac3ec] hover:bg-[#f8fbff]">
                 <div className="flex items-center justify-between gap-4">
                   <div>
