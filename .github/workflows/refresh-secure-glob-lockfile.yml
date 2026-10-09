@@ -32,7 +32,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm install --package-lock-only --ignore-scripts --no-fund
+          npm install --ignore-scripts --no-fund
+          node -e 'const l=require("./package-lock.json");console.log("resolved micromatch entry:",JSON.stringify(l.packages?.["node_modules/micromatch"] ?? null))'
           npm ci
           node scripts/security/report-node-dependency-provenance.mjs
           node --test tests/secure-glob-dependency.test.mjs
@@ -63,7 +64,7 @@ jobs:
           if ! git diff --cached --quiet; then
             git -c user.name='github-actions[bot]' \
                 -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-                commit -m 'security(frontend): lock safe picomatch alias for glob matching'
+                commit -m 'security(frontend): lock bounded glob adapter without vulnerable braces'
             git push origin HEAD:refs/heads/fix/minimal-dependency-security-main-20261009
           fi
       - name: Full strict Node audit (no ignored advisories)
