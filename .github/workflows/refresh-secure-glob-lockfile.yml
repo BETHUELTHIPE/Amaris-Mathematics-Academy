@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - fix/minimal-dependency-security-main-20261009
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -15,12 +17,13 @@ concurrency:
 jobs:
   refresh-lock:
     name: Resolve secure alias, commit lockfile, and run full npm audit
-    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/minimal-dependency-security-main-20261009'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
+          ref: fix/minimal-dependency-security-main-20261009
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
