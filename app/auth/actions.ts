@@ -150,7 +150,11 @@ export async function verifyEmailAction(formData: FormData) {
     );
   }
 
-  redirect("/dashboard?verified=1");
+  // Supabase creates a session when a signup OTP is verified. End that
+  // temporary verification session so the student deliberately signs in
+  // with their password after seeing the confirmation message.
+  await supabase.auth.signOut({ scope: "local" });
+  redirect("/login?verified=1");
 }
 
 export async function resendVerificationAction(formData: FormData) {
