@@ -44,10 +44,21 @@ test("public registration creates student accounts only", () => {
   assert.match(registerPageSource, /created privately by the Super Administrator/);
 });
 
-test("email verification requires a six-digit OTP and uses signup verification", () => {
+test("email verification requires a six-digit OTP and sends the verified student to login", () => {
   expectSource(/\^\\d\{6\}\$\/.test\(token\)/, "verification token must be six digits");
   expectSource(/supabase\.auth\.verifyOtp\(\{[\s\S]*type:\s*"signup"/, "signup OTP verification must be used");
   expectSource(/invalid or has expired/, "invalid or expired verification must have a safe failure path");
+  expectSource(
+    /supabase\.auth\.signOut\(\{ scope: "local" \}\)[\s\S]*redirect\("\/login\?verified=1"\)/,
+    "successful OTP verification must end the temporary verification session and continue to login",
+  );
+
+  const loginPageSource = fs.readFileSync(path.join(process.cwd(), "app/login/page.tsx"), "utf8");
+  assert.match(
+    loginPageSource,
+    /Your email has been verified\. You can now log in\./,
+    "login must clearly notify the student that verification succeeded",
+  );
 });
 
 test("unverified students cannot enter protected areas", () => {
