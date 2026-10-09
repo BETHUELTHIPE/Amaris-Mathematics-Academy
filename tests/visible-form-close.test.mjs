@@ -45,3 +45,9 @@ for (const [file, primitive] of [
     assert.match(source, /focus-visible:outline/);
   });
 }
+
+test("contact enquiry offers a Close action beside submit and retains confirmation Close", () => {
+  const source = read("components/site/enquiry-form.tsx");
+  assert.match(source, /<SubmitButton\s*\/>\s*<FormCloseLink\s*\/>/);
+  assert.match(source, /Close enquiry confirmation and return to contact form/);
+});
