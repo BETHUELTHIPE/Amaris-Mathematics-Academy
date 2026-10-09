@@ -281,15 +281,23 @@ def create_video_request_checkout(
     return VideoRequestCheckoutSession(request_reference=request.reference, gateway_url=gateway_url, fields=fields)
 
 
-
 def register_resumable_document(
-    *, student: StudentRecord, reference: str, storage_path: str,
-    original_name: str, content_type: str, size_bytes: int,
+    *,
+    student: StudentRecord,
+    reference: str,
+    storage_path: str,
+    original_name: str,
+    content_type: str,
+    size_bytes: int,
 ) -> VideoRequestDocument:
     """Attach only a completed, owner-scoped Supabase object; never buffer its payload."""
     if not settings.SUPABASE_S3_STUDENT_BUCKET or not settings.SUPABASE_S3_ENDPOINT_URL:
         raise OSError("Private Supabase student storage is not configured.")
-    if not isinstance(size_bytes, int) or size_bytes <= 0 or size_bytes > MAX_RESUMABLE_DOCUMENT_SIZE:
+    if (
+        not isinstance(size_bytes, int)
+        or size_bytes <= 0
+        or size_bytes > MAX_RESUMABLE_DOCUMENT_SIZE
+    ):
         raise PaymentSecurityError("Each supporting document must be between 1 byte and 1 GB.")
     if content_type not in ALLOWED_DOCUMENT_TYPES:
         raise PaymentSecurityError("Only PDF, JPEG and PNG supporting documents are allowed.")
@@ -300,16 +308,19 @@ def register_resumable_document(
     with transaction.atomic():
         video_request = (
             VideoRequest.objects.select_for_update()
-            .filter(reference=reference, student=student).first()
+            .filter(reference=reference, student=student)
+            .first()
         )
         if video_request is None:
             raise PaymentSecurityError("Video request was not found for this student.")
-        if (video_request.status != VideoRequest.Status.PENDING_PAYMENT
-                or video_request.payment_expires_at <= timezone.now()):
+        if (
+            video_request.status != VideoRequest.Status.PENDING_PAYMENT
+            or video_request.payment_expires_at <= timezone.now()
+        ):
             raise PaymentSecurityError("Uploads are closed for this video request.")
         prefix = f"{student.supabase_user_id}/video-requests/{video_request.pk}/documents/"
         suffix = storage_path.removeprefix(prefix) if storage_path.startswith(prefix) else ""
-        if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f-]{27,28}\\.(pdf|jpg|png)", suffix):
+        if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|jpg|png)", suffix):
             raise PaymentSecurityError("Invalid private document path.")
         if not suffix.endswith(extension):
             raise PaymentSecurityError("The document type does not match its path.")
@@ -332,8 +343,8 @@ def register_resumable_document(
             raise PaymentSecurityError("Upload is incomplete or unavailable.") from exc
         valid_signature = (
             signature.startswith(b"%PDF-") if content_type == "application/pdf"
-            else signature.startswith(b"\\xff\\xd8\\xff") if content_type == "image/jpeg"
-            else signature == b"\\x89PNG\\r\\n\\x1a\\n"
+            else signature.startswith(b"\xff\xd8\xff") if content_type == "image/jpeg"
+            else signature == b"\x89PNG\r\n\x1a\n"
         )
         if not valid_signature:
             raise PaymentSecurityError("The uploaded file content does not match its type.")
@@ -345,8 +356,6 @@ def register_resumable_document(
             size_bytes=size_bytes,
             sha256="",  # SHA-256 is intentionally unknown until a separate streaming verification.
         )
-
-
 
 
 class TutorProgramme:
