@@ -9,16 +9,19 @@ const require = createRequire(import.meta.url);
 
 // This replacement is deliberately scoped to an upstream-unpatched dev-only
 // glob-matching dependency. The ordinary lint/build/E2E gates must also pass.
-test("micromatch resolution uses the dependency-free picomatch alias", () => {
+test("micromatch replacement uses bounded picomatch and safe brace expansion", () => {
   const manifest = require("micromatch/package.json");
-  assert.equal(manifest.name, "picomatch");
-  assert.equal(manifest.version, "4.0.7");
-  assert.deepEqual(manifest.dependencies ?? {}, {});
+  assert.equal(manifest.name, "micromatch-safe-amaris");
+  assert.equal(manifest.version, "4.0.8-amaris.1");
+  assert.equal(manifest.dependencies?.picomatch, "4.0.7");
+  assert.equal(manifest.dependencies?.["@isaacs/brace-expansion"], "5.0.1");
   const matcher = require("micromatch");
   assert.equal(matcher.isMatch("components/button.tsx", "**/*.{ts,tsx}"), true);
   assert.equal(matcher.isMatch("components/button.css", "**/*.{ts,tsx}"), false);
   assert.equal(matcher.isMatch(".hidden/config.js", "**/*.js", { dot: true }), true);
   assert.equal(matcher.scan("src/**/*.{ts,tsx}").isGlob, true);
+  assert.deepEqual(matcher.braces("src/*.{ts,tsx}", { expand: true }), ["src/*.ts", "src/*.tsx"]);
+  assert.throws(() => matcher.braces("{".repeat(80) + "x" + "}".repeat(80), { expand: true }), RangeError);
 });
 
 test("both fast-glob dependency paths retain brace and negative pattern matching", () => {
