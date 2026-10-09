@@ -6,9 +6,9 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.core import mail
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import storages
-from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
