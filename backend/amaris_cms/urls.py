@@ -17,6 +17,8 @@ def health_live(_request):
 
 
 def _postgresql_available():
+    if connection.vendor != "postgresql":
+        return False
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
