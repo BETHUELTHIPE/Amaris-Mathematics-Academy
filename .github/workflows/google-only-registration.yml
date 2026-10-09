@@ -1,0 +1,41 @@
+name: Google-only Registration CI
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - "frontend/app/register/**"
+      - "frontend/app/login/**"
+      - "frontend/app/auth/**"
+      - "frontend/components/site/google-auth-button.tsx"
+      - "frontend/tests/google-only-registration.test.mjs"
+      - ".github/workflows/google-only-registration.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-google-only-registration:
+    name: Google-only registration, lint, types, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Frontend lint
+        run: npm run lint
+      - name: Frontend typecheck
+        run: npm run typecheck
+      - name: Google-only registration contract
+        run: node --test tests/google-only-registration.test.mjs
+      - name: Frontend production build
+        run: npm run build
