@@ -297,6 +297,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Report Node dependency provenance
+        working-directory: frontend
+        run: node scripts/security/report-node-dependency-provenance.mjs
+      - name: Audit Node production dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
       - name: Audit Node dependencies
         working-directory: frontend
         run: npm audit --audit-level=high
