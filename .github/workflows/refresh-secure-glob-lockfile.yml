@@ -44,7 +44,9 @@ jobs:
           if (Object.keys(packages).some(p => p === "node_modules/braces" || p.endsWith("/node_modules/braces"))) {
             throw new Error("Unpatched braces GHSA-vfj7-8cjw-p6xm remains installed");
           }
-          if (packages["node_modules/micromatch"]?.version !== "4.0.8-amaris.1") {
+          const adapter = packages["node_modules/micromatch"];
+          const source = adapter?.link ? packages[adapter.resolved] : adapter;
+          if (!adapter || source?.version !== "4.0.8-amaris.1") {
             throw new Error("The bounded micromatch adapter did not resolve to exactly 4.0.8-amaris.1");
           }
           console.log("No vulnerable braces package in generated dependency graph");
