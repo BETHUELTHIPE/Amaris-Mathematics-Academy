@@ -78,6 +78,7 @@ class VideoRequestStatusSerializer(serializers.Serializer):
     invoice_number = serializers.CharField(allow_blank=True, allow_null=True)
     invoice_ready = serializers.BooleanField()
     document_count = serializers.IntegerField()
+    document_total_bytes = serializers.IntegerField()
     document_upload_prefix = serializers.CharField(allow_blank=True, required=False)
     video = serializers.DictField(allow_null=True)
 
@@ -127,6 +128,7 @@ def _status_payload(request: VideoRequest) -> dict:
         "invoice_number": request.invoice_number,
         "invoice_ready": bool(request.invoice_number and request.confirmation_sent_at),
         "document_count": request.documents.count(),
+        "document_total_bytes": sum(doc.size_bytes for doc in request.documents.all()),
         "document_upload_prefix": (
             f"{request.student.supabase_user_id}/video-requests/{request.pk}/documents/"
             if request.status == VideoRequest.Status.PENDING_PAYMENT else ""
