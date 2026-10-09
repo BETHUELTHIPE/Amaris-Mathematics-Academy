@@ -318,13 +318,21 @@ class StudentJourneyApiTests(APITestCase):
 
     def test_student_orders_hide_other_accounts_and_gateway_details(self):
         own = Payment.objects.create(
-            reference="PF-student-orders-own", student=self.student, course=self.course,
-            provider=Payment.Provider.PAYFAST, amount=Decimal("950.00"), status=Payment.Status.PAID,
+            reference="PF-student-orders-own",
+            student=self.student,
+            course=self.course,
+            provider=Payment.Provider.PAYFAST,
+            amount=Decimal("950.00"),
+            status=Payment.Status.PAID,
             raw_response={"secret_field": "never-expose-this"},
         )
         Payment.objects.create(
-            reference="PF-student-orders-other", student=self.other, course=self.course,
-            provider=Payment.Provider.PAYFAST, amount=Decimal("950.00"), status=Payment.Status.PENDING,
+            reference="PF-student-orders-other",
+            student=self.other,
+            course=self.course,
+            provider=Payment.Provider.PAYFAST,
+            amount=Decimal("950.00"),
+            status=Payment.Status.PENDING,
         )
         self.client.force_authenticate(user=None)
         anonymous = self.client.get(reverse("student-orders"), secure=True)
@@ -340,10 +348,19 @@ class StudentJourneyApiTests(APITestCase):
         self.assertEqual(orders[0]["title"], self.course.title)
         self.assertEqual(orders[0]["kind"], "course")
         self.assertEqual(orders[0]["status"], Payment.Status.PAID)
-        self.assertEqual(set(orders[0]), {
-            "kind", "reference", "title", "status", "status_label",
-            "amount", "currency", "created_at",
-        })
+        self.assertEqual(
+            set(orders[0]),
+            {
+                "kind",
+                "reference",
+                "title",
+                "status",
+                "status_label",
+                "amount",
+                "currency",
+                "created_at",
+            },
+        )
         self.assertNotIn("secret_field", str(orders))
         self.assertEqual(self.client.post(reverse("student-orders"), {}, secure=True).status_code, 405)
 
