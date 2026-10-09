@@ -26,6 +26,13 @@ function safeBraces(patterns, options = {}) {
     if (typeof pattern !== "string" || pattern.length > MAX_PATTERN_LENGTH) {
       throw new RangeError("Glob brace pattern must be a bounded string");
     }
+    let depth = 0;
+    for (let i = 0; i < pattern.length; i++) {
+      if (pattern[i] === "\\\\") { i++; continue; }
+      if (pattern[i] === "{") depth++;
+      if (pattern[i] === "}") depth--;
+      if (depth > 64) throw new RangeError("Glob brace nesting exceeds safe limit");
+    }
     const remaining = MAX_EXPANSIONS - output.length;
     if (remaining <= 0) throw new RangeError("Too many glob brace expansions");
     const values = expand(pattern, { max: remaining });
