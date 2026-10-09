@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlparse
 
+from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import storages
@@ -320,7 +321,10 @@ def register_resumable_document(
             raise PaymentSecurityError("Uploads are closed for this video request.")
         prefix = f"{student.supabase_user_id}/video-requests/{video_request.pk}/documents/"
         suffix = storage_path.removeprefix(prefix) if storage_path.startswith(prefix) else ""
-        if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|jpg|png)", suffix):
+        if not re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|jpg|png)",
+            suffix,
+        ):
             raise PaymentSecurityError("Invalid private document path.")
         if not suffix.endswith(extension):
             raise PaymentSecurityError("The document type does not match its path.")
@@ -339,13 +343,14 @@ def register_resumable_document(
                 raise PaymentSecurityError("The uploaded document size does not match.")
             with store.open(storage_path, "rb") as reader:
                 signature = reader.read(8)
-        except (FileNotFoundError, OSError, ValueError) as exc:
+        except (FileNotFoundError, OSError, ValueError, BotoCoreError, ClientError) as exc:
             raise PaymentSecurityError("Upload is incomplete or unavailable.") from exc
-        valid_signature = (
-            signature.startswith(b"%PDF-") if content_type == "application/pdf"
-            else signature.startswith(b"\xff\xd8\xff") if content_type == "image/jpeg"
-            else signature == b"\x89PNG\r\n\x1a\n"
-        )
+        if content_type == "application/pdf":
+            valid_signature = signature.startswith(b"%PDF-")
+        elif content_type == "image/jpeg":
+            valid_signature = signature.startswith(b"\xff\xd8\xff")
+        else:
+            valid_signature = signature == b"\x89PNG\r\n\x1a\n"
         if not valid_signature:
             raise PaymentSecurityError("The uploaded file content does not match its type.")
         return VideoRequestDocument.objects.create(
