@@ -247,6 +247,38 @@ def run_context(browser: Browser, engine_name: str, viewport_name: str, viewport
             print(f"FAIL {engine_name:8} {viewport_name:7} {check_name}: {exc}", file=sys.stderr)
             traceback.print_exc()
 
+    if engine_name == "chromium" and viewport_name == "desktop":
+        for route, slug in (
+            ("/", "home"),
+            ("/courses", "courses"),
+            ("/contact", "contact"),
+            ("/dashboard", "dashboard"),
+        ):
+            try:
+                goto(page, route)
+                if route == "/":
+                    page.add_style_tag(
+                        content=".home-shell > section { content-visibility: visible !important; contain-intrinsic-size: auto !important; }"
+                    )
+                page.evaluate(
+                    """async () => {
+                      const step = Math.max(320, Math.floor(window.innerHeight * 0.75));
+                      for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
+                        window.scrollTo(0, y);
+                        await new Promise((resolve) => setTimeout(resolve, 40));
+                      }
+                      window.scrollTo(0, document.documentElement.scrollHeight);
+                      await new Promise((resolve) => setTimeout(resolve, 120));
+                      window.scrollTo(0, 0);
+                    }"""
+                )
+                page.screenshot(
+                    path=str(ARTIFACT_DIR / f"desktop-chromium-{slug}.png"),
+                    full_page=True,
+                )
+            except Exception:
+                pass
+
     context.close()
     return failures
 
@@ -294,6 +326,26 @@ def run_named_device(playwright, device_name: str) -> list[str]:
         ):
             try:
                 goto(page, route)
+                if route == "/":
+                    page.add_style_tag(
+                        content=".home-shell > section { content-visibility: visible !important; contain-intrinsic-size: auto !important; }"
+                    )
+                # content-visibility:auto deliberately defers off-screen homepage work.
+                # Walk the page before capturing evidence so the screenshot represents
+                # the content a real user sees while scrolling, without disabling the
+                # production performance optimisation.
+                page.evaluate(
+                    """async () => {
+                      const step = Math.max(320, Math.floor(window.innerHeight * 0.75));
+                      for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
+                        window.scrollTo(0, y);
+                        await new Promise((resolve) => setTimeout(resolve, 40));
+                      }
+                      window.scrollTo(0, document.documentElement.scrollHeight);
+                      await new Promise((resolve) => setTimeout(resolve, 120));
+                      window.scrollTo(0, 0);
+                    }"""
+                )
                 page.screenshot(path=str(ARTIFACT_DIR / f"{safe_name}-{slug}.png"), full_page=True)
             except Exception:
                 pass
