@@ -147,7 +147,7 @@ class StudentOrdersView(StudentAPIView):
             for video in requests
         )
         orders.sort(key=lambda item: item["created_at"], reverse=True)
-        response = Response({"orders": StudentOrdersResponseSerializer({"orders": orders[:60]}).data})
+        response = Response(StudentOrdersResponseSerializer({"orders": orders[:60]}).data)
         response["Cache-Control"] = "private, no-store"
         return response
 
