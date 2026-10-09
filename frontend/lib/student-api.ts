@@ -30,7 +30,7 @@ export type StudentOrder = {
 };
 
 export type StudentCourse = {
-  course: { slug: string; title: string };
+  course: { slug: string; title: string; first_lesson_slug?: string };
   resume: ResumeState;
 };
 
