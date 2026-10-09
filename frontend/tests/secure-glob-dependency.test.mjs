@@ -35,7 +35,8 @@ test("both fast-glob dependency paths retain brace and negative pattern matching
       base.sync(["src/**/*.{ts,tsx}", "!src/**/ignore.ts"], { cwd: root }).sort(),
       expected,
     );
-    const nested = require("vite-plugin-dynamic-import/node_modules/fast-glob");
+    const nestedRequire = createRequire(join(process.cwd(), "node_modules", "vite-plugin-dynamic-import", "package.json"));
+    const nested = nestedRequire("fast-glob");
     assert.deepEqual(
       nested.sync(["src/**/*.{ts,tsx}", "!src/**/ignore.ts"], { cwd: root }).sort(),
       expected,
