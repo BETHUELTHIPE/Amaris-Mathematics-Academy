@@ -1,3 +1,5 @@
+import { normalizeCmsApiBaseUrl } from "@/lib/cms-api-url";
+
 export type VideoRequestPackage = {
   value: "chapter_topic" | "previous_assignment" | "previous_exam" | "complete_content";
   label: string;
@@ -13,9 +15,10 @@ const fallbackPackages: VideoRequestPackage[] = [
 ];
 
 export async function getVideoRequestPackages(): Promise<VideoRequestPackage[]> {
-  const baseUrl = process.env.CMS_API_URL?.replace(/\/$/, "");
-  if (!baseUrl) return fallbackPackages;
+  const configuredBaseUrl = process.env.CMS_API_URL?.trim();
+  if (!configuredBaseUrl) return fallbackPackages;
   try {
+    const baseUrl = normalizeCmsApiBaseUrl(configuredBaseUrl);
     const response = await fetch(`${baseUrl}/video-requests/packages/`, {
       headers: { Accept: "application/json" },
       next: { revalidate: 300 },
