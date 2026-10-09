@@ -1,0 +1,60 @@
+name: Refresh patched frontend lockfile
+
+on:
+  push:
+    branches:
+      - security/node-dependency-advisories-20261009
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lockfile:
+    name: Regenerate and audit the patched Node dependency tree
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Resolve patched dependency tree and verify locked installation
+        working-directory: frontend
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-fund
+          npm ci
+          npm ls sharp source-map-js --all
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          for (const [name, expected] of [['sharp', '0.35.5'], ['source-map-js', '1.2.2']]) {
+            const occurrences = Object.entries(lock.packages)
+              .filter(([path]) => path.endsWith('/node_modules/' + name) || path === 'node_modules/' + name);
+            if (!occurrences.length || occurrences.some(([, pkg]) => pkg.version !== expected)) {
+              throw new Error(name + ' must resolve exclusively to patched version ' + expected);
+            }
+            console.log(name + ' pinned to ' + expected + ' in all lockfile entries');
+          }
+          NODE
+      - name: Preserve generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-frontend-lockfile
+          path: frontend/package-lock.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Commit synchronized lockfile to remediation branch
+        shell: bash
+        run: |
+          git add -- frontend/package-lock.json
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' \
+                -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                commit -m 'security(frontend): synchronize patched npm lockfile'
+            git push origin HEAD:refs/heads/security/node-dependency-advisories-20261009
+          fi
+      - name: Enforce unchanged HIGH/CRITICAL npm audit threshold
+        working-directory: frontend
+        run: npm audit --audit-level=high
