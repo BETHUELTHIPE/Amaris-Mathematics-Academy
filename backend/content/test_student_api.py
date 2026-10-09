@@ -203,6 +203,12 @@ class StudentJourneyApiTests(APITestCase):
 
     def test_last_lesson_resume_persists_and_is_student_scoped(self):
         self.authenticate()
+        initial_courses = self.client.get(reverse("student-courses"), secure=True)
+        self.assertEqual(initial_courses.status_code, 200)
+        self.assertEqual(
+            initial_courses.data[0]["course"]["first_lesson_slug"], self.lesson.slug
+        )
+        self.assertIsNone(initial_courses.data[0]["resume"]["last_lesson"])
         update = self.client.patch(
             reverse("student-progress"),
             {
