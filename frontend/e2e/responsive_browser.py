@@ -102,6 +102,9 @@ def check_offline_recovery(page: Page) -> None:
 
     page.context.set_offline(True)
     try:
+        # Confirm browser offline state before submitting. This keeps the test
+        # deterministic if Chromium dispatches its offline event asynchronously.
+        page.wait_for_function("() => navigator.onLine === false", timeout=5_000)
         # Firefox mobile emulation can hold pointer-actionability checks while
         # the browser is offline. Native keyboard activation still exercises
         # the real form submit handler without bypassing the application logic.
