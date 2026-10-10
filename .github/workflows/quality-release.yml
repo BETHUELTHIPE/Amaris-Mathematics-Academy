@@ -354,6 +354,18 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           scanners: vuln
+      # Keep the strict SARIF scan above as the release blocker. A table-format
+      # diagnostic makes CVE/package/fixed-version details visible on failed PRs.
+      - name: Show actionable container vulnerabilities
+        if: ${{ failure() && hashFiles('trivy-results.sarif') != '' }}
+        run: trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --format table --exit-code 0 "amaris-backend:${GITHUB_SHA}"
+      - name: Preserve blocked container scan evidence
+        if: ${{ always() && hashFiles('trivy-results.sarif') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: blocked-container-vulnerabilities
+          path: trivy-results.sarif
+          retention-days: 30
       - name: Upload container scan results
         if: always() && hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
