@@ -159,6 +159,13 @@ class VideoUploadTests(TestCase):
                 "name": "a.pdf", "size": 10, "content_type": "application/pdf"
             })
 
+    def test_feature_disabled_fails_closed_without_storage(self):
+        with patch.dict("os.environ", {"VIDEO_REQUEST_LARGE_UPLOAD_ENABLED": "false"}):
+            with self.assertRaises(ValidationError):
+                begin_upload(self.student, self.item.reference, {
+                    "name": "paper.pdf", "size": 16, "content_type": "application/pdf"
+                })
+
     def test_endpoint_requires_authentication(self):
         response = APIClient().post(
             reverse("video-request-upload", args=[self.item.reference]),
