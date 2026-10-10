@@ -17,7 +17,7 @@ const requiredLinks = [
   ["/how-it-works", "How it works"],
   ["/pricing", "Pricing"],
   ["/about", "About"],
-  ["/request-a-video", "Request a video"],
+  ["/request-a-video", "Request a topic video"],
   ["/book-online-live-class", "Book online live class"],
   ["/contact", "Contact"],
 ];
@@ -30,6 +30,14 @@ test("keeps all core public pages in managed navigation", () => {
   assert.match(cmsSource, /location: "both" as const/);
   assert.match(cmsSource, /order: requiredItem\.order/);
   assert.match(cmsSource, /return \[\.\.\.requiredItems, \.\.\.customItems\]/);
+});
+
+test("keeps the renamed video link when a CMS entry has the old wording", () => {
+  assert.match(
+    cmsSource,
+    /label: requiredItem\.url === "\/request-a-video" \? requiredItem\.label : managedItem\.label/,
+  );
+  assert.doesNotMatch(cmsSource, /label: "Request a video"/);
 });
 
 test("keeps Book online live class immediately next to Contact", () => {
