@@ -18,7 +18,6 @@ from .student_views import (
     StudentCoursesView,
     StudentLessonView,
 )
-from .video_upload_views import VideoRequestMultipartUploadView
 from .video_request_views import (
     VideoRequestCheckoutView,
     VideoRequestInvoiceDownloadView,
@@ -27,6 +26,7 @@ from .video_request_views import (
     VideoRequestStatusView,
     VideoRequestVideoDownloadView,
 )
+from .video_upload_views import VideoRequestMultipartUploadView
 from .views import (
     AmarisAssistantView,
     AnnouncementViewSet,
