@@ -4,6 +4,7 @@ Large bytes never transit Django/Next checkout. No public bucket or S3 secret is
 exposed to the browser. A complete file is recorded only after S3 HEAD validation.
 """
 import math
+import os
 import re
 import uuid
 from pathlib import PurePosixPath
@@ -57,6 +58,12 @@ def validate_file(name, size, content_type):
 
 
 def _client():
+    # Explicit rollout only after private-bucket and project upload limits >= 1 GiB
+    # and browser CORS exposes ETag. Prevents spending bandwidth on doomed uploads.
+    if os.getenv("VIDEO_REQUEST_LARGE_UPLOAD_ENABLED", "").lower() not in {"1", "true", "yes"}:
+        raise serializers.ValidationError(
+            "Large uploads are not yet enabled for this storage environment."
+        )
     storage = storages["student_private"]
     if not hasattr(storage, "connection") or not getattr(storage, "bucket_name", ""):
         raise serializers.ValidationError("Large uploads require configured private Supabase S3 storage.")
