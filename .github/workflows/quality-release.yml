@@ -355,6 +355,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - id: previous
+        name: STAGING - capture previous immutable release for rollback
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$(scripts/release/deploy-webhook.sh current-release staging)"
+          previous_image="$(jq -er '.image' <<<"$release_json")"
+          previous_sha="$(jq -er '.release_sha' <<<"$release_json")"
+          if ! [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Staging's currently active release must have an immutable full Git SHA." >&2
+            exit 1
+          fi
+          if [ "$previous_image" != "docker.io/bethuelm/amaris-mathematics-academy:$previous_sha" ]; then
+            echo "The staging image tag does not match the active release Git SHA." >&2
+            exit 1
+          fi
+          printf 'image=%s\n' "$previous_image" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\n' "$previous_sha" >> "$GITHUB_OUTPUT"
+
       - id: deploy
         name: STAGING - deploy exact immutable image
         env:
@@ -434,13 +456,23 @@ jobs:
           grep -qi '^X-Correlation-ID:' /tmp/staging-observability-headers
 
       - name: Roll back staging if any post-deploy gate fails
-        if: failure() && steps.deploy.outcome == 'success'
+        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outcome == 'success'
         env:
           DEPLOY_WEBHOOK_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
           DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+        shell: bash
         run: |
-          scripts/release/deploy-webhook.sh rollback staging "${{ needs.publish-image.outputs.image }}"
-          scripts/release/verify-health.sh "$STAGING_HEALTHCHECK_URL" || true
+          set -euo pipefail
+          previous_image="${{ steps.previous.outputs.image }}"
+          scripts/release/deploy-webhook.sh rollback staging "$previous_image"
+          scripts/release/verify-health.sh "$STAGING_HEALTHCHECK_URL"
+          actual_release="$(scripts/release/deploy-webhook.sh current-release staging)"
+          active_image="$(jq -er '.image' <<<"$actual_release")"
+          active_sha="$(jq -er '.release_sha' <<<"$actual_release")"
+          if [ "$active_image" != "$previous_image" ] || [ "$active_sha" != "${{ steps.previous.outputs.sha }}" ]; then
+            echo "Rollback did not restore the previously recorded immutable staging release." >&2
+            exit 1
+          fi
 
   deploy-production:
     name: PRODUCTION APPROVAL - approve, deploy, and verify production
