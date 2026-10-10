@@ -354,6 +354,22 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           scanners: vuln
+      - name: Summarize blocking container vulnerability findings
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "HIGH/CRITICAL image vulnerability rule IDs from Trivy:"
+          jq -r '[.runs[]? | .results[]? | select(.ruleId != null) | {rule: .ruleId, level: (.level // "unknown")}] | unique | .[] | "\(.level)\t\(.rule)"' trivy-results.sarif
+          echo "The complete SARIF is retained as a CI artifact for remediation; severity thresholds remain unchanged."
+      - name: Preserve container vulnerability evidence
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-backend-vulnerability-sarif
+          path: trivy-results.sarif
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload container scan results
         if: always() && hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
