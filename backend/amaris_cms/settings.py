@@ -6,7 +6,7 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
-from .database import validate_supabase_database
+from .database import requires_supabase_database, validate_supabase_database
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -140,7 +140,7 @@ DATABASES = {
     )
 }
 
-SUPABASE_DATABASE_REQUIRED = bool(os.getenv("RENDER")) or env_bool("SUPABASE_DATABASE_REQUIRED", False)
+SUPABASE_DATABASE_REQUIRED = requires_supabase_database(os.environ)
 SUPABASE_DATABASE_PROJECT_REF = (
     os.getenv("SUPABASE_DATABASE_PROJECT_REF") or os.getenv("SUPABASE_PROJECT_REF") or ""
 ).strip()
