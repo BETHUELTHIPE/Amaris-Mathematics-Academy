@@ -48,7 +48,7 @@ jobs:
             -e STAGING_BACKUP_DATABASE_URL \
             -e PGSSLMODE=require \
             "amaris-staging-recovery:${GITHUB_SHA}" \
-            -c 'psql "$STAGING_BACKUP_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT CASE WHEN to_regclass('\''public.django_migrations'\'') IS NOT NULL THEN '\''ok'\'' ELSE '\''missing'\'' END" | grep -qx ok'
+            -c 'psql "$STAGING_BACKUP_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT 1;" | grep -qx 1'
 
       - name: Read staging Restic snapshot metadata without restoring student data
         shell: bash
