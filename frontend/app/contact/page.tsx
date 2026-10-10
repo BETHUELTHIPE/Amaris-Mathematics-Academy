@@ -23,19 +23,19 @@ export default async function ContactPage() {
     <main className="min-h-screen bg-[#f5f7fb]">
       <Header />
       <section className="mx-auto max-w-7xl px-5 py-16 lg:px-8 lg:py-24">
-        <div className="grid gap-12 lg:grid-cols-[.82fr_1.18fr] lg:items-start">
-          <div className="lg:sticky lg:top-36">
+        <div className="grid min-w-0 gap-12 lg:grid-cols-[.82fr_1.18fr] lg:items-start">
+          <div className="min-w-0 lg:sticky lg:top-36">
             <p className="eyebrow">Contact Amaris</p>
             <h1 className="section-title mt-4">How can we help you move forward?</h1>
             <p className="mt-6 max-w-xl text-lg leading-8 text-[#60708a]">Ask about a mathematics course, registration, payments or your student account. Give us enough detail to direct your enquiry to the right support.</p>
             <div className="mt-9 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
               {contactCards.map(({ Icon, label, value, href }) => {
-                const content = <><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#eaf1fb] text-[#1f5bbd]"><Icon className="size-5" /></span><span><span className="block text-sm font-semibold text-[#60708a]">{label}</span><span className="mt-1 block break-words text-base font-semibold text-[#0a1b36]">{value}</span></span></>;
-                return href ? <a key={label} href={href} target={href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer" : undefined} className="flex items-start gap-4 rounded-2xl border border-[#dce4ef] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[#b9c9df] hover:shadow-md">{content}</a> : <div key={label} className="flex items-start gap-4 rounded-2xl border border-[#dce4ef] bg-white p-4">{content}</div>;
+                const content = <><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#eaf1fb] text-[#1f5bbd]"><Icon className="size-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-[#60708a]">{label}</span><span className="mt-1 block break-words [overflow-wrap:anywhere] text-base font-semibold text-[#0a1b36]">{value}</span></span></>;
+                return href ? <a key={label} href={href} target={href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer" : undefined} className="flex min-w-0 items-start gap-4 rounded-2xl border border-[#dce4ef] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[#b9c9df] hover:shadow-md">{content}</a> : <div key={label} className="flex min-w-0 items-start gap-4 rounded-2xl border border-[#dce4ef] bg-white p-4">{content}</div>;
               })}
             </div>
           </div>
-          <div className="relative overflow-hidden rounded-[2rem] bg-white p-6 shadow-[0_22px_70px_rgba(9,35,75,.12)] ring-1 ring-[#dce4ef] sm:p-9">
+          <div className="relative min-w-0 max-w-full overflow-hidden rounded-[2rem] bg-white p-6 shadow-[0_22px_70px_rgba(9,35,75,.12)] ring-1 ring-[#dce4ef] sm:p-9">
             <div className="absolute right-0 top-0 h-2 w-36 bg-[#ffcc66]" />
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#1f5bbd]">Enquiry form</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-.035em] text-[#0a1b36]">Send us a message</h2>
