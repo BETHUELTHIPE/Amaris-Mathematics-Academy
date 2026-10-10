@@ -11,7 +11,7 @@ test("dashboard preserves protected live course data and offers a working sectio
   assert.match(page, /requireVerifiedStudent\("\/dashboard"\)/);
   assert.match(page, /await getStudentCourses\(\)/);
   assert.match(page, /getStudentCourses/);
-  assert.match(page, /href="\/reset-password"/);
+  assert.match(page, /\[UserRound, "Profile & security", "\/reset-password"\]/);
   assert.match(page, /\[BookOpen, "My courses", "#my-courses"\]/);
   assert.equal((page.match(/id="my-courses"/g) ?? []).length, 2, "both enrolled and empty states must have a course target");
   assert.match(page, /aria-label="Dashboard navigation"/);
