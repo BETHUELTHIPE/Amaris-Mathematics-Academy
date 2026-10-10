@@ -43,9 +43,7 @@ def validate_render_staging_database(database: Mapping[str, Any]) -> None:
         raise RuntimeError("Staging must use Render PostgreSQL.")
 
     host = str(database.get("HOST") or "").strip().lower().rstrip(".")
-    if host != _RENDER_STAGING_DATABASE_HOST and not host.startswith(
-        _RENDER_STAGING_DATABASE_HOST + "."
-    ):
+    if host != _RENDER_STAGING_DATABASE_HOST:
         raise RuntimeError("Staging DATABASE_URL must use amaris-staging-postgres on Render.")
     if database.get("NAME") != "amaris_staging_postgres":
         raise RuntimeError("Staging DATABASE_URL must use the staging database name.")
