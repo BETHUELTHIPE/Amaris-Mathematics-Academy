@@ -25,8 +25,8 @@ export default async function StudentProfilePage() {
             <dl className="mt-5 grid gap-5">
               <div><dt className="text-sm font-semibold text-[#60708a]">Student name</dt><dd className="mt-1 break-words font-semibold">{student.displayName}</dd></div>
               <div><dt className="text-sm font-semibold text-[#60708a]">Email address</dt><dd className="mt-1 break-all font-semibold">{student.email}</dd></div>
-              <div className="flex items-center gap-2"><ShieldCheck className="size-5 text-[#13715f]" aria-hidden="true" /><span className="font-semibold">Email verified</span></div>
             </dl>
+            <p className="mt-5 flex items-center gap-2"><ShieldCheck className="size-5 text-[#13715f]" aria-hidden="true" /><span className="font-semibold">Email verified</span></p>
           </section>
           <section className="mt-6 rounded-2xl border border-[#dce4ef] bg-white p-7">
             <h2 className="flex items-center gap-2 text-xl font-semibold"><LockKeyhole className="size-5" aria-hidden="true" />Account security</h2>
