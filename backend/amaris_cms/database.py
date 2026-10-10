@@ -26,3 +26,30 @@ def validate_supabase_database(database: Mapping[str, Any], project_url: str, pr
         raise RuntimeError("Use the Supabase session pooler on port 5432 for Django.")
     if database.get("OPTIONS", {}).get("sslmode") not in {"require", "verify-ca", "verify-full"}:
         raise RuntimeError("Supabase PostgreSQL requires TLS; set DATABASE_SSL_REQUIRED=true.")
+
+# Only this specific Render staging service may connect to the dedicated Render DB.
+_RENDER_STAGING_SERVICE_ID = "srv-dam2iivcgkoc7383tq50"
+_RENDER_STAGING_DATABASE_HOST = "dpg-dam2gj6k1f9s73e81tmg-a"
+
+
+def is_render_staging_service(service_id: str, branch: str) -> bool:
+    """Keep the Render database exception exclusive to the staging service."""
+    return service_id == _RENDER_STAGING_SERVICE_ID and branch == "staging"
+
+
+def validate_render_staging_database(database: Mapping[str, Any]) -> None:
+    """Fail closed unless staging targets its own Render Postgres instance."""
+    if database.get("ENGINE") != "django.db.backends.postgresql":
+        raise RuntimeError("Staging must use Render PostgreSQL.")
+
+    host = str(database.get("HOST") or "").strip().lower().rstrip(".")
+    if host != _RENDER_STAGING_DATABASE_HOST and not host.startswith(
+        _RENDER_STAGING_DATABASE_HOST + "."
+    ):
+        raise RuntimeError("Staging DATABASE_URL must use amaris-staging-postgres on Render.")
+    if database.get("NAME") != "amaris_staging_postgres":
+        raise RuntimeError("Staging DATABASE_URL must use the staging database name.")
+    if database.get("USER") != "amaris_staging_postgres_user":
+        raise RuntimeError("Staging DATABASE_URL must use the staging database user.")
+    if str(database.get("PORT") or "5432") != "5432":
+        raise RuntimeError("Staging PostgreSQL must use port 5432.")
