@@ -33,15 +33,16 @@ export default async function LiveClassCheckoutPage({
   const params = await searchParams;
   const slotId = value(params.slot).trim();
   const topic = value(params.topic).trim().slice(0, 180);
-  if (!slotId || topic.length < 2) redirect("/book-online-live-class");
+  const attempt = value(params.attempt).trim();
+  if (!slotId || topic.length < 2 || !/^[0-9a-f-]{36}$/i.test(attempt)) redirect("/book-online-live-class");
 
   const returnTo =
-    `/book-online-live-class/checkout?slot=${encodeURIComponent(slotId)}&topic=${encodeURIComponent(topic)}`;
+    `/book-online-live-class/checkout?slot=${encodeURIComponent(slotId)}&topic=${encodeURIComponent(topic)}&attempt=${encodeURIComponent(attempt)}`;
   await requireVerifiedStudent(returnTo);
 
   let checkout: Awaited<ReturnType<typeof createStudentLiveClassCheckout>>;
   try {
-    checkout = await createStudentLiveClassCheckout(slotId, topic);
+    checkout = await createStudentLiveClassCheckout(slotId, topic, attempt);
   } catch {
     redirect("/book-online-live-class?booking=unavailable");
   }

@@ -1,5 +1,5 @@
 export type LiveClassSlot = {
-  id: string;
+  id: number;
   programme: "caps" | "ieb" | "tvet" | "university";
   programme_label: string;
   subject: "mathematics" | "mathematical_literacy";
@@ -19,8 +19,8 @@ export async function getLiveClassSlots(filters: {
   programme?: string;
   subject?: string;
   level?: string;
-}): Promise<LiveClassSlot[]> {
-  if (!cmsBaseUrl) return [];
+}): Promise<{ slots: LiveClassSlot[]; unavailable: boolean }> {
+  if (!cmsBaseUrl) return { slots: [], unavailable: true };
 
   const query = new URLSearchParams();
   if (filters.programme) query.set("programme", filters.programme);
@@ -36,10 +36,12 @@ export async function getLiveClassSlots(filters: {
         signal: AbortSignal.timeout(4_000),
       },
     );
-    if (!response.ok) return [];
+    if (!response.ok) return { slots: [], unavailable: true };
     const data = (await response.json()) as unknown;
-    return Array.isArray(data) ? (data as LiveClassSlot[]) : [];
+    return Array.isArray(data)
+      ? { slots: data as LiveClassSlot[], unavailable: false }
+      : { slots: [], unavailable: true };
   } catch {
-    return [];
+    return { slots: [], unavailable: true };
   }
 }

@@ -1,24 +1,24 @@
 # Render Blueprint for the production Amaris Django/Celery data plane.
-# The release image is immutable and must be updated to the exact tested Git SHA for each release.
+# It deliberately matches the existing amaris-production-web Python runtime.
 # Secrets marked sync:false are supplied from Render/secret-manager configuration, never committed.
 
 services:
   - type: web
     name: amaris-production-web
-    runtime: image
+    runtime: python
     plan: standard
     region: frankfurt
-    image:
-      url: docker.io/bethuelm/amaris-mathematics-academy:6303fb30d296fd32886695d3d5cc9fe54f8a5b94
+    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    startCommand: GUNICORN_BIND=0.0.0.0:$PORT gunicorn amaris_cms.asgi:application --config gunicorn.conf.py
     autoDeployTrigger: off
     healthCheckPath: /health/ready/
     preDeployCommand: python manage.py migrate --noinput
-    scaling:
-      minInstances: 3
-      maxInstances: 24
-      targetCPUPercent: 70
-    dockerCommand: /bin/sh -c 'GUNICORN_BIND=0.0.0.0:$PORT exec gunicorn amaris_cms.asgi:application --config /app/gunicorn.conf.py'
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.15
       - key: SERVICE_ROLE
         value: web
       - key: DJANGO_DEBUG
@@ -28,19 +28,13 @@ services:
       - key: DJANGO_ALLOWED_HOSTS
         value: amaris-production-web.onrender.com
       - key: DJANGO_CSRF_TRUSTED_ORIGINS
-        value: https://amaris-production-web.onrender.com,https://amaris-mathematics-academy.bethuelthipe.chatgpt.site
+        value: https://amaris-production-web.onrender.com,https://amaris-mathematics-academy-live-students.onrender.com,https://amaris-mathematics-academy.bethuelthipe.chatgpt.site
       - key: CORS_ALLOWED_ORIGINS
-        value: https://amaris-mathematics-academy.bethuelthipe.chatgpt.site
+        value: https://amaris-mathematics-academy-live-students.onrender.com,https://amaris-mathematics-academy.bethuelthipe.chatgpt.site
       - key: SUPABASE_URL
         value: https://epkcuseloinygkakxxdu.supabase.co
       - key: SUPABASE_PUBLISHABLE_KEY
         sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_ASSISTANT_MODEL
-        value: gpt-5.6-luna
-      - key: OPENAI_ASSISTANT_TIMEOUT_SECONDS
-        value: "10"
       - key: SUPABASE_AUTH_TIMEOUT_SECONDS
         value: "4"
       - key: SUPABASE_AUTH_CACHE_SECONDS
@@ -56,23 +50,35 @@ services:
       - key: PAYFAST_PASSPHRASE
         sync: false
       - key: PUBLIC_SITE_URL
-        value: https://amaris-mathematics-academy.bethuelthipe.chatgpt.site
+        value: https://amaris-mathematics-academy-live-students.onrender.com
       - key: PUBLIC_API_URL
-        value: https://amaris-production-web.onrender.com/api/v1
+        value: https://amaris-production-web.onrender.com
       - key: PAYFAST_RETURN_URL
-        value: https://amaris-mathematics-academy.bethuelthipe.chatgpt.site/payments/pending
+        value: https://amaris-mathematics-academy-live-students.onrender.com/payments/pending
       - key: PAYFAST_CANCEL_URL
-        value: https://amaris-mathematics-academy.bethuelthipe.chatgpt.site/payments/cancelled
+        value: https://amaris-mathematics-academy-live-students.onrender.com/payments/cancelled
+      - key: PAYFAST_LIVE_CLASS_RETURN_URL
+        value: https://amaris-mathematics-academy-live-students.onrender.com/book-online-live-class/confirmation
+      - key: PAYFAST_LIVE_CLASS_CANCEL_URL
+        value: https://amaris-mathematics-academy-live-students.onrender.com/payments/cancelled
+      - key: PAYFAST_VIDEO_REQUEST_RETURN_URL
+        value: https://amaris-mathematics-academy-live-students.onrender.com/request-a-video/confirmation
+      - key: PAYFAST_VIDEO_REQUEST_CANCEL_URL
+        value: https://amaris-mathematics-academy-live-students.onrender.com/payments/cancelled
+      - key: VIDEO_REQUEST_DAILY_CAPACITY
+        value: "2"
+      - key: VIDEO_REQUEST_ETA_RANGE_DAYS
+        value: "2"
       - key: PAYFAST_NOTIFY_URL
         value: https://amaris-production-web.onrender.com/api/v1/payfast/itn/
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        sync: false # Supabase Postgres session-pooler URL, supplied in Render secrets
+      - key: DATABASE_SCHEMA
+        value: public
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: DATABASE_CONN_MAX_AGE
-        value: "600"
+        value: "60"
       - key: DJANGO_CACHE_URL
         fromService:
           type: keyvalue
@@ -93,31 +99,35 @@ services:
           type: keyvalue
           name: amaris-production-broker
           property: connectionString
-      - key: CMS_STORAGE_BUCKET_NAME
-        value: amaris-cms-files
-      - key: STUDENT_STORAGE_BUCKET_NAME
-        value: Amaris Mathematics Academy
-      - key: AWS_S3_ENDPOINT_URL
+      - key: SUPABASE_S3_REQUIRED
+        value: "true"
+      - key: SUPABASE_S3_ENDPOINT_URL
         value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
-      - key: AWS_S3_REGION_NAME
+      - key: SUPABASE_S3_REGION
         value: us-east-1
-      - key: AWS_S3_ADDRESSING_STYLE
-        value: path
-      - key: AWS_ACCESS_KEY_ID
+      - key: SUPABASE_S3_ADMIN_BUCKET
+        value: amaris-cms-files
+      - key: SUPABASE_S3_STUDENT_BUCKET
+        value: Amaris Mathematics Academy
+      - key: SUPABASE_S3_ACCESS_KEY_ID
         sync: false
-      - key: AWS_SECRET_ACCESS_KEY
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
         sync: false
 
   - type: worker
     name: amaris-production-critical-worker
-    runtime: image
+    runtime: python
     plan: standard
     region: frankfurt
-    image:
-      url: docker.io/bethuelm/amaris-mathematics-academy:6303fb30d296fd32886695d3d5cc9fe54f8a5b94
+    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A amaris_cms worker --loglevel=INFO --queues=critical,default --concurrency=2 --events --hostname=critical@%h
     autoDeployTrigger: off
-    dockerCommand: celery -A amaris_cms worker --loglevel=INFO --queues=critical,default --concurrency=2 --events --hostname=critical@%h
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.15
       - key: SERVICE_ROLE
         value: celery-worker
       - key: DJANGO_DEBUG
@@ -128,11 +138,37 @@ services:
           name: amaris-production-web
           envVarKey: DJANGO_SECRET_KEY
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: DATABASE_URL
+      - key: DATABASE_SCHEMA
+        value: public
       - key: DATABASE_SSL_REQUIRED
         value: "true"
+      - key: SUPABASE_S3_REQUIRED
+        value: "true"
+      - key: SUPABASE_S3_ENDPOINT_URL
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_ENDPOINT_URL
+      - key: SUPABASE_S3_REGION
+        value: us-east-1
+      - key: SUPABASE_S3_ADMIN_BUCKET
+        value: amaris-cms-files
+      - key: SUPABASE_S3_STUDENT_BUCKET
+        value: Amaris Mathematics Academy
+      - key: SUPABASE_S3_ACCESS_KEY_ID
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_ACCESS_KEY_ID
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_SECRET_ACCESS_KEY
       - key: DJANGO_CACHE_URL
         fromService:
           type: keyvalue
@@ -148,37 +184,21 @@ services:
           type: keyvalue
           name: amaris-production-broker
           property: connectionString
-      - key: CMS_STORAGE_BUCKET_NAME
-        value: amaris-cms-files
-      - key: STUDENT_STORAGE_BUCKET_NAME
-        value: Amaris Mathematics Academy
-      - key: AWS_S3_ENDPOINT_URL
-        value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
-      - key: AWS_S3_REGION_NAME
-        value: us-east-1
-      - key: AWS_S3_ADDRESSING_STYLE
-        value: path
-      - key: AWS_ACCESS_KEY_ID
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_ACCESS_KEY_ID
-      - key: AWS_SECRET_ACCESS_KEY
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_SECRET_ACCESS_KEY
 
   - type: worker
     name: amaris-production-notification-worker
-    runtime: image
+    runtime: python
     plan: starter
     region: frankfurt
-    image:
-      url: docker.io/bethuelm/amaris-mathematics-academy:6303fb30d296fd32886695d3d5cc9fe54f8a5b94
+    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A amaris_cms worker --loglevel=INFO --queues=notifications --concurrency=2 --events --hostname=notifications@%h
     autoDeployTrigger: off
-    dockerCommand: celery -A amaris_cms worker --loglevel=INFO --queues=notifications --concurrency=2 --events --hostname=notifications@%h
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.15
       - key: SERVICE_ROLE
         value: celery-notifications
       - key: DJANGO_DEBUG
@@ -189,11 +209,37 @@ services:
           name: amaris-production-web
           envVarKey: DJANGO_SECRET_KEY
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: DATABASE_URL
+      - key: DATABASE_SCHEMA
+        value: public
       - key: DATABASE_SSL_REQUIRED
         value: "true"
+      - key: SUPABASE_S3_REQUIRED
+        value: "true"
+      - key: SUPABASE_S3_ENDPOINT_URL
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_ENDPOINT_URL
+      - key: SUPABASE_S3_REGION
+        value: us-east-1
+      - key: SUPABASE_S3_ADMIN_BUCKET
+        value: amaris-cms-files
+      - key: SUPABASE_S3_STUDENT_BUCKET
+        value: Amaris Mathematics Academy
+      - key: SUPABASE_S3_ACCESS_KEY_ID
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_ACCESS_KEY_ID
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: SUPABASE_S3_SECRET_ACCESS_KEY
       - key: CELERY_BROKER_URL
         fromService:
           type: keyvalue
@@ -204,43 +250,16 @@ services:
           type: keyvalue
           name: amaris-production-broker
           property: connectionString
-      - key: CMS_STORAGE_BUCKET_NAME
-        value: amaris-cms-files
-      - key: STUDENT_STORAGE_BUCKET_NAME
-        value: Amaris Mathematics Academy
-      - key: AWS_S3_ENDPOINT_URL
-        value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
-      - key: AWS_S3_REGION_NAME
-        value: us-east-1
-      - key: AWS_S3_ADDRESSING_STYLE
-        value: path
-      - key: AWS_ACCESS_KEY_ID
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_ACCESS_KEY_ID
-      - key: AWS_SECRET_ACCESS_KEY
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_SECRET_ACCESS_KEY
       - key: EMAIL_BACKEND
         value: django.core.mail.backends.smtp.EmailBackend
-      - key: AI_ENQUIRY_AUTOREPLY_ENABLED
-        value: "true"
-      - key: OPENAI_API_KEY
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: OPENAI_API_KEY
-      - key: OPENAI_ENQUIRY_MODEL
-        value: gpt-5.6-luna
-      - key: OPENAI_ENQUIRY_TIMEOUT_SECONDS
-        value: "10"
       - key: EMAIL_HOST
         sync: false
       - key: EMAIL_PORT
         value: "587"
+      - key: VIDEO_REQUEST_DAILY_CAPACITY
+        value: "2"
+      - key: VIDEO_REQUEST_ETA_RANGE_DAYS
+        value: "2"
       - key: EMAIL_HOST_USER
         sync: false
       - key: EMAIL_HOST_PASSWORD
@@ -254,14 +273,18 @@ services:
 
   - type: worker
     name: amaris-production-beat
-    runtime: image
+    runtime: python
     plan: starter
     region: frankfurt
-    image:
-      url: docker.io/bethuelm/amaris-mathematics-academy:6303fb30d296fd32886695d3d5cc9fe54f8a5b94
+    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+    branch: main
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
     autoDeployTrigger: off
-    dockerCommand: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.15
       - key: SERVICE_ROLE
         value: celery-beat
       - key: DJANGO_DEBUG
@@ -272,9 +295,12 @@ services:
           name: amaris-production-web
           envVarKey: DJANGO_SECRET_KEY
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: DATABASE_URL
+      - key: DATABASE_SCHEMA
+        value: public
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: CELERY_BROKER_URL
@@ -287,26 +313,6 @@ services:
           type: keyvalue
           name: amaris-production-broker
           property: connectionString
-      - key: CMS_STORAGE_BUCKET_NAME
-        value: amaris-cms-files
-      - key: STUDENT_STORAGE_BUCKET_NAME
-        value: Amaris Mathematics Academy
-      - key: AWS_S3_ENDPOINT_URL
-        value: https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3
-      - key: AWS_S3_REGION_NAME
-        value: us-east-1
-      - key: AWS_S3_ADDRESSING_STYLE
-        value: path
-      - key: AWS_ACCESS_KEY_ID
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_ACCESS_KEY_ID
-      - key: AWS_SECRET_ACCESS_KEY
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: AWS_SECRET_ACCESS_KEY
 
   - type: keyvalue
     name: amaris-production-broker
@@ -323,10 +329,3 @@ services:
     maxmemoryPolicy: allkeys-lru
     persistenceMode: off
     ipAllowList: []
-
-databases:
-  - name: amaris-production-postgres
-    plan: basic-1gb
-    region: frankfurt
-    postgresMajorVersion: "17"
-    connectionPool: pgbouncer

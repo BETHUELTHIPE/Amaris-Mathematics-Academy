@@ -103,6 +103,7 @@ const requiredPublicNavigation: CmsNavigationItem[] = [
   { label: "How it works", url: "/how-it-works", location: "both", order: 20, open_in_new_tab: false },
   { label: "Pricing", url: "/pricing", location: "both", order: 30, open_in_new_tab: false },
   { label: "About", url: "/about", location: "both", order: 40, open_in_new_tab: false },
+  { label: "Request a video", url: "/request-a-video", location: "both", order: 44, open_in_new_tab: false },
   { label: "Book online live class", url: "/book-online-live-class", location: "both", order: 45, open_in_new_tab: false },
   { label: "Contact", url: "/contact", location: "both", order: 50, open_in_new_tab: false },
 ];

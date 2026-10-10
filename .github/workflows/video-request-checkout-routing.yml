@@ -1,0 +1,28 @@
+name: Video Request Checkout Routing
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918, staging, main]
+    paths:
+      - "frontend/lib/cms-api-url.ts"
+      - "frontend/lib/student-api.ts"
+      - "frontend/lib/video-requests.ts"
+      - "frontend/tests/video-request-api-routing.test.mjs"
+      - "backend/content/urls.py"
+      - ".github/workflows/video-request-checkout-routing.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checkout-routing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Verify Django API prefix and video checkout routes without payment
+        run: node --test frontend/tests/video-request-api-routing.test.mjs

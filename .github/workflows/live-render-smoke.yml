@@ -1,0 +1,193 @@
+name: Live Render Browser Smoke
+
+on:
+  push:
+    branches: [render-live-current-20260918]
+  pull_request:
+    branches: [render-live-current-20260918]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BASE_URL: https://amaris-mathematics-academy-live-students.onrender.com
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Wait for live Render frontend readiness
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+
+          base = os.environ["BASE_URL"].rstrip("/")
+          deadline = time.monotonic() + 8 * 60
+          last_status = None
+          last_error = None
+
+          while time.monotonic() < deadline:
+              try:
+                  request = urllib.request.Request(
+                      f"{base}/api/auth-state",
+                      headers={"User-Agent": "Amaris-Live-Smoke/1.0"},
+                  )
+                  with urllib.request.urlopen(request, timeout=15) as response:
+                      last_status = response.status
+                      if response.status == 200:
+                          print("Render frontend is ready.")
+                          sys.exit(0)
+              except urllib.error.HTTPError as exc:
+                  last_status = exc.code
+                  last_error = str(exc)
+              except Exception as exc:
+                  last_error = str(exc)
+
+              print(
+                  f"Waiting for Render readiness; "
+                  f"status={last_status!r} error={last_error!r}"
+              )
+              time.sleep(10)
+
+          print(
+              f"::error::Render frontend did not become ready within 8 minutes; "
+              f"last_status={last_status!r} last_error={last_error!r}"
+          )
+          sys.exit(1)
+          PY
+
+      - name: Install browser smoke dependencies
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+
+      - name: Verify live public pages and Request a video navigation
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from playwright.sync_api import sync_playwright
+
+          base = os.environ["BASE_URL"].rstrip("/")
+          failures = []
+
+          def record_page_diagnostics(page, path, response, page_errors, console_errors):
+              status = response.status if response else 0
+              body = page.locator("body").inner_text(timeout=30_000)
+              print(f"PATH {path} STATUS {status}")
+              print(f"TITLE {page.title()}")
+              if page_errors:
+                  print("PAGE_ERRORS:")
+                  for item in page_errors:
+                      print(f"  - {item}")
+              if console_errors:
+                  print("CONSOLE_ERRORS:")
+                  for item in console_errors[:20]:
+                      print(f"  - {item}")
+
+              if not response or status >= 500:
+                  failures.append(f"{path}: HTTP {status}")
+              if "We could not load this page." in body:
+                  failures.append(f"{path}: recovery screen rendered")
+              if page_errors:
+                  failures.append(f"{path}: browser page error: {page_errors[0]}")
+              if console_errors:
+                  failures.append(f"{path}: browser console error: {console_errors[0]}")
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+
+              for path in ["/", "/contact", "/book-online-live-class", "/request-a-video"]:
+                  page = browser.new_page(viewport={"width": 1440, "height": 900})
+                  page_errors = []
+                  console_errors = []
+
+                  page.on("pageerror", lambda exc, store=page_errors: store.append(str(exc)))
+                  page.on(
+                      "console",
+                      lambda msg, store=console_errors: store.append(msg.text)
+                      if msg.type == "error"
+                      else None,
+                  )
+
+                  response = page.goto(
+                      f"{base}{path}",
+                      wait_until="networkidle",
+                      timeout=120_000,
+                  )
+                  record_page_diagnostics(
+                      page, path, response, page_errors, console_errors
+                  )
+
+                  if path == "/":
+                      request_video_link = page.locator(
+                          'nav[aria-label="Main navigation"] a[href="/request-a-video"]'
+                      )
+                      if request_video_link.count() != 1:
+                          failures.append(
+                              "desktop header: Request a video link is missing or duplicated"
+                          )
+                      elif not request_video_link.is_visible():
+                          failures.append(
+                              "desktop header: Request a video link is not visible"
+                          )
+                      elif request_video_link.inner_text().strip() != "Request a video":
+                          failures.append(
+                              "desktop header: Request a video label is incorrect"
+                          )
+                      else:
+                          print("DESKTOP HEADER Request a video: VISIBLE")
+
+                  page.close()
+
+              mobile = browser.new_page(viewport={"width": 390, "height": 844})
+              response = mobile.goto(base, wait_until="networkidle", timeout=120_000)
+              if not response or response.status >= 500:
+                  failures.append(
+                      f"mobile homepage: HTTP {response.status if response else 0}"
+                  )
+              mobile.locator("summary", has_text="Menu").click()
+              mobile_request_video = mobile.locator(
+                  'details a[href="/request-a-video"]',
+                  has_text="Request a video",
+              )
+              if mobile_request_video.count() < 1:
+                  failures.append("mobile header: Request a video link is missing")
+              elif not mobile_request_video.first.is_visible():
+                  failures.append("mobile header: Request a video link is not visible")
+              else:
+                  print("MOBILE HEADER Request a video: VISIBLE")
+              mobile.close()
+
+              api = browser.new_page()
+              auth_response = api.goto(
+                  f"{base}/api/auth-state",
+                  wait_until="networkidle",
+                  timeout=120_000,
+              )
+              auth_status = auth_response.status if auth_response else 0
+              print(f"PATH /api/auth-state STATUS {auth_status}")
+              if not auth_response or auth_status != 200:
+                  failures.append(f"/api/auth-state: HTTP {auth_status}")
+              api.close()
+              browser.close()
+
+          if failures:
+              print("LIVE SMOKE FAILED")
+              for failure in failures:
+                  print(f"  - {failure}")
+              sys.exit(1)
+
+          print("LIVE SMOKE PASSED")
+          PY
