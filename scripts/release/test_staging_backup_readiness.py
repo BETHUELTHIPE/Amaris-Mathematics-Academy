@@ -53,12 +53,18 @@ class StagingBackupSafetyTests(unittest.TestCase):
 
     def test_recent_tagged_backup_passes(self):
         now = datetime(2026, 10, 10, tzinfo=timezone.utc)
-        snapshots = [{"time": (now - timedelta(hours=3)).isoformat(), "tags": ["automated", "amaris"]}]
+        snapshots = [{"time": (now - timedelta(hours=3)).isoformat(), "tags": ["automated", "amaris", "staging"]}]
         verify_recent_snapshot(snapshots, 48, now=now)
 
     def test_stale_snapshot_fails(self):
         now = datetime(2026, 10, 10, tzinfo=timezone.utc)
-        snapshots = [{"time": (now - timedelta(hours=50)).isoformat(), "tags": ["automated", "amaris"]}]
+        snapshots = [{"time": (now - timedelta(hours=50)).isoformat(), "tags": ["automated", "amaris", "staging"]}]
+        with self.assertRaises(ReadinessError):
+            verify_recent_snapshot(snapshots, 48, now=now)
+
+    def test_non_staging_environment_tag_fails(self):
+        now = datetime(2026, 10, 10, tzinfo=timezone.utc)
+        snapshots = [{"time": now.isoformat(), "tags": ["automated", "amaris", "production"]}]
         with self.assertRaises(ReadinessError):
             verify_recent_snapshot(snapshots, 48, now=now)
 
