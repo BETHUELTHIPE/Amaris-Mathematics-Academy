@@ -35,8 +35,11 @@ test("request-a-video page requires a verified student and explains the paid que
 
 test("request form supports all programmes, secure files and server-priced checkout", () => {
   for (const label of ["CAPS", "IEB", "TVET", "University"]) assert.match(form, new RegExp(label));
-  assert.match(form, /application\/pdf,image\/jpeg,image\/png/);
-  assert.match(form, /Maximum 10 MB per file and 25 MB total/);
+  assert.match(form, /\.pdf,\.jpg,\.jpeg,\.png,\.webp/);
+  assert.match(form, /Up to 200 files and 1 GiB combined/);
+  assert.match(form, /uploadVideoRequestFiles/);
+  assert.match(form, /webkitdirectory/);
+  assert.match(form, /uploadPercent/);
   assert.match(form, /Server-priced/);
   assert.match(form, /Continue to PayFast/);
   assert.doesNotMatch(form, /localStorage|sessionStorage/);

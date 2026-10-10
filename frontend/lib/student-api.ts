@@ -241,6 +241,32 @@ export async function createStudentVideoRequestCheckout(
   return response.json() as Promise<VideoRequestCheckoutSession>;
 }
 
+
+export async function controlStudentVideoRequestUpload(
+  reference: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const token = await accessToken();
+  const response = await fetch(
+    `${cmsBaseUrl()}/student/video-requests/${encodeURIComponent(reference)}/uploads/`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Private upload control failed (HTTP ${response.status}).`);
+  }
+  return (await response.json()) as Record<string, unknown>;
+}
+
 export async function getStudentVideoRequests(): Promise<StudentVideoRequest[]> {
   if (__E2E_SYNTHETIC_STUDENT__) return [];
   return studentFetch<StudentVideoRequest[]>("/student/video-requests/");

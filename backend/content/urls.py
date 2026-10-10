@@ -26,6 +26,7 @@ from .video_request_views import (
     VideoRequestStatusView,
     VideoRequestVideoDownloadView,
 )
+from .video_upload_views import VideoRequestMultipartUploadView
 from .views import (
     AmarisAssistantView,
     AnnouncementViewSet,
@@ -69,6 +70,11 @@ urlpatterns = [
     path("student/live-classes/checkout/", LiveClassCheckoutView.as_view(), name="live-class-checkout"),
     path("student/video-requests/", VideoRequestListView.as_view(), name="video-request-list"),
     path("student/video-requests/checkout/", VideoRequestCheckoutView.as_view(), name="video-request-checkout"),
+    path(
+        "student/video-requests/<str:reference>/uploads/",
+        VideoRequestMultipartUploadView.as_view(),
+        name="video-request-upload",
+    ),
     path(
         "student/video-requests/<str:reference>/",
         VideoRequestStatusView.as_view(),

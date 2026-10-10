@@ -348,6 +348,7 @@ REST_FRAMEWORK = {
         "enquiries": "5/hour",
         "assistant": "30/hour",
         "video_requests": "20/hour",
+        "video_uploads": "600/hour",
     },
 }
 
