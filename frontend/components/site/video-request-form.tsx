@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { CreditCard, FileUp, LoaderCircle, ShieldCheck } from "lucide-react";
 import type { VideoRequestCheckoutSession } from "@/lib/student-api";
 import type { VideoRequestPackage } from "@/lib/video-requests";
+import { uploadVideoRequestFiles, VIDEO_UPLOAD_LIMIT_BYTES, VIDEO_UPLOAD_MAX_FILES } from "@/lib/video-upload";
 
 const programmes = [
   ["caps", "CAPS"],
@@ -20,18 +21,27 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
   const [checkout, setCheckout] = useState<VideoRequestCheckoutSession | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
     setError("");
     setCheckout(null);
+    setUploadPercent(null);
     const form = event.currentTarget;
     const data = new FormData(form);
     data.set("idempotency_key", `video-${crypto.randomUUID().replaceAll("-", "")}`);
-    const files = data.getAll("documents").filter((value) => value instanceof File && value.size > 0);
+    const files = [...data.getAll("documents"), ...data.getAll("folder")]
+      .filter((value): value is File => value instanceof File && value.size > 0);
     data.delete("documents");
-    for (const file of files) data.append("documents", file);
+    data.delete("folder");
+    if (files.length > VIDEO_UPLOAD_MAX_FILES ||
+        files.reduce((total, file) => total + file.size, 0) > VIDEO_UPLOAD_LIMIT_BYTES) {
+      setError("Upload no more than 200 files or 1 GiB total per request.");
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const response = await fetch("/api/video-requests/checkout", {
@@ -42,6 +52,10 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
       const body = (await response.json()) as VideoRequestCheckoutSession | { detail?: string };
       if (!response.ok || !("request_reference" in body)) {
         throw new Error("detail" in body && body.detail ? body.detail : "Video request failed.");
+      }
+      if (files.length > 0) {
+        setUploadPercent(0);
+        await uploadVideoRequestFiles(body.request_reference, files, setUploadPercent);
       }
       setCheckout(body);
     } catch (cause) {
@@ -128,20 +142,36 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
           <textarea name="instructions" maxLength={2000} rows={5} placeholder="Tell the tutor which questions or methods need the most attention." className="rounded-xl border border-[#c9d5e5] px-4 py-3 font-normal" />
         </label>
         <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
-          Supporting documents (optional)
+          Supporting files or a folder (optional)
           <span className="rounded-2xl border border-dashed border-[#aac3ec] bg-[#f8fbff] p-5">
-            <span className="flex items-center gap-2"><FileUp className="size-5 text-[#1f5bbd]" />Upload up to five PDF, JPEG or PNG files</span>
-            <input name="documents" type="file" multiple accept="application/pdf,image/jpeg,image/png" className="mt-3 block w-full text-sm font-normal" />
-            <span className="mt-2 block text-xs font-normal text-[#60708a]">Maximum 10 MB per file and 25 MB total. Documents stay private.</span>
+            <span className="flex items-center gap-2"><FileUp className="size-5 text-[#1f5bbd]" />Upload images, PDF, Office documents, ZIP, text or study videos</span>
+            <span className="mt-3 block text-xs text-[#60708a]">Select individual files:</span>
+            <input name="documents" type="file" multiple
+              accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.txt,.csv,.docx,.xlsx,.pptx,.zip,.mp4,.webm"
+              className="mt-1 block w-full text-sm font-normal" />
+            <span className="mt-4 block text-xs text-[#60708a]">Or select a complete folder (supported browsers):</span>
+            <input name="folder" type="file" multiple
+              ref={(node) => { if (node) node.setAttribute("webkitdirectory", ""); }}
+              className="mt-1 block w-full text-sm font-normal" />
+            <span className="mt-3 block text-xs font-normal text-[#60708a]">
+              Up to 200 files and 1 GiB combined. Folder paths are retained for your tutor.
+              Files transfer in 8 MB parts directly to private storage. Uploads must finish before payment.
+            </span>
           </span>
         </label>
       </div>
 
+      {uploadPercent !== null && submitting && (
+        <div className="mt-5" role="status" aria-live="polite">
+          <p className="text-sm font-medium">Uploading supporting files: {uploadPercent}%</p>
+          <progress aria-label="Upload progress" className="mt-2 w-full" value={uploadPercent} max={100} />
+        </div>
+      )}
       {error && <div role="alert" className="mt-5 rounded-xl border border-[#e7a5ab] bg-[#fff1f2] p-4 text-sm text-[#9f2330]">{error}</div>}
 
       <button disabled={submitting} type="submit" className="mt-7 flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white disabled:cursor-wait disabled:opacity-70">
         {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-        {submitting ? "Securing request…" : "Review secure payment"}
+        {submitting ? (uploadPercent === null ? "Securing request…" : `Uploading ${uploadPercent}%…`) : "Review secure payment"}
       </button>
       <p className="mt-4 text-center text-xs leading-6 text-[#60708a]">Server-priced · private documents · verified payment required · student-only delivery</p>
     </form>
