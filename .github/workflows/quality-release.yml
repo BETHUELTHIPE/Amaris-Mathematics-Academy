@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, staging]
   push:
-    branches: [main]
+    branches: [main, staging]
   workflow_dispatch:
     inputs:
       deploy_production:
@@ -427,6 +427,7 @@ jobs:
           fetch-depth: 0
 
       - name: Promote exact main commit to Render staging branch
+        if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -euo pipefail
