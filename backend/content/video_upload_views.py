@@ -1,6 +1,8 @@
 """JSON control plane for private direct-to-storage uploads; never receives file bytes."""
 
 from botocore.exceptions import BotoCoreError, ClientError
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
@@ -13,6 +15,7 @@ class VideoRequestMultipartUploadView(VideoRequestStudentAPIView):
     parser_classes = (JSONParser,)
     throttle_scope = "video_uploads"
 
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
     def post(self, request, reference):
         values = request.data
         if not isinstance(values, dict):
