@@ -7,6 +7,7 @@ const headerSource = await readFile(
   new URL("../components/site/header.tsx", import.meta.url),
   "utf8",
 );
+const footerSource = await readFile(new URL("../components/site/footer.tsx", import.meta.url), "utf8");
 const authControlsSource = await readFile(
   new URL("../components/site/auth-controls.tsx", import.meta.url),
   "utf8",
@@ -17,7 +18,7 @@ const requiredLinks = [
   ["/how-it-works", "How it works"],
   ["/pricing", "Pricing"],
   ["/about", "About"],
-  ["/request-a-video", "Request a video"],
+  ["/request-a-video", "Request a topic video"],
   ["/book-online-live-class", "Book online live class"],
   ["/contact", "Contact"],
 ];
@@ -30,6 +31,14 @@ test("keeps all core public pages in managed navigation", () => {
   assert.match(cmsSource, /location: "both" as const/);
   assert.match(cmsSource, /order: requiredItem\.order/);
   assert.match(cmsSource, /return \[\.\.\.requiredItems, \.\.\.customItems\]/);
+});
+
+test("keeps the renamed video link when a CMS entry has the old wording", () => {
+  assert.match(
+    cmsSource,
+    /label: requiredItem\.url === "\/request-a-video" \? requiredItem\.label : managedItem\.label/,
+  );
+  assert.doesNotMatch(cmsSource, /label: "Request a video"/);
 });
 
 test("keeps Book online live class immediately next to Contact", () => {
@@ -45,4 +54,13 @@ test("renders managed links in desktop and mobile header navigation", () => {
   assert.match(headerSource, /getManagedNavigation\("header"\)/);
   assert.match(headerSource, /links\.map/);
   assert.match(authControlsSource, /links\.map/);
+});
+
+
+test("footer retains payment policies and a validated Django Admin destination", () => {
+  assert.match(footerSource, /getDjangoAdminUrl/);
+  assert.match(footerSource, /new URL\("\/admin\/", origin\)/);
+  assert.match(footerSource, /href=\{djangoAdminUrl\}/);
+  assert.match(footerSource, /href="\/payment-policy"/);
+  assert.match(footerSource, /href="\/working-policy"/);
 });

@@ -19,18 +19,12 @@ class RenderStagingDatabaseTests(TestCase):
         }
 
     def test_identified_staging_service_is_allowed(self):
-        self.assertTrue(
-            is_render_staging_service("srv-dam2iivcgkoc7383tq50", "staging")
-        )
+        self.assertTrue(is_render_staging_service("srv-dam2iivcgkoc7383tq50", "staging"))
         validate_render_staging_database(self.database)
 
     def test_production_or_other_service_is_not_staging(self):
-        self.assertFalse(
-            is_render_staging_service("srv-dapn6b3tqb8s73d3r7n0", "production-release-20260923")
-        )
-        self.assertFalse(
-            is_render_staging_service("srv-dam2iivcgkoc7383tq50", "main")
-        )
+        self.assertFalse(is_render_staging_service("srv-dapn6b3tqb8s73d3r7n0", "production-release-20260923"))
+        self.assertFalse(is_render_staging_service("srv-dam2iivcgkoc7383tq50", "main"))
         self.assertFalse(is_render_staging_service("", "staging"))
 
     def test_supabase_database_is_rejected_in_staging(self):

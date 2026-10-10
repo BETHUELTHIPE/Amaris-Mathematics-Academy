@@ -27,6 +27,7 @@ def validate_supabase_database(database: Mapping[str, Any], project_url: str, pr
     if database.get("OPTIONS", {}).get("sslmode") not in {"require", "verify-ca", "verify-full"}:
         raise RuntimeError("Supabase PostgreSQL requires TLS; set DATABASE_SSL_REQUIRED=true.")
 
+
 # Only this specific Render staging service may connect to the dedicated Render DB.
 _RENDER_STAGING_SERVICE_ID = "srv-dam2iivcgkoc7383tq50"
 _RENDER_STAGING_DATABASE_HOST = "dpg-dam2gj6k1f9s73e81tmg-a"

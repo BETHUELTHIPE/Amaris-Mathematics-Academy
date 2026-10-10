@@ -8,8 +8,8 @@ import { getVideoRequestPackages } from "@/lib/video-requests";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Request a Video",
-  description: "Request a personalised mathematics lesson video from Amaris Mathematics Academy.",
+  title: "Request a Topic Video",
+  description: "Request a topic video explanation from Amaris Mathematics Academy.",
 };
 
 export default async function RequestVideoPage() {
@@ -20,7 +20,7 @@ export default async function RequestVideoPage() {
       <Header />
       <section className="border-b border-[#dce4ef] bg-white">
         <div className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-16">
-          <p className="eyebrow">Request a personalised lesson video</p>
+          <p className="eyebrow">Request a topic video</p>
           <h1 className="mt-4 max-w-4xl text-4xl font-semibold tracking-[-.045em] sm:text-5xl">Send the exact mathematics work you want explained.</h1>
           <p className="mt-5 max-w-3xl text-base leading-8 text-[#60708a]">Payment is verified before your permanent ticket enters the tutor queue. Your documents, queue status, invoice and completed video remain linked to your student account.</p>
         </div>
