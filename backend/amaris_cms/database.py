@@ -13,9 +13,12 @@ def requires_supabase_database(environ: Mapping[str, str]) -> bool:
     render = bool(environ.get("RENDER"))
     override = environ.get("SUPABASE_DATABASE_REQUIRED", "")
     enabled = override.strip().lower() in {"1", "true", "yes", "on"}
-    staging = environ.get("AMARIS_DEPLOYMENT_ENVIRONMENT", "").strip().lower() == "staging"
+    staging = (
+        environ.get("AMARIS_DEPLOYMENT_ENVIRONMENT", "").strip().lower() == "staging"
+    )
 
-    if render and not (staging and override.strip().lower() in {"0", "false", "no", "off"}):
+    opted_out = staging and override.strip().lower() in {"0", "false", "no", "off"}
+    if render and not opted_out:
         return True
     if render:
         return False
