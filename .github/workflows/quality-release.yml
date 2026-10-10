@@ -442,11 +442,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Promote exact main commit to Render staging branch
+      - name: Advance Render staging branch without rewriting history
         shell: bash
         run: |
           set -euo pipefail
-          git push origin "${GITHUB_SHA}:refs/heads/staging" --force
+          git fetch --no-tags origin refs/heads/staging:refs/remotes/origin/staging
+          if ! git merge-base --is-ancestor origin/staging "${GITHUB_SHA}"; then
+            echo "Release commit does not include current staging history; reviewed branch reconciliation is required." >&2
+            exit 1
+          fi
+          git push origin "${GITHUB_SHA}:refs/heads/staging"
 
       - name: Wait for exact Render staging release
         shell: bash
