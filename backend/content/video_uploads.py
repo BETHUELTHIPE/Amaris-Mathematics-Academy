@@ -82,7 +82,7 @@ def _prefix(item):
 def _owned_key(item, key):
     prefix = _prefix(item)
     if not isinstance(key, str) or not re.fullmatch(
-        re.escape(prefix) + r"[0-9a-f]{32}\\.[a-z0-9]+", key
+        re.escape(prefix) + r"[0-9a-f]{32}\.[a-z0-9]+", key
     ):
         raise serializers.ValidationError("Invalid private upload key.")
     return key
