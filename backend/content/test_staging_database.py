@@ -19,11 +19,7 @@ class SupabaseDeploymentDatabaseGateTests(SimpleTestCase):
         )
 
     def test_render_staging_requires_explicit_opt_out(self):
-        self.assertTrue(
-            requires_supabase_database(
-                {"RENDER": "true", "AMARIS_DEPLOYMENT_ENVIRONMENT": "staging"}
-            )
-        )
+        self.assertTrue(requires_supabase_database({"RENDER": "true", "AMARIS_DEPLOYMENT_ENVIRONMENT": "staging"}))
 
     def test_render_staging_can_use_separate_postgres(self):
         self.assertFalse(
