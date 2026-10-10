@@ -14,6 +14,7 @@ ARTIFACT_DIR = Path(os.getenv("E2E_ARTIFACT_DIR", "artifacts/e2e"))
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 
 VIEWPORTS = {
+    "narrow-mobile": {"width": 320, "height": 700},
     "mobile": {"width": 390, "height": 844},
     "tablet": {"width": 834, "height": 1112},
     "desktop": {"width": 1440, "height": 1000},
@@ -55,7 +56,7 @@ def assert_no_horizontal_overflow(page: Page, surface: str) -> None:
 def check_navigation(page: Page, viewport_name: str) -> None:
     goto(page, "/")
     require(page.get_by_role("link", name="Amaris Mathematics Academy home").is_visible(), "Home link is not visible")
-    if viewport_name in {"mobile", "tablet"}:
+    if viewport_name in {"narrow-mobile", "mobile", "tablet"}:
         menu = page.locator("summary").filter(has_text="Menu")
         require(menu.is_visible(), f"Compact navigation menu is missing on {viewport_name}")
         menu.click()
@@ -163,7 +164,14 @@ def check_dashboard(page: Page) -> None:
     goto(page, "/dashboard")
     require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
     require(page.get_by_role("heading", name=re.compile(r"Welcome, Responsive\.")).is_visible(), "Synthetic student dashboard did not render")
-    require(page.get_by_role("navigation", name="Dashboard navigation").is_visible(), "Dashboard navigation is not visible")
+    navigation = page.get_by_role("navigation", name="Dashboard navigation")
+    require(navigation.is_visible(), "Dashboard navigation is not visible")
+    course_link = navigation.get_by_role("link", name="My courses")
+    require(course_link.is_visible(), "My courses is not navigable on this viewport")
+    require(course_link.get_attribute("href") == "#my-courses", "My courses does not link to its section")
+    require(page.locator("#my-courses").count() == 1, "Dashboard needs exactly one My courses target")
+    course_link.focus()
+    require(course_link.evaluate("(el) => document.activeElement === el"), "Dashboard course link is not keyboard focusable")
     require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(), "Dashboard course shelf is not visible")
     assert_no_horizontal_overflow(page, "dashboard")
 
