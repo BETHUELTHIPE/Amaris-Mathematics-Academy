@@ -68,7 +68,7 @@ def verify_recent_snapshot(snapshots, max_age_hours, now=None):
         if not isinstance(snapshot, dict):
             continue
         tags = snapshot.get("tags", [])
-        if not isinstance(tags, list) or not {"automated", "amaris"}.issubset(set(tags)):
+        if not isinstance(tags, list) or not {"automated", "amaris", "staging"}.issubset(set(tags)):
             continue
         try:
             taken = datetime.fromisoformat(snapshot["time"].replace("Z", "+00:00"))
