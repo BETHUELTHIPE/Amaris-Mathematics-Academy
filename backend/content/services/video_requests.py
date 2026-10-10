@@ -12,6 +12,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlparse
 
+from botocore.exceptions import BotoCoreError, ClientError
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import storages
 from django.db import transaction
@@ -43,6 +45,8 @@ VIDEO_REQUEST_PRICES: dict[str, Decimal] = {
 MAX_DOCUMENTS = 5
 MAX_DOCUMENT_SIZE = 10 * 1024 * 1024
 MAX_TOTAL_DOCUMENT_SIZE = 25 * 1024 * 1024
+MAX_RESUMABLE_DOCUMENT_SIZE = 1024 * 1024 * 1024
+MAX_RESUMABLE_TOTAL_SIZE = 1024 * 1024 * 1024
 ALLOWED_DOCUMENT_TYPES = {
     "application/pdf": ".pdf",
     "image/jpeg": ".jpg",
@@ -276,6 +280,79 @@ def create_video_request_checkout(
 
     gateway_url, fields = _checkout_fields(request)
     return VideoRequestCheckoutSession(request_reference=request.reference, gateway_url=gateway_url, fields=fields)
+
+
+def register_resumable_document(
+    *,
+    student: StudentRecord,
+    reference: str,
+    storage_path: str,
+    original_name: str,
+    content_type: str,
+    size_bytes: int,
+) -> VideoRequestDocument:
+    """Attach only a completed, owner-scoped Supabase object; never buffer its payload."""
+    if not settings.SUPABASE_S3_STUDENT_BUCKET or not settings.SUPABASE_S3_ENDPOINT_URL:
+        raise OSError("Private Supabase student storage is not configured.")
+    if not isinstance(size_bytes, int) or size_bytes <= 0 or size_bytes > MAX_RESUMABLE_DOCUMENT_SIZE:
+        raise PaymentSecurityError("Each supporting document must be between 1 byte and 1 GB.")
+    if content_type not in ALLOWED_DOCUMENT_TYPES:
+        raise PaymentSecurityError("Only PDF, JPEG and PNG supporting documents are allowed.")
+    cleaned_name = Path(original_name.replace("\\", "/")).name[:255]
+    if not cleaned_name or len(original_name) > 255:
+        raise PaymentSecurityError("Invalid supporting document name.")
+    extension = ALLOWED_DOCUMENT_TYPES[content_type]
+    with transaction.atomic():
+        video_request = VideoRequest.objects.select_for_update().filter(reference=reference, student=student).first()
+        if video_request is None:
+            raise PaymentSecurityError("Video request was not found for this student.")
+        if (
+            video_request.status != VideoRequest.Status.PENDING_PAYMENT
+            or video_request.payment_expires_at <= timezone.now()
+        ):
+            raise PaymentSecurityError("Uploads are closed for this video request.")
+        prefix = f"{student.supabase_user_id}/video-requests/{video_request.pk}/documents/"
+        suffix = storage_path.removeprefix(prefix) if storage_path.startswith(prefix) else ""
+        if not re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|jpg|png)",
+            suffix,
+        ):
+            raise PaymentSecurityError("Invalid private document path.")
+        if not suffix.endswith(extension):
+            raise PaymentSecurityError("The document type does not match its path.")
+        previous = VideoRequestDocument.objects.filter(storage_path=storage_path).first()
+        if previous is not None:
+            if previous.request_id == video_request.pk and previous.size_bytes == size_bytes:
+                return previous
+            raise PaymentSecurityError("A document with this path has already been registered.")
+        attached = list(video_request.documents.values_list("size_bytes", flat=True))
+        if len(attached) >= MAX_DOCUMENTS or sum(attached) + size_bytes > MAX_RESUMABLE_TOTAL_SIZE:
+            raise PaymentSecurityError("Upload at most five files, totalling no more than 1 GB.")
+        store = storages["student_private"]
+        try:
+            actual_size = store.size(storage_path)
+            if actual_size != size_bytes:
+                raise PaymentSecurityError("The uploaded document size does not match.")
+            with store.open(storage_path, "rb") as reader:
+                signature = reader.read(8)
+        except (FileNotFoundError, OSError, ValueError, BotoCoreError, ClientError) as exc:
+            raise PaymentSecurityError("Upload is incomplete or unavailable.") from exc
+        if content_type == "application/pdf":
+            valid_signature = signature.startswith(b"%PDF-")
+        elif content_type == "image/jpeg":
+            valid_signature = signature.startswith(b"\xff\xd8\xff")
+        else:
+            valid_signature = signature == b"\x89PNG\r\n\x1a\n"
+        if not valid_signature:
+            raise PaymentSecurityError("The uploaded file content does not match its type.")
+        return VideoRequestDocument.objects.create(
+            request=video_request,
+            original_name=cleaned_name,
+            storage_path=storage_path,
+            content_type=content_type,
+            size_bytes=size_bytes,
+            sha256="",  # SHA-256 is intentionally unknown until a separate streaming verification.
+        )
 
 
 class TutorProgramme:

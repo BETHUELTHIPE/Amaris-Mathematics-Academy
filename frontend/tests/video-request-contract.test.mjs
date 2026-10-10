@@ -36,7 +36,12 @@ test("request-a-video page requires a verified student and explains the paid que
 test("request form supports all programmes, secure files and server-priced checkout", () => {
   for (const label of ["CAPS", "IEB", "TVET", "University"]) assert.match(form, new RegExp(label));
   assert.match(form, /application\/pdf,image\/jpeg,image\/png/);
-  assert.match(form, /Maximum 10 MB per file and 25 MB total/);
+  assert.match(form, /Up to 1 GB per file and 1 GB total/);
+  assert.match(form, /data\.delete\("documents"\)/);
+  assert.match(form, /uploadStudentDocument/);
+  assert.match(form, /\/api\/video-requests\/upload-session/);
+  assert.match(form, /\/api\/video-requests\/documents/);
+  assert.doesNotMatch(form, /data\.append\("documents"/);
   assert.match(form, /Server-priced/);
   assert.match(form, /Continue to PayFast/);
   assert.doesNotMatch(form, /localStorage|sessionStorage/);
@@ -49,6 +54,29 @@ test("checkout proxy forwards the authenticated multipart request without exposi
   assert.match(proxy, /status: student \? 403 : 401/);
   assert.match(proxy, /Cross-site video requests are not allowed/);
   assert.doesNotMatch(proxy, /SUPABASE_SERVICE_ROLE|PAYFAST_MERCHANT_KEY|PAYFAST_PASSPHRASE/);
+});
+
+test("large documents use resumable Supabase transfer and verified ownership", async () => {
+  const signer = await readFile(new URL("../app/api/video-requests/upload-session/route.ts", import.meta.url), "utf8");
+  const completed = await readFile(new URL("../app/api/video-requests/documents/route.ts", import.meta.url), "utf8");
+  const uploader = await readFile(new URL("../lib/supabase/resumable-upload.ts", import.meta.url), "utf8");
+  const backend = await readFile(new URL("../../backend/content/services/video_requests.py", import.meta.url), "utf8");
+  assert.match(signer, /await getStudentIdentity\(\)/);
+  assert.match(signer, /getStudentVideoRequest\(reference\)/);
+  assert.match(signer, /createSignedUploadUrl\(path\)/);
+  assert.match(signer, /videoRequest\.status !== "pending_payment"/);
+  assert.match(signer, /document_total_bytes \+ fileSize > ONE_GIB/);
+  assert.match(signer, /Cache-Control.*private, no-store/);
+  assert.match(completed, /registerStudentVideoDocument/);
+  assert.match(uploader, /CHUNK_BYTES = 6 \* 1024 \* 1024/);
+  assert.match(uploader, /"x-signature"/);
+  assert.match(uploader, /"PATCH"/);
+  assert.match(uploader, /"HEAD"/);
+  assert.doesNotMatch(uploader, /localStorage|sessionStorage|SUPABASE_SERVICE_ROLE/);
+  assert.match(backend, /def register_resumable_document/);
+  assert.match(backend, /VideoRequest\.Status\.PENDING_PAYMENT/);
+  assert.match(backend, /store\.size\(storage_path\)/);
+  assert.match(backend, /MAX_RESUMABLE_DOCUMENT_SIZE = 1024 \* 1024 \* 1024/);
 });
 
 test("completed videos are only rendered from authenticated status data", () => {
