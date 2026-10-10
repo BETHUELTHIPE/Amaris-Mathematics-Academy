@@ -3,6 +3,25 @@ from typing import Any
 from urllib.parse import urlsplit
 
 
+def requires_supabase_database(environ: Mapping[str, str]) -> bool:
+    """Keep Render production on Supabase; permit explicitly isolated staging Postgres.
+
+    Opting out is allowed only when the deployment explicitly identifies itself
+    as staging AND SUPABASE_DATABASE_REQUIRED is explicitly false. Every other
+    Render deployment continues to require Supabase, including production.
+    """
+    render = bool(environ.get("RENDER"))
+    override = environ.get("SUPABASE_DATABASE_REQUIRED", "")
+    enabled = override.strip().lower() in {"1", "true", "yes", "on"}
+    staging = environ.get("AMARIS_DEPLOYMENT_ENVIRONMENT", "").strip().lower() == "staging"
+
+    if render and not (staging and override.strip().lower() in {"0", "false", "no", "off"}):
+        return True
+    if render:
+        return False
+    return enabled
+
+
 def validate_supabase_database(database: Mapping[str, Any], project_url: str, project_ref: str = "") -> None:
     """Reject local databases and connections to a different hosted project."""
     if database.get("ENGINE") != "django.db.backends.postgresql":
