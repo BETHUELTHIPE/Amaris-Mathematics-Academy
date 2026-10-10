@@ -14,7 +14,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
-from .models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment
+from .models import (
+    Course,
+    CourseCategory,
+    CourseModule,
+    Enrollment,
+    Lesson,
+    LiveClassBooking,
+    Payment,
+    VideoRequest,
+)
 from .serializers import (
     AcceptancePaymentCompleteResponseSerializer,
     AcceptanceSeedResponseSerializer,
@@ -60,18 +69,102 @@ class StudentCoursesView(StudentAPIView):
             .select_related("course", "last_lesson", "last_lesson__module")
             .order_by("-enrolled_at")
         )
+        enrolled = list(enrollments)
+        course_ids = [enrollment.course_id for enrollment in enrolled]
+        first_lessons = {}
+        for course_id, lesson_slug in (
+            Lesson.objects.filter(
+                module__course_id__in=course_ids,
+                module__is_published=True,
+                is_published=True,
+            )
+            .filter(Q(publish_at__isnull=True) | Q(publish_at__lte=timezone.now()))
+            .order_by("module__course_id", "module__order", "order", "id")
+            .values_list("module__course_id", "slug")
+        ):
+            first_lessons.setdefault(course_id, lesson_slug)
         return Response(
             [
                 {
                     "course": {
                         "slug": enrollment.course.slug,
                         "title": enrollment.course.title,
+                        "first_lesson_slug": first_lessons.get(enrollment.course_id, ""),
                     },
                     "resume": _resume_payload(enrollment),
                 }
-                for enrollment in enrollments
+                for enrollment in enrolled
             ]
         )
+
+
+class StudentOrderSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=("course", "live_class", "video_request"))
+    reference = serializers.CharField()
+    title = serializers.CharField()
+    status = serializers.CharField()
+    status_label = serializers.CharField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    currency = serializers.CharField()
+    created_at = serializers.DateTimeField()
+
+
+class StudentOrdersResponseSerializer(serializers.Serializer):
+    orders = StudentOrderSerializer(many=True)
+
+
+class StudentOrdersView(StudentAPIView):
+    """Read-only, current-student purchase history; never expose gateway payloads."""
+
+    @extend_schema(responses=StudentOrdersResponseSerializer)
+    def get(self, request):
+        student = request.user.student
+        payments = Payment.objects.filter(student=student).select_related("course").order_by("-created_at")[:30]
+        bookings = LiveClassBooking.objects.filter(student=student).order_by("-created_at")[:30]
+        requests = VideoRequest.objects.filter(student=student).order_by("-created_at")[:30]
+        orders = [
+            {
+                "kind": "course",
+                "reference": payment.reference,
+                "title": payment.course.title,
+                "status": payment.status,
+                "status_label": payment.get_status_display(),
+                "amount": payment.amount,
+                "currency": payment.currency,
+                "created_at": payment.created_at,
+            }
+            for payment in payments
+        ]
+        orders.extend(
+            {
+                "kind": "live_class",
+                "reference": booking.reference,
+                "title": booking.topic,
+                "status": booking.status,
+                "status_label": booking.get_status_display(),
+                "amount": booking.amount,
+                "currency": booking.currency,
+                "created_at": booking.created_at,
+            }
+            for booking in bookings
+        )
+        orders.extend(
+            {
+                "kind": "video_request",
+                "reference": video.reference,
+                "title": video.topic,
+                "status": video.status,
+                "status_label": video.get_status_display(),
+                "amount": video.amount,
+                "currency": video.currency,
+                "created_at": video.created_at,
+            }
+            for video in requests
+        )
+        orders.sort(key=lambda item: item["created_at"], reverse=True)
+        response = Response(StudentOrdersResponseSerializer({"orders": orders[:60]}).data)
+        response["Cache-Control"] = "private, no-store"
+        return response
 
 
 class StudentLessonView(StudentAPIView):

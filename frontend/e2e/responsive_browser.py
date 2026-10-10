@@ -21,7 +21,7 @@ VIEWPORTS = {
 
 COURSE_PATH = "/courses/caps-grade-12-mathematics"
 AXE_CORE_PATH = Path(__file__).resolve().parents[1] / "node_modules" / "axe-core" / "axe.min.js"
-WCAG22_PATHS = ("/", "/courses", "/contact", "/login", "/register")
+WCAG22_PATHS = ("/", "/courses", "/contact", "/login", "/register", "/dashboard", "/dashboard/courses", "/dashboard/orders", "/dashboard/notifications", "/dashboard/profile")
 NAMED_DEVICES = ("Pixel 7", "iPhone 13")
 
 
@@ -166,6 +166,24 @@ def check_dashboard(page: Page) -> None:
     require(page.get_by_role("navigation", name="Dashboard navigation").is_visible(), "Dashboard navigation is not visible")
     require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(), "Dashboard course shelf is not visible")
     assert_no_horizontal_overflow(page, "dashboard")
+    sections = (
+        ("My courses", "/dashboard/courses", "My courses"),
+        ("Orders & payments", "/dashboard/orders", "Orders & payments"),
+        ("Notifications", "/dashboard/notifications", "Account updates"),
+        ("Profile & security", "/dashboard/profile", "Profile & security"),
+    )
+    for label, path, heading in sections:
+        nav = page.get_by_role("navigation", name="Dashboard navigation")
+        link = nav.get_by_role("link", name=label)
+        require(link.is_visible(), f"{label} is not a clickable dashboard link")
+        link.click()
+        page.wait_for_url(f"**{path}")
+        require(page.get_by_role("heading", name=heading, exact=True).is_visible(), f"{path} heading missing")
+        active = page.get_by_role("navigation", name="Dashboard navigation").get_by_role("link", name=label)
+        require(active.get_attribute("aria-current") == "page", f"{path} lacks active-page accessibility")
+        assert_no_horizontal_overflow(page, path)
+    goto(page, "/dashboard")
+
 
 
 def check_table(page: Page) -> None:

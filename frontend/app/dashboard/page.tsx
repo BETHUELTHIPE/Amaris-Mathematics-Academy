@@ -2,18 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
-  Bell,
-  BookOpen,
   CheckCircle2,
-  CreditCard,
-  LayoutDashboard,
   ShieldCheck,
-  UserRound,
   Video,
 } from "lucide-react";
 import { requireVerifiedStudent } from "@/lib/auth";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
+import { StudentDashboardNavigation } from "@/components/dashboard/student-navigation";
 import { courses } from "@/lib/courses";
 import { getStudentCourses, getStudentVideoRequests } from "@/lib/student-api";
 
@@ -29,22 +25,19 @@ export default async function DashboardPage() {
   const profileSaved = user.emailVerified;
   const recommended = courses.slice(0, 2);
 
-  let enrolledCourses: Awaited<ReturnType<typeof getStudentCourses>> = [];
-  let courseServiceAvailable = true;
-  let videoRequests: Awaited<ReturnType<typeof getStudentVideoRequests>> = [];
-  let videoRequestServiceAvailable = true;
-  try {
-    enrolledCourses = await getStudentCourses();
-  } catch {
-    courseServiceAvailable = false;
-  }
-  try {
-    videoRequests = await getStudentVideoRequests();
-  } catch {
-    videoRequestServiceAvailable = false;
-  }
+  const [coursesResult, videosResult] = await Promise.allSettled([
+    getStudentCourses(),
+    getStudentVideoRequests(),
+  ]);
+  const courseServiceAvailable = coursesResult.status === "fulfilled";
+  const videoRequestServiceAvailable = videosResult.status === "fulfilled";
+  const enrolledCourses = courseServiceAvailable ? coursesResult.value : [];
+  const videoRequests = videoRequestServiceAvailable ? videosResult.value : [];
 
   const lessonsStarted = enrolledCourses.filter((item) => item.resume.last_lesson).length;
+  const averageProgress = enrolledCourses.length
+    ? Math.round(enrolledCourses.reduce((total, item) => total + item.resume.progress_percent, 0) / enrolledCourses.length)
+    : 0;
 
   return <main className="min-h-screen bg-[#f5f7fb]">
     <Header />
@@ -63,31 +56,15 @@ export default async function DashboardPage() {
     </section>
 
     <section className="mx-auto grid max-w-7xl gap-7 px-5 py-10 lg:grid-cols-[240px_1fr] lg:px-8">
-      <aside className="h-fit rounded-2xl border border-[#dce4ef] bg-white p-3">
-        <nav className="grid gap-1" aria-label="Dashboard navigation">
-          {[
-            [LayoutDashboard, "Overview", null],
-            [BookOpen, "My courses", null],
-            [CreditCard, "Orders & payments", null],
-            [Bell, "Notifications", null],
-            [UserRound, "Profile & security", "/reset-password"],
-          ].map(([Icon, label, href], i) => {
-            const C = Icon as typeof LayoutDashboard;
-            const content = <><C className="size-4" />{label as string}</>;
-            return href
-              ? <Link key={label as string} href={href as string} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-[#60708a] hover:bg-[#edf3ff]">{content}</Link>
-              : <span key={label as string} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold ${i === 0 ? "bg-[#0b2a5b] text-white" : "text-[#60708a]"}`}>{content}</span>;
-          })}
-        </nav>
-      </aside>
+      <StudentDashboardNavigation currentPath="/dashboard" />
 
       <div className="min-w-0">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            ["Active courses", String(enrolledCourses.length)],
-            ["Lessons started", String(lessonsStarted)],
-            ["Video requests", String(videoRequests.length)],
-            ["Certificates earned", "0"],
+            ["Active courses", courseServiceAvailable ? String(enrolledCourses.length) : "—"],
+            ["Lessons started", courseServiceAvailable ? String(lessonsStarted) : "—"],
+            ["Video requests", videoRequestServiceAvailable ? String(videoRequests.length) : "—"],
+            ["Average course progress", courseServiceAvailable ? `${averageProgress}%` : "—"],
           ].map(([label, value]) => <div key={label} className="rounded-2xl border border-[#dce4ef] bg-white p-6">
             <p className="text-sm text-[#60708a]">{label}</p>
             <p className="mt-3 text-4xl font-bold tracking-tight">{value}</p>
@@ -102,15 +79,17 @@ export default async function DashboardPage() {
           Video-request progress is temporarily unavailable. Your documents and paid tickets remain private; try again shortly.
         </div>}
 
-        {enrolledCourses.length > 0 ? <section className="mt-6 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
+        {courseServiceAvailable && (enrolledCourses.length > 0 ? <section className="mt-6 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
           <p className="eyebrow">My courses</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-.035em]">Continue where you stopped.</h2>
           <div className="mt-6 grid gap-4">
             {enrolledCourses.map(({ course, resume }) => {
               const lesson = resume.last_lesson;
               const href = lesson
-                ? `/learn/${course.slug}/${lesson.slug}?t=${resume.last_position_seconds}`
-                : `/courses/${course.slug}`;
+                ? `/learn/${encodeURIComponent(course.slug)}/${encodeURIComponent(lesson.slug)}?t=${resume.last_position_seconds}`
+                : course.first_lesson_slug
+                  ? `/learn/${encodeURIComponent(course.slug)}/${encodeURIComponent(course.first_lesson_slug)}`
+                  : `/courses/${encodeURIComponent(course.slug)}`;
               return <Link key={course.slug} href={href} className="group rounded-2xl border border-[#dce4ef] p-5 transition hover:border-[#aac3ec] hover:bg-[#f8fbff]">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -133,7 +112,7 @@ export default async function DashboardPage() {
             </div>
             <Link href="/courses" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3.5 font-bold text-white">Choose a course <ArrowRight className="size-4" /></Link>
           </div>
-        </div>}
+        </div>)}
 
         <section className="mt-8 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -147,7 +126,7 @@ export default async function DashboardPage() {
                 <ArrowRight className="size-5 text-[#1f5bbd] transition group-hover:translate-x-1" />
               </div>
             </Link>)}
-          </div> : <p className="mt-5 text-sm leading-7 text-[#60708a]">No video requests yet. Upload a question, assignment or past paper and choose the explanation you need.</p>}
+          </div> : <p className="mt-5 text-sm leading-7 text-[#60708a]">{videoRequestServiceAvailable ? "No video requests yet. Upload a question, assignment or past paper and choose the explanation you need." : "Your video-request list is temporarily unavailable."}</p>}
         </section>
 
         <section className="mt-8">

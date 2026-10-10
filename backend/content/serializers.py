@@ -279,6 +279,7 @@ class SiteBootstrapSerializer(serializers.Serializer):
 class CourseIdentitySerializer(serializers.Serializer):
     slug = serializers.SlugField()
     title = serializers.CharField()
+    first_lesson_slug = serializers.SlugField(allow_blank=True, required=False)
 
 
 class ResumeLessonSerializer(serializers.Serializer):

@@ -343,6 +343,17 @@ jobs:
           image: amaris-backend:${{ github.sha }}
           format: cyclonedx-json
           output-file: amaris-backend-sbom.cdx.json
+      # Display actionable package/CVE details while retaining the separate
+      # fail-closed SARIF gate below. This diagnostic does not approve releases.
+      - name: Explain fixable container findings
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: amaris-backend:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"
+          scanners: vuln
       - name: Scan container for fixable HIGH and CRITICAL vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
