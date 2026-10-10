@@ -7,6 +7,14 @@ const headerSource = await readFile(
   new URL("../components/site/header.tsx", import.meta.url),
   "utf8",
 );
+const footerSource = await readFile(
+  new URL("../components/site/footer.tsx", import.meta.url),
+  "utf8",
+);
+const djangoUrlsSource = await readFile(
+  new URL("../../backend/amaris_cms/urls.py", import.meta.url),
+  "utf8",
+);
 const authControlsSource = await readFile(
   new URL("../components/site/auth-controls.tsx", import.meta.url),
   "utf8",
@@ -44,4 +52,14 @@ test("renders managed links in desktop and mobile header navigation", () => {
   assert.match(headerSource, /getManagedNavigation\("header"\)/);
   assert.match(headerSource, /links\.map/);
   assert.match(authControlsSource, /links\.map/);
+});
+
+test("Django Admin appears in the shared footer with a safe backend link", () => {
+  assert.match(footerSource, /getDjangoAdminUrl\(\)/);
+  assert.match(footerSource, /process\.env\.DJANGO_ADMIN_URL/);
+  assert.match(footerSource, /process\.env\.CMS_API_URL/);
+  assert.match(footerSource, /new URL\("\/admin\/", origin\)\.toString\(\)/);
+  assert.match(footerSource, /href=\{djangoAdminUrl\} target="_blank" rel="noopener noreferrer"/);
+  assert.match(footerSource, /Django Admin<\/a>/);
+  assert.match(djangoUrlsSource, /path\("admin\/", admin\.site\.urls\)/);
 });
