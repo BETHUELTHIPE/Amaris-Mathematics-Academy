@@ -59,10 +59,9 @@ class LiveClassSlotView(APIView):
         values = filters.validated_data
         now = timezone.now()
 
-        LiveClassBooking.objects.filter(
-            status=LiveClassBooking.Status.PENDING_PAYMENT,
-            hold_expires_at__lte=now,
-        ).update(status=LiveClassBooking.Status.EXPIRED)
+        # Public availability is read-only. Expired holds are ignored by the
+        # queryset below and cleaned up by the scheduled expiration task (or
+        # by the locked checkout path). Never write booking state from GET.
 
         queryset = (
             TutorAvailabilitySlot.objects.filter(

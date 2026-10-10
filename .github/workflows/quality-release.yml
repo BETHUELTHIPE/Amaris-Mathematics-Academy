@@ -2,7 +2,7 @@ name: Quality Gates and Release
 
 on:
   pull_request:
-    branches: [main, staging]
+    branches: [main, staging, production-release-20260923]
   push:
     branches: [main]
   workflow_dispatch:
@@ -61,6 +61,7 @@ jobs:
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_ci
       DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false" # Ephemeral CI PostgreSQL; real staging/production enforcement remains on.
       # Django TestCase deliberately keeps transactions open; production remains 30s by default.
       DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: "0"
       CELERY_BROKER_URL: redis://127.0.0.1:6379/0
