@@ -6,7 +6,11 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
-from .database import validate_supabase_database
+from .database import (
+    is_render_staging_service,
+    validate_render_staging_database,
+    validate_supabase_database,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -140,13 +144,20 @@ DATABASES = {
     )
 }
 
-SUPABASE_DATABASE_REQUIRED = bool(os.getenv("RENDER")) or env_bool("SUPABASE_DATABASE_REQUIRED", False)
+IS_RENDER_STAGING_DATABASE = bool(os.getenv("RENDER")) and is_render_staging_service(
+    os.getenv("RENDER_SERVICE_ID", ""), os.getenv("RENDER_GIT_BRANCH", "")
+)
+SUPABASE_DATABASE_REQUIRED = not IS_RENDER_STAGING_DATABASE and (
+    bool(os.getenv("RENDER")) or env_bool("SUPABASE_DATABASE_REQUIRED", False)
+)
 SUPABASE_DATABASE_PROJECT_REF = (
     os.getenv("SUPABASE_DATABASE_PROJECT_REF") or os.getenv("SUPABASE_PROJECT_REF") or ""
 ).strip()
 if not DEBUG and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
     raise RuntimeError("PostgreSQL is required when DJANGO_DEBUG is false.")
-if SUPABASE_DATABASE_REQUIRED:
+if IS_RENDER_STAGING_DATABASE:
+    validate_render_staging_database(DATABASES["default"])
+elif SUPABASE_DATABASE_REQUIRED:
     validate_supabase_database(
         DATABASES["default"],
         os.getenv("SUPABASE_URL", ""),
