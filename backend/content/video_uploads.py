@@ -3,6 +3,7 @@
 Large bytes never transit Django/Next checkout. No public bucket or S3 secret is
 exposed to the browser. A complete file is recorded only after S3 HEAD validation.
 """
+
 import math
 import os
 import re
@@ -61,9 +62,7 @@ def _client():
     # Explicit rollout only after private-bucket and project upload limits >= 1 GiB
     # and browser CORS exposes ETag. Prevents spending bandwidth on doomed uploads.
     if os.getenv("VIDEO_REQUEST_LARGE_UPLOAD_ENABLED", "").lower() not in {"1", "true", "yes"}:
-        raise serializers.ValidationError(
-            "Large uploads are not yet enabled for this storage environment."
-        )
+        raise serializers.ValidationError("Large uploads are not yet enabled for this storage environment.")
     storage = storages["student_private"]
     if not hasattr(storage, "connection") or not getattr(storage, "bucket_name", ""):
         raise serializers.ValidationError("Large uploads require configured private Supabase S3 storage.")
@@ -88,9 +87,7 @@ def _prefix(item):
 
 def _owned_key(item, key):
     prefix = _prefix(item)
-    if not isinstance(key, str) or not re.fullmatch(
-        re.escape(prefix) + r"[0-9a-f]{32}\.[a-z0-9]+", key
-    ):
+    if not isinstance(key, str) or not re.fullmatch(re.escape(prefix) + r"[0-9a-f]{32}\.[a-z0-9]+", key):
         raise serializers.ValidationError("Invalid private upload key.")
     return key
 
@@ -104,16 +101,17 @@ def _quota(item, new_size):
 
 
 def begin_upload(student, reference, values):
-    name, size, mime, extension = validate_file(
-        values.get("name"), values.get("size"), values.get("content_type")
-    )
+    name, size, mime, extension = validate_file(values.get("name"), values.get("size"), values.get("content_type"))
     item = _owned_request(student, reference)
     _quota(item, size)
     client, bucket = _client()
     key = f"{_prefix(item)}{uuid.uuid4().hex}{extension}"
     result = client.create_multipart_upload(
-        Bucket=bucket, Key=key, ContentType=mime,
-        ContentDisposition="attachment", CacheControl="private, no-store",
+        Bucket=bucket,
+        Key=key,
+        ContentType=mime,
+        ContentDisposition="attachment",
+        CacheControl="private, no-store",
     )
     return {
         "key": key,
@@ -138,8 +136,10 @@ def part_url(student, reference, values):
         "url": client.generate_presigned_url(
             "upload_part",
             Params={
-                "Bucket": bucket, "Key": key,
-                "UploadId": upload_id, "PartNumber": part_number,
+                "Bucket": bucket,
+                "Key": key,
+                "UploadId": upload_id,
+                "PartNumber": part_number,
             },
             ExpiresIn=900,
             HttpMethod="PUT",
@@ -148,9 +148,7 @@ def part_url(student, reference, values):
 
 
 def complete_upload(student, reference, values):
-    name, size, mime, extension = validate_file(
-        values.get("name"), values.get("size"), values.get("content_type")
-    )
+    name, size, mime, extension = validate_file(values.get("name"), values.get("size"), values.get("content_type"))
     key = values.get("key")
     upload_id = values.get("upload_id")
     parts = values.get("parts")
@@ -181,10 +179,10 @@ def complete_upload(student, reference, values):
         completed = False
         try:
             client.complete_multipart_upload(
-                Bucket=bucket, Key=key, UploadId=upload_id,
-                MultipartUpload={"Parts": [
-                    {"PartNumber": p["part_number"], "ETag": p["etag"]} for p in parts
-                ]},
+                Bucket=bucket,
+                Key=key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": [{"PartNumber": p["part_number"], "ETag": p["etag"]} for p in parts]},
             )
             completed = True
             head = client.head_object(Bucket=bucket, Key=key)
@@ -192,8 +190,12 @@ def complete_upload(student, reference, values):
                 raise serializers.ValidationError("Uploaded file size or type does not match.")
             # Direct uploads are not hashed in Django; do not manufacture a SHA-256.
             VideoRequestDocument.objects.create(
-                request=item, original_name=name, storage_path=key,
-                content_type=mime, size_bytes=size, sha256="",
+                request=item,
+                original_name=name,
+                storage_path=key,
+                content_type=mime,
+                size_bytes=size,
+                sha256="",
             )
         except Exception:
             if completed:
