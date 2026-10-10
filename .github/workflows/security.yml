@@ -124,5 +124,17 @@ jobs:
         uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
         with:
           version: v0.74.0
-      - name: Trivy image scan
+      - name: Save Trivy vulnerability evidence
+        run: |
+          trivy image --ignore-unfixed --severity HIGH,CRITICAL --format json \
+            --output trivy-backend-vulnerabilities.json amaris-backend-security-scan
+      - name: Trivy image scan (mandatory HIGH/CRITICAL gate)
         run: trivy image --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL amaris-backend-security-scan
+      - name: Preserve container scan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-backend-${{ github.sha }}
+          path: trivy-backend-vulnerabilities.json
+          if-no-files-found: warn
+          retention-days: 14
