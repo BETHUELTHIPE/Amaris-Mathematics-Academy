@@ -264,7 +264,7 @@ export async function googleAuthAction(formData: FormData) {
     redirectWithMessage(
       "/login",
       "error",
-      "Google sign-in is temporarily unavailable. Please use your email and password or try again shortly.",
+      "Google registration is temporarily unavailable. Please use email registration or try again shortly.",
     );
   }
 

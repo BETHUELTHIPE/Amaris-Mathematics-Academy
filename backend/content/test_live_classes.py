@@ -3,6 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -115,6 +116,55 @@ class LiveClassBookingTests(TestCase):
         self.assertEqual(slot["tutor"], "Priya Naidoo")
         self.assertEqual(slot["price"], "250.00")
         self.assertNotIn("zoom_join_url", slot)
+
+    def test_public_availability_ignores_expired_holds_without_writing_booking_state(self):
+        checkout = self.checkout(key="expired-read-only-slot-001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        booking.hold_expires_at = timezone.now() - timedelta(seconds=1)
+        booking.save(update_fields=("hold_expires_at",))
+
+        # A public GET should expose the freed slot but never perform an
+        # UPDATE on payments/bookings. Expiry belongs to the worker/checkout.
+        response = self.client.get(reverse("live-class-slots"), secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self.slot.pk, [slot["id"] for slot in response.json()])
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, LiveClassBooking.Status.PENDING_PAYMENT)
+
+        self.assertEqual(expire_live_class_holds.run(), 1)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, LiveClassBooking.Status.EXPIRED)
+
+    def test_synthetic_full_booking_payment_email_and_reminder_journey(self):
+        # No live gateway, SMTP, SMS or Zoom request is made in this test.
+        checkout = self.checkout()
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        self.assertEqual(booking.status, LiveClassBooking.Status.PENDING_PAYMENT)
+        self.assertEqual(len(mail.outbox), 0)
+
+        result = process_live_class_notification(
+            self.callback(booking),
+            gateway=MockPayFastGateway(True),
+        )
+        self.assertTrue(result.accepted)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, LiveClassBooking.Status.CONFIRMED)
+        self.assertTrue(booking.invoice_number.startswith("INV-LIVE-"))
+        self.assertEqual(len(mail.outbox), 0)
+
+        self.assertEqual(deliver_live_class_confirmation.run(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(booking.invoice_number, mail.outbox[0].body)
+        self.assertEqual(mail.outbox[0].attachments[0][2], "application/pdf")
+
+        with mock.patch(
+            "content.tasks.timezone.now",
+            return_value=self.slot.starts_at - timedelta(minutes=29),
+        ):
+            self.assertEqual(deliver_live_class_reminder.run(), 1)
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertIn(self.slot.zoom_join_url, mail.outbox[1].body)
+        self.assertEqual(deliver_live_class_reminder.run(), 0)
 
     def test_checkout_is_server_priced_at_r250_and_holds_slot(self):
         checkout = self.checkout()

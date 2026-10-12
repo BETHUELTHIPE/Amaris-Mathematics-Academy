@@ -2,7 +2,7 @@ name: Payment Security
 
 on:
   pull_request:
-    branches: [main, staging]
+    branches: [main, staging, production-release-20260923]
     paths:
       - "backend/content/**"
       - "backend/requirements*.txt"
@@ -49,13 +49,17 @@ jobs:
       DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
       DATABASE_URL: "postgresql://amaris_payment_ci@127.0.0.1:5432/amaris_payment_ci"
       DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false" # Isolated CI Postgres; production still enforces Supabase.
       # Payment tests are deterministic and mock/sandbox only. Never add live
       # PayFast credentials or production payment endpoints to this job.
     steps:
       - uses: actions/checkout@v4
       - name: Generate ephemeral Django secret
         shell: bash
-        run: printf 'DJANGO_SECRET_KEY=%s\n' "$(openssl rand -hex 64)" >> "$GITHUB_ENV"
+        run: |
+          secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$secret"
+          printf 'DJANGO_SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13.15"
@@ -87,3 +91,4 @@ jobs:
           content.tests.PaymentReconciliationTests
           content.test_payments
           content.test_payfast_security
+          content.test_live_classes

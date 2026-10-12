@@ -2,7 +2,7 @@ name: Backup Restore Verification
 
 on:
   pull_request:
-    branches: [main, staging]
+    branches: [main, staging, production-release-20260923]
     paths:
       - 'backend/**'
       - '.github/workflows/recovery-restore.yml'

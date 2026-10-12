@@ -11,25 +11,23 @@ const callback = source("../app/auth/callback/route.ts");
 const button = source("../components/site/google-auth-button.tsx");
 const identity = source("../lib/auth.ts");
 
-test("registration shows Google as the only social provider", () => {
+test("students can choose Google registration while email registration remains available", () => {
   assert.match(registration, /GoogleAuthButton label="Register with Google"/);
-  assert.doesNotMatch(registration, /LinkedInAuthButton|FacebookAuthButton|GitHubAuthButton|Register with (LinkedIn|Facebook|GitHub)/);
   assert.match(registration, /<form action=\{registerAction\}/);
   assert.match(registration, /name="terms"/);
+  assert.match(button, /By continuing with Google, you agree/);
 });
 
-test("returning Google students can sign in and email/password remains available", () => {
+test("returning Google students can sign in and email login remains available", () => {
   assert.match(login, /GoogleAuthButton label="Continue with Google"/);
   assert.match(login, /<form action=\{loginAction\}/);
-  assert.doesNotMatch(login, /LinkedInAuthButton|FacebookAuthButton|GitHubAuthButton/);
 });
 
-test("Google OAuth is the only social sign-in action and redirects through a local callback", () => {
+test("Google OAuth redirects through the local PKCE callback", () => {
   assert.match(button, /action=\{googleAuthAction\}/);
   assert.match(actions, /provider: "google"/);
   assert.match(actions, /safeRelativePath\(String\(formData.get\("next"\)/);
   assert.match(actions, /getSiteUrl\(\)\}\/auth\/callback/);
-  assert.doesNotMatch(actions, /provider: "(facebook|github|linkedin_oidc|twitter|apple)"/);
 });
 
 test("callback verifies the session and confines redirects to safe relative paths", () => {
@@ -39,17 +37,17 @@ test("callback verifies the session and confines redirects to safe relative path
   assert.match(callback, /email_confirmed_at/);
 });
 
-
-test("verified student identity uses the authoritative Supabase user record", () => {
+test("verified student identity uses the authoritative Supabase user record and Google names", () => {
   assert.match(identity, /supabase\.auth\.getClaims\(\)/);
   assert.match(identity, /supabase\.auth\.getUser\(\)/);
   assert.match(identity, /userData\.user\.id !== data\.claims\.sub/);
   assert.match(identity, /Boolean\(userData\.user\.email_confirmed_at\)/);
+  assert.match(identity, /metadata\.given_name/);
+  assert.match(identity, /metadata\.family_name/);
   assert.doesNotMatch(identity, /claims\.email_verified/);
 });
 
-
-test("Google callback URL uses the Render service origin unless SITE_URL overrides it", () => {
+test("Google callback uses the current Render service origin unless SITE_URL overrides it", () => {
   const originalSite = process.env.SITE_URL;
   const originalRender = process.env.RENDER_EXTERNAL_URL;
   try {

@@ -37,8 +37,8 @@ export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null
 
   if (error || !data?.claims) return null;
 
-  // Supabase's standard access-token claims do not include email_verified.
-  // Verify the current user record before allowing access to private lessons.
+  // Supabase access-token claims do not consistently expose email_verified.
+  // Verify the authoritative user record before allowing private course access.
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user || userData.user.id !== data.claims.sub) {
     return null;
@@ -92,8 +92,17 @@ export function safeRelativePath(value: string | null | undefined): string {
 
 function mapClaims(claims: JwtPayload, emailVerified: boolean): StudentIdentity {
   const metadata = claims.user_metadata ?? {};
-  const firstName = cleanName(metadata.first_name) || "Student";
-  const lastName = cleanName(metadata.last_name);
+  const fullName = cleanName(metadata.full_name) || cleanName(metadata.name);
+  const [fullFirst = "", ...fullRest] = fullName.split(/\s+/).filter(Boolean);
+  const firstName =
+    cleanName(metadata.first_name) ||
+    cleanName(metadata.given_name) ||
+    fullFirst ||
+    "Student";
+  const lastName =
+    cleanName(metadata.last_name) ||
+    cleanName(metadata.family_name) ||
+    fullRest.join(" ");
   return {
     id: claims.sub,
     email: typeof claims.email === "string" ? claims.email : "",
