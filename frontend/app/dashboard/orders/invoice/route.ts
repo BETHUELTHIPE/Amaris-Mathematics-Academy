@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { downloadStudentCourseInvoice } from "@/lib/student-api";
-import { requireVerifiedStudent } from "@/lib/auth";
+import { getStudentIdentity } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 const privateHeaders = { "Cache-Control": "private, no-store" };
@@ -10,7 +10,18 @@ export async function GET(request: NextRequest) {
   if (!reference || !/^[A-Za-z0-9_-]{1,100}$/.test(reference)) {
     return NextResponse.json({ detail: "A valid payment reference is required." }, { status: 400, headers: privateHeaders });
   }
-  await requireVerifiedStudent("/dashboard/orders");
+  const student = await getStudentIdentity();
+  if (!student || !student.emailVerified) {
+    // Use a relative Location so Render's internal HTTP origin cannot turn a
+    // protected invoice redirect into an insecure public URL.
+    const location = student
+      ? `/verify-email?email=${encodeURIComponent(student.email)}`
+      : "/login?next=%2Fdashboard%2Forders";
+    return new NextResponse(null, {
+      status: 307,
+      headers: { ...privateHeaders, Location: location },
+    });
+  }
 
   try {
     const invoice = await downloadStudentCourseInvoice(reference);
