@@ -2,17 +2,34 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from botocore.exceptions import ClientError
+from django.contrib.auth import get_user_model
 from django.test import override_settings
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from content.authentication import SupabaseStudentAuthentication, SupabaseStudentPrincipal
-from content.models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment, StudentRecord
+from content.models import (
+    Course,
+    CourseCategory,
+    CourseModule,
+    Enrollment,
+    Lesson,
+    LiveClassBooking,
+    Payment,
+    StudentRecord,
+    TutorAvailabilitySlot,
+    VideoRequest,
+)
 from content.payment_models import Invoice, NotificationOutbox, ServiceTicket
 
 
@@ -203,6 +220,8 @@ class StudentJourneyApiTests(APITestCase):
 
     def test_last_lesson_resume_persists_and_is_student_scoped(self):
         self.authenticate()
+        courses = self.client.get(reverse("student-courses"), secure=True)
+        self.assertEqual(courses.data[0]["course"]["first_lesson_slug"], self.lesson.slug)
         update = self.client.patch(
             reverse("student-progress"),
             {
@@ -227,6 +246,170 @@ class StudentJourneyApiTests(APITestCase):
         self.authenticate(self.other)
         cross_user = self.client.get(reverse("student-resume", args=[self.course.slug]), secure=True)
         self.assertEqual(cross_user.status_code, 404)
+
+    def test_course_start_skips_hidden_and_future_lessons(self):
+        self.authenticate()
+        for published, publish_at in ((False, None), (True, timezone.now() + timedelta(days=1))):
+            self.lesson.is_published = published
+            self.lesson.publish_at = publish_at
+            self.lesson.save()
+            response = self.client.get(reverse("student-courses"), secure=True)
+            self.assertEqual(response.data[0]["course"]["first_lesson_slug"], "")
+        self.lesson.is_published = True
+        self.lesson.publish_at = None
+        self.lesson.save()
+        self.lesson.module.is_published = False
+        self.lesson.module.save()
+        self.assertEqual(
+            self.client.get(reverse("student-courses"), secure=True).data[0]["course"]["first_lesson_slug"], ""
+        )
+
+    def test_orders_and_notifications_are_private_and_include_paid_course_receipts(self):
+        paid_at = timezone.now()
+        payment = Payment.objects.create(
+            reference="PAY-STUDENT-ORDER-001",
+            student=self.student,
+            course=self.course,
+            enrollment=self.enrollment,
+            provider=Payment.Provider.PAYFAST,
+            provider_reference="provider-student-order-001",
+            amount=Decimal("950.00"),
+            currency="ZAR",
+            status=Payment.Status.PAID,
+            paid_at=paid_at,
+            gateway_verified_at=paid_at,
+        )
+        invoice = Invoice.objects.create(
+            payment=payment,
+            invoice_number="INV-STUDENT-ORDER-001",
+            student=self.student,
+            course=self.course,
+            amount=payment.amount,
+            currency=payment.currency,
+            issued_at=paid_at,
+        )
+        NotificationOutbox.objects.create(
+            payment=payment,
+            destination=self.student.email,
+            status=NotificationOutbox.Status.SENT,
+        )
+        Payment.objects.create(
+            reference="PAY-OTHER-ORDER-001",
+            student=self.other,
+            course=self.course,
+            provider=Payment.Provider.PAYFAST,
+            amount=Decimal("950.00"),
+            currency="ZAR",
+            status=Payment.Status.PENDING,
+        )
+
+        self.authenticate()
+        orders = self.client.get(reverse("student-orders"), secure=True)
+        self.assertEqual(orders.status_code, 200)
+        self.assertEqual(orders["Cache-Control"], "private, no-store")
+        self.assertEqual([item["reference"] for item in orders.data], [payment.reference])
+        self.assertEqual(orders.data[0]["invoice_number"], invoice.invoice_number)
+        self.assertTrue(orders.data[0]["invoice_ready"])
+
+        notifications = self.client.get(reverse("student-notifications"), secure=True)
+        self.assertEqual(notifications.status_code, 200)
+        self.assertEqual(notifications["Cache-Control"], "private, no-store")
+        self.assertEqual(len(notifications.data), 1)
+        self.assertEqual(notifications.data[0]["category"], "payment")
+        self.assertNotIn("other", str(notifications.data).lower())
+
+        with (
+            TemporaryDirectory() as directory,
+            override_settings(
+                STORAGES={
+                    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+                    "student_private": {
+                        "BACKEND": "django.core.files.storage.FileSystemStorage",
+                        "OPTIONS": {"location": str(Path(directory) / "student"), "allow_overwrite": True},
+                    },
+                    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+                }
+            ),
+        ):
+            invoice_url = reverse("student-course-invoice", args=[payment.reference])
+            response = self.client.get(invoice_url, secure=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response["Cache-Control"], "private, no-store")
+            self.assertTrue(b"".join(response.streaming_content).startswith(b"%PDF"))
+
+            self.authenticate(self.other)
+            self.assertEqual(self.client.get(invoice_url, secure=True).status_code, 404)
+
+        self.authenticate()
+        for operation in ("exists", "open"):
+            storage = Mock()
+            storage.exists.return_value = True
+            getattr(storage, operation).side_effect = ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "private storage error"}}, operation
+            )
+            with patch("content.student_views.storages", {"student_private": storage}):
+                unavailable = self.client.get(invoice_url, secure=True)
+            self.assertEqual(unavailable.status_code, 503)
+            self.assertEqual(unavailable["Cache-Control"], "private, no-store")
+            self.assertNotIn("private storage error", str(unavailable.data))
+
+        payment.gateway_verified_at = None
+        payment.save(update_fields=["gateway_verified_at"])
+        self.assertEqual(self.client.get(invoice_url, secure=True).status_code, 404)
+
+    def test_booking_and_video_history_never_exposes_another_student_or_private_payloads(self):
+        tutor = get_user_model().objects.create_user(username="dashboard.synthetic.tutor")
+        start = timezone.now() + timedelta(days=1)
+        slot = TutorAvailabilitySlot.objects.create(
+            tutor=tutor,
+            programme="caps",
+            subject="mathematics",
+            level="Grade 12",
+            starts_at=start,
+            ends_at=start + timedelta(hours=1),
+            zoom_join_url="https://zoom.example.test/private",
+        )
+        for index, student in enumerate((self.student, self.other)):
+            LiveClassBooking.objects.create(
+                reference=f"LC-DASHBOARD-{index}",
+                idempotency_key=f"dashboard-booking-{index}",
+                student=student,
+                slot=slot,
+                programme="caps",
+                subject="mathematics",
+                level="Grade 12",
+                topic="Synthetic calculus",
+                status=LiveClassBooking.Status.COMPLETED,
+                confirmation_sent_at=start,
+                reminder_sent_at=start,
+            )
+            VideoRequest.objects.create(
+                reference=f"VR-DASHBOARD-{index}",
+                idempotency_key=f"dashboard-video-{index}",
+                student=student,
+                programme="caps",
+                subject="mathematics",
+                level="Grade 12",
+                topic="Synthetic algebra",
+                request_type="chapter_topic",
+                amount="450.00",
+                confirmation_sent_at=start,
+                instructions="Private student instructions",
+                video_external_id="private/object.mp4",
+            )
+        self.authenticate()
+        orders = self.client.get(reverse("student-orders"), secure=True)
+        self.assertEqual({item["reference"] for item in orders.data}, {"LC-DASHBOARD-0", "VR-DASHBOARD-0"})
+        self.assertNotIn("private", str(orders.data).lower())
+        notifications = self.client.get(reverse("student-notifications"), secure=True)
+        self.assertEqual(len(notifications.data), 3)
+        self.assertNotIn("DASHBOARD-1", str(notifications.data))
+        self.assertNotIn("private", str(notifications.data).lower())
+        self.assertEqual(self.client.post(reverse("student-orders"), {}, secure=True).status_code, 405)
+        self.assertEqual(self.client.post(reverse("student-notifications"), {}, secure=True).status_code, 405)
+        self.authenticate(self.other)
+        others = self.client.get(reverse("student-orders"), secure=True)
+        self.assertEqual({item["reference"] for item in others.data}, {"LC-DASHBOARD-1", "VR-DASHBOARD-1"})
 
     def test_acceptance_payment_completion_uses_real_fulfillment_path_in_sandbox(self):
         self.course.slug = "acceptance-capacity-mathematics"
@@ -315,3 +498,5 @@ class StudentJourneyApiTests(APITestCase):
             secure=True,
         )
         self.assertEqual(response.status_code, 401)
+        self.assertEqual(self.client.get(reverse("student-orders"), secure=True).status_code, 401)
+        self.assertEqual(self.client.get(reverse("student-notifications"), secure=True).status_code, 401)
