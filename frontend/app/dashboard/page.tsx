@@ -2,18 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
-  Bell,
-  BookOpen,
   CheckCircle2,
-  CreditCard,
-  LayoutDashboard,
   ShieldCheck,
-  UserRound,
   Video,
 } from "lucide-react";
 import { requireVerifiedStudent } from "@/lib/auth";
-import { Header } from "@/components/site/header";
-import { Footer } from "@/components/site/footer";
+import { StudentDashboardShell } from "@/components/site/student-dashboard-shell";
 import { courses } from "@/lib/courses";
 import { getStudentCourses, getStudentVideoRequests } from "@/lib/student-api";
 
@@ -46,42 +40,15 @@ export default async function DashboardPage() {
 
   const lessonsStarted = enrolledCourses.filter((item) => item.resume.last_lesson).length;
 
-  return <main className="min-h-screen min-w-0 bg-[#f5f7fb]">
-    <Header />
-    <section className="border-b border-[#dce4ef] bg-white">
-      <div className="mx-auto flex max-w-7xl min-w-0 flex-col justify-between gap-5 px-4 py-8 sm:px-5 sm:py-10 md:flex-row md:items-end lg:px-8">
-        <div className="min-w-0 flex-1">
-          <p className="eyebrow">Student dashboard</p>
-          <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-[-.045em] [overflow-wrap:anywhere] sm:text-4xl lg:text-5xl">Welcome, {firstName}.</h1>
-          <p className="mt-3 text-[#60708a]">Your next mathematics step will always be clear here.</p>
-        </div>
-        <div className={`inline-flex max-w-full self-start items-center gap-2 rounded-2xl px-4 py-2 text-left text-sm font-semibold leading-5 md:shrink-0 ${profileSaved ? "bg-[#daf5ec] text-[#13715f]" : "bg-[#fff3d6] text-[#7b5710]"}`}>
+  return <StudentDashboardShell
+    active="overview"
+    title={`Welcome, ${firstName}.`}
+    description="Your next mathematics step will always be clear here."
+    headerAside={<div className={`inline-flex max-w-full self-start items-center gap-2 rounded-2xl px-4 py-2 text-left text-sm font-semibold leading-5 md:shrink-0 ${profileSaved ? "bg-[#daf5ec] text-[#13715f]" : "bg-[#fff3d6] text-[#7b5710]"}`}>
           {profileSaved ? <CheckCircle2 className="size-4" /> : <ShieldCheck className="size-4" />}
           {profileSaved ? "Email verified · profile active" : "Email verified"}
-        </div>
-      </div>
-    </section>
-
-    <section className="mx-auto grid max-w-7xl min-w-0 gap-5 px-4 py-6 sm:px-5 sm:py-10 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)] lg:gap-7 lg:px-8">
-      <aside className="h-fit min-w-0 rounded-2xl border border-[#dce4ef] bg-white p-3 lg:sticky lg:top-32">
-        <nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-1 lg:gap-1" aria-label="Dashboard navigation">
-          {[
-            [LayoutDashboard, "Overview", null],
-            [BookOpen, "My courses", "#my-courses"],
-            [CreditCard, "Orders & payments", null],
-            [Bell, "Notifications", null],
-            [UserRound, "Profile & security", "/reset-password"],
-          ].map(([Icon, label, href], i) => {
-            const C = Icon as typeof LayoutDashboard;
-            const content = <><C aria-hidden="true" className="size-4 shrink-0" /><span className="min-w-0 break-words">{label as string}</span></>;
-            return href
-              ? <Link key={label as string} href={href as string} className="flex min-h-12 min-w-0 items-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold text-[#31537e] transition hover:bg-[#edf3ff] focus-visible:bg-[#edf3ff] lg:gap-3 lg:px-4">{content}</Link>
-              : <span key={label as string} aria-current={i === 0 ? "page" : undefined} aria-disabled={i !== 0 ? true : undefined} className={`flex min-h-12 min-w-0 items-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold lg:gap-3 lg:px-4 ${i === 0 ? "bg-[#0b2a5b] text-white" : "text-[#60708a]"}`}>{content}</span>;
-          })}
-        </nav>
-      </aside>
-
-      <div className="min-w-0">
+        </div>}
+  >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
             ["Active courses", String(enrolledCourses.length)],
@@ -109,8 +76,10 @@ export default async function DashboardPage() {
             {enrolledCourses.map(({ course, resume }) => {
               const lesson = resume.last_lesson;
               const href = lesson
-                ? `/learn/${course.slug}/${lesson.slug}?t=${resume.last_position_seconds}`
-                : `/courses/${course.slug}`;
+                ? `/learn/${encodeURIComponent(course.slug)}/${encodeURIComponent(lesson.slug)}?t=${resume.last_position_seconds}`
+                : course.first_lesson_slug
+                  ? `/learn/${encodeURIComponent(course.slug)}/${encodeURIComponent(course.first_lesson_slug)}`
+                  : `/courses/${encodeURIComponent(course.slug)}`;
               return <Link key={course.slug} href={href} className="group block min-w-0 rounded-2xl border border-[#dce4ef] p-4 transition hover:border-[#aac3ec] hover:bg-[#f8fbff]">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -166,8 +135,5 @@ export default async function DashboardPage() {
             </Link>)}
           </div>
         </section>
-      </div>
-    </section>
-    <Footer />
-  </main>;
+  </StudentDashboardShell>;
 }

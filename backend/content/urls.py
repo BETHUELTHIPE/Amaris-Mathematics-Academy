@@ -15,8 +15,11 @@ from .student_views import (
     PaymentStatusView,
     ProgressView,
     ResumeView,
+    StudentCourseInvoiceDownloadView,
     StudentCoursesView,
     StudentLessonView,
+    StudentNotificationsView,
+    StudentOrdersView,
 )
 from .video_request_views import (
     VideoRequestCheckoutView,
@@ -64,6 +67,13 @@ urlpatterns = [
         name="student-acceptance-payment-complete",
     ),
     path("student/courses/", StudentCoursesView.as_view(), name="student-courses"),
+    path("student/orders/", StudentOrdersView.as_view(), name="student-orders"),
+    path("student/notifications/", StudentNotificationsView.as_view(), name="student-notifications"),
+    path(
+        "student/orders/<str:reference>/invoice/",
+        StudentCourseInvoiceDownloadView.as_view(),
+        name="student-course-invoice",
+    ),
     path("student/lessons/<slug:course_slug>/<slug:lesson_slug>/", StudentLessonView.as_view(), name="student-lesson"),
     path("student/checkout/", CheckoutView.as_view(), name="student-checkout"),
     path("student/live-classes/checkout/", LiveClassCheckoutView.as_view(), name="live-class-checkout"),

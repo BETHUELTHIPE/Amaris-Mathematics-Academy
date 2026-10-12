@@ -173,12 +173,29 @@ def check_dashboard(page: Page) -> None:
     require(navigation.is_visible(), "Dashboard navigation is not visible")
     course_link = navigation.get_by_role("link", name="My courses")
     require(course_link.is_visible(), "My courses is not navigable on this viewport")
-    require(course_link.get_attribute("href") == "#my-courses", "My courses does not link to its section")
+    require(course_link.get_attribute("href") == "/dashboard#my-courses", "My courses does not link to its section")
     require(page.locator("#my-courses").count() == 1, "Dashboard needs exactly one My courses target")
     course_link.focus()
     require(course_link.evaluate("(el) => document.activeElement === el"), "Dashboard course link is not keyboard focusable")
     require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(), "Dashboard course shelf is not visible")
     assert_no_horizontal_overflow(page, "dashboard")
+
+    orders_link = navigation.get_by_role("link", name="Orders & payments")
+    notifications_link = navigation.get_by_role("link", name="Notifications")
+    require(orders_link.get_attribute("href") == "/dashboard/orders", "Orders navigation has the wrong destination")
+    require(notifications_link.get_attribute("href") == "/dashboard/notifications", "Notifications navigation has the wrong destination")
+
+    goto(page, "/dashboard/orders")
+    require(page.get_by_role("heading", name="Orders & payments", exact=True).is_visible(), "Orders page is not visible")
+    require(page.get_by_role("heading", name="No orders yet.", exact=True).is_visible(), "Orders empty state is not visible")
+    assert_no_horizontal_overflow(page, "orders")
+
+    goto(page, "/dashboard/notifications")
+    require(page.get_by_role("heading", name="Notifications", exact=True).is_visible(), "Notifications page is not visible")
+    require(page.get_by_role("heading", name="You’re all caught up.", exact=True).is_visible(), "Notifications empty state is not visible")
+    assert_no_horizontal_overflow(page, "notifications")
+
+    goto(page, "/dashboard")
 
 
 def check_table(page: Page) -> None:
