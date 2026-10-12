@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { normalizeCmsApiBaseUrl } from "@/lib/cms-api-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireVerifiedStudent } from "@/lib/auth";
 
@@ -162,7 +163,7 @@ function cmsBaseUrl(): string {
   const workerBindings = env as unknown as { CMS_API_URL?: string };
   const base = (workerBindings.CMS_API_URL || process.env.CMS_API_URL)?.replace(/\/$/, "");
   if (!base) throw new Error("The protected student API is not configured.");
-  return base;
+  return normalizeCmsApiBaseUrl(base);
 }
 
 async function accessToken(): Promise<string> {
