@@ -392,7 +392,7 @@ class AcceptanceSeedView(StudentAPIView):
                 "is_active": True,
             },
         )
-        course, _ = Course.objects.update_or_create(
+        course, _ = Course.objects.get_or_create(
             slug="acceptance-capacity-mathematics",
             defaults={
                 "category": category,
@@ -406,7 +406,7 @@ class AcceptanceSeedView(StudentAPIView):
                 "featured": False,
             },
         )
-        module, _ = CourseModule.objects.update_or_create(
+        module, _ = CourseModule.objects.get_or_create(
             course=course,
             order=1,
             defaults={
@@ -415,7 +415,7 @@ class AcceptanceSeedView(StudentAPIView):
                 "is_published": True,
             },
         )
-        lesson, _ = Lesson.objects.update_or_create(
+        lesson, _ = Lesson.objects.get_or_create(
             module=module,
             order=1,
             defaults={
