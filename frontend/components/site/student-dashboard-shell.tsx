@@ -32,7 +32,7 @@ export function StudentDashboardShell({
     </section>
     <section className="mx-auto grid max-w-7xl min-w-0 gap-5 px-4 py-6 sm:px-5 sm:py-10 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)] lg:gap-7 lg:px-8">
       <DashboardNavigation active={active} />
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 [overflow-wrap:anywhere]">{children}</div>
     </section>
     <Footer />
   </main>;

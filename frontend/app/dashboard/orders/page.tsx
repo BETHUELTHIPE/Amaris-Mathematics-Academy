@@ -81,9 +81,9 @@ export default async function OrdersPage() {
               </div>
             </div>
             <div className="mt-4 flex flex-col gap-2 border-t border-[#e7edf5] pt-4 sm:flex-row sm:flex-wrap">
-              <Link href={order.href} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-[#bfd0e8] px-4 text-sm font-bold text-[#194f95] sm:w-fit">View details <ArrowRight aria-hidden="true" className="size-4" /></Link>
-              {invoiceHref && <Link href={invoiceHref} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-4 text-sm font-bold text-white sm:w-fit">Download invoice <Download aria-hidden="true" className="size-4" /></Link>}
-              {order.invoice_number && <span className="flex min-h-11 min-w-0 items-center text-xs text-[#60708a] sm:ml-auto">Invoice <span className="ml-1 break-all font-mono">{order.invoice_number}</span></span>}
+              <Link href={order.href} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-[#bfd0e8] px-4 text-sm font-bold text-[#194f95] sm:w-fit">View details <ArrowRight aria-hidden="true" className="size-4" /></Link>
+              {invoiceHref && <Link href={invoiceHref} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-4 text-sm font-bold text-white sm:w-fit">Download invoice <Download aria-hidden="true" className="size-4" /></Link>}
+              {order.invoice_number && <span className="flex min-h-12 min-w-0 items-center text-xs text-[#60708a] sm:ml-auto">Invoice <span className="ml-1 break-all font-mono">{order.invoice_number}</span></span>}
             </div>
           </article>;
         })}

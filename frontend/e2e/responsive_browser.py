@@ -163,6 +163,26 @@ def check_slow_submission(page: Page) -> None:
         page.unroute("**/contact*", delay_contact_post)
 
 
+def assert_dashboard_layout(page: Page, surface: str) -> None:
+    navigation = page.get_by_role("navigation", name="Dashboard navigation")
+    links = navigation.get_by_role("link")
+    require(links.count() == 5, "Every dashboard navigation item must be a link")
+    for link in links.all():
+        bounds = link.bounding_box()
+        require(bounds is not None and bounds["height"] >= 48, f"Small dashboard touch target: {link.inner_text()}")
+    width = page.evaluate("window.innerWidth")
+    columns = navigation.evaluate("el => getComputedStyle(el).gridTemplateColumns.split(' ').length")
+    expected_columns = 1 if width >= 1024 else 3 if width >= 640 else 2
+    require(columns == expected_columns, f"{surface}: expected {expected_columns} navigation columns, got {columns}")
+    require(navigation.locator('[aria-current="page"]').count() == 1, "Dashboard must identify the current page")
+    assert_no_horizontal_overflow(page, surface)
+    heading = page.get_by_role("heading", level=1)
+    original = heading.inner_text()
+    heading.evaluate("el => el.textContent = 'LongStudentName'.repeat(20)")
+    assert_no_horizontal_overflow(page, f"{surface} with a long heading")
+    heading.evaluate("(el, text) => el.textContent = text", original)
+
+
 def check_dashboard(page: Page) -> None:
     goto(page, "/dashboard")
     require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
@@ -178,22 +198,30 @@ def check_dashboard(page: Page) -> None:
     course_link.focus()
     require(course_link.evaluate("(el) => document.activeElement === el"), "Dashboard course link is not keyboard focusable")
     require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(), "Dashboard course shelf is not visible")
-    assert_no_horizontal_overflow(page, "dashboard")
+    assert_dashboard_layout(page, "dashboard")
+    course_link.press("Enter")
+    page.wait_for_url("**/dashboard#my-courses")
 
     orders_link = navigation.get_by_role("link", name="Orders & payments")
     notifications_link = navigation.get_by_role("link", name="Notifications")
     require(orders_link.get_attribute("href") == "/dashboard/orders", "Orders navigation has the wrong destination")
     require(notifications_link.get_attribute("href") == "/dashboard/notifications", "Notifications navigation has the wrong destination")
 
-    goto(page, "/dashboard/orders")
+    orders_link.click()
+    page.wait_for_url("**/dashboard/orders")
     require(page.get_by_role("heading", name="Orders & payments", exact=True).is_visible(), "Orders page is not visible")
     require(page.get_by_role("heading", name="No orders yet.", exact=True).is_visible(), "Orders empty state is not visible")
-    assert_no_horizontal_overflow(page, "orders")
+    assert_dashboard_layout(page, "orders")
 
-    goto(page, "/dashboard/notifications")
+    page.get_by_role("navigation", name="Dashboard navigation").get_by_role("link", name="Notifications").click()
+    page.wait_for_url("**/dashboard/notifications")
     require(page.get_by_role("heading", name="Notifications", exact=True).is_visible(), "Notifications page is not visible")
     require(page.get_by_role("heading", name="You’re all caught up.", exact=True).is_visible(), "Notifications empty state is not visible")
-    assert_no_horizontal_overflow(page, "notifications")
+    assert_dashboard_layout(page, "notifications")
+
+    for alias, destination in (("/orders", "/dashboard/orders"), ("/notifications", "/dashboard/notifications")):
+        goto(page, alias)
+        require(page.url.endswith(destination), f"{alias} must open {destination}")
 
     goto(page, "/dashboard")
 

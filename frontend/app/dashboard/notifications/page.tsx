@@ -51,7 +51,7 @@ export default async function NotificationsPage() {
               <p className="mt-2 text-sm leading-6 text-[#60708a] [overflow-wrap:anywhere]">{notification.message}</p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-xs font-semibold text-[#60708a]">Delivery: {notification.delivery_status}</span>
-                <Link href={notification.href} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-[#bfd0e8] px-4 text-sm font-bold text-[#194f95] sm:w-fit">View update <ArrowRight aria-hidden="true" className="size-4" /></Link>
+                <Link href={notification.href} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-[#bfd0e8] px-4 text-sm font-bold text-[#194f95] sm:w-fit">View update <ArrowRight aria-hidden="true" className="size-4" /></Link>
               </div>
             </div>
           </div>

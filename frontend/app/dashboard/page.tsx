@@ -51,9 +51,9 @@ export default async function DashboardPage() {
   >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            ["Active courses", String(enrolledCourses.length)],
-            ["Lessons started", String(lessonsStarted)],
-            ["Video requests", String(videoRequests.length)],
+            ["Active courses", courseServiceAvailable ? String(enrolledCourses.length) : "—"],
+            ["Lessons started", courseServiceAvailable ? String(lessonsStarted) : "—"],
+            ["Video requests", videoRequestServiceAvailable ? String(videoRequests.length) : "—"],
             ["Certificates earned", "0"],
           ].map(([label, value]) => <div key={label} className="min-w-0 rounded-2xl border border-[#dce4ef] bg-white p-5 sm:p-6">
             <p className="text-sm text-[#60708a]">{label}</p>
@@ -81,14 +81,14 @@ export default async function DashboardPage() {
                   ? `/learn/${encodeURIComponent(course.slug)}/${encodeURIComponent(course.first_lesson_slug)}`
                   : `/courses/${encodeURIComponent(course.slug)}`;
               return <Link key={course.slug} href={href} className="group block min-w-0 rounded-2xl border border-[#dce4ef] p-4 transition hover:border-[#aac3ec] hover:bg-[#f8fbff]">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
+                <div className="flex min-w-0 items-center justify-between gap-4">
+                  <div className="min-w-0">
                     <h3 className="font-semibold [overflow-wrap:anywhere]">{course.title}</h3>
                     <p className="mt-1 text-sm text-[#60708a]">
                       {lesson ? `Resume: ${lesson.title} · ${resume.progress_percent}% complete` : "Start your first lesson"}
                     </p>
                   </div>
-                  <ArrowRight className="size-5 text-[#1f5bbd] transition group-hover:translate-x-1" />
+                  <ArrowRight className="size-5 shrink-0 text-[#1f5bbd] transition group-hover:translate-x-1" />
                 </div>
               </Link>;
             })}
@@ -107,22 +107,22 @@ export default async function DashboardPage() {
         <section className="mt-8 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div><p className="eyebrow">My requested videos</p><h2 className="mt-2 text-2xl font-semibold">Paid queue and completed lessons</h2></div>
-            <Link href="/request-a-video" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-5 font-bold text-white"><Video className="size-4" /> Request a topic video</Link>
+            <Link href="/request-a-video" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-5 font-bold text-white"><Video className="size-4" /> Request a topic video</Link>
           </div>
           {videoRequests.length ? <div className="mt-6 grid gap-3">
             {videoRequests.map((item) => <Link key={item.request_reference} href={`/request-a-video/confirmation?reference=${encodeURIComponent(item.request_reference)}`} className="group rounded-2xl border border-[#dce4ef] p-5 transition hover:border-[#aac3ec] hover:bg-[#f8fbff]">
-              <div className="flex items-center justify-between gap-4">
-                <div><h3 className="font-semibold [overflow-wrap:anywhere]">{item.topic}</h3><p className="mt-1 text-sm text-[#60708a]">{item.status_label}{item.queue_position ? ` · Queue ${item.queue_position}` : ""}{item.ticket_number ? ` · ${item.ticket_number}` : ""}</p></div>
-                <ArrowRight className="size-5 text-[#1f5bbd] transition group-hover:translate-x-1" />
+              <div className="flex min-w-0 items-center justify-between gap-4">
+                <div className="min-w-0"><h3 className="font-semibold [overflow-wrap:anywhere]">{item.topic}</h3><p className="mt-1 text-sm text-[#60708a]">{item.status_label}{item.queue_position ? ` · Queue ${item.queue_position}` : ""}{item.ticket_number ? ` · ${item.ticket_number}` : ""}</p></div>
+                <ArrowRight className="size-5 shrink-0 text-[#1f5bbd] transition group-hover:translate-x-1" />
               </div>
             </Link>)}
           </div> : <p className="mt-5 text-sm leading-7 text-[#60708a]">No video requests yet. Upload a question, assignment or past paper and choose the explanation you need.</p>}
         </section>
 
         <section className="mt-8">
-          <div className="flex items-end justify-between">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div><p className="eyebrow">Recommended next</p><h2 className="mt-2 text-2xl font-semibold">Popular starting points</h2></div>
-            <Link href="/courses" className="text-sm font-bold text-[#1f5bbd]">View all</Link>
+            <Link href="/courses" className="inline-flex min-h-12 items-center text-sm font-bold text-[#1f5bbd]">View all</Link>
           </div>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {recommended.map((course) => <Link key={course.slug} href={`/courses/${course.slug}`} className="group rounded-2xl border border-[#dce4ef] bg-white p-6 transition hover:-translate-y-1 hover:shadow-lg">
