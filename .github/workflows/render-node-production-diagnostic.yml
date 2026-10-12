@@ -2,7 +2,7 @@ name: Render Node Production Diagnostic
 
 on:
   pull_request:
-    branches: [main, staging]
+    branches: [main, staging, production-release-20260923]
   push:
     branches:
       - fix/booking-production-readiness-20261004
@@ -104,7 +104,7 @@ jobs:
       - name: Verify protected video routes on Render-compatible runtime
         run: |
           set -euo pipefail
-          for path in /request-a-video /request-a-video/confirmation /request-a-video/invoice?reference=VRQ-test /request-a-video/video?reference=VRQ-test; do
+          for path in /dashboard /dashboard/orders /dashboard/notifications /dashboard/orders/invoice?reference=PF-test /request-a-video /request-a-video/confirmation /request-a-video/invoice?reference=VRQ-test /request-a-video/video?reference=VRQ-test; do
             headers=$(mktemp)
             code=$(curl --silent --show-error --output /dev/null --dump-header "$headers" --write-out '%{http_code}' --max-time 20 "http://127.0.0.1:4100$path")
             case "$code" in
@@ -114,6 +114,14 @@ jobs:
             grep -Eqi '^location: /login\?next=' "$headers"
             grep -Eqi '^cache-control: .*no-store' "$headers"
           done
+          code=$(curl --silent --show-error --output /tmp/invalid-invoice.json --dump-header "$headers" --write-out '%{http_code}' --max-time 20 \
+            http://127.0.0.1:4100/dashboard/orders/invoice)
+          test "$code" = "400"
+          grep -Eqi '^cache-control: .*no-store' "$headers"
+          code=$(curl --silent --show-error --location --output /tmp/frontend-health.json --write-out '%{http_code}' --max-time 20 \
+            http://127.0.0.1:4100/health/ready/)
+          test "$code" = "200"
+          python -c 'import json; assert json.load(open("/tmp/frontend-health.json"))["status"] == "ok"'
           code=$(curl --silent --show-error --output /tmp/video-checkout.json --write-out '%{http_code}' --max-time 20 \
             -X POST -F 'topic=Synthetic test only' http://127.0.0.1:4100/api/video-requests/checkout)
           test "$code" = "401"

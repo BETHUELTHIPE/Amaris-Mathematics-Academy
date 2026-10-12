@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { normalizeCmsApiBaseUrl } from "@/lib/cms-api-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireVerifiedStudent } from "@/lib/auth";
 
@@ -19,8 +20,34 @@ export type ResumeState = {
 };
 
 export type StudentCourse = {
-  course: { slug: string; title: string };
+  course: { slug: string; title: string; first_lesson_slug?: string };
   resume: ResumeState;
+};
+
+export type StudentOrder = {
+  kind: "course" | "live_class" | "video_request";
+  reference: string;
+  title: string;
+  detail: string;
+  amount: string;
+  currency: string;
+  status: string;
+  status_label: string;
+  created_at: string;
+  paid_at: string | null;
+  invoice_number: string | null;
+  invoice_ready: boolean;
+  href: string;
+};
+
+export type StudentNotification = {
+  id: string;
+  category: "payment" | "live_class" | "video_request";
+  title: string;
+  message: string;
+  delivery_status: string;
+  occurred_at: string;
+  href: string;
 };
 
 export type CheckoutSession = {
@@ -136,7 +163,7 @@ function cmsBaseUrl(): string {
   const workerBindings = env as unknown as { CMS_API_URL?: string };
   const base = (workerBindings.CMS_API_URL || process.env.CMS_API_URL)?.replace(/\/$/, "");
   if (!base) throw new Error("The protected student API is not configured.");
-  return base;
+  return normalizeCmsApiBaseUrl(base);
 }
 
 async function accessToken(): Promise<string> {
@@ -288,9 +315,31 @@ export async function downloadStudentLiveClassInvoice(reference: string): Promis
   );
 }
 
+export async function downloadStudentCourseInvoice(reference: string): Promise<Response> {
+  const token = await accessToken();
+  return fetch(
+    `${cmsBaseUrl()}/student/orders/${encodeURIComponent(reference)}/invoice/`,
+    {
+      headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    },
+  );
+}
+
 export async function getStudentCourses(): Promise<StudentCourse[]> {
   if (__E2E_SYNTHETIC_STUDENT__) return [];
   return studentFetch<StudentCourse[]>("/student/courses/");
+}
+
+export async function getStudentOrders(): Promise<StudentOrder[]> {
+  if (__E2E_SYNTHETIC_STUDENT__) return [];
+  return studentFetch<StudentOrder[]>("/student/orders/");
+}
+
+export async function getStudentNotifications(): Promise<StudentNotification[]> {
+  if (__E2E_SYNTHETIC_STUDENT__) return [];
+  return studentFetch<StudentNotification[]>("/student/notifications/");
 }
 
 export async function getProtectedLesson(courseSlug: string, lessonSlug: string): Promise<ProtectedLesson> {
