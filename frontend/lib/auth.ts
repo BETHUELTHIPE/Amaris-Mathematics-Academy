@@ -36,7 +36,15 @@ export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null
   const { data, error } = await supabase.auth.getClaims();
 
   if (error || !data?.claims) return null;
-  return mapClaims(data.claims);
+
+  // Supabase access-token claims do not consistently expose email_verified.
+  // Verify the authoritative user record before allowing private course access.
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user || userData.user.id !== data.claims.sub) {
+    return null;
+  }
+
+  return mapClaims(data.claims, Boolean(userData.user.email_confirmed_at));
 });
 
 export async function requireVerifiedStudent(
@@ -82,17 +90,26 @@ export function safeRelativePath(value: string | null | undefined): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function mapClaims(claims: JwtPayload): StudentIdentity {
+function mapClaims(claims: JwtPayload, emailVerified: boolean): StudentIdentity {
   const metadata = claims.user_metadata ?? {};
-  const firstName = cleanName(metadata.first_name) || "Student";
-  const lastName = cleanName(metadata.last_name);
+  const fullName = cleanName(metadata.full_name) || cleanName(metadata.name);
+  const [fullFirst = "", ...fullRest] = fullName.split(/\s+/).filter(Boolean);
+  const firstName =
+    cleanName(metadata.first_name) ||
+    cleanName(metadata.given_name) ||
+    fullFirst ||
+    "Student";
+  const lastName =
+    cleanName(metadata.last_name) ||
+    cleanName(metadata.family_name) ||
+    fullRest.join(" ");
   return {
     id: claims.sub,
     email: typeof claims.email === "string" ? claims.email : "",
     firstName,
     lastName,
     displayName: [firstName, lastName].filter(Boolean).join(" "),
-    emailVerified: claims.email_verified === true,
+    emailVerified,
   };
 }
 

@@ -12,6 +12,8 @@ import {
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { getLiveClassSlots } from "@/lib/live-classes";
+import { getGradeLevels, programmes, subjects } from "@/lib/booking-grade-levels.mjs";
+import { LiveClassBookingFilters } from "./live-class-booking-filters";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -19,18 +21,6 @@ export const metadata: Metadata = {
   description:
     "Book a one-hour Amaris Mathematics Academy Zoom class with an available tutor.",
 };
-
-const programmes = [
-  ["caps", "CAPS"],
-  ["ieb", "IEB"],
-  ["tvet", "TVET"],
-  ["university", "University"],
-] as const;
-
-const subjects = [
-  ["mathematics", "Mathematics"],
-  ["mathematical_literacy", "Mathematical Literacy"],
-] as const;
 
 function queryValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
@@ -71,14 +61,19 @@ export default async function BookOnlineLiveClassPage({
       : { slots: [], unavailable: false };
   const availableSlots = availability.slots;
 
-  const levels = [...new Set(availableSlots.map((slot) => slot.level))].sort(
-    (left, right) => left.localeCompare(right, "en-ZA", { numeric: true }),
+  const levels = getGradeLevels(
+    validProgramme,
+    availableSlots.map((slot) => slot.level),
   );
-  const matchingSlots = level
-    ? availableSlots.filter((slot) => slot.level === level)
+  // Never treat a stale or cross-programme grade as a valid selection.
+  const chosenLevel = levels.includes(level) ? level : "";
+  const matchingSlots = chosenLevel
+    ? availableSlots.filter((slot) => slot.level === chosenLevel)
     : [];
 
-  const readyForSlot = Boolean(validProgramme && validSubject && level && topic.length >= 2);
+  const readyForSlot = Boolean(
+    validProgramme && validSubject && chosenLevel && topic.length >= 2,
+  );
 
   return (
     <main className="min-h-screen bg-[#f5f7fb]">
@@ -114,84 +109,13 @@ export default async function BookOnlineLiveClassPage({
           ))}
         </ol>
 
-        <form
-          method="get"
-          className="mt-8 grid gap-5 rounded-3xl border border-[#dce4ef] bg-white p-6 sm:p-8 lg:grid-cols-2"
-        >
-          <label className="grid gap-2 text-sm font-semibold">
-            Programme
-            <select
-              name="programme"
-              required
-              defaultValue={validProgramme}
-              className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal"
-            >
-              <option value="">Choose programme</option>
-              {programmes.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="grid gap-2 text-sm font-semibold">
-            Subject
-            <select
-              name="subject"
-              required
-              defaultValue={validSubject}
-              className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal"
-            >
-              <option value="">Choose subject</option>
-              {subjects.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="grid gap-2 text-sm font-semibold">
-            Grade / level
-            <select
-              name="level"
-              required
-              defaultValue={level}
-              disabled={!validProgramme || !validSubject || levels.length === 0}
-              className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal disabled:bg-[#f1f4f8]"
-            >
-              <option value="">
-                {validProgramme && validSubject
-                  ? levels.length
-                    ? "Choose available grade / level"
-                    : "No tutor levels available yet"
-                  : "Choose programme and subject first"}
-              </option>
-              {levels.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="grid gap-2 text-sm font-semibold">
-            Topic
-            <input
-              name="topic"
-              required
-              minLength={2}
-              maxLength={180}
-              defaultValue={topic}
-              placeholder="e.g. Grade 12 Calculus — differentiation"
-              className="min-h-12 rounded-xl border border-[#c9d5e5] px-4 font-normal"
-            />
-          </label>
-
-          <div className="lg:col-span-2">
-            <button
-              type="submit"
-              className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#0b2a5b] px-7 py-3 font-bold text-white"
-            >
-              Show available tutor times
-            </button>
-          </div>
-        </form>
+        <LiveClassBookingFilters
+          initialProgramme={validProgramme}
+          initialSubject={validSubject}
+          initialLevel={chosenLevel}
+          initialTopic={topic}
+          offeredLevels={availableSlots.map((slot) => slot.level)}
+        />
 
         <section className="mt-8" aria-labelledby="available-slots">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
