@@ -4,11 +4,12 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
 
+from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from content.models import LiveClassBooking, StudentRecord, TutorAvailabilitySlot
@@ -26,7 +27,14 @@ from .payments import (
     generate_payfast_signature,
 )
 
-LIVE_CLASS_PRICE = Decimal("250.00")
+LIVE_CLASS_PRICE = Decimal("250.00")  # Per booked hour, not per session.
+
+
+def price_for_live_class_slot(slot: TutorAvailabilitySlot) -> Decimal:
+    hours = slot.duration_hours
+    if not hours:
+        raise PaymentSecurityError("This tutor slot has an invalid duration.")
+    return LIVE_CLASS_PRICE * hours
 
 
 @dataclass(frozen=True)
@@ -81,8 +89,27 @@ def create_live_class_checkout(
             raise PaymentSecurityError("This tutor slot is no longer available.")
         if not locked_slot.zoom_join_url:
             raise PaymentSecurityError("This tutor slot is not ready for Zoom booking.")
-        if locked_slot.ends_at - locked_slot.starts_at != timedelta(hours=1):
-            raise PaymentSecurityError("Live class slots must be exactly one hour.")
+        amount = price_for_live_class_slot(locked_slot)
+        # Serialize checkouts for the same tutor to prevent two overlapping
+        # published slots from both accepting a payment at the same time.
+        get_user_model().objects.select_for_update().get(pk=locked_slot.tutor_id)
+        overlapping_bookings = (
+            LiveClassBooking.objects.filter(
+                slot__tutor_id=locked_slot.tutor_id,
+                slot__starts_at__lt=locked_slot.ends_at,
+                slot__ends_at__gt=locked_slot.starts_at,
+            )
+            .exclude(slot_id=locked_slot.pk)
+            .filter(
+                Q(status=LiveClassBooking.Status.CONFIRMED)
+                | Q(
+                    status=LiveClassBooking.Status.PENDING_PAYMENT,
+                    hold_expires_at__gt=now,
+                )
+            )
+        )
+        if overlapping_bookings.exists():
+            raise PaymentSecurityError("This tutor is already booked for overlapping hours.")
 
         LiveClassBooking.objects.filter(
             slot=locked_slot,
@@ -99,6 +126,8 @@ def create_live_class_checkout(
             )
             if not same_booking:
                 raise PaymentSecurityError("This booking key is already bound to another live class.")
+            if existing.amount != amount:
+                raise PaymentSecurityError("The original booking duration or price has changed.")
             if existing.status == LiveClassBooking.Status.CONFIRMED:
                 raise PaymentSecurityError("This live class is already confirmed.")
             if existing.status != LiveClassBooking.Status.PENDING_PAYMENT:
@@ -123,7 +152,7 @@ def create_live_class_checkout(
                     subject=locked_slot.subject,
                     level=locked_slot.level,
                     topic=cleaned_topic,
-                    amount=LIVE_CLASS_PRICE,
+                    amount=amount,
                     currency="ZAR",
                     status=LiveClassBooking.Status.PENDING_PAYMENT,
                 )
@@ -147,7 +176,7 @@ def create_live_class_checkout(
         "email_address": student.email[:100],
         "m_payment_id": booking.reference,
         "amount": f"{booking.amount:.2f}",
-        "item_name": "Amaris 1-hour Zoom live class",
+        "item_name": f"Amaris {locked_slot.duration_hours}-hour Zoom live class",
         "custom_str1": str(student.supabase_user_id),
         "custom_str2": booking.reference,
     }

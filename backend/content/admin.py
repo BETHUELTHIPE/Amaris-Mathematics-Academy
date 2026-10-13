@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from .models import (
     FAQ,
+    LIVE_CLASS_MAX_HOURS,
     Announcement,
     ContactEnquiry,
     Course,
@@ -397,18 +398,48 @@ class PaymentReconciliationRunAdmin(TimeStampedAdmin):
 
 
 class TutorAvailabilitySlotAdminForm(forms.ModelForm):
-    """Admin chooses the start time; a class always lasts exactly 60 minutes."""
+    """Select the number of paid Zoom hours; derive the end time server-side."""
+
+    duration_hours = forms.IntegerField(
+        min_value=1,
+        max_value=LIVE_CLASS_MAX_HOURS,
+        initial=1,
+        label="Number of session hours",
+        help_text=f"Choose 1 to {LIVE_CLASS_MAX_HOURS} full hours; R250 per hour.",
+    )
 
     class Meta:
         model = TutorAvailabilitySlot
         exclude = ("ends_at",)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk and self.instance.duration_hours:
+            self.fields["duration_hours"].initial = self.instance.duration_hours
+
     def clean(self):
         cleaned_data = super().clean()
         start = cleaned_data.get("starts_at")
-        if start is not None:
-            # Set this before Django validates the model's one-hour invariant.
-            self.instance.ends_at = start + timedelta(hours=1)
+        hours = cleaned_data.get("duration_hours")
+        if start is not None and hours is not None:
+            new_end = start + timedelta(hours=hours)
+            if self.instance.pk:
+                old = TutorAvailabilitySlot.objects.get(pk=self.instance.pk)
+                # A booked session must not silently change its length or time
+                # after a student has started paying for the original booking.
+                reserved = old.bookings.filter(
+                    status__in=(
+                        LiveClassBooking.Status.PENDING_PAYMENT,
+                        LiveClassBooking.Status.CONFIRMED,
+                        LiveClassBooking.Status.PAYMENT_REVIEW,
+                        LiveClassBooking.Status.COMPLETED,
+                    )
+                ).exists()
+                if reserved and (
+                    start != old.starts_at or new_end != old.ends_at or cleaned_data.get("tutor") != old.tutor
+                ):
+                    raise forms.ValidationError("A reserved or paid class cannot change tutor, duration or start time.")
+            self.instance.ends_at = new_end
         return cleaned_data
 
 
@@ -422,6 +453,7 @@ class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
         "subject",
         "level",
         "starts_at",
+        "duration_hours",
         "ends_at",
         "duration_notice",
         "zoom_join_url",
@@ -432,7 +464,7 @@ class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
 
     @admin.display(description="Class duration")
     def duration_notice(self, obj):
-        return "60 minutes. The end time is automatically calculated from the start time."
+        return "The end time is automatically calculated from the start time and selected hours."
 
     list_display = (
         "tutor",
@@ -441,6 +473,7 @@ class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
         "level",
         "starts_at",
         "ends_at",
+        "duration_hours",
         "is_active",
     )
     list_filter = ("programme", "subject", "level", "is_active", "starts_at")

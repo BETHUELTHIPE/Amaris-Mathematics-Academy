@@ -52,6 +52,7 @@ def _invoice_details(invoice: Invoice | LiveClassBooking | VideoRequest) -> tupl
                 f"Topic: {invoice.topic}",
                 f"Tutor: {invoice.slot.tutor_display_name}",
                 f"Date: {starts_at}",
+                f"Duration: {invoice.slot.duration_hours} hour(s) at R250.00 per hour",
                 f"Amount paid: R{invoice.amount:.2f} {invoice.currency}",
             ],
         )

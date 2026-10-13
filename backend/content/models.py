@@ -432,6 +432,10 @@ class StudentRecord(TimeStampedModel):
         return f"{self.first_name} {self.last_name} ({self.email})"
 
 
+# Tutor-selected sessions may run for whole hours up to one day.
+LIVE_CLASS_MAX_HOURS = 24
+
+
 def live_class_hold_expiry():
     return timezone.now() + timedelta(minutes=30)
 
@@ -479,14 +483,38 @@ class TutorAvailabilitySlot(TimeStampedModel):
             )
         ]
 
+    @property
+    def duration_hours(self) -> int:
+        if not self.starts_at or not self.ends_at:
+            return 0
+        duration = self.ends_at - self.starts_at
+        if (
+            duration <= timedelta(0)
+            or duration > timedelta(hours=LIVE_CLASS_MAX_HOURS)
+            or duration % timedelta(hours=1) != timedelta(0)
+        ):
+            return 0
+        return duration // timedelta(hours=1)
+
     def clean(self):
         super().clean()
-        if self.ends_at <= self.starts_at:
-            raise ValidationError("The class end time must be after the start time.")
-        if self.ends_at - self.starts_at != timedelta(hours=1):
-            raise ValidationError("Live class slots must be exactly one hour.")
+        if not self.starts_at or not self.ends_at:
+            return
+        if not self.duration_hours:
+            raise ValidationError(f"Live class slots must last 1 to {LIVE_CLASS_MAX_HOURS} whole hours.")
         if self.is_active and not self.zoom_join_url:
             raise ValidationError("An active live-class slot must have a Zoom join URL.")
+        if self.is_active and self.tutor_id:
+            overlapping = TutorAvailabilitySlot.objects.filter(
+                tutor_id=self.tutor_id,
+                is_active=True,
+                starts_at__lt=self.ends_at,
+                ends_at__gt=self.starts_at,
+            )
+            if self.pk:
+                overlapping = overlapping.exclude(pk=self.pk)
+            if overlapping.exists():
+                raise ValidationError("This tutor has another active session that overlaps these hours.")
 
     @property
     def tutor_display_name(self) -> str:
