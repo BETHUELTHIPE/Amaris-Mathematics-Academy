@@ -94,7 +94,14 @@ services:
     restart: unless-stopped
     init: true
     env_file: .env
-    environment: {SERVICE_ROLE: web}
+    environment:
+      SERVICE_ROLE: web
+      # The web container can query the existing Prometheus service over the
+      # private Docker backend network; no exporter is exposed through NGINX.
+      PROMETHEUS_API_URL: http://prometheus:9090
+      GRAFANA_DASHBOARD_URL: ${GRAFANA_DASHBOARD_URL:-}
+      FLOWER_DASHBOARD_URL: ${FLOWER_DASHBOARD_URL:-}
+      CADVISOR_DASHBOARD_URL: ${CADVISOR_DASHBOARD_URL:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
