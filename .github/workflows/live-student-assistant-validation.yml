@@ -37,5 +37,7 @@ jobs:
         run: npm run typecheck
       - name: Lint frontend
         run: npm run lint
+      - name: Build frontend for runtime contract tests
+        run: npm run build
       - name: Run frontend unit contracts
         run: npm run test:unit
