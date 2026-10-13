@@ -31,12 +31,15 @@ def _assistant_instructions() -> str:
     )
 
 
-
 def answer_published_website_question(question: str) -> str | None:
     """Answer only fixed, published registration/live-class facts when AI fails."""
     message = _clean(question, 1200).casefold()
-    registration = any(term in message for term in ("register", "registration", "sign up", "signup", "create an account"))
-    lessons = any(term in message for term in ("lesson", "live class", "online class", "session", "how long", "duration"))
+    registration = any(
+        term in message for term in ("register", "registration", "sign up", "signup", "create an account")
+    )
+    lessons = any(
+        term in message for term in ("lesson", "live class", "online class", "session", "how long", "duration")
+    )
     if not registration and not lessons:
         return None
 
