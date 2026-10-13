@@ -95,7 +95,8 @@ export default async function LiveClassConfirmationPage({
                 <div><dt className="font-semibold">Tutor</dt><dd className="mt-1 text-[#60708a]">{booking.tutor}</dd></div>
                 <div><dt className="font-semibold">Class</dt><dd className="mt-1 text-[#60708a]">{booking.programme} · {booking.subject} · {booking.level}</dd></div>
                 <div><dt className="font-semibold">Topic</dt><dd className="mt-1 text-[#60708a]">{booking.topic}</dd></div>
-                <div><dt className="font-semibold">Date and time</dt><dd className="mt-1 text-[#60708a]">{formatClassTime(booking.starts_at)}</dd></div>
+                <div><dt className="font-semibold">Date and time</dt><dd className="mt-1 text-[#60708a]">{formatClassTime(booking.starts_at)} to {formatClassTime(booking.ends_at)}</dd></div>
+                <div><dt className="font-semibold">Duration</dt><dd className="mt-1 text-[#60708a]">{booking.duration_minutes / 60} hour(s)</dd></div>
                 <div><dt className="font-semibold">Amount</dt><dd className="mt-1 text-[#60708a]">R{booking.amount}</dd></div>
                 {booking.invoice_number && <div><dt className="font-semibold">Invoice</dt><dd className="mt-1 text-[#60708a]">{booking.invoice_number}</dd></div>}
               </dl>
