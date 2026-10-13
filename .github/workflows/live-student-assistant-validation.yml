@@ -1,0 +1,41 @@
+name: Live Student Assistant Validation
+
+on:
+  push:
+    branches:
+      - fix-amaris-assistant-frontend-20261013
+      - render-live-current-20260918
+  pull_request:
+    branches:
+      - render-live-current-20260918
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-student-assistant-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Frontend lint, TypeScript and assistant tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked packages
+        run: npm ci --include=dev
+      - name: Validate TypeScript
+        run: npm run typecheck
+      - name: Lint frontend
+        run: npm run lint
+      - name: Run frontend unit contracts
+        run: npm run test:unit
