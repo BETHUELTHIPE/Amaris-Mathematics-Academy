@@ -1,4 +1,5 @@
-from unittest.mock import patch
+import json
+from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
@@ -133,6 +134,36 @@ class AmarisAssistantApiTests(TestCase):
         opener.assert_called_once()
         self.assertIn("invalid_request", recorded.output[0])
         self.assertNotIn("invalid HTTP header", str(recorded.output))
+
+    @override_settings(OPENAI_ASSISTANT_MODEL="gpt-4.1-mini")
+    @patch("content.services.assistant.build_website_context", return_value="Password reset: /forgot-password")
+    @patch("content.services.assistant.urlopen")
+    def test_supported_model_returns_real_provider_response_contract(self, opener, _context):
+        response = MagicMock()
+        response.read.return_value = json.dumps(
+            {
+                "id": "resp_test_answer",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {"type": "output_text", "text": "Reset your password at /forgot-password."}
+                        ],
+                    }
+                ],
+            }
+        ).encode("utf-8")
+        opener.return_value.__enter__.return_value = response
+
+        answer, response_id = answer_website_question("How do I reset my password?")
+        self.assertIn("/forgot-password", answer)
+        self.assertEqual(response_id, "resp_test_answer")
+        request = opener.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(payload["model"], "gpt-4.1-mini")
+        self.assertNotIn("reasoning", payload)
+        self.assertFalse(payload["store"])
+        self.assertIn("Password reset: /forgot-password", payload["input"])
 
     def test_instructions_limit_answers_to_published_website_content(self):
         instructions = _assistant_instructions()
