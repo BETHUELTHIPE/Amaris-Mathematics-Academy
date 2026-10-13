@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { GraduationCap, ShieldCheck, CalendarDays, Clock3 } from "lucide-react";
-import { loginAction } from "@/app/auth/actions";
+import { tutorLoginAction } from "@/app/tutor/actions";
 import { GoogleAuthButton } from "@/components/site/google-auth-button";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
@@ -11,7 +11,8 @@ import { getStudentIdentity } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Tutor Portal Login — Amaris Mathematics Academy" };
 
-export default async function TutorLoginPage() {
+export default async function TutorLoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const params = await searchParams;
   const identity = await getStudentIdentity();
   if (identity?.emailVerified) redirect("/tutor/dashboard");
 
@@ -42,7 +43,8 @@ export default async function TutorLoginPage() {
           </p>
           <div className="mt-6"><GoogleAuthButton label="Continue with Google" next="/tutor/dashboard" /></div>
           <div className="my-6 flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-[#60708a]"><span className="h-px flex-1 bg-[#dce4ef]" />or use email<span className="h-px flex-1 bg-[#dce4ef]" /></div>
-          <form action={loginAction} className="grid gap-4">
+          {params.error && <div role="alert" className="mb-5 rounded-xl border border-[#f5c2bf] bg-[#fff3f3] p-3 text-sm text-[#9b2525]">{params.error === "credentials" ? "The email or password is incorrect. Please try again." : "Authentication is unavailable. Please try again."}</div>}
+          <form action={tutorLoginAction} className="grid gap-4">
             <input type="hidden" name="next" value="/tutor/dashboard" />
             <label className="grid gap-2 text-sm font-semibold text-[#263852]">
               Email address
