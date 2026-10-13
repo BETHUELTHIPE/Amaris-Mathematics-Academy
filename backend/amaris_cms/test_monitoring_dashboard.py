@@ -19,7 +19,10 @@ class AdminMonitoringTests(TestCase):
             username="monitor_admin", email="monitor@example.test", password="not-a-production-password-123"
         )
         self.staff = model.objects.create_user(
-            username="monitor_staff", email="staff@example.test", password="not-a-production-password-456", is_staff=True
+            username="monitor_staff",
+            email="staff@example.test",
+            password="not-a-production-password-456",
+            is_staff=True,
         )
         self.url = reverse("admin-monitoring")
 
@@ -35,12 +38,15 @@ class AdminMonitoringTests(TestCase):
 
     def test_unconfigured_services_do_not_look_healthy(self):
         self.client.force_login(self.superuser)
-        with patch.dict(os.environ, {
-            "PROMETHEUS_API_URL": "",
-            "GRAFANA_DASHBOARD_URL": "",
-            "FLOWER_DASHBOARD_URL": "",
-            "CADVISOR_DASHBOARD_URL": "",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PROMETHEUS_API_URL": "",
+                "GRAFANA_DASHBOARD_URL": "",
+                "FLOWER_DASHBOARD_URL": "",
+                "CADVISOR_DASHBOARD_URL": "",
+            },
+        ):
             response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Monitoring and reliability")
@@ -118,5 +124,7 @@ class AdminMonitoringTests(TestCase):
         for value in ("javascript:alert(1)", "data:text/html,test", "https://user:password@example.com", "bad"):
             self.assertEqual(_safe_url(value), "")
         self.assertEqual(_safe_url("http://localhost:3000", allow_http=False), "")
-        self.assertEqual(_safe_url("https://grafana.example.test/d/overview", allow_http=False),
-                         "https://grafana.example.test/d/overview")
+        self.assertEqual(
+            _safe_url("https://grafana.example.test/d/overview", allow_http=False),
+            "https://grafana.example.test/d/overview",
+        )
