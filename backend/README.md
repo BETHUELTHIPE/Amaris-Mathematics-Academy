@@ -29,15 +29,29 @@ The public content API is available under `/api/v1/`, with interactive documenta
 
 Load and resilience tests are in [`load_tests/`](load_tests/README.md). The suite covers public browsing, authentication entry points, protected student activity, progress, checkout creation and payment polling, with normal, peak, spike and controlled dependency-failure profiles. It blocks the live Amaris and PayFast hosts by default.
 
-The monitoring interfaces are available through the same NGINX entrypoint:
+Open **Monitoring** from the Django admin top menu or home page. The four consoles open in new tabs, and the Monitoring page is restricted to active staff superusers. Docker routes every console request through a Django session check, including assets, API calls and Grafana WebSocket upgrades. Signing out of Django removes access through these routes. Flower's basic authentication and Grafana's own login remain enabled.
 
 - Flower: `http://localhost:8080/monitoring/flower/`
+- Prometheus: `http://localhost:8080/monitoring/prometheus/`
 - Grafana: `http://localhost:8080/monitoring/grafana/`
-- pgAdmin: `http://localhost:8080/monitoring/pgadmin/`
+- cAdvisor: `http://localhost:8080/monitoring/cadvisor/`
 
-Prometheus and cAdvisor have no public host ports. Flower is defined exactly once and is the operational interface for Celery Worker and Celery Beat monitoring. `FLOWER_PORT` remains `5555`, `FLOWER_URL` is the internal `http://flower:5555` address, and `FLOWER_BASIC_AUTH` must contain a strong `username:password` value. Docker passes that credential as a runtime secret; it is not stored in Prometheus configuration or source control.
+Monitoring container ports and Django's metrics endpoint remain private; pgAdmin is not exposed. Prometheus continues scraping directly over Docker's private networks, with updated paths for the Prometheus and cAdvisor prefixes. Flower is defined exactly once and is the operational interface for Celery Worker and Celery Beat monitoring. `FLOWER_PORT` remains `5555`, `FLOWER_URL` is the internal `http://flower:5555` address, and `FLOWER_BASIC_AUTH` must contain a strong `username:password` value. Docker passes that credential as a runtime secret; it is not stored in Prometheus configuration or source control.
 
-Grafana listens internally on `GRAFANA_PORT=3000` at `GRAFANA_URL=http://grafana:3000`. Configure `GF_SECURITY_ADMIN_USER`, a strong `GF_SECURITY_ADMIN_PASSWORD`, and keep `GF_USERS_ALLOW_SIGN_UP=false`. The admin password is passed with Grafana's file-based secret setting and is not exposed directly in the container environment.
+Grafana listens internally on `GRAFANA_PORT=3000` at `GRAFANA_URL=http://grafana:3000`. Configure `GF_SECURITY_ADMIN_USER`, a strong `GF_SECURITY_ADMIN_PASSWORD`, and keep `GF_USERS_ALLOW_SIGN_UP=false`. The admin password is passed with Grafana's file-based secret setting and is not exposed directly in the container environment. Set `GF_SERVER_ROOT_URL` and `PROMETHEUS_EXTERNAL_URL` to the actual public HTTPS origin followed by `/monitoring/grafana/` and `/monitoring/prometheus/` respectively. Keep these path prefixes; enable secure Grafana cookies in production. The proxy expects Flower on port 5555 and Grafana on port 3000.
+
+Docker enables `ADMIN_MONITORING_PROXY_ENABLED=true` for the web container. Standalone Django/Render deployments default to no proxy and display “Connection not configured” until browser URLs are supplied:
+
+```dotenv
+ADMIN_FLOWER_URL=https://your-authenticated-flower-host/monitoring/flower/
+ADMIN_PROMETHEUS_URL=https://your-authenticated-prometheus-host/
+ADMIN_GRAFANA_URL=https://your-grafana-host/
+ADMIN_CADVISOR_URL=https://your-authenticated-cadvisor-host/
+```
+
+External links use each console host's own access controls; Django's session cannot protect a different host. Supply HTTP(S) URLs without embedded passwords. Do not use private Docker DNS names such as `http://grafana:3000` as browser links. No monitoring services are provisioned by these settings. cAdvisor needs access to the Docker host and its metrics cannot be obtained from a managed Render web container without a suitable separate monitoring host.
+
+For a dedicated Docker monitoring server alongside the Render app, use [`monitoring/compose.yml`](monitoring/compose.yml) and the [host deployment guide](monitoring/README.md). This starts all monitoring services without starting or migrating a second copy of Django, PostgreSQL or Redis.
 
 ## Runtime layout
 
@@ -54,7 +68,7 @@ NGINX -> Gunicorn + UvicornWorker -> Django / Jazzmin
                                            |-> Celery Beat
                                            +-> Flower (one instance)
 
-Prometheus -> Django + Flower + cAdvisor -> Grafana
+Django + Flower + cAdvisor -> Prometheus -> Grafana
 ```
 
 Gunicorn remains the production process manager. Its Uvicorn worker runs Django's ASGI application, so future asynchronous endpoints can be added without replacing the current HTTP deployment model.

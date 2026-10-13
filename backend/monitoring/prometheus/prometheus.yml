@@ -12,6 +12,7 @@ rule_files:
 
 scrape_configs:
   - job_name: prometheus
+    metrics_path: /monitoring/prometheus/metrics
     static_configs:
       - targets: ["localhost:9090"]
 
@@ -29,6 +30,7 @@ scrape_configs:
       - targets: ["flower:5555"]
 
   - job_name: cadvisor
+    metrics_path: /monitoring/cadvisor/metrics
     static_configs:
       - targets: ["cadvisor:8080"]
 
