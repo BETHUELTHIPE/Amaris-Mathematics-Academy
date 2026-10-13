@@ -175,6 +175,8 @@ class TutorSelfServiceTests(TestCase):
             HTTP_X_AMARIS_ACCEPTANCE="github-actions",
         )
         # Tutor auth never interprets GitHub acceptance bypass headers.
-        with patch.object(SupabaseStudentAuthentication, "_validate_token", return_value=self.payload("student@example.test")):
+        with patch.object(
+            SupabaseStudentAuthentication, "_validate_token", return_value=self.payload("student@example.test")
+        ):
             response = self.client.get(reverse("tutor-dashboard"), secure=True)
         self.assertEqual(response.status_code, 401)
