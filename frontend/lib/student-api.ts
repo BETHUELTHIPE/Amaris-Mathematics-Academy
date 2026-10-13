@@ -71,6 +71,7 @@ export type LiveClassCheckoutSession = {
     tutor: string;
     starts_at: string;
     ends_at: string;
+    duration_minutes: number;
     amount: string;
     currency: string;
   };
@@ -86,6 +87,7 @@ export type LiveClassBookingStatus = {
   tutor: string;
   starts_at: string;
   ends_at: string;
+  duration_minutes: number;
   amount: string;
   currency: string;
   invoice_number: string | null;
