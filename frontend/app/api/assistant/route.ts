@@ -30,7 +30,12 @@ function publishedAnswer(message: string): string | null {
   const registration = /\b(register|registration|sign\s*up|signup)\b/.test(question);
   const lessons = /\b(lesson|lessons|classes|class|session|sessions|duration)\b/.test(question)
     || question.includes("how long");
-  if (!registration && !lessons) return null;
+  const courses = /\b(course|courses|curriculum|enrol|enroll|enrolment|enrollment)\b/.test(question);
+  // Public facts cannot verify a specific student's payment, order or course access.
+  if (/\b(my payment|my order|my invoice|my course access|my course status|my account status|payment status|order status)\b/.test(question)) {
+    return null;
+  }
+  if (!registration && !lessons && !courses) return null;
 
   const answer: string[] = [];
   if (registration) {
@@ -44,6 +49,14 @@ function publishedAnswer(message: string): string | null {
       "Live Zoom classes last one hour (60 minutes). " +
       "Choose an available tutor and time at /book-online-live-class. " +
       "Recorded course lesson counts and total guided hours vary; see /courses for details.",
+    );
+  }
+  if (courses) {
+    answer.push(
+      "To choose a course, visit /courses and select your curriculum and academic level. " +
+      "Open a course to review its lessons, guided hours and price. " +
+      "After registering and verifying your account, select Continue to enrol for secure PayFast checkout. " +
+      "Once payment is verified, your purchased course appears in /dashboard.",
     );
   }
   return answer.join("\n\n");
