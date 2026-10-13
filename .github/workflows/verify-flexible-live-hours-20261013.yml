@@ -1,0 +1,63 @@
+name: Verify flexible Zoom hours live (read only)
+on:
+  push:
+    branches:
+      - smoke/flexible-hours-live-20261013
+permissions:
+  contents: read
+jobs:
+  public-booking-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Verify deployed backend and student frontend without payments
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          from urllib.request import Request, urlopen
+
+          front = "https://amaris-mathematics-academy-live-students.onrender.com"
+          back = "https://amaris-production-web.onrender.com"
+
+          def get(url, body=None):
+              for attempt in range(4):
+                  try:
+                      headers = {"Accept": "application/json" if body else "text/html"}
+                      if body:
+                          headers["Content-Type"] = "application/json"
+                      with urlopen(Request(url, data=body, headers=headers), timeout=35) as response:
+                          assert response.status == 200, (url, response.status)
+                          return response.read().decode("utf-8", "replace")
+                  except Exception:
+                      if attempt == 3:
+                          raise
+                      time.sleep(4)
+
+          admin = get(back + "/admin/login/")
+          assert 'name="username"' in admin and 'name="password"' in admin
+          print("PASS backend admin login")
+          slot_list = json.loads(get(back + "/api/v1/live-classes/slots/"))
+          assert isinstance(slot_list, list)
+          for slot in slot_list:
+              hours = slot["duration_minutes"] // 60
+              assert 1 <= hours <= 24
+              assert slot["duration_minutes"] == 60 * hours
+              assert slot["price"] == f"{hours * 250:.2f}", (slot["price"], hours)
+              assert not slot.get("zoom_join_url"), "Private Zoom link leaked"
+          print("PASS backend public slots; total:", len(slot_list))
+          html = get(front + "/book-online-live-class")
+          assert "R250 per hour" in html, "Hourly pricing copy not rendered"
+          assert "R250 per booked hour" in html, "Hourly price label absent"
+          assert "Book online live class" in html or "Book Online Live Class" in html
+          print("PASS student booking page hourly copy")
+          answer = json.loads(get(
+              front + "/api/assistant",
+              json.dumps({"message": "How long can a Zoom live class last?"}).encode(),
+          ))["answer"]
+          assert "R250 per hour" in answer
+          assert "1 to 24" in answer
+          print("PASS student assistant publishes flexible-hour policy")
+          print("PASS: live pages healthy, no real payments or bookings created")
+          PY
