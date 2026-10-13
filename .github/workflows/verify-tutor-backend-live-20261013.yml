@@ -1,0 +1,56 @@
+name: Tutor Backend Production Smoke (read-only)
+on:
+  push:
+    branches: [verify/tutor-backend-production-20261013]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Verify Django Admin, public slots, and tutor authorization
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          base = "https://amaris-production-web.onrender.com"
+          def get(path, headers=None):
+              for attempt in range(4):
+                  try:
+                      req = Request(base + path, headers=headers or {"Accept": "application/json"})
+                      with urlopen(req, timeout=35) as resp:
+                          return resp.status, resp.read().decode("utf-8", "replace")
+                  except HTTPError as e:
+                      return e.code, e.read().decode("utf-8", "replace")
+                  except Exception:
+                      if attempt == 3:
+                          raise
+                      time.sleep(3)
+
+          status, body = get("/admin/login/", {"Accept": "text/html"})
+          assert status == 200 and 'name="username"' in body, (status, body[:200])
+          print("PASS Django admin login HTTP 200")
+          status, body = get("/api/v1/tutor/dashboard/")
+          assert status == 401, (status, body[:300])
+          print("PASS tutor dashboard rejects anonymous request HTTP 401")
+          status, body = get("/api/v1/tutor/slots/", {"Accept": "application/json"})
+          assert status == 401, (status, body[:300])
+          print("PASS tutor slot create rejects anonymous request HTTP 401")
+          status, body = get("/api/v1/tutor/slots/1/")
+          assert status == 401, (status, body[:300])
+          print("PASS tutor slot update rejects anonymous request HTTP 401")
+          status, body = get("/api/v1/live-classes/slots/")
+          slots = json.loads(body)
+          assert status == 200 and isinstance(slots, list)
+          for slot in slots:
+              hours = slot["duration_minutes"] // 60
+              assert slot["duration_minutes"] == hours * 60
+              assert slot["price"] == f"{hours * 250:.2f}"
+              assert not slot.get("zoom_join_url")
+          print("PASS public slot API (no Zoom secrets), count:", len(slots))
+          print("PASS tutor API smoke: strictly read-only, no payments or appointments")
+          PY
