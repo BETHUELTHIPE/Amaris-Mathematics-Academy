@@ -47,7 +47,7 @@ class AmarisAssistantApiTests(TestCase):
     def test_assistant_fails_closed_when_openai_is_not_configured(self, answer):
         response = self.client.post(
             "/api/v1/assistant/",
-            {"message": "How do I register?"},
+            {"message": "Has my payment been confirmed?"},
             format="json",
             secure=True,
         )
