@@ -32,7 +32,7 @@ def _assistant_instructions() -> str:
 
 
 def answer_published_website_question(question: str) -> str | None:
-    """Answer only fixed, published registration/live-class facts when AI fails."""
+    """Answer fixed, published registration, course and live-class facts when AI fails."""
     message = _clean(question, 1200).casefold()
     registration = any(
         term in message for term in ("register", "registration", "sign up", "signup", "create an account")
@@ -46,8 +46,16 @@ def answer_published_website_question(question: str) -> str | None:
     # Public guidance must never be mistaken for a private account/payment status answer.
     if any(
         phrase in message
-        for phrase in ("my payment", "my order", "my invoice", "my course access", "my account status",
-                       "payment status", "order status", "my course status")
+        for phrase in (
+            "my payment",
+            "my order",
+            "my invoice",
+            "my course access",
+            "my account status",
+            "payment status",
+            "order status",
+            "my course status",
+        )
     ):
         return None
     if not registration and not lessons and not courses:
