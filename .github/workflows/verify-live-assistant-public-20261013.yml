@@ -1,4 +1,4 @@
-name: Live Amaris Assistant Route Diagnostic
+name: Amaris AI Production Verification
 
 on:
   push:
@@ -9,35 +9,57 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
-    name: Verify both public assistant API route variants
+  live-assistant:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
-      - name: Inspect current response paths without any secrets
+      - name: Validate production assistant responses safely
+        shell: bash
         run: |
           python3 - <<'PY'
           import json
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
-          msg = "Hi, How do we register on your website and how long are your lessons?"
+
+          backend = 'https://amaris-production-web.onrender.com'
+          frontend = 'https://amaris-mathematics-academy-live-students.onrender.com'
+          registration = 'Hi, How do we register on your website and how long are your lessons?'
+          ai_question = 'Which school and higher-education study pathways does Amaris Mathematics Academy publish on its website?'
           targets = [
-              "https://amaris-mathematics-academy-live-students.onrender.com/api/assistant",
-              "https://amaris-mathematics-academy-live-students.onrender.com/api/assistant/",
-              "https://amaris-production-web.onrender.com/api/v1/assistant/",
+              ('backend_health', backend + '/health/ready/', None),
+              ('frontend_health', frontend + '/health/ready/', None),
+              ('backend_registration', backend + '/api/v1/assistant/', registration),
+              ('backend_ai_provider', backend + '/api/v1/assistant/', ai_question),
+              ('frontend_registration', frontend + '/api/assistant/', registration),
+              ('frontend_ai_provider', frontend + '/api/assistant/', ai_question),
           ]
-          for url in targets:
-              req = Request(url, json.dumps({"message": msg}).encode(),
-                  headers={"Content-Type":"application/json","Accept":"application/json","User-Agent":"Amaris-Public-QA/1.0"},
-                  method="POST")
+          results = []
+          for label, url, message in targets:
+              body_bytes = None if message is None else json.dumps({'message':message}).encode()
+              req = Request(url, body_bytes, headers={'Accept':'application/json', 'User-Agent':'Amaris-Public-QA/1.0', **({'Content-Type':'application/json'} if body_bytes else {})}, method='POST' if body_bytes else 'GET')
               try:
-                  with urlopen(req, timeout=30) as rsp:
-                      status, headers, body, final_url = rsp.status, rsp.headers, rsp.read(2000).decode("utf8","replace"), rsp.url
-              except HTTPError as err:
-                  status, headers, body, final_url = err.code, err.headers, err.read(2000).decode("utf8","replace"), err.url
-              except URLError as err:
-                  status, headers, body, final_url = 0, {}, repr(err)[:400], url
-              print("TARGET", url, "HTTP", status, "FINAL", final_url, flush=True)
-              print("HEADERS", {k:headers.get(k) for k in ("content-type","cache-control","location","server","x-powered-by")},flush=True)
-              print("BODY", body[:1100],flush=True)
+                  with urlopen(req, timeout=35) as response:
+                      status = response.status
+                      data = response.read(2200).decode('utf-8','replace')
+              except HTTPError as exc:
+                  status = exc.code
+                  data = exc.read(2200).decode('utf-8','replace')
+              except (URLError, TimeoutError) as exc:
+                  status = 0
+                  data = type(exc).__name__
+              try:
+                  payload = json.loads(data)
+              except (ValueError, TypeError):
+                  payload = {}
+              answer = payload.get('answer','') if isinstance(payload,dict) else ''
+              detail = payload.get('detail','') if isinstance(payload,dict) else ''
+              ok = status==200 and (bool(answer.strip()) if message else True)
+              results.append({'check':label,'status':status,'success':ok})
+              print('LIVE_CHECK',label,'HTTP',status,'OK',ok,flush=True)
+              if message:
+                  print('ANSWER',str(answer)[:850].replace('\n',' | '),flush=True)
+                  print('DETAIL',str(detail)[:250],flush=True)
+          print('RESULTS_JSON',json.dumps(results),flush=True)
+          if not all(r['success'] for r in results):
+              raise SystemExit('Production assistant verification failed at least one endpoint')
           PY
