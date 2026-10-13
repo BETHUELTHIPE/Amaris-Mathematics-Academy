@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Book Online Live Class",
   description:
-    "Book a one-hour Amaris Mathematics Academy Zoom class with an available tutor.",
+    "Book a flexible-length Amaris Mathematics Academy Zoom class with an available tutor.",
 };
 
 function queryValue(value: string | string[] | undefined): string {
@@ -85,7 +85,7 @@ export default async function BookOnlineLiveClassPage({
             Choose your programme, topic and tutor time.
           </h1>
           <p className="mt-5 max-w-3xl text-base leading-8 text-[#60708a]">
-            Each live Zoom class is one hour and costs <strong>R250</strong>.
+            Tutors offer 1 to 24-hour Zoom sessions at <strong>R250 per hour</strong>.
             Your booking is confirmed only after PayFast verifies the payment.
           </p>
         </div>
@@ -97,7 +97,7 @@ export default async function BookOnlineLiveClassPage({
             ["1", "Choose programme", "CAPS, IEB, TVET or University"],
             ["2", "Choose subject", "Mathematics or Mathematical Literacy"],
             ["3", "Choose level & topic", "Then select an available tutor time"],
-            ["4", "Pay & receive Zoom details", "R250, confirmation, invoice and 30-minute reminder"],
+            ["4", "Pay & receive Zoom details", "Hourly pricing, confirmation, invoice and 30-minute reminder"],
           ].map(([number, title, detail]) => (
             <li key={number} className="rounded-2xl border border-[#dce4ef] bg-white p-5">
               <span className="grid size-9 place-items-center rounded-full bg-[#0b2a5b] text-sm font-bold text-white">
@@ -125,7 +125,7 @@ export default async function BookOnlineLiveClassPage({
                 Available Zoom slots
               </h2>
             </div>
-            <span className="text-sm font-semibold text-[#1f5bbd]">R250 per one-hour session</span>
+            <span className="text-sm font-semibold text-[#1f5bbd]">R250 per booked hour</span>
           </div>
 
           {!readyForSlot ? (
@@ -163,7 +163,7 @@ export default async function BookOnlineLiveClassPage({
                       </div>
                       <div className="flex items-start gap-3">
                         <Clock3 className="mt-0.5 size-4 shrink-0 text-[#1f5bbd]" />
-                        <div><dt className="sr-only">Duration</dt><dd>{slot.duration_minutes} minutes</dd></div>
+                        <div><dt className="sr-only">Duration</dt><dd>{slot.duration_minutes / 60} hour(s) · R{slot.price} total</dd></div>
                       </div>
                       <div className="flex items-start gap-3">
                         <Video className="mt-0.5 size-4 shrink-0 text-[#1f5bbd]" />
@@ -185,7 +185,7 @@ export default async function BookOnlineLiveClassPage({
 
         <section className="mt-10 grid gap-4 md:grid-cols-3">
           {[
-            [CreditCard, "Secure payment", "The server fixes the price at R250 and PayFast must verify the payment."],
+            [CreditCard, "Secure payment", "The server calculates R250 per selected hour; PayFast must verify the total."],
             [Mail, "Confirmation & invoice", "A confirmation email with your class details and invoice is sent after verification."],
             [CheckCircle2, "30-minute reminder", "A scheduled reminder includes your tutor, start time and Zoom link."],
           ].map(([Icon, title, detail]) => {
