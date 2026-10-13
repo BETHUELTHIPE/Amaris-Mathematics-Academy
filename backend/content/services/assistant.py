@@ -68,7 +68,7 @@ def answer_published_website_question(question: str) -> str | None:
         )
     if lessons:
         replies.append(
-            f"Live Zoom classes are one hour (60 minutes) and cost R{LIVE_CLASS_PRICE:.0f} per session. "
+            f"Live Zoom sessions can last 1 to 24 whole hours and cost R{LIVE_CLASS_PRICE:.0f} per hour. "
             "Choose a tutor and available slot at /book-online-live-class. "
             "Recorded course lesson counts and total learning hours vary by course; check /courses for details."
         )
