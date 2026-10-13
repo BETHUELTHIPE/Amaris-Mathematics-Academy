@@ -229,9 +229,7 @@ class AmarisAssistantView(generics.GenericAPIView):
             answer, _response_id = answer_website_question(message)
         except (RuntimeError, ValueError) as exc:
             # Never log the visitor's message or upstream response body/credentials.
-            logging.getLogger(__name__).warning(
-                "Amaris Assistant provider request failed: %s", type(exc).__name__
-            )
+            logging.getLogger(__name__).warning("Amaris Assistant provider request failed: %s", type(exc).__name__)
             if fallback:
                 return Response({"answer": fallback}, status=status.HTTP_200_OK)
             return Response(
