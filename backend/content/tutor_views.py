@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 from rest_framework.exceptions import AuthenticationFailed
@@ -85,6 +86,57 @@ class TutorSlotWriteSerializer(serializers.Serializer):
         return value
 
 
+
+class TutorSlotResponseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    programme = serializers.CharField()
+    subject = serializers.CharField()
+    level = serializers.CharField()
+    starts_at = serializers.DateTimeField()
+    ends_at = serializers.DateTimeField()
+    duration_hours = serializers.IntegerField()
+    zoom_join_url = serializers.URLField()
+    is_active = serializers.BooleanField()
+    price = serializers.CharField()
+    reserved = serializers.BooleanField()
+    editable = serializers.BooleanField()
+
+
+class TutorBookingResponseSerializer(serializers.Serializer):
+    reference = serializers.CharField()
+    status = serializers.CharField()
+    topic = serializers.CharField()
+    programme = serializers.CharField()
+    subject = serializers.CharField()
+    level = serializers.CharField()
+    starts_at = serializers.DateTimeField()
+    ends_at = serializers.DateTimeField()
+    duration_hours = serializers.IntegerField()
+    amount = serializers.CharField()
+    student_name = serializers.CharField(allow_blank=True)
+    student_email = serializers.EmailField(allow_blank=True)
+    zoom_join_url = serializers.URLField(allow_blank=True)
+
+
+class TutorIdentitySerializer(serializers.Serializer):
+    name = serializers.CharField()
+    email = serializers.EmailField()
+
+
+class TutorSummarySerializer(serializers.Serializer):
+    upcoming_slots = serializers.IntegerField()
+    confirmed_classes = serializers.IntegerField()
+
+
+class TutorDashboardResponseSerializer(serializers.Serializer):
+    tutor = TutorIdentitySerializer()
+    rate_per_hour = serializers.CharField()
+    max_hours = serializers.IntegerField()
+    slots = TutorSlotResponseSerializer(many=True)
+    bookings = TutorBookingResponseSerializer(many=True)
+    summary = TutorSummarySerializer()
+
+
 def _slot_data(slot):
     reserved = slot.bookings.filter(status__in=RESERVED_STATUSES).exists()
     return {
@@ -138,6 +190,7 @@ def _save_tutor_slot(tutor, attrs, *, slot=None):
 
 
 class TutorDashboardView(TutorOnlyAPIView):
+    @extend_schema(responses={200: TutorDashboardResponseSerializer})
     def get(self, request):
         now = timezone.now()
         slots = (
@@ -197,6 +250,7 @@ class TutorDashboardView(TutorOnlyAPIView):
 
 
 class TutorSlotCreateView(TutorOnlyAPIView):
+    @extend_schema(request=TutorSlotWriteSerializer, responses={201: TutorSlotResponseSerializer})
     def post(self, request):
         serializer = TutorSlotWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -205,6 +259,7 @@ class TutorSlotCreateView(TutorOnlyAPIView):
 
 
 class TutorSlotUpdateView(TutorOnlyAPIView):
+    @extend_schema(request=TutorSlotWriteSerializer, responses={200: TutorSlotResponseSerializer})
     def patch(self, request, slot_id: int):
         with transaction.atomic():
             try:
