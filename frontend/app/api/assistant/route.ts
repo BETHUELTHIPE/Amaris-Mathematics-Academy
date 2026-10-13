@@ -46,7 +46,7 @@ function publishedAnswer(message: string): string | null {
   }
   if (lessons) {
     answer.push(
-      "Live Zoom classes last one hour (60 minutes). " +
+      "Live Zoom classes can last 1 to 24 whole hours and cost R250 per hour. " +
       "Choose an available tutor and time at /book-online-live-class. " +
       "Recorded course lesson counts and total guided hours vary; see /courses for details.",
     );

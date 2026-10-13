@@ -73,7 +73,8 @@ export default async function LiveClassCheckoutPage({
             <div><dt className="font-semibold text-[#263852]">Class</dt><dd className="mt-1 text-[#60708a]">{booking.programme} · {booking.subject} · {booking.level}</dd></div>
             <div><dt className="font-semibold text-[#263852]">Topic</dt><dd className="mt-1 text-[#60708a]">{booking.topic}</dd></div>
             <div><dt className="font-semibold text-[#263852]">Date and time</dt><dd className="mt-1 text-[#60708a]">{formatClassTime(booking.starts_at)}</dd></div>
-            <div><dt className="font-semibold text-[#263852]">Price</dt><dd className="mt-1 text-lg font-bold text-[#0b2a5b]">R{booking.amount} for one hour</dd></div>
+            <div><dt className="font-semibold text-[#263852]">Duration</dt><dd className="mt-1 text-[#60708a]">{booking.duration_minutes / 60} hour(s)</dd></div>
+            <div><dt className="font-semibold text-[#263852]">Price</dt><dd className="mt-1 text-lg font-bold text-[#0b2a5b]">R{booking.amount} total (R250/hour)</dd></div>
           </dl>
 
           <p className="mt-5 text-sm leading-7 text-[#60708a]">
@@ -95,7 +96,7 @@ export default async function LiveClassCheckoutPage({
               type="submit"
               className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white"
             >
-              <CreditCard className="size-4" /> Pay R250 with PayFast
+              <CreditCard className="size-4" /> Pay R{booking.amount} with PayFast
             </button>
           </form>
 
