@@ -4,7 +4,6 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
 
