@@ -27,13 +27,13 @@ class AdminMonitoringTests(TestCase):
         self.url = reverse("admin-monitoring")
 
     def test_anonymous_is_redirected_to_admin_login(self):
-        response = self.client.get(self.url)
+        response = self.client.get(self.url, secure=True)
         self.assertEqual(response.status_code, 302)
         self.assertIn("/admin/login/", response["Location"])
 
     def test_staff_without_superuser_privileges_is_denied(self):
         self.client.force_login(self.staff)
-        response = self.client.get(self.url)
+        response = self.client.get(self.url, secure=True)
         self.assertEqual(response.status_code, 403)
 
     def test_unconfigured_services_do_not_look_healthy(self):
@@ -47,7 +47,7 @@ class AdminMonitoringTests(TestCase):
                 "CADVISOR_DASHBOARD_URL": "",
             },
         ):
-            response = self.client.get(self.url)
+            response = self.client.get(self.url, secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Monitoring and reliability")
         self.assertContains(response, "Not configured")
@@ -100,7 +100,7 @@ class AdminMonitoringTests(TestCase):
             ),
             patch("amaris_cms.monitoring_views.urlopen", side_effect=fake_urlopen),
         ):
-            response = self.client.get(self.url)
+            response = self.client.get(self.url, secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Last Prometheus scrape succeeded.")
         self.assertContains(response, "Last Prometheus scrape failed.")
@@ -115,7 +115,7 @@ class AdminMonitoringTests(TestCase):
             patch.dict(os.environ, {"PROMETHEUS_API_URL": "http://prometheus:9090"}),
             patch("amaris_cms.monitoring_views.urlopen", side_effect=URLError("never reveal private host")),
         ):
-            response = self.client.get(self.url)
+            response = self.client.get(self.url, secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Monitoring collector is unavailable.")
         self.assertNotContains(response, "never reveal private host")
