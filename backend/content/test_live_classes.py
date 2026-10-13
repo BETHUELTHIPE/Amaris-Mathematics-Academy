@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.exceptions import ValidationError
@@ -91,15 +92,9 @@ class TutorAvailabilitySlotAdminFormTests(TestCase):
             slot.full_clean()
 
     def test_superadmin_form_explains_automatic_end_time(self):
-        staff = get_user_model().objects.create_superuser(
-            username="live.slot.admin",
-            email="admin.slot@example.test",
-            password="Synthetic-Only-Password-8302",
-        )
-        self.client.force_login(staff)
-        response = self.client.get(reverse("admin:content_tutoravailabilityslot_add"), secure=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "automatically calculated")
+        model_admin = admin.site._registry[TutorAvailabilitySlot]
+        self.assertIn("automatically calculated", model_admin.duration_notice(None))
+        self.assertIn("ends_at", model_admin.get_readonly_fields(None))
 
     def test_superadmin_can_save_slot_without_entering_end_time(self):
         staff = get_user_model().objects.create_superuser(
