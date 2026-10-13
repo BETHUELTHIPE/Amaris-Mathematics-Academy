@@ -9,7 +9,7 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from redis import Redis
 
-from . import error_views
+from . import error_views, monitoring_views
 
 
 def health_live(_request):
@@ -65,6 +65,7 @@ urlpatterns = [
     path("errors/404/", error_views.error_404, name="error-404"),
     path("errors/429/", error_views.error_429, name="error-429"),
     path("errors/500/", error_views.error_500, name="error-500"),
+    path("admin/monitoring/", admin.site.admin_view(monitoring_views.monitoring_dashboard), name="admin-monitoring"),
     path("admin/", admin.site.urls),
     path("api/v1/", include("content.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
