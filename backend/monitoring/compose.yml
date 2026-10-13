@@ -22,7 +22,7 @@ services:
       MONITORING_DOMAIN: ${MONITORING_DOMAIN:?Set the monitoring DNS name}
       MONITORING_USERNAME: ${MONITORING_USERNAME:?Set the monitoring username}
       MONITORING_PASSWORD_HASH: ${MONITORING_PASSWORD_HASH:?Set the bcrypt password hash}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},flower,prometheus,grafana,cadvisor
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},flower,prometheus,grafana,cadvisor,alertmanager
     ports: ["80:80", "443:443", "443:443/udp"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -101,14 +101,18 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.28.1
     restart: unless-stopped
-    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url=https://${MONITORING_DOMAIN}/monitoring/alertmanager/
+      - --web.route-prefix=/monitoring/alertmanager
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
     secrets: [alertmanager_webhook_url]
     networks: [monitoring, egress]
     healthcheck:
-      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9093/-/healthy"]
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9093/monitoring/alertmanager/-/healthy"]
       interval: 30s
       timeout: 10s
       retries: 3

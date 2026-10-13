@@ -12,6 +12,7 @@
     redir /monitoring/prometheus /monitoring/prometheus/ 302
     redir /monitoring/grafana /monitoring/grafana/ 302
     redir /monitoring/cadvisor /monitoring/cadvisor/ 302
+    redir /monitoring/alertmanager /monitoring/alertmanager/ 302
     handle /monitoring/flower/* {
         reverse_proxy flower:5555
     }
@@ -26,6 +27,9 @@
     }
     handle /monitoring/cadvisor/* {
         reverse_proxy cadvisor:8080
+    }
+    handle /monitoring/alertmanager/* {
+        reverse_proxy alertmanager:9093
     }
     handle {
         respond "Use Django admin → Monitoring to open a console." 200

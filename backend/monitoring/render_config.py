@@ -57,7 +57,10 @@ def build_config(metrics_url, health_url, site_url):
         ("node_exporter", 9100),
         ("blackbox_exporter", 9115),
     ):
-        jobs.append({"job_name": name, "static_configs": [{"targets": [f"{name}:{port}"]}]})
+        job = {"job_name": name, "static_configs": [{"targets": [f"{name}:{port}"]}]}
+        if name == "alertmanager":
+            job["metrics_path"] = "/monitoring/alertmanager/metrics"
+        jobs.append(job)
     jobs.append(
         {
             "job_name": "blackbox_http",
@@ -73,7 +76,11 @@ def build_config(metrics_url, health_url, site_url):
     )
     return {
         "global": {"scrape_interval": "15s", "evaluation_interval": "15s"},
-        "alerting": {"alertmanagers": [{"static_configs": [{"targets": ["alertmanager:9093"]}]}]},
+        "alerting": {
+            "alertmanagers": [
+                {"path_prefix": "/monitoring/alertmanager", "static_configs": [{"targets": ["alertmanager:9093"]}]}
+            ]
+        },
         "rule_files": ["/etc/prometheus/rules/*.yml"],
         "scrape_configs": jobs,
     }

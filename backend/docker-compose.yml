@@ -310,13 +310,15 @@ services:
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
+      - --web.external-url=${ALERTMANAGER_EXTERNAL_URL:-http://localhost:8080/monitoring/alertmanager/}
+      - --web.route-prefix=/monitoring/alertmanager
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
     secrets: [alertmanager_webhook_url]
     networks: [monitoring_network, frontend_network]
     healthcheck:
-      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9093/-/healthy"]
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9093/monitoring/alertmanager/-/healthy"]
       interval: 30s
       timeout: 10s
       retries: 3

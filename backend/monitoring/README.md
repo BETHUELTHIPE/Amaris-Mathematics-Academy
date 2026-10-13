@@ -3,7 +3,7 @@
 This stack runs separately from the Render application. It starts Flower,
 Prometheus, Grafana, cAdvisor, Alertmanager, PostgreSQL/Redis exporters, node
 exporter and blackbox exporter. Caddy provides HTTPS and a password gate for the
-four UI routes. No database, Redis, Celery worker, migration or application web
+five UI routes. No database, Redis, Celery worker, migration or application web
 service is created here.
 
 ## Host and connections
@@ -26,7 +26,7 @@ files readable by the relevant container UID (exporters commonly use 65534).
 cAdvisor and node exporter observe **this Docker server**, not Render's managed
 host. cAdvisor runs privileged with host mounts because it needs container/cgroup
 access. It is only reachable on the internal monitoring network and the protected
-gateway route. Alertmanager and all exporters have no public ports.
+gateway route. Alertmanager and all exporters have no public ports. Alertmanager is reachable only through its protected gateway route.
 
 ## Configure
 
@@ -75,7 +75,7 @@ docker compose --env-file .env -f compose.yml up -d
 docker compose --env-file .env -f compose.yml ps
 ```
 
-Check the logs for startup failures. Open all four UI URLs and confirm that an
+Check the logs for startup failures. Open all five UI URLs and confirm that an
 unauthenticated request receives 401, and a valid gateway login reaches the
 console. In Prometheus, check **Status → Targets**: the Django, Flower, cAdvisor,
 database/cache/broker, host and blackbox targets must be up. Verify the Grafana
@@ -88,7 +88,7 @@ error page. If it needs authentication, configure a corresponding Prometheus
 secret before enabling that scrape. No Django credentials are sent by the default
 configuration.
 
-Set these variables on the existing Django service after HTTPS and authentication
+Set `ADMIN_MONITORING_BASE_URL=https://your-monitoring-domain` on Django to configure all console buttons at once. The infrastructure buttons open five provisioned Grafana dashboards. Alternatively, set these variables on the existing Django service after HTTPS and authentication
 have been verified:
 
 ```dotenv
@@ -96,6 +96,7 @@ ADMIN_FLOWER_URL=https://your-monitoring-domain/monitoring/flower/
 ADMIN_PROMETHEUS_URL=https://your-monitoring-domain/monitoring/prometheus/
 ADMIN_GRAFANA_URL=https://your-monitoring-domain/monitoring/grafana/
 ADMIN_CADVISOR_URL=https://your-monitoring-domain/monitoring/cadvisor/
+ADMIN_ALERTMANAGER_URL=https://your-monitoring-domain/monitoring/alertmanager/
 ```
 
 Deploy the Django admin integration from the same reviewed release. External

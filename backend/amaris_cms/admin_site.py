@@ -6,7 +6,7 @@ from django.template.response import TemplateResponse
 from django.urls import path
 from django.views.decorators.cache import never_cache
 
-from .monitoring import MONITORING_TOOLS
+from .monitoring import MONITORING_DASHBOARDS, MONITORING_TOOLS
 
 
 def can_view_monitoring(user):
@@ -35,12 +35,23 @@ class AmarisAdminSite(AdminSite):
         if not can_view_monitoring(request.user):
             raise PermissionDenied
         tools = [
-            {"name": name, "description": description, "icon": icon, "url": settings.ADMIN_MONITORING_URLS[key]}
+            {"name": name, "description": description, "icon": icon, "url": settings.ADMIN_MONITORING_URLS.get(key, "")}
             for key, name, description, icon in MONITORING_TOOLS
+        ]
+        grafana = settings.ADMIN_MONITORING_URLS.get("grafana", "").rstrip("/")
+        dashboards = [
+            {
+                "name": name,
+                "description": description,
+                "icon": icon,
+                "url": f"{grafana}/d/{uid}/{uid}" if grafana else "",
+            }
+            for name, description, icon, uid in MONITORING_DASHBOARDS
         ]
         context = {
             **self.each_context(request),
             "title": "Monitoring",
             "monitoring_tools": tools,
+            "monitoring_dashboards": dashboards,
         }
         return TemplateResponse(request, "admin/monitoring.html", context)
