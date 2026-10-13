@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django import forms
 from django.contrib import admin, messages
 from django.utils import timezone
 
@@ -393,8 +396,44 @@ class PaymentReconciliationRunAdmin(TimeStampedAdmin):
         return False
 
 
+class TutorAvailabilitySlotAdminForm(forms.ModelForm):
+    """Admin chooses the start time; a class always lasts exactly 60 minutes."""
+
+    class Meta:
+        model = TutorAvailabilitySlot
+        exclude = ("ends_at",)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start = cleaned_data.get("starts_at")
+        if start is not None:
+            # Set this before Django validates the model's one-hour invariant.
+            self.instance.ends_at = start + timedelta(hours=1)
+        return cleaned_data
+
+
 @admin.register(TutorAvailabilitySlot)
 class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
+    form = TutorAvailabilitySlotAdminForm
+    readonly_fields = (*TimeStampedAdmin.readonly_fields, "ends_at", "duration_notice")
+    fields = (
+        "tutor",
+        "programme",
+        "subject",
+        "level",
+        "starts_at",
+        "ends_at",
+        "duration_notice",
+        "zoom_join_url",
+        "is_active",
+        "created_at",
+        "updated_at",
+    )
+
+    @admin.display(description="Class duration")
+    def duration_notice(self, obj):
+        return "60 minutes. The end time is automatically calculated from the start time."
+
     list_display = (
         "tutor",
         "programme",
