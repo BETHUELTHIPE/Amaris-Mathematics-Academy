@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
@@ -84,7 +85,7 @@ def _snapshot():
     endpoint = _safe_url(os.getenv("PROMETHEUS_API_URL", "").strip())
     token = os.getenv("PROMETHEUS_API_BEARER_TOKEN", "").strip()
     results = {name: {"state": "not_configured", "detail": "Prometheus is not connected."} for name in METRIC_JOBS}
-    snapshot = {"services": results, "requests_per_second": None, "server_errors_per_second": None}
+    snapshot: dict[str, Any] = {"services": results, "requests_per_second": None, "server_errors_per_second": None}
     if not endpoint:
         return snapshot
 
