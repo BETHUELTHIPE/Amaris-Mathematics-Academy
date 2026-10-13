@@ -16,6 +16,7 @@ export type TutorSlot = {
   is_active: boolean;
   price: string;
   reserved: boolean;
+  editable: boolean;
 };
 
 export type TutorBooking = {
