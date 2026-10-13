@@ -13,6 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
+from django.conf import settings
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import render
@@ -137,7 +138,7 @@ def monitoring_dashboard(request):
         "title": "Monitoring and reliability",
         "snapshot": snapshot,
         "links": links,
-        "django_metrics_available": "django_prometheus" in __import__("django.conf", fromlist=["settings"]).settings.INSTALLED_APPS,
+        "django_metrics_available": "django_prometheus" in settings.INSTALLED_APPS,
     }
     response = render(request, "admin/monitoring.html", context)
     response["Cache-Control"] = "no-store, private"
