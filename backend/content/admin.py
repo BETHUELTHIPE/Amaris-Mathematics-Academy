@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from .models import (
     FAQ,
+    LIVE_CLASS_MAX_HOURS,
     Announcement,
     ContactEnquiry,
     Course,
@@ -13,7 +14,6 @@ from .models import (
     CourseModule,
     Enrollment,
     Lesson,
-    LIVE_CLASS_MAX_HOURS,
     LiveClassBooking,
     NavigationItem,
     Page,
