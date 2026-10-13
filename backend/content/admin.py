@@ -436,7 +436,9 @@ class TutorAvailabilitySlotAdminForm(forms.ModelForm):
                     )
                 ).exists()
                 if reserved and (
-                    start != old.starts_at or new_end != old.ends_at or self.instance.tutor_id != old.tutor_id
+                    start != old.starts_at
+                    or new_end != old.ends_at
+                    or cleaned_data.get("tutor") != old.tutor
                 ):
                     raise forms.ValidationError("A reserved or paid class cannot change tutor, duration or start time.")
             self.instance.ends_at = new_end
