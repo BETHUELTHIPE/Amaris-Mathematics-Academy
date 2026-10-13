@@ -1,0 +1,42 @@
+name: Verify actual live tutor slot state (read only)
+on:
+  push:
+    branches: [verify/live-specific-tutor-slot-20261013]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate actual live public availability, price, and privacy
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          from urllib.request import Request, urlopen
+          url = "https://amaris-production-web.onrender.com/api/v1/live-classes/slots/"
+          for attempt in range(3):
+              try:
+                  with urlopen(Request(url, headers={"Accept":"application/json", "Cache-Control":"no-cache"}), timeout=35) as resp:
+                      assert resp.status == 200, resp.status
+                      slots = json.loads(resp.read().decode())
+                  break
+              except Exception:
+                  if attempt == 2: raise
+                  time.sleep(3)
+          assert isinstance(slots, list)
+          for slot in slots:
+              assert "zoom_join_url" not in slot
+              hours = slot["duration_minutes"] / 60
+              assert int(hours) == hours and 1 <= hours <= 24
+              assert slot["price"] == f"{int(hours)*250:.2f}"
+          target = [s for s in slots if str(s["id"])=="1"]
+          assert len(target) <= 1
+          if target:
+              x = target[0]
+              print("LIVE TARGET: PUBLISHED; id=",x["id"],"hours=",x["duration_minutes"]/60,"price=",x["price"],"starts_at=",x["starts_at"],"ends_at=",x["ends_at"])
+          else:
+              print("LIVE TARGET: NOT PUBLISHED; id=1; zero public availability entries for this slot")
+          print("PASS: live slot state, valid hourly price and private Zoom link; no booking or payment created")
+          PY
