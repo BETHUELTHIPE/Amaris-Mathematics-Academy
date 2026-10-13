@@ -6,12 +6,14 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from content.admin import TutorAvailabilitySlotAdminForm
 from content.authentication import SupabaseStudentPrincipal
 from content.models import (
     LiveClassBooking,
@@ -28,6 +30,103 @@ from content.tasks import (
     deliver_live_class_reminder,
     expire_live_class_holds,
 )
+
+
+class TutorAvailabilitySlotAdminFormTests(TestCase):
+    def setUp(self):
+        self.tutor = get_user_model().objects.create_user(
+            username="admin.slot.tutor",
+            email="slot.tutor@example.test",
+        )
+        self.start = (timezone.now() + timedelta(days=2)).replace(second=0, microsecond=0)
+
+    def slot_data(self, start):
+        return {
+            "tutor": self.tutor.pk,
+            "programme": TutorAvailabilitySlot.Programme.CAPS,
+            "subject": TutorAvailabilitySlot.Subject.MATHEMATICS,
+            "level": "Grade 12",
+            "starts_at": timezone.localtime(start).strftime("%Y-%m-%d %H:%M:%S"),
+            "zoom_join_url": "https://zoom.example.test/j/123456789",
+            "is_active": True,
+        }
+
+    def test_add_slot_automatically_ends_after_one_hour(self):
+        form = TutorAvailabilitySlotAdminForm(data=self.slot_data(self.start))
+        self.assertNotIn("ends_at", form.fields)
+        self.assertTrue(form.is_valid(), form.errors)
+        slot = form.save()
+        self.assertEqual(slot.ends_at - slot.starts_at, timedelta(hours=1))
+        slot.full_clean()
+
+    def test_changing_start_recalculates_end_time(self):
+        slot = TutorAvailabilitySlot.objects.create(
+            tutor=self.tutor,
+            programme=TutorAvailabilitySlot.Programme.CAPS,
+            subject=TutorAvailabilitySlot.Subject.MATHEMATICS,
+            level="Grade 12",
+            starts_at=self.start,
+            ends_at=self.start + timedelta(hours=1),
+            zoom_join_url="https://zoom.example.test/j/123456789",
+            is_active=True,
+        )
+        new_start = self.start + timedelta(days=1, minutes=30)
+        form = TutorAvailabilitySlotAdminForm(data=self.slot_data(new_start), instance=slot)
+        self.assertTrue(form.is_valid(), form.errors)
+        updated = form.save()
+        self.assertEqual(updated.starts_at, new_start)
+        self.assertEqual(updated.ends_at, new_start + timedelta(hours=1))
+
+    def test_model_still_rejects_non_hour_slot(self):
+        slot = TutorAvailabilitySlot(
+            tutor=self.tutor,
+            programme=TutorAvailabilitySlot.Programme.CAPS,
+            subject=TutorAvailabilitySlot.Subject.MATHEMATICS,
+            level="Grade 12",
+            starts_at=self.start,
+            ends_at=self.start + timedelta(minutes=45),
+            zoom_join_url="https://zoom.example.test/j/123456789",
+        )
+        with self.assertRaisesRegex(ValidationError, "exactly one hour"):
+            slot.full_clean()
+
+    def test_superadmin_form_explains_automatic_end_time(self):
+        staff = get_user_model().objects.create_superuser(
+            username="live.slot.admin",
+            email="admin.slot@example.test",
+            password="Synthetic-Only-Password-8302",
+        )
+        self.client.force_login(staff)
+        response = self.client.get(reverse("admin:content_tutoravailabilityslot_add"), secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "automatically calculated")
+
+    def test_superadmin_can_save_slot_without_entering_end_time(self):
+        staff = get_user_model().objects.create_superuser(
+            username="live.slot.admin",
+            email="admin.slot@example.test",
+            password="Synthetic-Only-Password-8302",
+        )
+        self.client.force_login(staff)
+        date = timezone.localtime(self.start)
+        response = self.client.post(
+            reverse("admin:content_tutoravailabilityslot_add"),
+            {
+                "tutor": str(self.tutor.pk),
+                "programme": TutorAvailabilitySlot.Programme.CAPS,
+                "subject": TutorAvailabilitySlot.Subject.MATHEMATICS,
+                "level": "Grade 12",
+                "starts_at_0": date.strftime("%Y-%m-%d"),
+                "starts_at_1": date.strftime("%H:%M:%S"),
+                "zoom_join_url": "https://zoom.example.test/j/123456789",
+                "is_active": "on",
+                "_save": "Save",
+            },
+            secure=True,
+        )
+        self.assertEqual(response.status_code, 302, response.context)
+        slot = TutorAvailabilitySlot.objects.get(tutor=self.tutor)
+        self.assertEqual(slot.ends_at - slot.starts_at, timedelta(hours=1))
 
 
 class MockPayFastGateway:
