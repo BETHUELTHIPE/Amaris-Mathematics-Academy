@@ -7,7 +7,6 @@ from .live_class_views import (
     LiveClassInvoiceDownloadView,
     LiveClassSlotView,
 )
-from .tutor_views import TutorDashboardView, TutorSlotCreateView, TutorSlotUpdateView
 from .payfast_views import PayFastITNView
 from .student_views import (
     AcceptancePaymentCompleteView,
@@ -22,6 +21,7 @@ from .student_views import (
     StudentNotificationsView,
     StudentOrdersView,
 )
+from .tutor_views import TutorDashboardView, TutorSlotCreateView, TutorSlotUpdateView
 from .video_request_views import (
     VideoRequestCheckoutView,
     VideoRequestInvoiceDownloadView,
