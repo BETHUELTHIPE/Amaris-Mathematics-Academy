@@ -138,11 +138,24 @@ def check_offline_recovery(page: Page) -> None:
 
 def check_slow_submission(page: Page) -> None:
     goto(page, "/contact")
+    # Client hydration may restore the offline test's safe draft. In Firefox
+    # tablet mode, filling before restoration settles can concatenate the
+    # earlier email with the synthetic address, triggering native HTML form
+    # validation instead of exercising the delayed server action.
+    page.wait_for_timeout(500)
     page.locator("#fullName").fill("Slow Network Synthetic Student")
-    page.locator("#email").fill("slow.network.student@example.test")
     page.locator("#enquiryType").select_option("technical-support")
     page.locator("#message").fill("Synthetic delayed submission used to verify slow-network recovery without data loss.")
     page.locator("#consent").check()
+    expected_email = "slow.network.student@example.test"
+    email = page.locator("#email")
+    email.fill(expected_email)
+    require(email.input_value() == expected_email, "Safe-draft restoration corrupted the email field")
+    require(email.evaluate("(field) => field.checkValidity()"), "Synthetic email must pass native validation")
+    require(
+        page.locator("form").filter(has=page.locator("#email")).evaluate("(form) => form.checkValidity()"),
+        "The synthetic contact form must be valid before slow-network submission",
+    )
 
     def delay_contact_post(route, request) -> None:
         if request.method == "POST":
