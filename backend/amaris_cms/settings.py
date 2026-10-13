@@ -5,6 +5,8 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
+from .monitoring import MONITORING_TOOLS, monitoring_urls
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -77,7 +79,7 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
     "jazzmin",
-    "django.contrib.admin",
+    "amaris_cms.apps.AmarisAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -403,6 +405,15 @@ SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
 
+# Docker enables the session-protected NGINX routes. Other hosts supply their
+# browser-accessible URLs explicitly; internal service DNS is not a browser URL.
+ADMIN_MONITORING_PROXY_ENABLED = env_bool("ADMIN_MONITORING_PROXY_ENABLED", False)
+ADMIN_MONITORING_URLS = monitoring_urls(
+    os.getenv("ADMIN_MONITORING_BASE_URL", ""),
+    ADMIN_MONITORING_PROXY_ENABLED,
+    {key: os.getenv(f"ADMIN_{key.upper()}_URL", "") for key, *_ in MONITORING_TOOLS},
+)
+
 JAZZMIN_SETTINGS = {
     "site_title": "Amaris Academy Admin",
     "site_header": "Amaris Mathematics Academy",
@@ -418,6 +429,7 @@ JAZZMIN_SETTINGS = {
         },
         {"model": "content.course"},
         {"model": "content.contactenquiry"},
+        {"name": "Monitoring", "url": "admin:monitoring", "permissions": ["auth.view_permission"]},
     ],
     "show_sidebar": True,
     "navigation_expanded": True,

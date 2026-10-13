@@ -1,0 +1,37 @@
+{$MONITORING_DOMAIN} {
+    basic_auth {
+        {$MONITORING_USERNAME} {$MONITORING_PASSWORD_HASH}
+    }
+    header {
+        Cache-Control "private, no-store"
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+    redir /monitoring/flower /monitoring/flower/ 302
+    redir /monitoring/prometheus /monitoring/prometheus/ 302
+    redir /monitoring/grafana /monitoring/grafana/ 302
+    redir /monitoring/cadvisor /monitoring/cadvisor/ 302
+    redir /monitoring/alertmanager /monitoring/alertmanager/ 302
+    handle /monitoring/flower/* {
+        reverse_proxy flower:5555
+    }
+    handle /monitoring/prometheus/* {
+        reverse_proxy prometheus:9090
+    }
+    handle /monitoring/grafana/* {
+        reverse_proxy grafana:3000 {
+            # Grafana authenticates with its own cookie/login, not gateway Basic.
+            header_up -Authorization
+        }
+    }
+    handle /monitoring/cadvisor/* {
+        reverse_proxy cadvisor:8080
+    }
+    handle /monitoring/alertmanager/* {
+        reverse_proxy alertmanager:9093
+    }
+    handle {
+        respond "Use Django admin → Monitoring to open a console." 200
+    }
+}

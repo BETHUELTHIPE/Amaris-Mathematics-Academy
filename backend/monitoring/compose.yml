@@ -1,0 +1,209 @@
+name: amaris-monitoring
+
+# Dedicated Docker host: does not start or migrate the production application.
+services:
+  config:
+    image: python:3.13.15-alpine
+    restart: "no"
+    environment:
+      DJANGO_METRICS_URL: ${DJANGO_METRICS_URL:?Set the Django metrics HTTPS URL}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:?Set the student website HTTPS URL}
+      DJANGO_HEALTH_URL: ${DJANGO_HEALTH_URL:?Set the Django readiness HTTPS URL}
+    command: ["python", "/config/render_config.py", "/generated/prometheus.json"]
+    volumes:
+      - ./render_config.py:/config/render_config.py:ro
+      - generated_config:/generated
+    networks: [monitoring]
+
+  gateway:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      MONITORING_DOMAIN: ${MONITORING_DOMAIN:?Set the monitoring DNS name}
+      MONITORING_USERNAME: ${MONITORING_USERNAME:?Set the monitoring username}
+      MONITORING_PASSWORD_HASH: ${MONITORING_PASSWORD_HASH:?Set the bcrypt password hash}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},flower,prometheus,grafana,cadvisor,alertmanager
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [monitoring, egress]
+
+  flower:
+    image: mher/flower:2.0.1
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/config/flower-entrypoint.sh"]
+    command:
+      - --address=0.0.0.0
+      - --port=5555
+      - --url_prefix=monitoring/flower
+      - --persistent=True
+      - --db=/data/flower.db
+    volumes:
+      - ./flower-entrypoint.sh:/config/flower-entrypoint.sh:ro
+      - flower_data:/data
+    secrets: [broker_url, flower_basic_auth]
+    networks: [monitoring, egress]
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/config/entrypoint.sh"]
+    command:
+      - --config.file=/generated/prometheus.json
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-30d}
+      - --web.external-url=https://${MONITORING_DOMAIN}/monitoring/prometheus/
+      - --web.route-prefix=/monitoring/prometheus
+    depends_on:
+      config:
+        condition: service_completed_successfully
+    volumes:
+      - ./prometheus/entrypoint.sh:/config/entrypoint.sh:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - generated_config:/generated:ro
+      - prometheus_data:/prometheus
+    secrets: [flower_basic_auth]
+    networks: [monitoring, egress]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9090/monitoring/prometheus/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    restart: unless-stopped
+    environment:
+      GF_SERVER_ROOT_URL: https://${MONITORING_DOMAIN}/monitoring/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ADMIN_USER: ${MONITORING_USERNAME}
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    secrets: [grafana_admin_password]
+    networks: [monitoring]
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:3000/monitoring/grafana/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url=https://${MONITORING_DOMAIN}/monitoring/alertmanager/
+      - --web.route-prefix=/monitoring/alertmanager
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    secrets: [alertmanager_webhook_url]
+    networks: [monitoring, egress]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9093/monitoring/alertmanager/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    restart: unless-stopped
+    privileged: true
+    command: ["--docker_only=true", "--housekeeping_interval=15s", "--url_base_prefix=/monitoring/cadvisor"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    devices: ["/dev/kmsg:/dev/kmsg"]
+    networks: [monitoring]
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_URI: ${POSTGRES_METRICS_URI:?Set host:port/database?sslmode=require}
+      DATA_SOURCE_USER_FILE: /run/secrets/postgres_user
+      DATA_SOURCE_PASS_FILE: /run/secrets/postgres_password
+    secrets: [postgres_user, postgres_password]
+    networks: [monitoring, egress]
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: ${REDIS_BROKER_METRICS_ADDR:?Set the reachable broker Redis address}
+      REDIS_USER: ${REDIS_BROKER_METRICS_USER:-}
+      REDIS_PASSWORD_FILE: /run/secrets/redis_broker_passwords
+    secrets: [redis_broker_passwords]
+    networks: [monitoring, egress]
+
+  redis_cache_exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: ${REDIS_CACHE_METRICS_ADDR:?Set the reachable cache Redis address}
+      REDIS_USER: ${REDIS_CACHE_METRICS_USER:-}
+      REDIS_PASSWORD_FILE: /run/secrets/redis_cache_passwords
+    secrets: [redis_cache_passwords]
+    networks: [monitoring, egress]
+
+  node_exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    pid: host
+    command: ["--path.rootfs=/host", "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)"]
+    volumes: ["/:/host:ro,rslave"]
+    networks: [monitoring]
+
+  blackbox_exporter:
+    image: prom/blackbox-exporter:v0.27.0
+    restart: unless-stopped
+    command: ["--config.file=/etc/blackbox_exporter/config.yml"]
+    volumes: ["./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro"]
+    networks: [monitoring, egress]
+
+networks:
+  monitoring:
+    internal: true
+  egress:
+
+secrets:
+  broker_url:
+    file: ./secrets/broker_url
+  flower_basic_auth:
+    file: ./secrets/flower_basic_auth
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password
+  alertmanager_webhook_url:
+    file: ./secrets/alertmanager_webhook_url
+  postgres_user:
+    file: ./secrets/postgres_user
+  postgres_password:
+    file: ./secrets/postgres_password
+  redis_broker_passwords:
+    file: ./secrets/redis_broker_passwords.json
+  redis_cache_passwords:
+    file: ./secrets/redis_cache_passwords.json
+
+volumes:
+  generated_config:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+  flower_data:
+  caddy_data:
+  caddy_config:

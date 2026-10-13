@@ -1,0 +1,12 @@
+{% extends "admin/index.html" %}
+
+{% block content %}
+{% if request.user.is_superuser %}
+<div class="col-12 mb-3">
+  <a class="btn btn-outline-primary" href="{% url 'admin:monitoring' %}">
+    <i class="fas fa-chart-line mr-1" aria-hidden="true"></i> Monitoring dashboards
+  </a>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}
