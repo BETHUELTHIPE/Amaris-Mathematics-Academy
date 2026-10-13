@@ -1,0 +1,38 @@
+name: Verify live 60-minute admin release (read only)
+on:
+  push:
+    branches: [verify/live-hour-admin-20261013]
+permissions:
+  contents: read
+jobs:
+  admin-and-slots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify deployed Django Admin pages and public slot listing
+        run: |
+          python - <<'PY'
+          import json
+          from urllib.error import HTTPError
+          from urllib.request import urlopen
+
+          base = "https://amaris-production-web.onrender.com"
+          with urlopen(base + "/admin/login/", timeout=40) as response:
+              body = response.read().decode("utf-8", "replace").lower()
+              assert response.status == 200
+              assert 'name="username"' in body
+              assert 'name="password"' in body
+              print("Django Admin login: HTTP 200, username/password fields present")
+          with urlopen(base + "/admin/content/tutoravailabilityslot/add/", timeout=40) as response:
+              body = response.read().decode("utf-8", "replace").lower()
+              assert response.status == 200
+              assert "/admin/login/" in response.url
+              assert 'name="password"' in body
+              print("Protected tutor slot add: unauthenticated redirected to Admin login")
+          with urlopen(base + "/api/v1/live-classes/slots/", timeout=40) as response:
+              slots = json.load(response)
+              assert response.status == 200
+              assert isinstance(slots, list)
+              print("Public live-class slots: HTTP 200, published records:", len(slots))
+          print("PASS: live deployment healthy; no bookings or payments created")
+          PY
