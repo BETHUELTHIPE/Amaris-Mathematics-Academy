@@ -11,7 +11,8 @@ const nav = read("../components/site/auth-controls.tsx");
 
 test("tutor access is visible without mixing into student dashboard", () => {
   assert.match(nav, /href="\/tutor\/login"/);
-  assert.match(login, /loginAction/);
+  assert.match(login, /tutorLoginAction/);
+  assert.match(actions, /supabase.auth.signInWithPassword/);
   assert.match(login, /GoogleAuthButton/);
   assert.match(login, /next="\/tutor\/dashboard"/);
 });
