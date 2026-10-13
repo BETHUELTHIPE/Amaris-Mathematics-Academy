@@ -99,7 +99,7 @@ def answer_website_question(question: str) -> tuple[str, str]:
     except ValueError as exc:
         logger.warning("Amaris Assistant website context rejected: invalid_value")
         raise RuntimeError("Cannot construct published website context.") from exc
-    model = getattr(settings, "OPENAI_ASSISTANT_MODEL", getattr(settings, "OPENAI_ENQUIRY_MODEL", "gpt-6-luna"))
+    model = getattr(settings, "OPENAI_ASSISTANT_MODEL", "gpt-4.1-mini")
     timeout = float(getattr(settings, "OPENAI_ASSISTANT_TIMEOUT_SECONDS", 10))
 
     payload = json.dumps(
@@ -107,7 +107,6 @@ def answer_website_question(question: str) -> tuple[str, str]:
             "model": model,
             "store": False,
             "max_output_tokens": 700,
-            "reasoning": {"effort": "none"},
             "instructions": _assistant_instructions(),
             "input": (
                 "WEBSITE CONTENT (authoritative source):\n"
