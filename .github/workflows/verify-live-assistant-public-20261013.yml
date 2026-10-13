@@ -1,0 +1,92 @@
+name: Live Amaris Assistant Public Smoke
+
+on:
+  push:
+    branches:
+      - verify-live-assistant-20261013
+
+permissions:
+  contents: read
+
+jobs:
+  live-smoke:
+    name: Verify deployed sites and real assistant responses
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Send public read-only and assistant requests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          backend = "https://amaris-production-web.onrender.com"
+          frontend = "https://amaris-mathematics-academy-live-students.onrender.com"
+          checks = []
+
+          def call(label, url, message=None, expected=None):
+              data = None if message is None else json.dumps({"message": message}).encode()
+              request = Request(
+                  url,
+                  data=data,
+                  headers={"Accept": "application/json", "User-Agent": "Amaris-Public-Smoke/1.0", **(
+                      {"Content-Type": "application/json"} if data is not None else {}
+                  )},
+                  method="POST" if data is not None else "GET",
+              )
+              status, body = 0, ""
+              try:
+                  with urlopen(request, timeout=35) as response:
+                      status = response.status
+                      body = response.read(3000).decode("utf8", "replace")
+              except HTTPError as exc:
+                  status = exc.code
+                  body = exc.read(3000).decode("utf8", "replace")
+              except (URLError, TimeoutError) as exc:
+                  body = type(exc).__name__
+              try:
+                  payload = json.loads(body)
+                  reply = str(payload.get("answer", "")) if isinstance(payload, dict) else ""
+                  detail = str(payload.get("detail", "")) if isinstance(payload, dict) else ""
+              except (ValueError, TypeError):
+                  reply = ""
+                  detail = body[:250]
+
+              print(f"{label}: HTTP {status}", flush=True)
+              if data:
+                  print(f"  response.answer={reply[:850]!r}", flush=True)
+                  print(f"  response.detail={detail[:250]!r}", flush=True)
+              else:
+                  print(f"  response_excerpt={body[:160]!r}", flush=True)
+
+              ok = 200 <= status < 300
+              if data:
+                  ok = ok and bool(reply.strip())
+              if expected:
+                  ok = ok and all(word in reply.casefold() for word in expected)
+              checks.append((label, ok, status))
+              return status
+
+          for label, url in [
+              ("backend health", backend + "/health/ready/"),
+              ("frontend health", frontend + "/health/ready/"),
+              ("public student registration", frontend + "/register"),
+          ]:
+              status = call(label, url)
+              if status == 503:
+                  time.sleep(5)
+
+          original = "Hi, How do we register on your website and how long are your lessons?"
+          call("backend assistant reported question", backend + "/api/v1/assistant/", original, ["register", "60 minutes"])
+          call("frontend assistant reported question", frontend + "/api/assistant/", original, ["register", "60 minutes"])
+          call("frontend AI provider non-fallback question", frontend + "/api/assistant/",
+               "Which curricula and programmes can students study at Amaris Mathematics Academy?",
+               ["caps", "tvet"])
+
+          print("SMOKE_SUMMARY=" + json.dumps([{"name": a, "ok": b, "http_status": c} for a,b,c in checks]))
+          if not all(ok for _,ok,_ in checks):
+              raise SystemExit("Smoke checks did not all pass; inspect status and answer details above.")
+          PY
