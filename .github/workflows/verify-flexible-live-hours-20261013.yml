@@ -24,7 +24,7 @@ jobs:
           def get(url, body=None):
               for attempt in range(4):
                   try:
-                      headers = {"Accept": "application/json" if body else "text/html"}
+                      headers = {"Accept": "application/json" if body or "/api/" in url else "text/html"}
                       if body:
                           headers["Content-Type"] = "application/json"
                       with urlopen(Request(url, data=body, headers=headers), timeout=35) as response:
