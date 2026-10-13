@@ -3,12 +3,16 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
-from content.services.assistant import _assistant_instructions, answer_published_website_question, answer_website_question
+from content.services.assistant import (
+    _assistant_instructions,
+    answer_published_website_question,
+    answer_website_question,
+)
 
 
 @override_settings(
     OPENAI_API_KEY="test-openai-key",
-    OPENAI_ASSISTANT_MODEL="gpt-5.6-luna",
+    OPENAI_ASSISTANT_MODEL="gpt-4.1-mini",
 )
 class AmarisAssistantApiTests(TestCase):
     def setUp(self):
