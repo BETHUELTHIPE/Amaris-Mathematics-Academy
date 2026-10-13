@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 
 from .enquiry_autoreply import _clean, _extract_output_text, build_website_context
+from .live_classes import LIVE_CLASS_PRICE
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,31 @@ def _assistant_instructions() -> str:
     )
 
 
+
+def answer_published_website_question(question: str) -> str | None:
+    """Answer only fixed, published registration/live-class facts when AI fails."""
+    message = _clean(question, 1200).casefold()
+    registration = any(term in message for term in ("register", "registration", "sign up", "signup", "create an account"))
+    lessons = any(term in message for term in ("lesson", "live class", "online class", "session", "how long", "duration"))
+    if not registration and not lessons:
+        return None
+
+    replies = []
+    if registration:
+        replies.append(
+            "To register, visit /register and choose Google registration or complete the email registration form. "
+            "After email registration, verify your email using the code or secure link at /verify-email, "
+            "then sign in at /login."
+        )
+    if lessons:
+        replies.append(
+            f"Live Zoom classes are one hour (60 minutes) and cost R{LIVE_CLASS_PRICE:.0f} per session. "
+            "Choose a tutor and available slot at /book-online-live-class. "
+            "Recorded course lesson counts and total learning hours vary by course; check /courses for details."
+        )
+    return "\n\n".join(replies)
+
+
 def answer_website_question(question: str) -> tuple[str, str]:
     api_key = getattr(settings, "OPENAI_API_KEY", "")
     if not api_key:
@@ -40,14 +66,15 @@ def answer_website_question(question: str) -> tuple[str, str]:
         raise ValueError("A question is required.")
 
     website_context = build_website_context()
-    model = getattr(settings, "OPENAI_ASSISTANT_MODEL", getattr(settings, "OPENAI_ENQUIRY_MODEL", "gpt-5.6-luna"))
+    model = getattr(settings, "OPENAI_ASSISTANT_MODEL", getattr(settings, "OPENAI_ENQUIRY_MODEL", "gpt-6-luna"))
     timeout = float(getattr(settings, "OPENAI_ASSISTANT_TIMEOUT_SECONDS", 10))
 
     payload = json.dumps(
         {
             "model": model,
             "store": False,
-            "max_output_tokens": 500,
+            "max_output_tokens": 700,
+            "reasoning": {"effort": "none"},
             "instructions": _assistant_instructions(),
             "input": (
                 "WEBSITE CONTENT (authoritative source):\n"
