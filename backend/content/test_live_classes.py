@@ -6,8 +6,8 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
 from django.core import mail
+from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
