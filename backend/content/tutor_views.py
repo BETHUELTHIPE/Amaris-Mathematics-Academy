@@ -86,6 +86,7 @@ class TutorSlotWriteSerializer(serializers.Serializer):
 
 
 def _slot_data(slot):
+    reserved = slot.bookings.filter(status__in=RESERVED_STATUSES).exists()
     return {
         "id": slot.pk,
         "programme": slot.programme,
@@ -97,11 +98,8 @@ def _slot_data(slot):
         "zoom_join_url": slot.zoom_join_url,
         "is_active": slot.is_active,
         "price": f"{price_for_live_class_slot(slot):.2f}",
-        "reserved": slot.bookings.filter(status__in=RESERVED_STATUSES).exists(),
-        "editable": (
-            slot.starts_at > timezone.now()
-            and not slot.bookings.filter(status__in=RESERVED_STATUSES).exists()
-        ),
+        "reserved": reserved,
+        "editable": slot.starts_at > timezone.now() and not reserved,
     }
 
 
@@ -171,9 +169,7 @@ class TutorDashboardView(TutorOnlyAPIView):
                     "ends_at": booking.slot.ends_at,
                     "duration_hours": booking.slot.duration_hours,
                     "amount": f"{booking.amount:.2f}",
-                    "student_name": (
-                        f"{booking.student.first_name} {booking.student.last_name}".strip() if paid else ""
-                    ),
+                    "student_name": f"{booking.student.first_name} {booking.student.last_name}".strip() if paid else "",
                     "student_email": booking.student.email if paid else "",
                     "zoom_join_url": booking.slot.zoom_join_url if paid else "",
                 }
