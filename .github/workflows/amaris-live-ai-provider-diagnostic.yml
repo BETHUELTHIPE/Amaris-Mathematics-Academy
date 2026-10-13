@@ -1,0 +1,61 @@
+name: Live Amaris AI Provider Diagnostic
+
+on:
+  push:
+    branches:
+      - fix-assistant-course-guidance-frontend-20261013
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-provider-smoke:
+    name: Backend and frontend non-fallback AI response
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Ask public, website-grounded AI question on both live services
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          question = "Where can I reset a forgotten password?"
+          endpoints = (
+              ("backend", "https://amaris-production-web.onrender.com/api/v1/assistant/"),
+              ("student_frontend", "https://amaris-mathematics-academy-live-students.onrender.com/api/assistant"),
+          )
+          failed = []
+          for name, url in endpoints:
+              request = Request(
+                  url,
+                  data=json.dumps({"message": question}).encode("utf-8"),
+                  headers={"Content-Type": "application/json", "Accept": "application/json"},
+                  method="POST",
+              )
+              try:
+                  with urlopen(request, timeout=25) as result:
+                      status = result.status
+                      data = json.load(result)
+              except HTTPError as error:
+                  status = error.code
+                  try:
+                      data = json.loads(error.read().decode("utf-8"))
+                  except (ValueError, UnicodeError):
+                      data = {}
+              except (URLError, TimeoutError) as error:
+                  print(f"{name}: network error ({type(error).__name__})")
+                  failed.append(name)
+                  continue
+              answer = str(data.get("answer") or "")
+              print(f"{name}: HTTP {status}; provider_answer={bool(answer)}; reset_link_grounded={'/forgot-password' in answer}")
+              if status != 200 or "/forgot-password" not in answer:
+                  failed.append(name)
+
+          if failed:
+              raise SystemExit("Live OpenAI-dependent website question failed on: " + ", ".join(failed))
+          print("Both live routes returned an answer requiring the OpenAI provider, not the fixed public FAQ fallback.")
+          PY
