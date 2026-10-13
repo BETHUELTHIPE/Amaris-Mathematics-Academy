@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
-from content.services.assistant import _assistant_instructions
+from content.services.assistant import _assistant_instructions, answer_published_website_question
 
 
 @override_settings(
@@ -54,6 +54,34 @@ class AmarisAssistantApiTests(TestCase):
 
         self.assertEqual(response.status_code, 503)
         answer.assert_not_called()
+
+
+    @override_settings(OPENAI_API_KEY="")
+    @patch("content.views.answer_website_question")
+    def test_registration_and_lesson_duration_work_without_openai(self, answer):
+        response = self.client.post(
+            "/api/v1/assistant/",
+            {"message": "Hi, how do we register and how long are your lessons?"},
+            format="json",
+            secure=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("/register", response.json()["answer"])
+        self.assertIn("60 minutes", response.json()["answer"])
+        self.assertIn("R250", response.json()["answer"])
+        answer.assert_not_called()
+
+    @patch("content.views.answer_website_question", side_effect=RuntimeError("upstream failure"))
+    def test_known_facts_fallback_when_openai_fails(self, answer):
+        response = self.client.post(
+            "/api/v1/assistant/", {"message": "How long is a live class?"}, format="json", secure=True
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("60 minutes", response.json()["answer"])
+        answer.assert_called_once()
+
+    def test_fallback_does_not_invent_payment_or_account_status(self):
+        self.assertIsNone(answer_published_website_question("Has my payment been confirmed?"))
 
     def test_instructions_limit_answers_to_published_website_content(self):
         instructions = _assistant_instructions()
