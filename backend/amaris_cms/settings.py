@@ -486,6 +486,7 @@ JAZZMIN_SETTINGS = {
         },
         {"model": "content.course"},
         {"model": "content.contactenquiry"},
+        {"name": "Monitoring", "url": "/admin/monitoring/", "new_window": False},
     ],
     "show_sidebar": True,
     "navigation_expanded": True,
