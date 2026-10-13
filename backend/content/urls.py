@@ -7,6 +7,7 @@ from .live_class_views import (
     LiveClassInvoiceDownloadView,
     LiveClassSlotView,
 )
+from .tutor_views import TutorDashboardView, TutorSlotCreateView, TutorSlotUpdateView
 from .payfast_views import PayFastITNView
 from .student_views import (
     AcceptancePaymentCompleteView,
@@ -58,6 +59,9 @@ router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 urlpatterns = [
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
+    path("tutor/dashboard/", TutorDashboardView.as_view(), name="tutor-dashboard"),
+    path("tutor/slots/", TutorSlotCreateView.as_view(), name="tutor-slot-create"),
+    path("tutor/slots/<int:slot_id>/", TutorSlotUpdateView.as_view(), name="tutor-slot-update"),
     path("video-requests/packages/", VideoRequestPackageView.as_view(), name="video-request-packages"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
