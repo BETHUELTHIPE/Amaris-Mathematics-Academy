@@ -93,15 +93,19 @@ def create_live_class_checkout(
         # Serialize checkouts for the same tutor to prevent two overlapping
         # published slots from both accepting a payment at the same time.
         get_user_model().objects.select_for_update().get(pk=locked_slot.tutor_id)
-        overlapping_bookings = LiveClassBooking.objects.filter(
-            slot__tutor_id=locked_slot.tutor_id,
-            slot__starts_at__lt=locked_slot.ends_at,
-            slot__ends_at__gt=locked_slot.starts_at,
-        ).exclude(slot_id=locked_slot.pk).filter(
-            Q(status=LiveClassBooking.Status.CONFIRMED)
-            | Q(
-                status=LiveClassBooking.Status.PENDING_PAYMENT,
-                hold_expires_at__gt=now,
+        overlapping_bookings = (
+            LiveClassBooking.objects.filter(
+                slot__tutor_id=locked_slot.tutor_id,
+                slot__starts_at__lt=locked_slot.ends_at,
+                slot__ends_at__gt=locked_slot.starts_at,
+            )
+            .exclude(slot_id=locked_slot.pk)
+            .filter(
+                Q(status=LiveClassBooking.Status.CONFIRMED)
+                | Q(
+                    status=LiveClassBooking.Status.PENDING_PAYMENT,
+                    hold_expires_at__gt=now,
+                )
             )
         )
         if overlapping_bookings.exists():
