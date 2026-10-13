@@ -60,7 +60,7 @@ function SlotFields({ slot }: { slot?: TutorSlot }) {
       <label className="grid gap-2 text-sm font-semibold text-[#263852]">
         Zoom meeting link
         <input name="zoom_join_url" type="url" required placeholder="https://..." defaultValue={slot?.zoom_join_url ?? ""} className="min-h-12 rounded-xl border border-[#dce4ef] px-3 font-normal" />
-        <span className="text-xs font-normal text-[#60708a]">This link is kept private until a student's payment is confirmed.</span>
+        <span className="text-xs font-normal text-[#60708a]">This link is kept private until a student&apos;s payment is confirmed.</span>
       </label>
       <label className="flex items-center gap-3 text-sm font-semibold text-[#263852] sm:col-span-2">
         <input type="checkbox" name="is_active" defaultChecked={slot?.is_active ?? true} className="size-5 accent-[#1f5bbd]" />
@@ -166,7 +166,7 @@ export default async function TutorDashboardPage({
           ) : (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               {dashboard.slots.map((slot) => {
-                const editable = !slot.reserved && new Date(slot.starts_at).getTime() > Date.now();
+                const editable = slot.editable;
                 return (
                   <article key={slot.id} className="min-w-0 rounded-2xl border border-[#dce4ef] bg-white p-6">
                     <div className="flex items-center justify-between gap-3">
