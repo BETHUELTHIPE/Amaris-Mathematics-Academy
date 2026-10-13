@@ -40,7 +40,17 @@ def answer_published_website_question(question: str) -> str | None:
     lessons = any(
         term in message for term in ("lesson", "live class", "online class", "session", "how long", "duration")
     )
-    if not registration and not lessons:
+    courses = any(
+        term in message for term in ("course", "curriculum", "enrol", "enroll", "choose subjects")
+    )
+    # Public guidance must never be mistaken for a private account/payment status answer.
+    if any(
+        phrase in message
+        for phrase in ("my payment", "my order", "my invoice", "my course access", "my account status",
+                       "payment status", "order status", "my course status")
+    ):
+        return None
+    if not registration and not lessons and not courses:
         return None
 
     replies = []
@@ -55,6 +65,13 @@ def answer_published_website_question(question: str) -> str | None:
             f"Live Zoom classes are one hour (60 minutes) and cost R{LIVE_CLASS_PRICE:.0f} per session. "
             "Choose a tutor and available slot at /book-online-live-class. "
             "Recorded course lesson counts and total learning hours vary by course; check /courses for details."
+        )
+    if courses:
+        replies.append(
+            "To choose a course, visit /courses and select your curriculum and academic level. "
+            "Open a course to review its lessons, guided hours and price. "
+            "After registering and verifying your account, select Continue to enrol for secure PayFast checkout. "
+            "Once payment is verified, find your purchased course on /dashboard."
         )
     return "\n\n".join(replies)
 
