@@ -98,6 +98,10 @@ def _slot_data(slot):
         "is_active": slot.is_active,
         "price": f"{price_for_live_class_slot(slot):.2f}",
         "reserved": slot.bookings.filter(status__in=RESERVED_STATUSES).exists(),
+        "editable": (
+            slot.starts_at > timezone.now()
+            and not slot.bookings.filter(status__in=RESERVED_STATUSES).exists()
+        ),
     }
 
 
