@@ -1,9 +1,8 @@
 name: Live Amaris AI Provider Diagnostic
 
+# Run this only when the verified release has been deployed to both production services.
+# It must not act as a PR prerequisite against a deliberately older live version.
 on:
-  push:
-    branches:
-      - fix-assistant-course-guidance-frontend-20261013
   workflow_dispatch:
 
 permissions:
