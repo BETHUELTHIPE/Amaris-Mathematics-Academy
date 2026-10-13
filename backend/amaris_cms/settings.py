@@ -405,14 +405,15 @@ SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 AI_ENQUIRY_AUTOREPLY_ENABLED = env_bool("AI_ENQUIRY_AUTOREPLY_ENABLED", True)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY") or os.getenv("OPENAI_APIKEY", "")
-OPENAI_ENQUIRY_MODEL = os.getenv("OPENAI_ENQUIRY_MODEL", "gpt-6-luna")
+# The website assistant needs a documented OpenAI API model, not a ChatGPT-only alias.
+# Map legacy configured aliases to a supported model without exposing API credentials.
+OPENAI_ENQUIRY_MODEL = os.getenv("OPENAI_ENQUIRY_MODEL", "gpt-4.1-mini").strip()
 OPENAI_ENQUIRY_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ENQUIRY_TIMEOUT_SECONDS", "10"))
-# Migrate an obsolete configured model alias as well as the code default.
-if OPENAI_ENQUIRY_MODEL == "gpt-5.6-luna":
-    OPENAI_ENQUIRY_MODEL = "gpt-6-luna"
-OPENAI_ASSISTANT_MODEL = os.getenv("OPENAI_ASSISTANT_MODEL", OPENAI_ENQUIRY_MODEL)
-if OPENAI_ASSISTANT_MODEL == "gpt-5.6-luna":
-    OPENAI_ASSISTANT_MODEL = "gpt-6-luna"
+if OPENAI_ENQUIRY_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
+    OPENAI_ENQUIRY_MODEL = "gpt-4.1-mini"
+OPENAI_ASSISTANT_MODEL = os.getenv("OPENAI_ASSISTANT_MODEL", OPENAI_ENQUIRY_MODEL).strip()
+if OPENAI_ASSISTANT_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
+    OPENAI_ASSISTANT_MODEL = "gpt-4.1-mini"
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
 CELERY_BEAT_SCHEDULE = {
