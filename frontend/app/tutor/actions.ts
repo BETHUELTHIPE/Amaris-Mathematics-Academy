@@ -89,14 +89,14 @@ export async function tutorLoginAction(form: FormData): Promise<void> {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password) {
     redirect("/tutor/login?error=credentials");
   }
+  let credentialsInvalid = false;
   try {
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) redirect("/tutor/login?error=credentials");
-  } catch (error) {
-    // Redirects are not normal errors; keep session failure text generic.
-    if (error && typeof error === "object" && "digest" in error) throw error;
+    credentialsInvalid = Boolean(error);
+  } catch {
     redirect("/tutor/login?error=unavailable");
   }
+  if (credentialsInvalid) redirect("/tutor/login?error=credentials");
   redirect("/tutor/dashboard");
 }
