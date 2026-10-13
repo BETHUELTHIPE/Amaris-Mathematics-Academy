@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.db.models import Count, Prefetch, Q
 from django.utils import timezone
@@ -41,7 +43,7 @@ from .serializers import (
     SiteSettingsSerializer,
     TestimonialSerializer,
 )
-from .services.assistant import answer_website_question
+from .services.assistant import answer_published_website_question, answer_website_question
 
 
 def public_cache(seconds: int):
@@ -213,7 +215,11 @@ class AmarisAssistantView(generics.GenericAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        fallback = answer_published_website_question(message)
         if not getattr(settings, "OPENAI_API_KEY", ""):
+            logging.getLogger(__name__).warning("Amaris Assistant unavailable: OPENAI_API_KEY is missing")
+            if fallback:
+                return Response({"answer": fallback}, status=status.HTTP_200_OK)
             return Response(
                 {"detail": "Amaris Assistant is temporarily unavailable."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -221,7 +227,11 @@ class AmarisAssistantView(generics.GenericAPIView):
 
         try:
             answer, _response_id = answer_website_question(message)
-        except (RuntimeError, ValueError):
+        except (RuntimeError, ValueError) as exc:
+            # Never log the visitor's message or upstream response body/credentials.
+            logging.getLogger(__name__).warning("Amaris Assistant provider request failed: %s", type(exc).__name__)
+            if fallback:
+                return Response({"answer": fallback}, status=status.HTTP_200_OK)
             return Response(
                 {"detail": "Amaris Assistant is temporarily unavailable."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
