@@ -11,7 +11,6 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
