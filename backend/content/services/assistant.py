@@ -83,15 +83,22 @@ def answer_published_website_question(question: str) -> str | None:
 
 
 def answer_website_question(question: str) -> tuple[str, str]:
-    api_key = getattr(settings, "OPENAI_API_KEY", "")
+    api_key = str(getattr(settings, "OPENAI_API_KEY", "") or "").strip()
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured.")
+    if any(character.isspace() for character in api_key):
+        logger.warning("Amaris Assistant provider configuration rejected: key_contains_whitespace")
+        raise RuntimeError("OpenAI API key must be a single unquoted token.")
 
     message = _clean(question, 1200)
     if not message:
         raise ValueError("A question is required.")
 
-    website_context = build_website_context()
+    try:
+        website_context = build_website_context()
+    except ValueError as exc:
+        logger.warning("Amaris Assistant website context rejected: invalid_value")
+        raise RuntimeError("Cannot construct published website context.") from exc
     model = getattr(settings, "OPENAI_ASSISTANT_MODEL", getattr(settings, "OPENAI_ENQUIRY_MODEL", "gpt-6-luna"))
     timeout = float(getattr(settings, "OPENAI_ASSISTANT_TIMEOUT_SECONDS", 10))
 
@@ -123,12 +130,23 @@ def answer_website_question(question: str) -> tuple[str, str]:
 
     try:
         with urlopen(request, timeout=timeout) as response:
-            response_payload = json.loads(response.read().decode("utf-8"))
+            response_bytes = response.read()
     except HTTPError as exc:
-        detail = exc.read(1200).decode("utf-8", errors="replace")
-        raise RuntimeError(f"OpenAI request failed with HTTP {exc.code}: {detail}") from exc
+        # Never include upstream response bodies, customer questions or credentials in logs.
+        logger.warning("Amaris Assistant upstream HTTP failure: status=%s", exc.code)
+        raise RuntimeError(f"OpenAI request failed with HTTP {exc.code}.") from exc
     except (URLError, TimeoutError) as exc:
+        logger.warning("Amaris Assistant upstream network failure: %s", type(exc).__name__)
         raise RuntimeError("OpenAI request timed out or was unreachable.") from exc
+    except ValueError as exc:
+        logger.warning("Amaris Assistant provider request rejected locally: invalid_request")
+        raise RuntimeError("OpenAI request could not be sent.") from exc
+
+    try:
+        response_payload = json.loads(response_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        logger.warning("Amaris Assistant upstream returned malformed JSON")
+        raise RuntimeError("OpenAI returned an invalid response.") from exc
 
     answer = _extract_output_text(response_payload)
     if not answer:
