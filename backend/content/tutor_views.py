@@ -86,7 +86,6 @@ class TutorSlotWriteSerializer(serializers.Serializer):
         return value
 
 
-
 class TutorSlotResponseSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     programme = serializers.CharField()
