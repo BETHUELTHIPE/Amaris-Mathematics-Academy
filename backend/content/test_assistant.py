@@ -79,6 +79,34 @@ class AmarisAssistantApiTests(TestCase):
         self.assertIn("60 minutes", response.json()["answer"])
         answer.assert_called_once()
 
+    @override_settings(OPENAI_API_KEY="")
+    @patch("content.views.answer_website_question")
+    def test_registration_and_course_selection_without_provider(self, answer):
+        response = self.client.post(
+            "/api/v1/assistant/",
+            {"message": "Hi, how to register and choose courses on your website?"},
+            format="json",
+            secure=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("/register", response.json()["answer"])
+        self.assertIn("/courses", response.json()["answer"])
+        self.assertIn("Continue to enrol", response.json()["answer"])
+        self.assertIn("/dashboard", response.json()["answer"])
+        answer.assert_not_called()
+
+    @patch("content.views.answer_website_question", side_effect=RuntimeError("provider unavailable"))
+    def test_course_selection_fallback_during_provider_failure(self, answer):
+        response = self.client.post(
+            "/api/v1/assistant/", {"message": "How do I choose courses?"}, format="json", secure=True
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("/courses", response.json()["answer"])
+        answer.assert_called_once()
+
+    def test_fallback_fails_closed_for_private_course_access_status(self):
+        self.assertIsNone(answer_published_website_question("Is my course access activated?"))
+
     def test_fallback_does_not_invent_payment_or_account_status(self):
         self.assertIsNone(answer_published_website_question("Has my payment been confirmed?"))
 
