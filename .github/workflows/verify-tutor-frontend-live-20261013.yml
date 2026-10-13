@@ -1,0 +1,55 @@
+name: Tutor Portal Live Smoke (read-only)
+on:
+  push:
+    branches: [verify/tutor-frontend-production-20261013]
+permissions:
+  contents: read
+jobs:
+  portal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Verify public portal and protected backend routes
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          web = "https://amaris-mathematics-academy-live-students.onrender.com"
+          api = "https://amaris-production-web.onrender.com"
+          def request(url, *, accept="text/html"):
+              for attempt in range(4):
+                  try:
+                      with urlopen(Request(url, headers={"Accept": accept}), timeout=40) as resp:
+                          return resp.status, resp.geturl(), resp.read().decode("utf-8", "replace")
+                  except HTTPError as e:
+                      return e.code, e.geturl(), e.read().decode("utf-8", "replace")
+                  except Exception:
+                      if attempt == 3: raise
+                      time.sleep(4)
+
+          code, url, html = request(web + "/tutor/login")
+          assert code == 200, ("tutor login", code, html[:250])
+          assert "Sign in to tutor dashboard" in html, "Missing login form"
+          assert "Teach on your own timetable" in html, "Tutor hero missing"
+          print("PASS tutor login page HTTP 200, email/password form rendered")
+          code, url, html = request(web + "/tutor/dashboard")
+          assert code == 200, (code, url, html[:200])
+          assert "/tutor/login" in url or "Tutor access requires approval" in html or "Tutor sign in" in html, "Anonymous dashboard not gated"
+          assert "Your teaching slots" not in html, "Private tutor timetable leaked"
+          print("PASS unauthenticated tutor dashboard guarded")
+          code, url, html = request(web + "/book-online-live-class")
+          assert code == 200 and "R250 per hour" in html
+          print("PASS public booking page and hourly pricing")
+          code, url, body = request(api + "/api/v1/tutor/dashboard/", accept="application/json")
+          assert code == 401, (code, body[:200])
+          print("PASS tutor backend access blocked without verified identity")
+          code, url, body = request(api + "/api/v1/live-classes/slots/", accept="application/json")
+          slots = json.loads(body)
+          assert code == 200 and isinstance(slots, list)
+          assert all("zoom_join_url" not in s for s in slots)
+          print("PASS public slots do not reveal Zoom URLs")
+          print("PASS final tutor production smoke: no bookings, approvals or real payments")
+          PY
