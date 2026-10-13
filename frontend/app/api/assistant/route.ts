@@ -18,7 +18,7 @@ function cmsBaseUrl(request: NextRequest): string {
   }
 
   // Never send unconfigured staging traffic to production.
-  if (request.nextUrl.hostname === "amaris-mathematics-academy-live-students.onrender.com") {
+  if (new URL(request.url).hostname === "amaris-mathematics-academy-live-students.onrender.com") {
     return "https://amaris-production-web.onrender.com/api/v1";
   }
   return "";
