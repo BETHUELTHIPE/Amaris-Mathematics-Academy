@@ -146,9 +146,7 @@ class AmarisAssistantApiTests(TestCase):
                 "output": [
                     {
                         "type": "message",
-                        "content": [
-                            {"type": "output_text", "text": "Reset your password at /forgot-password."}
-                        ],
+                        "content": [{"type": "output_text", "text": "Reset your password at /forgot-password."}],
                     }
                 ],
             }
