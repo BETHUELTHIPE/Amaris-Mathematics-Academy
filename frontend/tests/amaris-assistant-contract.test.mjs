@@ -64,7 +64,7 @@ test("course-selection fallback covers catalogue and private-status safety", () 
 test("known registration and lesson facts remain available during provider outages", () => {
   assert.match(route, /function publishedAnswer/);
   assert.match(route, /\/register/);
-  assert.match(route, /one hour \(60 minutes\)/);
+  assert.match(route, /R250 per hour/);
   assert.match(route, /\/book-online-live-class/);
   assert.match(route, /normalizeCmsApiBaseUrl/);
   assert.match(route, /response\.status >= 500 && fallback/);
