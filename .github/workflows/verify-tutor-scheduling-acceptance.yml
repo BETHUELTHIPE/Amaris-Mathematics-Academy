@@ -1,0 +1,73 @@
+name: Final Tutor Scheduling Acceptance — Live Security
+on:
+  push:
+    branches: [verify/tutor-scheduling-final-acceptance-20261013]
+permissions:
+  contents: read
+jobs:
+  tutor-live-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check real production endpoints without creating slots or payments
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          backend = "https://amaris-production-web.onrender.com"
+          frontend = "https://amaris-mathematics-academy-live-students.onrender.com"
+
+          def call(url, method="GET", bearer=None, data=None):
+              headers = {"Accept": "application/json" if "/api/" in url else "text/html"}
+              if bearer is not None:
+                  headers["Authorization"] = "Bearer " + bearer
+              if data is not None:
+                  headers["Content-Type"] = "application/json"
+              req = Request(url, headers=headers, method=method, data=data)
+              for attempt in range(3):
+                  try:
+                      with urlopen(req, timeout=35) as response:
+                          return response.status, response.geturl(), response.read().decode("utf-8", "replace")
+                  except HTTPError as exc:
+                      return exc.code, exc.geturl(), exc.read().decode("utf-8", "replace")
+                  except Exception:
+                      if attempt == 2: raise
+                      time.sleep(3)
+
+          code, url, html = call(frontend + "/tutor/login")
+          assert code == 200 and "Sign in to tutor dashboard" in html
+          print("PASS 1/8: Tutor login page available")
+          code, url, html = call(frontend + "/tutor/dashboard")
+          assert code in (200, 302), (code, url)
+          assert "/tutor/login" in url or "Tutor access requires approval" in html or "Tutor sign in" in html
+          assert "Your teaching slots" not in html
+          print("PASS 2/8: Private dashboard not available anonymously")
+          code, _, body = call(backend + "/api/v1/tutor/dashboard/")
+          assert code == 401, (code, body[:180])
+          print("PASS 3/8: Anonymous dashboard API denied")
+          code, _, body = call(backend + "/api/v1/tutor/dashboard/", bearer="invalid-synthetic-test-token")
+          assert code == 401, (code, body[:180])
+          print("PASS 4/8: Forged bearer token denied")
+          code, _, body = call(backend + "/api/v1/tutor/slots/", method="POST", data=b"{}")
+          assert code == 401, (code, body[:180])
+          print("PASS 5/8: Anonymous POST cannot schedule")
+          code, _, body = call(backend + "/api/v1/tutor/slots/", method="POST", bearer="invalid-synthetic-test-token", data=b"{}")
+          assert code == 401, (code, body[:180])
+          print("PASS 6/8: Forged bearer POST cannot schedule")
+          code, _, body = call(backend + "/api/v1/tutor/slots/999999999/", method="PATCH", bearer="invalid-synthetic-test-token", data=b"{}")
+          assert code == 401, (code, body[:180])
+          print("PASS 7/8: Forged bearer PATCH cannot change slots")
+          code, _, body = call(backend + "/api/v1/live-classes/slots/")
+          records = json.loads(body)
+          assert code == 200 and isinstance(records, list)
+          for slot in records:
+              assert not slot.get("zoom_join_url"), "Public Zoom link exposed"
+              minutes = slot["duration_minutes"]
+              assert minutes % 60 == 0, (slot.get("id"), minutes)
+              assert slot["price"] == f"{minutes // 60 * 250:.2f}", (slot.get("id"), slot.get("price"))
+          print("PASS 8/8: Public slot privacy and whole-hour price rules", len(records), "records")
+          print("PASS: Production safety verified; no appointments, tutors or payments created")
+          PY
