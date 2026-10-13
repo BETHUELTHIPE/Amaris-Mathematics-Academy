@@ -127,7 +127,8 @@ def build_website_context() -> str:
             ),
             (
                 f"- Live Zoom classes: {_public_url('/book-online-live-class')}. "
-                f"Live Zoom sessions can last 1 to 24 whole hours, depending on the tutor slot, at R{LIVE_CLASS_PRICE:.0f} per hour. "
+                f"Live Zoom sessions can last 1 to 24 whole hours at R{LIVE_CLASS_PRICE:.0f} per hour. "
+                "The available duration is set by the tutor. "
                 "Students choose an available tutor, time, and class topic. "
                 "Recorded course lesson counts and total hours vary by course."
             ),
