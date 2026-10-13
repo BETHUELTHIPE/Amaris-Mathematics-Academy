@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
-from content.services.assistant import _assistant_instructions, answer_published_website_question
+from content.services.assistant import _assistant_instructions, answer_published_website_question, answer_website_question
 
 
 @override_settings(
@@ -109,6 +109,26 @@ class AmarisAssistantApiTests(TestCase):
 
     def test_fallback_does_not_invent_payment_or_account_status(self):
         self.assertIsNone(answer_published_website_question("Has my payment been confirmed?"))
+
+    @override_settings(OPENAI_API_KEY="sk-demo bad-key")
+    @patch("content.services.assistant.urlopen")
+    def test_invalid_api_key_format_never_contacts_provider(self, opener):
+        with self.assertLogs("content.services.assistant", level="WARNING") as recorded:
+            with self.assertRaisesRegex(RuntimeError, "single unquoted token"):
+                answer_website_question("Where can I reset my password?")
+        opener.assert_not_called()
+        self.assertIn("key_contains_whitespace", recorded.output[0])
+        self.assertNotIn("sk-demo", str(recorded.output))
+
+    @patch("content.services.assistant.build_website_context", return_value="Password reset: /forgot-password")
+    @patch("content.services.assistant.urlopen", side_effect=ValueError("invalid HTTP header"))
+    def test_invalid_local_provider_request_is_classified_safely(self, opener, _context):
+        with self.assertLogs("content.services.assistant", level="WARNING") as recorded:
+            with self.assertRaisesRegex(RuntimeError, "could not be sent"):
+                answer_website_question("Where can I reset my password?")
+        opener.assert_called_once()
+        self.assertIn("invalid_request", recorded.output[0])
+        self.assertNotIn("invalid HTTP header", str(recorded.output))
 
     def test_instructions_limit_answers_to_published_website_content(self):
         instructions = _assistant_instructions()
