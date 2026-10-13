@@ -40,9 +40,7 @@ def answer_published_website_question(question: str) -> str | None:
     lessons = any(
         term in message for term in ("lesson", "live class", "online class", "session", "how long", "duration")
     )
-    courses = any(
-        term in message for term in ("course", "curriculum", "enrol", "enroll", "choose subjects")
-    )
+    courses = any(term in message for term in ("course", "curriculum", "enrol", "enroll", "choose subjects"))
     # Public guidance must never be mistaken for a private account/payment status answer.
     if any(
         phrase in message
