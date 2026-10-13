@@ -126,7 +126,6 @@ class TutorAvailabilitySlotAdminFormTests(TestCase):
         slot = TutorAvailabilitySlot.objects.get(tutor=self.tutor)
         self.assertEqual(slot.ends_at - slot.starts_at, timedelta(hours=1))
 
-
     def test_tutor_can_choose_two_or_three_hours(self):
         for hours in (2, 3):
             with self.subTest(hours=hours):
@@ -225,9 +224,7 @@ class TutorAvailabilitySlotAdminFormTests(TestCase):
             secure=True,
         )
         self.assertEqual(response.status_code, 302, response.context)
-        self.assertEqual(
-            TutorAvailabilitySlot.objects.get(tutor=self.tutor).duration_hours, 3
-        )
+        self.assertEqual(TutorAvailabilitySlot.objects.get(tutor=self.tutor).duration_hours, 3)
 
 
 class MockPayFastGateway:
