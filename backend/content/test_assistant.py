@@ -71,7 +71,7 @@ class AmarisAssistantApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("/register", response.json()["answer"])
-        self.assertIn("60 minutes", response.json()["answer"])
+        self.assertIn("per hour", response.json()["answer"])
         self.assertIn("R250", response.json()["answer"])
         answer.assert_not_called()
 
