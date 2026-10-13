@@ -1,0 +1,76 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block content %}
+<style>
+.amaris-monitor-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1rem;margin:1rem 0 1.5rem; }
+.amaris-monitor-card { background:var(--bs-white,#fff);color:#23344b;border:1px solid #dce4ed;border-radius:12px;padding:1.2rem;min-height:130px; }
+.amaris-monitor-card h2 { color:inherit;font-size:1.05rem;margin:0 0 .7rem; }
+.amaris-monitor-card p { color:#58677a;margin:.7rem 0 0; }
+.amaris-monitor-state { display:inline-block;border-radius:999px;padding:.3rem .7rem;font-size:.85rem;font-weight:700;background:#e7eaf1;color:#24334e; }
+.amaris-monitor-state.up {background:#d8f5e8;color:#115a37}
+.amaris-monitor-state.down,.amaris-monitor-state.unreachable {background:#ffe3e2;color:#8b2927}
+.amaris-monitor-signal {padding:1rem 1.2rem;border:1px solid #dce4ed;border-radius:12px;background:var(--bs-white,#fff);margin:1rem 0}
+.amaris-monitor-signal strong {font-size:1.4rem}
+.amaris-monitor-links {display:flex;flex-wrap:wrap;gap:.7rem;align-items:center}
+.amaris-monitor-links a {display:inline-block;padding:.65rem 1rem;background:#142f58;color:#fff;border-radius:8px;text-decoration:none}
+.amaris-monitor-links a:hover,.amaris-monitor-links a:focus {background:#21568d;color:#fff}
+.amaris-monitor-links span {color:#58677a}
+</style>
+<div class="container-fluid">
+  <p class="text-muted">Private operations overview for Amaris Mathematics Academy super administrators.</p>
+  <p><strong>Data source:</strong> {% if snapshot.services.django.state == "not_configured" %}No Prometheus API is configured for this server. Django metrics instrumentation is {% if django_metrics_available %}installed{% else %}not installed{% endif %}.{% else %}Prometheus live scrape status (last sample).{% endif %}</p>
+  <div class="amaris-monitor-grid" aria-label="Monitoring service status">
+    <section class="amaris-monitor-card">
+      <h2>Django API</h2>
+      <span class="amaris-monitor-state {{ snapshot.services.django.state }}">{{ snapshot.services.django.state|capfirst|cut:"_" }}</span>
+      <p>{{ snapshot.services.django.detail }}</p>
+    </section>
+    <section class="amaris-monitor-card">
+      <h2>Flower / Celery</h2>
+      <span class="amaris-monitor-state {{ snapshot.services.flower.state }}">{{ snapshot.services.flower.state|capfirst|cut:"_" }}</span>
+      <p>{{ snapshot.services.flower.detail }}</p>
+    </section>
+    <section class="amaris-monitor-card">
+      <h2>cAdvisor / containers</h2>
+      <span class="amaris-monitor-state {{ snapshot.services.cadvisor.state }}">{{ snapshot.services.cadvisor.state|capfirst|cut:"_" }}</span>
+      <p>{{ snapshot.services.cadvisor.detail }}</p>
+    </section>
+    <section class="amaris-monitor-card">
+      <h2>Grafana dashboards</h2>
+      {% if links.grafana %}
+        <span class="amaris-monitor-state">Configured link</span>
+        <p>The link is configured, but Grafana health is not confirmed by this view.</p>
+      {% else %}
+        <span class="amaris-monitor-state">Not configured</span>
+        <p>Add a secure HTTPS Grafana dashboard URL to connect the console.</p>
+      {% endif %}
+    </section>
+  </div>
+  <div class="amaris-monitor-grid" aria-label="Django throughput summary">
+    <section class="amaris-monitor-signal">
+      <h2>Requests per second (5-minute rate)</h2>
+      {% if snapshot.requests_per_second is not None %}
+        <strong>{{ snapshot.requests_per_second|floatformat:2 }}</strong>
+      {% else %}<strong>—</strong>{% endif %}
+      <p>From Prometheus Django exporter; no student identifiers collected.</p>
+    </section>
+    <section class="amaris-monitor-signal">
+      <h2>Server errors per second (5-minute rate)</h2>
+      {% if snapshot.server_errors_per_second is not None %}
+        <strong>{{ snapshot.server_errors_per_second|floatformat:3 }}</strong>
+      {% else %}<strong>—</strong>{% endif %}
+      <p>HTTP 5xx events. “—” means no reported data, not zero failures.</p>
+    </section>
+  </div>
+  <section class="amaris-monitor-signal">
+    <h2>Monitoring consoles</h2>
+    <div class="amaris-monitor-links">
+      {% if links.grafana %}<a href="{{ links.grafana }}" target="_blank" rel="noopener noreferrer">Open Grafana dashboards</a>{% else %}<span>Grafana: not connected</span>{% endif %}
+      {% if links.flower %}<a href="{{ links.flower }}" target="_blank" rel="noopener noreferrer">Open Flower task monitor</a>{% else %}<span>Flower: not connected</span>{% endif %}
+      {% if links.cadvisor %}<a href="{{ links.cadvisor }}" target="_blank" rel="noopener noreferrer">Open cAdvisor</a>{% else %}<span>cAdvisor: not connected</span>{% endif %}
+    </div>
+    <p class="mt-3">This page never reveals Prometheus API tokens, Redis credentials, private scrape targets, or student records.</p>
+  </section>
+  <p class="text-muted">Refresh the page to check current values. Container-level cAdvisor requires a Docker host with access to container telemetry; the managed Render web service does not expose its host Docker socket.</p>
+</div>
+{% endblock %}
