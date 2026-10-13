@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createTutorSlot, TutorApiError, updateTutorSlot, type SlotInput } from "@/lib/tutor-api";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function cleanStart(value: string): string {
   // Native datetime-local fields have no timezone. Amaris sessions use SAST (UTC+02:00).
@@ -80,4 +81,22 @@ export async function pauseTutorSlotAction(form: FormData): Promise<void> {
   }
   if (errorMessage) go(errorMessage, "error");
   go("Your availability has been paused.", "success");
+}
+
+export async function tutorLoginAction(form: FormData): Promise<void> {
+  const email = String(form.get("email") || "").trim().toLowerCase();
+  const password = String(form.get("password") || "");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password) {
+    redirect("/tutor/login?error=credentials");
+  }
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) redirect("/tutor/login?error=credentials");
+  } catch (error) {
+    // Redirects are not normal errors; keep session failure text generic.
+    if (error && typeof error === "object" && "digest" in error) throw error;
+    redirect("/tutor/login?error=unavailable");
+  }
+  redirect("/tutor/dashboard");
 }
