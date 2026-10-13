@@ -37,7 +37,8 @@ def _safe_url(value: str, *, allow_http: bool = True) -> str:
             or parsed.password
             or parsed.query
             or parsed.fragment
-            or parsed.port is not None and not (1 <= parsed.port <= 65535)
+            or parsed.port is not None
+            and not (1 <= parsed.port <= 65535)
         ):
             return ""
     except ValueError:
