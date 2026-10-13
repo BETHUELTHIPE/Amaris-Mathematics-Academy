@@ -18,9 +18,11 @@ export async function AuthControls({ links }: { links: NavigationLink[] }) {
   return (
     <>
       <div className="hidden min-w-[13rem] items-center justify-end gap-3 lg:flex">
+        <a href="/tutor/login" className="text-sm font-semibold text-[#ffcc66] hover:text-white">Tutor portal</a>
         {authenticated ? (
           <>
-            {state === "verified" && <a href="/documents" className="text-sm font-semibold text-white/70 hover:text-white">Documents</a>}
+            <a href="/tutor/login" className="block rounded-xl px-3 py-2.5 text-sm font-semibold text-[#ffcc66] hover:bg-white/10">Tutor portal</a>
+          {state === "verified" && <a href="/documents" className="text-sm font-semibold text-white/70 hover:text-white">Documents</a>}
             <a href={primaryHref} className="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/10">{primaryLabel}</a>
             <form action={signOutAction}><button type="submit" className="text-sm text-white/65 hover:text-white">Sign out</button></form>
           </>
