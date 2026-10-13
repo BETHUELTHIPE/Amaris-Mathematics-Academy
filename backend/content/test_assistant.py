@@ -55,7 +55,6 @@ class AmarisAssistantApiTests(TestCase):
         self.assertEqual(response.status_code, 503)
         answer.assert_not_called()
 
-
     @override_settings(OPENAI_API_KEY="")
     @patch("content.views.answer_website_question")
     def test_registration_and_lesson_duration_work_without_openai(self, answer):
