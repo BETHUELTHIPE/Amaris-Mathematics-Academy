@@ -106,7 +106,9 @@ services:
       - key: GF_SECURITY_ADMIN_PASSWORD
         generateValue: true
       - key: GF_AUTH_ANONYMOUS_ENABLED
-        value: "false"
+        value: "true"
+      - key: GF_AUTH_ANONYMOUS_ORG_ROLE
+        value: Viewer
       - key: GF_USERS_ALLOW_SIGN_UP
         value: "false"
       - key: GF_USERS_DEFAULT_THEME
