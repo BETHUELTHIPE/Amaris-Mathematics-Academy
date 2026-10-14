@@ -85,12 +85,12 @@ test("renders branded recovery pages without technical details", async () => {
   assert.doesNotMatch(`${recoverySource}\n${screenSource}\n${actionsSource}`, /SUPABASE_SERVICE_ROLE|stack trace/i);
 });
 
-test("keeps the optimized hero background photo visible on the homepage", async () => {
+test("keeps the homepage LCP hero eagerly loaded and synchronously decoded", async () => {
   const homepageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(homepageSource, /src="\/amaris-math-hero\.webp"/);
   assert.match(homepageSource, /fetchPriority="high"/);
   assert.match(homepageSource, /loading="eager"/);
-  assert.match(homepageSource, /decoding="async"/);
+  assert.match(homepageSource, /decoding="sync"/);
 });
 
 test("protected application responses are never publicly cacheable", async () => {
