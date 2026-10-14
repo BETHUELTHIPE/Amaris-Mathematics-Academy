@@ -7,10 +7,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   trial:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,6 +41,17 @@ jobs:
         run: |
           npm install --no-save nitro @tailwindcss/vite@4.3.3
           NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Commit regenerated lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo "Lockfile already current."
+          else
+            git commit -m "Regenerate frontend lockfile after security fixes"
+            git push origin HEAD:feature/render-native-monitoring-20261014
+          fi
       - name: Show candidate lockfile digest
         if: always()
         run: |
