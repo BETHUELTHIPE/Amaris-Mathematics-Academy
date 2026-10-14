@@ -17,11 +17,11 @@ RUN apt-get update \
     && tar -xzf /tmp/restic.tar.gz --strip-components=1 \
     && go get golang.org/x/crypto@v0.57.0 \
               golang.org/x/net@v0.60.0 \
-              golang.org/x/text@v0.41.0 \
+              golang.org/x/text@v0.42.0 \
               google.golang.org/grpc@v1.83.2 \
     && test "$(go list -m -f '{{.Version}}' golang.org/x/crypto)" = "v0.57.0" \
     && test "$(go list -m -f '{{.Version}}' golang.org/x/net)" = "v0.60.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/text)" = "v0.41.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/text)" = "v0.42.0" \
     && test "$(go list -m -f '{{.Version}}' google.golang.org/grpc)" = "v1.83.2" \
     && mkdir -p /out \
     && go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/restic ./cmd/restic \
