@@ -11,7 +11,6 @@ services:
     dockerContext: .
     dockerfilePath: monitoring/render/render-metrics-exporter/Dockerfile
     autoDeployTrigger: checksPass
-    healthCheckPath: /metrics
     envVars:
       - key: RENDER_API_KEY
         sync: false
@@ -32,7 +31,6 @@ services:
     dockerContext: .
     dockerfilePath: monitoring/render/flower/Dockerfile
     autoDeployTrigger: checksPass
-    healthCheckPath: /admin/monitoring/flower/
     envVars:
       - key: CELERY_BROKER_URL
         fromService:
@@ -50,7 +48,6 @@ services:
     dockerContext: .
     dockerfilePath: monitoring/render/prometheus/Dockerfile
     autoDeployTrigger: checksPass
-    healthCheckPath: /admin/monitoring/prometheus/-/ready
     disk:
       name: amaris-prometheus-data
       mountPath: /prometheus-data
@@ -84,7 +81,6 @@ services:
     dockerContext: .
     dockerfilePath: monitoring/render/grafana/Dockerfile
     autoDeployTrigger: checksPass
-    healthCheckPath: /admin/monitoring/grafana/api/health
     disk:
       name: amaris-grafana-data
       mountPath: /var/lib/grafana
