@@ -1,0 +1,54 @@
+name: Self-hosted monitoring security
+
+on:
+  pull_request:
+    paths:
+      - 'backend/monitoring/**'
+      - 'backend/amaris_cms/monitoring_views.py'
+      - 'backend/amaris_cms/test_monitoring_dashboard.py'
+      - 'backend/amaris_cms/urls.py'
+      - '.github/workflows/monitoring-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install NGINX for actual HTTP authorization tests
+        run: sudo apt-get update -qq && sudo apt-get install -y nginx
+      - name: Verify gateway authorization and credential isolation
+        run: python backend/monitoring/self-hosted/test_gateway.py
+      - name: Prepare synthetic configuration (no production secrets)
+        working-directory: backend/monitoring/self-hosted
+        run: |
+          cp .env.example .env
+          mkdir -m 700 secrets
+          python - <<'PY'
+          import secrets
+          from pathlib import Path
+          for name in ('django_metrics_token', 'prometheus_api_token', 'grafana_admin_password'):
+              Path('secrets', name).write_text(secrets.token_urlsafe(48))
+          Path('secrets/broker_url').write_text('redis://unused.example.test:6379/0')
+          for path in Path('secrets').iterdir():
+              path.chmod(0o444)
+          PY
+      - name: Validate Compose, Prometheus, NGINX and TLS configuration
+        working-directory: backend/monitoring/self-hosted
+        run: |
+          docker compose --env-file .env -f compose.yml config --quiet
+          docker compose --env-file .env -f compose.yml run --rm config
+          docker compose --env-file .env -f compose.yml run --rm --no-deps --entrypoint promtool prometheus check config /generated/prometheus.json
+          docker compose --env-file .env -f compose.yml run --rm --no-deps --entrypoint nginx gateway -t
+          docker compose --env-file .env -f compose.yml run --rm --no-deps --entrypoint caddy tls validate --config /etc/caddy/Caddyfile
+      - name: Remove synthetic volumes
+        if: always()
+        working-directory: backend/monitoring/self-hosted
+        run: docker compose --env-file .env -f compose.yml down --volumes --remove-orphans

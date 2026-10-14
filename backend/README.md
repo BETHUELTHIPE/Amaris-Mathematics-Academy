@@ -29,11 +29,11 @@ The public content API is available under `/api/v1/`, with interactive documenta
 
 Load and resilience tests are in [`load_tests/`](load_tests/README.md). The suite covers public browsing, authentication entry points, protected student activity, progress, checkout creation and payment polling, with normal, peak, spike and controlled dependency-failure profiles. It blocks the live Amaris and PayFast hosts by default.
 
-The monitoring interfaces are available through the same NGINX entrypoint:
-
-- Flower: `http://localhost:8080/monitoring/flower/`
-- Grafana: `http://localhost:8080/monitoring/grafana/`
-- pgAdmin: `http://localhost:8080/monitoring/pgadmin/`
+The colocated NGINX entrypoint blocks monitoring consoles and public metrics.
+For a separate Docker monitoring host with superuser-only access through Django
+Admin, use [the self-hosted monitoring guide](monitoring/self-hosted/README.md).
+Set `MONITORING_METRICS_TOKEN` in Django and its matching Prometheus secret before
+scraping `/metrics`; unauthenticated metrics requests return 401.
 
 Prometheus and cAdvisor have no public host ports. Flower is defined exactly once and is the operational interface for Celery Worker and Celery Beat monitoring. `FLOWER_PORT` remains `5555`, `FLOWER_URL` is the internal `http://flower:5555` address, and `FLOWER_BASIC_AUTH` must contain a strong `username:password` value. Docker passes that credential as a runtime secret; it is not stored in Prometheus configuration or source control.
 

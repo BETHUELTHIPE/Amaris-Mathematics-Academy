@@ -94,7 +94,15 @@ services:
     restart: unless-stopped
     init: true
     env_file: .env
-    environment: {SERVICE_ROLE: web}
+    environment:
+      SERVICE_ROLE: web
+      MONITORING_METRICS_TOKEN: ${MONITORING_METRICS_TOKEN:-}
+      # The web container can query the existing Prometheus service over the
+      # private Docker backend network; no exporter is exposed through NGINX.
+      PROMETHEUS_API_URL: http://prometheus:9090
+      GRAFANA_DASHBOARD_URL: ${GRAFANA_DASHBOARD_URL:-}
+      FLOWER_DASHBOARD_URL: ${FLOWER_DASHBOARD_URL:-}
+      CADVISOR_DASHBOARD_URL: ${CADVISOR_DASHBOARD_URL:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -333,7 +341,7 @@ services:
       - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - ./monitoring/prometheus/entrypoint.sh:/etc/prometheus/amaris-entrypoint.sh:ro
       - prometheus_data:/prometheus
-    secrets: [flower_basic_auth]
+    secrets: [flower_basic_auth, django_metrics_token]
     depends_on:
       alertmanager:
         condition: service_healthy
@@ -460,6 +468,8 @@ networks:
     internal: true
 
 secrets:
+  django_metrics_token:
+    environment: MONITORING_METRICS_TOKEN
   flower_basic_auth:
     environment: FLOWER_BASIC_AUTH
   grafana_admin_password:
