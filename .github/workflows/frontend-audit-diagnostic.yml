@@ -1,0 +1,36 @@
+name: Frontend Audit Diagnostic
+
+on:
+  push:
+    branches:
+      - feature/render-native-monitoring-20261014
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Vulnerable dependency trees
+        run: |
+          npm ls braces sharp source-map-js esbuild --all || true
+      - name: Registry fixed-version candidates
+        run: |
+          for p in braces sharp source-map-js esbuild micromatch fast-glob vite-plugin-dynamic-import vite-plugin-commonjs vinext miniflare wrangler @cloudflare/vite-plugin drizzle-kit; do
+            echo "=== $p ==="
+            npm view "$p" version
+          done
+      - name: Audit JSON
+        run: npm audit --json || true
