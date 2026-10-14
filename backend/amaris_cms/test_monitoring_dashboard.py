@@ -26,6 +26,56 @@ class AdminMonitoringTests(TestCase):
         )
         self.url = reverse("admin-monitoring")
 
+    def test_gateway_checks_every_role_and_fails_closed(self):
+        access = reverse("monitoring-access")
+        self.assertEqual(self.client.get(access, secure=True).status_code, 401)
+        model = get_user_model()
+        student = model.objects.create_user(username="monitor_student")
+        tutor = model.objects.create_user(username="monitor_tutor")
+        for user in (student, tutor, self.staff):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.get(access, secure=True)
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(self.client.get(self.url, secure=True).status_code in (302, 403), True)
+                self.assertIn("no-store", response["Cache-Control"])
+        self.client.force_login(self.superuser)
+        self.assertEqual(self.client.get(access, secure=True).status_code, 204)
+        self.superuser.is_superuser = False
+        self.superuser.save(update_fields=["is_superuser"])
+        self.assertEqual(self.client.get(access, secure=True).status_code, 403)
+
+    def test_inactive_superuser_and_logout_cannot_reuse_console_access(self):
+        access = reverse("monitoring-access")
+        self.client.force_login(self.superuser)
+        self.superuser.is_active = False
+        self.superuser.save(update_fields=["is_active"])
+        self.assertEqual(self.client.get(access, secure=True).status_code, 401)
+        self.superuser.is_active = True
+        self.superuser.save(update_fields=["is_active"])
+        self.client.force_login(self.superuser)
+        self.client.logout()
+        self.assertEqual(self.client.get(access, secure=True).status_code, 401)
+
+    def test_scrape_token_cannot_open_consoles(self):
+        with patch.dict(os.environ, {"MONITORING_METRICS_TOKEN": "test-scrape-only-token"}):
+            for path in ("/metrics", "/metrics/"):
+                self.assertEqual(self.client.get(path, secure=True).status_code, 401)
+                self.assertEqual(self.client.get(path, secure=True, HTTP_AUTHORIZATION="Bearer wrong").status_code, 401)
+                response = self.client.get(path, secure=True, HTTP_AUTHORIZATION="Bearer test-scrape-only-token")
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("text/plain", response["Content-Type"])
+            self.assertEqual(
+                self.client.get(
+                    reverse("monitoring-access"), secure=True, HTTP_AUTHORIZATION="Bearer test-scrape-only-token"
+                ).status_code,
+                401,
+            )
+
+    def test_scrape_fails_closed_without_configuration(self):
+        with patch.dict(os.environ, {"MONITORING_METRICS_TOKEN": ""}):
+            self.assertEqual(self.client.get("/metrics", secure=True).status_code, 401)
+
     def test_anonymous_is_redirected_to_admin_login(self):
         response = self.client.get(self.url, secure=True)
         self.assertEqual(response.status_code, 302)

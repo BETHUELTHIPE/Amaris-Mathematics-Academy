@@ -240,7 +240,8 @@ class HealthAndMetricsTests(TestCase):
         self.assertFalse(dependencies.json()["dependencies"]["redis"])
 
     def test_prometheus_metrics_endpoint_is_available_to_private_scraper(self):
-        response = self.client.get("/metrics", secure=True)
+        with patch.dict("os.environ", {"MONITORING_METRICS_TOKEN": "synthetic-scrape-token"}):
+            response = self.client.get("/metrics", secure=True, HTTP_AUTHORIZATION="Bearer synthetic-scrape-token")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/plain", response.headers["Content-Type"])

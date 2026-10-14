@@ -1,0 +1,142 @@
+name: amaris-monitoring
+
+# Run this file independently. No Django, migrations, DB, worker or broker starts here.
+services:
+  config:
+    image: python:3.13-alpine
+    restart: "no"
+    environment:
+      MONITORING_DOMAIN: ${MONITORING_DOMAIN:?Set the monitoring DNS hostname}
+      DJANGO_ORIGIN: ${DJANGO_ORIGIN:?Set the existing Django HTTPS origin}
+    command: ["python", "/config/render_config.py"]
+    volumes:
+      - ./render_config.py:/config/render_config.py:ro
+      - ./gateway.conf.template:/config/gateway.conf.template:ro
+      - generated:/generated
+    secrets: [prometheus_api_token]
+    networks: [private]
+
+  tls:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      MONITORING_DOMAIN: ${MONITORING_DOMAIN:?Set the monitoring DNS hostname}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [private, egress]
+    depends_on: [gateway]
+
+  gateway:
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    volumes: ["generated:/etc/nginx/conf.d:ro"]
+    depends_on:
+      config:
+        condition: service_completed_successfully
+    networks: [private, egress]
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+      - --config.file=/generated/prometheus.json
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}
+      - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-5GB}
+      - --web.external-url=https://${MONITORING_DOMAIN}/monitoring/prometheus/
+      - --web.route-prefix=/monitoring/prometheus
+    depends_on:
+      config:
+        condition: service_completed_successfully
+    volumes:
+      - generated:/generated:ro
+      - prometheus_data:/prometheus
+    secrets: [django_metrics_token]
+    networks: [private, egress]
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    restart: unless-stopped
+    environment:
+      GF_SERVER_ROOT_URL: https://${MONITORING_DOMAIN}/monitoring/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_PROXY_ENABLED: "true"
+      GF_AUTH_PROXY_HEADER_NAME: X-WEBAUTH-USER
+      GF_AUTH_PROXY_AUTO_SIGN_UP: "true"
+      GF_AUTH_PROXY_ENABLE_LOGIN_TOKEN: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_AUTO_ASSIGN_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - ../grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+    secrets: [grafana_admin_password]
+    networks: [private]
+
+  flower:
+    image: mher/flower:2.0.1
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/config/flower-entrypoint.sh"]
+    command:
+      - --address=0.0.0.0
+      - --port=5555
+      - --url_prefix=monitoring/flower
+      - --persistent=True
+      - --db=/data/flower.db
+      - --max_tasks=1000
+    environment:
+      # Private collector only; external APIs pass the session gate and GET-only policy.
+      FLOWER_UNAUTHENTICATED_API: "true"
+    volumes:
+      - ./flower-entrypoint.sh:/config/flower-entrypoint.sh:ro
+      - flower_data:/data
+    secrets: [broker_url]
+    networks: [private, egress]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    restart: unless-stopped
+    privileged: true
+    command: ["--docker_only=true", "--housekeeping_interval=15s", "--url_base_prefix=/monitoring/cadvisor"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    devices: ["/dev/kmsg:/dev/kmsg"]
+    networks: [private]
+
+networks:
+  private:
+    internal: true
+  egress:
+
+secrets:
+  prometheus_api_token:
+    file: ./secrets/prometheus_api_token
+  django_metrics_token:
+    file: ./secrets/django_metrics_token
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password
+  broker_url:
+    file: ./secrets/broker_url
+
+volumes:
+  generated:
+  prometheus_data:
+  grafana_data:
+  flower_data:
+  caddy_data:
+  caddy_config:

@@ -66,6 +66,7 @@ urlpatterns = [
     path("errors/429/", error_views.error_429, name="error-429"),
     path("errors/500/", error_views.error_500, name="error-500"),
     path("admin/monitoring/", admin.site.admin_view(monitoring_views.monitoring_dashboard), name="admin-monitoring"),
+    path("admin/monitoring/access/", monitoring_views.monitoring_access, name="monitoring-access"),
     path("admin/", admin.site.urls),
     path("api/v1/", include("content.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
@@ -75,7 +76,8 @@ urlpatterns = [
     path("health/ready/", health_ready, name="health-ready"),
     path("health/version/", health_version, name="health-version"),
     path("health/dependencies/", health_dependencies, name="health-dependencies"),
-    path("", include("django_prometheus.urls")),
+    path("metrics", monitoring_views.monitoring_metrics, name="prometheus-django-metrics"),
+    path("metrics/", monitoring_views.monitoring_metrics),
 ]
 
 handler400 = error_views.error_400

@@ -1,103 +1,71 @@
-# Amaris Django Admin Monitoring
+# Django Admin monitoring
 
-## What has been wired
+The Jazzmin **Monitoring** entry opens `/admin/monitoring/` for active Django
+staff superusers. Students, tutors and ordinary staff cannot read it. Actual
+Prometheus samples supply status and throughput. Missing collectors display
+**Not configured**, **No data** or **Unreachable** rather than invented metrics.
 
-The Django Jazzmin **Monitoring** top-menu entry opens
-`/admin/monitoring/`. It is read-only, requires an **active staff
-superuser**, is not indexed, and sends `Cache-Control: no-store`.
+## Separate Docker server
 
-The page displays:
+Use [`../monitoring/self-hosted/README.md`](../monitoring/self-hosted/README.md)
+for the independent Prometheus, Grafana, Flower and cAdvisor stack. It uses
+persistent volumes and one HTTPS gateway. Each console request, including APIs
+and nested URLs, checks the current Django session through
+`/admin/monitoring/access/`. Invalid sessions cannot open consoles; disabling a
+user or revoking superuser access takes effect on the next request. Auth failure
+or an unavailable Django backend denies console access.
 
-- Last Prometheus `up` state for the `django`, `flower` and `cadvisor` scrape jobs.
-- Django HTTP requests per second and 5xx events per second over five-minute windows, if collected.
-- Explicit **not configured**, **no data**, **down** and **unreachable** states rather than fabricated zeros.
-- Optional HTTPS links to private/authenticated Grafana, Flower and cAdvisor browser consoles.
+This stack starts no application services and performs no migrations. Render
+services and paid resources are not provisioned by it. cAdvisor measures its
+Docker host, not Render's managed infrastructure. The software has no licence
+fee; the server, storage, power and internet still need to exist.
 
-The page does not scrape cAdvisor directly or send secret bearer tokens to the client.
+Console access requires signing into Django Admin on the monitoring domain.
+Cookies remain host-only; no parent-domain sharing is needed. Keep Django's
+CSRF middleware, secure cookies and HTTPS checks enabled. The setup guide lists
+the required trusted origin and private environment values.
 
-```text
-Django (/metrics) --------┐
-Flower (/metrics) --------┼----> Prometheus ---> Grafana dashboards
-cAdvisor (:8080/metrics) -┘             |
-                                      +---> Django Admin /admin/monitoring/
-```
+Grafana uses a gateway-injected Viewer identity after the superuser check. It
+has no anonymous access, public signup or bypass login. Flower, Prometheus and
+cAdvisor browser routes allow GET/HEAD only. Grafana POST requests require the
+exact monitoring origin; its Viewer role protects administrative changes. Django
+cookies and browser Authorization headers are removed before proxying consoles.
+Only TLS publishes host ports. Do not add `ports` to collectors or exporters.
 
-## Docker Compose (existing self-hosted stack)
+## Scrapes and Admin summaries
 
-`backend/docker-compose.yml` already defines Prometheus, Grafana, Flower,
-cAdvisor, alertmanager and exporters. The Prometheus scrape config is
-`backend/monitoring/prometheus/prometheus.yml` and Grafana provisioning is
-in `backend/monitoring/grafana/`.
+`/metrics` and `/metrics/` require `MONITORING_METRICS_TOKEN`. Missing or incorrect
+credentials return 401, including for logged-in users. Use a strong independent
+random token and copy it into the scraper's `django_metrics_token` secret file.
+The existing colocated `backend/docker-compose.yml` also mounts that secret in
+Prometheus. Its NGINX continues to block public `/metrics` and console routes.
 
-The `web` container is now configured to use `http://prometheus:9090`
-**internally**; no public reverse-proxy route is required. The existing
-NGINX configuration blocks `/metrics` and the monitoring consoles. Do not
-remove those protections. The cAdvisor service only operates on a **Docker
-host where /sys, the container runtime and Docker host mounts are available**.
+The separate host exposes only Prometheus's instant query API to Django, using
+a second token. `PROMETHEUS_API_URL=https://monitoring.example.com/monitoring-api`
+and `PROMETHEUS_API_BEARER_TOKEN` configure server-side queries. A scrape or query
+token never authorizes a browser console or acts as a Django login. Tokens,
+private targets and exception details do not appear in the Admin page.
 
-A Grafana dashboard is available within the Docker Compose network.
-To link the browser-facing Grafana/Flower services in Django Admin, expose
-them through an existing **HTTPS reverse proxy with proper authentication**,
-then configure their external URLs. Do not publish Grafana with anonymous
-login or expose the Flower API publicly.
+Browser links use HTTPS URLs without credentials:
 
-## Render production — actual state, not assumptions
-
-Amaris production Django runs on **Render's managed Python web service**.
-It already installs `django-prometheus` and has the `/metrics` exporter,
-but Render currently has **no deployed Prometheus, Flower, Grafana or
-cAdvisor service** in the connected workspace. Their values must remain
-**Not configured** until provisioned and verified.
-
-To connect:
-1. Deploy a private Prometheus service with durable storage, authenticated
-   monitoring access, and a scrape job for the running Django exporter.
-   Render's Prometheus deployment requires a paid instance and a persistent
-   disk. Do not provision it without budget approval.
-2. Set the Django service's `PROMETHEUS_API_URL` to the **internal**
-   Prometheus URL, e.g. `http://prometheus:9090` only if that hostname
-   actually exists on the same Render private network.
-3. If the private Prometheus HTTP API requires a bearer token, set
-   `PROMETHEUS_API_BEARER_TOKEN` as a **Render secret**. Never prefix the
-   token in the URL or commit it.
-4. Deploy Celery workers/broker and a private Flower service if needed.
-   Do not claim Flower is collecting worker events when workers are absent.
-5. Deploy a secured Grafana instance linked to Prometheus and set
-   `GRAFANA_DASHBOARD_URL` to its HTTPS, authenticated dashboard link.
-6. For cAdvisor, deploy it on a separate, explicitly managed Docker host
-   with restricted host/container access and connect that host's private
-   exporter to Prometheus. **Render's managed web service does not supply
-   a Docker host socket.** An exporter cannot be safely assumed running
-   within a Render Python web service. If no such host is available, use
-   Render native CPU, memory and latency metrics separately and keep
-   `cadvisor` unconfigured.
-
-Optional link environment variables, all without inline credentials:
-
-| Name | Purpose |
+| Environment variable | Destination |
 |---|---|
-| `PROMETHEUS_API_URL` | Server-to-server base URL, private when possible |
-| `PROMETHEUS_API_BEARER_TOKEN` | Optional server-side auth token (secret) |
-| `GRAFANA_DASHBOARD_URL` | HTTPS, auth-protected browser link |
-| `FLOWER_DASHBOARD_URL` | HTTPS, auth-protected browser link |
-| `CADVISOR_DASHBOARD_URL` | HTTPS, auth-protected browser link on a Docker host |
+| `PROMETHEUS_DASHBOARD_URL` | `/monitoring/prometheus/` on the monitoring domain |
+| `GRAFANA_DASHBOARD_URL` | `/monitoring/grafana/` on the monitoring domain |
+| `FLOWER_DASHBOARD_URL` | `/monitoring/flower/` on the monitoring domain |
+| `CADVISOR_DASHBOARD_URL` | `/monitoring/cadvisor/` on the monitoring domain |
 
-## Acceptance checklist
+## Release checks
 
-- Admin monitoring page redirects anonymous users to Django Admin login.
-- Regular staff and tutors receive HTTP 403; Django superusers receive HTTP 200.
-- No credentials, internal Prometheus origin or server errors appear in the HTML.
-- When no collector is configured, dashboard says **Not configured**.
-- When collector is down, dashboard says **Unreachable** without slowing the
-  request more than a small bounded timeout.
-- With Prometheus running, the `django`, `flower` and `cadvisor` job
-  states match its live `up` samples, and requests/5xx rates use actual
-  collected values.
-- Grafana loads its provisioned Amaris dashboard with auth, non-anonymous.
-- Verify both normal browser and narrow/mobile admin views; do not embed
-  Grafana in an iframe or disable `X_FRAME_OPTIONS` to make that work.
-- Do not promote the release until normal Django, security, CI and production
-  health gates have passed, and the production merge is approved.
+Run Django authorization and health tests plus
+`python monitoring/self-hosted/test_gateway.py` with NGINX available. The gateway
+checks exercise actual NGINX requests against synthetic auth and console
+upstreams. The separate CI workflow also validates Compose and Prometheus
+configuration. Run live acceptance on the chosen Docker host before claiming
+that telemetry is connected: all scrape targets up, Grafana datasource working,
+every console blocked for anonymous/student/tutor/staff sessions, and access
+revocation effective. Verify production health after the reviewed Django release.
 
-**Data minimization:** metrics must not include emails, student IDs, PayFast
-secrets, bearer tokens, private Zoom URLs or raw request bodies.
+Metrics must not include student identifiers, private Zoom links, payment secrets
+or request bodies. Flower can contain sensitive task arguments/results: restrict
+its retention and never pass private student data in task payloads unnecessarily.

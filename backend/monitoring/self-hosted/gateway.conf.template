@@ -1,0 +1,130 @@
+# Only Caddy publishes host ports; this gateway and all consoles are private.
+map_hash_bucket_size 256;
+map $http_authorization $monitoring_api_allowed {
+    default 0;
+    "Bearer @@API_TOKEN@@" 1;
+}
+map "$request_method:$http_origin" $unsafe_console_request {
+    default 1;
+    ~^(GET|HEAD): 0;
+    "POST:https://@@MONITORING_DOMAIN@@" 0;
+}
+limit_req_zone $binary_remote_addr zone=monitoring_login:10m rate=10r/m;
+server {
+    listen 8080;
+    server_name @@MONITORING_DOMAIN@@;
+    absolute_redirect off;
+    resolver 127.0.0.11 ipv6=off valid=30s;
+    client_max_body_size 1m;
+    add_header Cache-Control "private, no-store" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy no-referrer always;
+    proxy_hide_header Cache-Control;
+    proxy_cache off;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 30s;
+
+    location = /_monitoring_auth {
+        internal;
+        set $django @@DJANGO_ORIGIN@@;
+        proxy_pass $django/admin/monitoring/access/;
+        proxy_ssl_server_name on;
+        proxy_ssl_name @@DJANGO_HOST@@;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_pass_request_body off;
+        proxy_method GET;
+        proxy_set_header Content-Length "";
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header Authorization "";
+        proxy_set_header Host @@DJANGO_HOST@@;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+    location @login {
+        return 302 /admin/login/?next=/admin/monitoring/;
+    }
+    # Login and Admin monitoring use host-only cookies on this monitoring domain.
+    # Django retains its own CSRF and login checks. Other application routes are closed.
+    location ~ ^/admin/(login/|logout/|monitoring/)$ {
+        limit_req zone=monitoring_login burst=20 nodelay;
+        set $django @@DJANGO_ORIGIN@@;
+        proxy_pass $django$request_uri;
+        proxy_ssl_server_name on;
+        proxy_ssl_name @@DJANGO_HOST@@;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_set_header Host @@DJANGO_HOST@@;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Authorization "";
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_redirect @@DJANGO_ORIGIN@@/ https://@@MONITORING_DOMAIN@@/;
+    }
+    location /static/ {
+        set $django @@DJANGO_ORIGIN@@;
+        proxy_pass $django$request_uri;
+        proxy_ssl_server_name on;
+        proxy_ssl_name @@DJANGO_HOST@@;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_set_header Host @@DJANGO_HOST@@;
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+    }
+    # A separate scrape/query credential cannot open a console or authenticate as a user.
+    location = /monitoring-api/api/v1/query {
+        if ($monitoring_api_allowed = 0) { return 401; }
+        limit_except GET { deny all; }
+        set $prometheus prometheus:9090;
+        proxy_pass http://$prometheus/monitoring/prometheus/api/v1/query$is_args$args;
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+    }
+    # NGINX canonicalizes the slashless URL with an empty 301 response.
+    # All console content, including the destination and nested APIs, is gated.
+    location /monitoring/flower/ {
+        auth_request /_monitoring_auth;
+        error_page 401 = @login;
+        limit_except GET { deny all; }
+        set $console flower:5555;
+        proxy_pass http://$console$request_uri;
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_hide_header Set-Cookie;
+    }
+    location /monitoring/prometheus/ {
+        auth_request /_monitoring_auth;
+        error_page 401 = @login;
+        limit_except GET { deny all; }
+        set $console prometheus:9090;
+        proxy_pass http://$console$request_uri;
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_hide_header Set-Cookie;
+    }
+    location /monitoring/cadvisor/ {
+        auth_request /_monitoring_auth;
+        error_page 401 = @login;
+        limit_except GET { deny all; }
+        set $console cadvisor:8080;
+        proxy_pass http://$console$request_uri;
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_hide_header Set-Cookie;
+    }
+    location /monitoring/grafana/ {
+        auth_request /_monitoring_auth;
+        error_page 401 = @login;
+        if ($unsafe_console_request) { return 403; }
+        set $console grafana:3000;
+        proxy_pass http://$console$request_uri;
+        proxy_set_header Host @@MONITORING_DOMAIN@@;
+        proxy_set_header X-Forwarded-Proto https;
+        # Overwrite any spoofed identity. Grafana creates a Viewer, not an admin.
+        proxy_set_header X-WEBAUTH-USER django-monitoring-viewer;
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_hide_header Set-Cookie;
+    }
+    location / { return 404; }
+}

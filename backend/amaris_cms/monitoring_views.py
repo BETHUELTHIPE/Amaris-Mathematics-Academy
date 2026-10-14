@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
@@ -17,11 +18,40 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
+from django.http import HttpResponse
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 
 METRIC_JOBS = ("django", "flower", "cadvisor")
 MAX_RESPONSE_BYTES = 128 * 1024
+
+
+def _is_monitoring_superuser(user) -> bool:
+    return bool(user.is_authenticated and user.is_active and user.is_staff and user.is_superuser)
+
+
+@never_cache
+def monitoring_access(request):
+    """Fail closed for NGINX auth_request, including revoked/expired sessions."""
+    status = 204 if _is_monitoring_superuser(request.user) else (403 if request.user.is_authenticated else 401)
+    response = HttpResponse(status=status)
+    response["Cache-Control"] = "private, no-store"
+    response["Vary"] = "Cookie"
+    return response
+
+
+@never_cache
+def monitoring_metrics(request):
+    """A dedicated scrape credential never grants access to a browser console."""
+    token = os.getenv("MONITORING_METRICS_TOKEN", "").strip()
+    supplied = request.headers.get("Authorization", "")
+    if not token or not secrets.compare_digest(supplied.encode(), f"Bearer {token}".encode()):
+        return HttpResponse(status=401, headers={"WWW-Authenticate": "Bearer", "Cache-Control": "private, no-store"})
+    from django_prometheus.exports import ExportToDjangoView
+
+    response = ExportToDjangoView(request)
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 def _safe_url(value: str, *, allow_http: bool = True) -> str:
@@ -127,14 +157,15 @@ def _snapshot():
 @never_cache
 def monitoring_dashboard(request):
     """Must be wrapped with admin.site.admin_view in the Django URLconf."""
-    if not request.user.is_authenticated or not request.user.is_staff or not request.user.is_superuser:
+    if not _is_monitoring_superuser(request.user):
         raise PermissionDenied("Superuser monitoring access is required.")
 
     snapshot = _snapshot()
     grafana = _safe_url(os.getenv("GRAFANA_DASHBOARD_URL", "").strip(), allow_http=False)
     flower = _safe_url(os.getenv("FLOWER_DASHBOARD_URL", "").strip(), allow_http=False)
     cadvisor = _safe_url(os.getenv("CADVISOR_DASHBOARD_URL", "").strip(), allow_http=False)
-    links = {"grafana": grafana, "flower": flower, "cadvisor": cadvisor}
+    prometheus = _safe_url(os.getenv("PROMETHEUS_DASHBOARD_URL", "").strip(), allow_http=False)
+    links = {"grafana": grafana, "flower": flower, "cadvisor": cadvisor, "prometheus": prometheus}
     context = {
         **admin.site.each_context(request),
         "title": "Monitoring and reliability",
