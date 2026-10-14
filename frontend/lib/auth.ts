@@ -55,7 +55,7 @@ export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null
   const profileComplete =
     !profileError &&
     Boolean(profile) &&
-    isCompleteProfile(profile);
+    isStudentProfileComplete(profile);
 
   return mapClaims(
     data.claims,
@@ -141,7 +141,7 @@ function mapClaims(
   };
 }
 
-function isCompleteProfile(profile: {
+export function isStudentProfileComplete(profile: {
   first_name: string;
   last_name: string;
   mobile: string;
