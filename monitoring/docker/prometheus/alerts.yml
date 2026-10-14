@@ -1,0 +1,98 @@
+groups:
+  - name: amaris-monitoring
+    rules:
+      - alert: StudentFrontendDown
+        expr: probe_success{job="blackbox-http",service="student-frontend"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Student frontend is unreachable"
+
+      - alert: ProductionBackendDown
+        expr: probe_success{job="blackbox-http",service="production-backend"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Production backend readiness endpoint is unreachable"
+
+      - alert: StudentFrontendSlow
+        expr: probe_duration_seconds{job="blackbox-http",service="student-frontend"} > 2.5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Student frontend probe is slower than 2.5 seconds"
+
+      - alert: ProductionBackendSlow
+        expr: probe_duration_seconds{job="blackbox-http",service="production-backend"} > 2
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Production backend probe is slower than 2 seconds"
+
+      - alert: TLSCertificateExpiresSoon
+        expr: (probe_ssl_earliest_cert_expiry{job="blackbox-http"} - time()) < 1209600
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "A monitored TLS certificate expires within 14 days"
+
+      - alert: DjangoMetricsUnavailable
+        expr: up{job="amaris-django"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Django Prometheus metrics endpoint is unavailable"
+
+      - alert: FlowerUnavailable
+        expr: up{job="flower"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Flower metrics endpoint is unavailable"
+
+      - alert: CAdvisorUnavailable
+        expr: up{job="cadvisor"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "cAdvisor on the monitoring host is unavailable"
+
+      - alert: BlackboxExporterUnavailable
+        expr: up{job="blackbox-exporter"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Blackbox exporter is unavailable"
+
+      - alert: MonitoringContainerHighCPU
+        expr: sum by (name) (rate(container_cpu_usage_seconds_total{job="cadvisor",image!=""}[5m])) > 0.9
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "A monitoring-host container is using more than 0.9 CPU cores"
+
+      - alert: MonitoringContainerHighMemory
+        expr: container_memory_working_set_bytes{job="cadvisor",image!=""} > 1073741824
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "A monitoring-host container is using more than 1 GiB memory"
+
+      - alert: MonitoringContainerOOM
+        expr: increase(container_oom_events_total{job="cadvisor"}[10m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "A monitoring-host container experienced an OOM event"
+
+      - alert: PrometheusRuleEvaluationFailures
+        expr: increase(prometheus_rule_evaluation_failures_total[5m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Prometheus rule evaluations are failing"
+
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Prometheus failed to load its configuration"
