@@ -1,0 +1,56 @@
+name: Validate isolated Amaris monitoring stack
+on:
+  push:
+    branches:
+      - ops/amaris-monitoring-20261014
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install YAML validator
+        run: python -m pip install PyYAML==6.0.3
+      - name: Validate monitoring Blueprint and Grafana dashboards
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import yaml
+          root = Path("monitoring")
+          data = yaml.safe_load((root/"render.yaml").read_text())
+          services = data["services"]
+          assert len(services) == 3, "Only three monitoring resources permitted"
+          by_name = {s["name"]: s for s in services}
+          assert set(by_name) == {"amaris-monitoring-prometheus", "amaris-monitoring-flower", "amaris-monitoring-grafana"}
+          assert all(s["region"] == "frankfurt" and s["branch"] == "ops/amaris-monitoring-20261014" for s in services)
+          assert all(s["plan"] != "free" for s in services)
+          assert by_name["amaris-monitoring-prometheus"]["type"] == "pserv"
+          assert by_name["amaris-monitoring-flower"]["type"] == "pserv"
+          assert by_name["amaris-monitoring-grafana"]["type"] == "web"
+          assert by_name["amaris-monitoring-prometheus"]["disk"]["mountPath"] == "/prometheus-data"
+          assert by_name["amaris-monitoring-grafana"]["disk"]["mountPath"] == "/var/lib/grafana"
+          assert not any(s["name"] in {"amaris-production-web", "amaris-mathematics-academy-live-students"} for s in services)
+          ds = yaml.safe_load((root/"grafana/provisioning/datasources/prometheus.yml").read_text())
+          assert ds["datasources"][0]["editable"] is False
+          assert ds["datasources"][0]["url"] == "http://${PROMETHEUS_HOSTPORT}"
+          dashboard = json.loads((root/"grafana/dashboards/amaris-production.json").read_text())
+          assert dashboard["uid"] == "amaris-production"
+          assert all(p.get("fieldConfig",{}).get("defaults",{}).get("noValue","N/A") == "N/A" for p in dashboard["panels"])
+          print("PASS: isolated monitoring Blueprint, private targets, persistent disks, dashboards")
+          PY
+      - name: Validate self-host-only cAdvisor file
+        run: docker compose -f monitoring/cadvisor/docker-compose.yml config --quiet
+      - name: Build Prometheus image
+        run: docker build --file monitoring/prometheus/Dockerfile --tag amaris/prometheus:ci .
+      - name: Prometheus configuration verification
+        run: |
+          sed -e 's|__DJANGO_TARGET__|example.internal:10000|g' -e 's|__FLOWER_TARGET__|flower.internal:10000|g' monitoring/prometheus/prometheus.yml.tmpl > /tmp/amaris-prometheus.yml
+          docker run --rm --entrypoint=/bin/promtool --volume /tmp/amaris-prometheus.yml:/tmp/amaris-prometheus.yml:ro amaris/prometheus:ci check config /tmp/amaris-prometheus.yml
+      - name: Build Grafana image
+        run: docker build --file monitoring/grafana/Dockerfile --tag amaris/grafana:ci .
+      - name: Build Flower image
+        run: docker build --file monitoring/flower/Dockerfile --tag amaris/flower:ci .
