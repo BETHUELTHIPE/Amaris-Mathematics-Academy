@@ -270,7 +270,7 @@ export async function googleAuthAction(formData: FormData) {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
+      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}&flow=${flow}`,
       queryParams: {
         prompt: "select_account",
       },
@@ -330,16 +330,20 @@ export async function completeGoogleProfileAction(formData: FormData) {
   const termsAcceptedAt = new Date().toISOString();
   const { error: profileError } = await supabase
     .from("student_profiles")
-    .update({
-      first_name: values.firstName,
-      last_name: values.lastName,
-      mobile: values.mobile,
-      province: values.province,
-      institution: values.institution,
-      academic_level: values.academicLevel,
-      terms_accepted_at: termsAcceptedAt,
-    })
-    .eq("id", user.id);
+    .upsert(
+      {
+        id: user.id,
+        email: user.email.toLowerCase(),
+        first_name: values.firstName,
+        last_name: values.lastName,
+        mobile: values.mobile,
+        province: values.province,
+        institution: values.institution,
+        academic_level: values.academicLevel,
+        terms_accepted_at: termsAcceptedAt,
+      },
+      { onConflict: "id" },
+    );
 
   if (profileError) {
     console.error("student_google_profile_update_failed", {
