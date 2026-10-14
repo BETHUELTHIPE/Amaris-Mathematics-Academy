@@ -99,12 +99,18 @@ def check_offline_recovery(page: Page) -> None:
     require(submit_button.is_visible(), "Offline recovery submit button is not visible")
     require(submit_button.is_enabled(), "Offline recovery submit button is disabled before disconnect")
 
+    # Focus while still online. Firefox mobile emulation can stall Playwright
+    # actionability checks after the context is disconnected, but retaining
+    # focus across the offline transition still lets native keyboard activation
+    # exercise the real submit handler without bypassing application logic.
+    submit_button.focus()
+    require(
+        submit_button.evaluate("button => document.activeElement === button"),
+        "Offline recovery submit button did not receive focus before disconnect",
+    )
+
     page.context.set_offline(True)
     try:
-        # Firefox mobile emulation can hold pointer-actionability checks while
-        # the browser is offline. Native keyboard activation still exercises
-        # the real form submit handler without bypassing the application logic.
-        submit_button.focus()
         page.keyboard.press("Enter")
         notice = page.locator("#connection-recovery")
         notice.wait_for(state="visible", timeout=5_000)
