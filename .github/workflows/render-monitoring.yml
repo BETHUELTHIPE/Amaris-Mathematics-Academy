@@ -1,0 +1,78 @@
+name: Render Monitoring Validation
+
+on:
+  pull_request:
+    paths:
+      - "monitoring/render/**"
+      - "backend/amaris_cms/admin_config.py"
+      - "backend/amaris_cms/monitoring_admin.py"
+      - "backend/templates/admin/amaris_*"
+      - "backend/tests/test_monitoring_admin.py"
+      - "backend/amaris_cms/settings.py"
+      - ".github/workflows/render-monitoring.yml"
+  push:
+    branches:
+      - "feature/render-native-monitoring-20261014"
+    paths:
+      - "monitoring/render/**"
+      - "backend/amaris_cms/admin_config.py"
+      - "backend/amaris_cms/monitoring_admin.py"
+      - "backend/templates/admin/amaris_*"
+      - "backend/tests/test_monitoring_admin.py"
+      - "backend/amaris_cms/settings.py"
+      - ".github/workflows/render-monitoring.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Blueprint YAML
+        run: ruby -e 'require "yaml"; YAML.load_file("monitoring/render/render.yaml")'
+
+      - name: Validate exporter Python
+        run: python -m py_compile monitoring/render/render-metrics-exporter/exporter.py
+
+      - name: Validate Grafana dashboard JSON
+        run: python -m json.tool monitoring/render/grafana/dashboards/amaris-render.json >/dev/null
+
+      - name: Validate Prometheus configuration
+        run: |
+          sed \
+            -e 's|__DJANGO_TARGET__|django:10000|g' \
+            -e 's|__FLOWER_TARGET__|flower:10000|g' \
+            -e 's|__RENDER_METRICS_TARGET__|render-metrics:10000|g' \
+            monitoring/render/prometheus/prometheus.yml.tmpl > /tmp/prometheus.yml
+          docker run --rm \
+            --entrypoint /bin/promtool \
+            -v /tmp/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+            -v "$PWD/monitoring/render/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro" \
+            prom/prometheus:v3.15.0 \
+            check config /etc/prometheus/prometheus.yml
+
+      - name: Validate Prometheus alert rules
+        run: |
+          docker run --rm \
+            --entrypoint /bin/promtool \
+            -v "$PWD/monitoring/render/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro" \
+            prom/prometheus:v3.15.0 \
+            check rules /etc/prometheus/alerts.yml
+
+      - name: Build monitoring images
+        run: |
+          docker build -f monitoring/render/render-metrics-exporter/Dockerfile -t amaris/render-metrics:test .
+          docker build -f monitoring/render/prometheus/Dockerfile -t amaris/prometheus:test .
+          docker build -f monitoring/render/grafana/Dockerfile -t amaris/grafana:test .
+          docker build -f monitoring/render/flower/Dockerfile -t amaris/flower:test .
+
+      - name: Run monitoring admin tests
+        run: |
+          python -m pip install -r backend/requirements.txt
+          cd backend
+          python manage.py test tests.test_monitoring_admin
