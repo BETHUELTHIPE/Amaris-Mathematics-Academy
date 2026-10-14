@@ -1,0 +1,26 @@
+name: Monitoring Format Diagnostic
+
+on:
+  push:
+    branches:
+      - feature/render-native-monitoring-20261014
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install black==26.5.1
+      - name: Show exact Black output
+        run: |
+          black backend/amaris_cms/monitoring_admin.py
+          echo '===FORMATTED_FILE_START==='
+          cat backend/amaris_cms/monitoring_admin.py
+          echo '===FORMATTED_FILE_END==='
