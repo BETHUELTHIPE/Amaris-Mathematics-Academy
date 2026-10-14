@@ -1,0 +1,13 @@
+{% extends "admin/index.html" %}
+{% block content %}
+  {% if request.user.is_active and request.user.is_staff and request.user.is_superuser %}
+  <div class="card mb-3">
+    <div class="card-header"><strong>Private operations monitoring</strong></div>
+    <div class="card-body">
+      <p>Prometheus, Grafana and Flower are hosted as private Render services. Render-native CPU, memory and HTTP metrics replace cAdvisor.</p>
+      <a class="btn btn-primary" href="{% url 'admin:amaris_monitoring_home' %}">Open monitoring dashboard</a>
+    </div>
+  </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
