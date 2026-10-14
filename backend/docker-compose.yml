@@ -94,14 +94,18 @@ services:
     restart: unless-stopped
     init: true
     env_file: .env
-    environment: {SERVICE_ROLE: web}
+    environment:
+      SERVICE_ROLE: web
+      MONITORING_CONSOLE_ENABLED: "true"
+      MONITORING_METRICS_TOKEN_FILE: /run/secrets/metrics_token
+    secrets: [flower_basic_auth, metrics_token]
     depends_on:
       migrate:
         condition: service_completed_successfully
     volumes:
       - static_data:/app/staticfiles
       - media_data:/app/media
-    networks: [backend_network]
+    networks: [backend_network, monitoring_network]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready/"]
       interval: 20s
@@ -283,7 +287,7 @@ services:
       /bin/sh -c 'celery -A amaris_cms flower
       --address=0.0.0.0
       --port=$${FLOWER_PORT:-5555}
-      --url_prefix=monitoring/flower
+      --url_prefix=admin/monitoring/flower
       --basic_auth=$$(cat /run/secrets/flower_basic_auth)
       --persistent=True
       --db=/data/flower.db'
@@ -327,19 +331,21 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-30d}
+      - --web.external-url=${MONITORING_PUBLIC_BASE_URL:-http://localhost:8080}/admin/monitoring/prometheus/
+      - --web.route-prefix=/admin/monitoring/prometheus/
       - --web.enable-lifecycle
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - ./monitoring/prometheus/entrypoint.sh:/etc/prometheus/amaris-entrypoint.sh:ro
       - prometheus_data:/prometheus
-    secrets: [flower_basic_auth]
+    secrets: [flower_basic_auth, metrics_token]
     depends_on:
       alertmanager:
         condition: service_healthy
     networks: [backend_network, monitoring_network]
     healthcheck:
-      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9090/-/healthy"]
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9090/admin/monitoring/prometheus/-/healthy"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -351,11 +357,15 @@ services:
       GRAFANA_PORT: ${GRAFANA_PORT:-3000}
       GRAFANA_URL: ${GRAFANA_URL:-http://grafana:3000}
       GF_SERVER_HTTP_PORT: ${GRAFANA_PORT:-3000}
-      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://grafana:3000/}
-      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      GF_SERVER_ROOT_URL: ${MONITORING_PUBLIC_BASE_URL:-http://localhost:8080}/admin/monitoring/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
-      GF_AUTH_ANONYMOUS_ENABLED: ${GF_AUTH_ANONYMOUS_ENABLED:-false}
+      # Safe only because Grafana is restricted to Docker's internal network.
+      # Django Admin performs the ONLY browser-facing authentication check.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
       GF_SECURITY_COOKIE_SECURE: ${GF_SECURITY_COOKIE_SECURE:-false}
       GF_SECURITY_COOKIE_SAMESITE: strict
       GF_USERS_ALLOW_SIGN_UP: ${GF_USERS_ALLOW_SIGN_UP:-false}
@@ -462,6 +472,8 @@ networks:
 secrets:
   flower_basic_auth:
     environment: FLOWER_BASIC_AUTH
+  metrics_token:
+    environment: MONITORING_METRICS_TOKEN
   grafana_admin_password:
     environment: GF_SECURITY_ADMIN_PASSWORD
   restic_password:
