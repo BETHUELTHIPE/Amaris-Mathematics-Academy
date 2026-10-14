@@ -1,0 +1,117 @@
+# Render-only monitoring stack for Amaris.
+# Apply this Blueprint only after this branch is merged to main.
+services:
+  - type: pserv
+    name: amaris-monitoring-render-metrics
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+    branch: main
+    dockerContext: .
+    dockerfilePath: monitoring/render/render-metrics-exporter/Dockerfile
+    autoDeployTrigger: checksPass
+    healthCheckPath: /metrics
+    envVars:
+      - key: RENDER_API_KEY
+        sync: false
+      - key: RENDER_RESOURCES
+        value: srv-dapn6b3tqb8s73d3r7n0=amaris-production-web,srv-damn6d2d0e5s73d02j5g=amaris-mathematics-academy-live-students,red-dapaglkja7ms73ajrkq0=amaris-production-broker,red-dapagn4ja7ms73ajrpi0=amaris-production-cache
+      - key: RENDER_SERVICE_IDS
+        value: srv-dapn6b3tqb8s73d3r7n0,srv-damn6d2d0e5s73d02j5g
+      - key: SCRAPE_INTERVAL_SECONDS
+        value: "60"
+
+  - type: pserv
+    name: amaris-monitoring-flower
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+    branch: main
+    dockerContext: .
+    dockerfilePath: monitoring/render/flower/Dockerfile
+    autoDeployTrigger: checksPass
+    healthCheckPath: /admin/monitoring/flower/
+    envVars:
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: amaris-production-broker
+          property: connectionString
+
+  - type: pserv
+    name: amaris-monitoring-prometheus
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+    branch: main
+    dockerContext: .
+    dockerfilePath: monitoring/render/prometheus/Dockerfile
+    autoDeployTrigger: checksPass
+    healthCheckPath: /admin/monitoring/prometheus/-/ready
+    disk:
+      name: amaris-prometheus-data
+      mountPath: /prometheus-data
+      sizeGB: 1
+    envVars:
+      - key: AMARIS_DJANGO_TARGET
+        fromService:
+          type: web
+          name: amaris-production-web
+          property: hostport
+      - key: AMARIS_FLOWER_TARGET
+        fromService:
+          type: pserv
+          name: amaris-monitoring-flower
+          property: hostport
+      - key: RENDER_METRICS_TARGET
+        fromService:
+          type: pserv
+          name: amaris-monitoring-render-metrics
+          property: hostport
+      - key: MONITORING_PUBLIC_URL
+        value: https://amaris-production-web.onrender.com/admin/monitoring/prometheus/
+
+  - type: pserv
+    name: amaris-monitoring-grafana
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+    branch: main
+    dockerContext: .
+    dockerfilePath: monitoring/render/grafana/Dockerfile
+    autoDeployTrigger: checksPass
+    healthCheckPath: /admin/monitoring/grafana/api/health
+    disk:
+      name: amaris-grafana-data
+      mountPath: /var/lib/grafana
+      sizeGB: 1
+    envVars:
+      - key: PROMETHEUS_HOSTPORT
+        fromService:
+          type: pserv
+          name: amaris-monitoring-prometheus
+          property: hostport
+      - key: GF_SERVER_HTTP_PORT
+        value: "10000"
+      - key: GF_SERVER_ROOT_URL
+        value: https://amaris-production-web.onrender.com/admin/monitoring/grafana/
+      - key: GF_SERVER_SERVE_FROM_SUB_PATH
+        value: "true"
+      - key: GF_SECURITY_ADMIN_USER
+        value: admin
+      - key: GF_SECURITY_ADMIN_PASSWORD
+        generateValue: true
+      - key: GF_AUTH_ANONYMOUS_ENABLED
+        value: "false"
+      - key: GF_USERS_ALLOW_SIGN_UP
+        value: "false"
+      - key: GF_USERS_DEFAULT_THEME
+        value: dark
+      - key: GF_ANALYTICS_REPORTING_ENABLED
+        value: "false"
+      - key: GF_ANALYTICS_CHECK_FOR_UPDATES
+        value: "false"
