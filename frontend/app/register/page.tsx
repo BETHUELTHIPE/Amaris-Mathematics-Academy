@@ -20,7 +20,9 @@ const levels = ["Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12", "TVET 
 
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const student = await getStudentIdentity();
-  if (student?.emailVerified) redirect("/dashboard");
+  if (student?.emailVerified) {
+    redirect(student.profileComplete ? "/dashboard" : "/complete-profile");
+  }
   const { error } = await searchParams;
 
   return <main className="min-h-screen bg-[#f5f7fb]">
@@ -38,7 +40,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <div className="rounded-[2rem] border border-[#dce4ef] bg-white p-6 shadow-[0_25px_75px_rgba(7,21,45,.1)] sm:p-9">
         <div className="flex items-center gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LockKeyhole className="size-6" /></span><div><h2 className="text-2xl font-semibold tracking-[-.03em]">Student details</h2><p className="mt-1 text-sm text-[#60708a]">All fields below are required for email registration.</p></div></div>
         {error && <Alert variant="destructive" className="mt-6"><AlertDescription>{error}</AlertDescription></Alert>}
-        <div className="mt-7"><GoogleAuthButton label="Register with Google" /></div>
+        <div className="mt-7"><GoogleAuthButton label="Register with Google" flow="register" /></div>
         <div className="my-7 flex items-center gap-4 text-xs font-bold uppercase tracking-[.12em] text-[#60708a]"><span className="h-px flex-1 bg-[#dce4ef]" /><span>or register with email</span><span className="h-px flex-1 bg-[#dce4ef]" /></div>
         <form action={registerAction} className="grid gap-5">
           <SafeFormDraft draftKey="student-registration-v1" allowedFields={["firstName", "lastName", "email", "mobile", "province", "academicLevel", "institution"]} />
