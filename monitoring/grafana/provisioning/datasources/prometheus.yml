@@ -1,0 +1,11 @@
+apiVersion: 1
+datasources:
+  - name: Amaris Prometheus
+    uid: amaris-prometheus
+    type: prometheus
+    access: proxy
+    url: http://${PROMETHEUS_HOSTPORT}
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 30s
