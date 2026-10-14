@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { safeRelativePath } from "@/lib/auth";
+import { isStudentProfileComplete, safeRelativePath } from "@/lib/auth";
 import { getSiteUrl } from "@/lib/supabase/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -29,6 +29,23 @@ export async function GET(request: NextRequest) {
 
   if (userError || !user?.email_confirmed_at) {
     return redirectToLogin("Google registration could not be verified. Please try again.");
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("student_profiles")
+    .select("first_name,last_name,mobile,province,institution,academic_level")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError || !profile || !isStudentProfileComplete(profile)) {
+    if (profileError) {
+      console.error("student_google_profile_check_failed", {
+        code: typeof profileError.code === "string" ? profileError.code : "profile_check_failed",
+      });
+    }
+    const completionUrl = new URL("/complete-profile", getSiteUrl());
+    completionUrl.searchParams.set("next", next);
+    return NextResponse.redirect(completionUrl);
   }
 
   return NextResponse.redirect(new URL(next, getSiteUrl()));
