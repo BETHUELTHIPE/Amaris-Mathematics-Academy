@@ -239,9 +239,17 @@ class HealthAndMetricsTests(TestCase):
         self.assertTrue(dependencies.json()["dependencies"]["postgresql"])
         self.assertFalse(dependencies.json()["dependencies"]["redis"])
 
+    @override_settings(MONITORING_METRICS_TOKEN_FILE="")
+    @patch.dict("os.environ", {"MONITORING_METRICS_TOKEN": "ci-monitoring-token"})
     def test_prometheus_metrics_endpoint_is_available_to_private_scraper(self):
-        response = self.client.get("/metrics", secure=True)
+        denied = self.client.get("/metrics", secure=True)
+        self.assertEqual(denied.status_code, 404)
 
+        response = self.client.get(
+            "/metrics",
+            secure=True,
+            HTTP_AUTHORIZATION="Bearer ci-monitoring-token",
+        )
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/plain", response.headers["Content-Type"])
 

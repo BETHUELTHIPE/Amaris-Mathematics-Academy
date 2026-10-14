@@ -29,7 +29,18 @@ The public content API is available under `/api/v1/`, with interactive documenta
 
 Load and resilience tests are in [`load_tests/`](load_tests/README.md). The suite covers public browsing, authentication entry points, protected student activity, progress, checkout creation and payment polling, with normal, peak, spike and controlled dependency-failure profiles. It blocks the live Amaris and PayFast hosts by default.
 
-The monitoring interfaces are available through the same NGINX entrypoint:
+The monitoring interfaces are accessible **only from the Django Admin superuser gateway** on the self-hosted Docker deployment:
+
+- `/admin/monitoring/` (Django superuser-only dashboard)
+- `/admin/monitoring/grafana/` (read-only Grafana)
+- `/admin/monitoring/prometheus/` (read-only Prometheus)
+- `/admin/monitoring/flower/` (read-only Flower)
+- cAdvisor metrics are viewed through Grafana/Prometheus; no public port.
+
+See [monitoring/SELF_HOSTED_ADMIN.md](monitoring/SELF_HOSTED_ADMIN.md) for deployment and security. The existing Render deployment is **not** connected to this self-hosted Docker network; on Render the monitoring page remains unconfigured.
+
+The legacy entrypoint routes below are blocked by Nginx, not public links:
+
 
 - Flower: `http://localhost:8080/monitoring/flower/`
 - Grafana: `http://localhost:8080/monitoring/grafana/`

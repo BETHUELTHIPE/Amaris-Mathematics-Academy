@@ -2,11 +2,18 @@ groups:
   - name: amaris-platform-availability
     rules:
       - alert: AmarisPublicSiteUnavailable
-        expr: probe_success{job="blackbox_http", instance=~"https://.*chatgpt.site/"} == 0
+        expr: probe_success{job="blackbox_http", instance="https://amaris-mathematics-academy-live-students.onrender.com/"} == 0
         for: 2m
         labels: {severity: critical}
         annotations:
           summary: The public Amaris student website is unavailable
+
+      - alert: AmarisRenderProductionBackendUnavailable
+        expr: probe_success{job="blackbox_http", instance="https://amaris-production-web.onrender.com/health/ready/"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: The Render production Django backend readiness endpoint is unavailable
 
       - alert: AmarisBackendNotReady
         expr: probe_success{job="blackbox_http", instance="http://nginx/health/ready/"} == 0

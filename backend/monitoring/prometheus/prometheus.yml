@@ -12,16 +12,20 @@ rule_files:
 
 scrape_configs:
   - job_name: prometheus
+    metrics_path: /admin/monitoring/prometheus/metrics
     static_configs:
       - targets: ["localhost:9090"]
 
   - job_name: django
     metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/metrics_token
     static_configs:
       - targets: ["web:8000"]
 
   - job_name: flower
-    metrics_path: /monitoring/flower/metrics
+    metrics_path: /admin/monitoring/flower/metrics
     basic_auth:
       username_file: /tmp/flower_username
       password_file: /tmp/flower_password
@@ -54,7 +58,8 @@ scrape_configs:
       module: [http_2xx]
     static_configs:
       - targets:
-          - https://amaris-mathematics-academy.bethuelthipe.chatgpt.site/
+          - https://amaris-mathematics-academy-live-students.onrender.com/
+          - https://amaris-production-web.onrender.com/health/ready/
           - http://nginx/health/ready/
     relabel_configs:
       - source_labels: [__address__]

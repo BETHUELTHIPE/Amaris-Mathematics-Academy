@@ -80,7 +80,7 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
     "jazzmin",
-    "django.contrib.admin",
+    "amaris_cms.admin_config.AmarisAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -99,6 +99,7 @@ MIDDLEWARE = [
     "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "amaris_cms.middleware.CorrelationReferenceMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "amaris_cms.monitoring_admin.MetricsAccessMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -109,6 +110,11 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
+
+# Fail closed on Render. Enable only where Django shares a private Docker network
+# with the self-hosted monitoring services.
+MONITORING_CONSOLE_ENABLED = env_bool("MONITORING_CONSOLE_ENABLED", False)
+MONITORING_METRICS_TOKEN_FILE = os.getenv("MONITORING_METRICS_TOKEN_FILE", "")
 
 ROOT_URLCONF = "amaris_cms.urls"
 TEMPLATES = [
