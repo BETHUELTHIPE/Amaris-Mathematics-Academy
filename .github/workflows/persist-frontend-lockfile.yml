@@ -1,0 +1,42 @@
+name: Persist Frontend Lockfile
+
+on:
+  push:
+    branches:
+      - feature/render-native-monitoring-20261014
+
+permissions:
+  contents: write
+
+jobs:
+  persist:
+    if: "!contains(github.event.head_commit.message, 'Persist audited frontend lockfile')"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/render-native-monitoring-20261014
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Regenerate audited lockfile
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Verify high-severity audit
+        run: npm audit --audit-level=high
+      - name: Commit lockfile
+        working-directory: .
+        run: |
+          if git diff --quiet -- frontend/package-lock.json; then
+            echo "Lockfile already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package-lock.json
+          git commit -m "Persist audited frontend lockfile"
+          git push origin HEAD:feature/render-native-monitoring-20261014
