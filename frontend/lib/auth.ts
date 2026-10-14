@@ -58,7 +58,7 @@ export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null
     (Array.isArray(linkedProviders) && linkedProviders.includes("google"));
   const profileComplete =
     !usesGoogle ||
-    (!profileError && Boolean(profile) && isStudentProfileComplete(profile));
+    (!profileError && profile !== null && isStudentProfileComplete(profile));
 
   return mapClaims(
     data.claims,
