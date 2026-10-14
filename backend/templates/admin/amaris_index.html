@@ -1,0 +1,14 @@
+{% extends "admin/index.html" %}
+{% load i18n %}
+{% block content %}
+  {% if request.user.is_active and request.user.is_staff and request.user.is_superuser %}
+  <div class="card mb-3">
+    <div class="card-header"><strong>Private operations monitoring</strong></div>
+    <div class="card-body">
+      <p>Prometheus, Grafana, Flower and cAdvisor are available to Django superusers only, when the self-hosted stack is connected.</p>
+      <a class="btn btn-primary" href="{% url 'admin:amaris_monitoring_home' %}">Open monitoring dashboard</a>
+    </div>
+  </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
