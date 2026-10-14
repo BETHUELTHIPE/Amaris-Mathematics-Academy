@@ -13,12 +13,8 @@ class MonitoringAdminTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
         self.site = AmarisAdminSite()
-        self.superuser = SimpleNamespace(
-            is_authenticated=True, is_active=True, is_staff=True, is_superuser=True
-        )
-        self.staff = SimpleNamespace(
-            is_authenticated=True, is_active=True, is_staff=True, is_superuser=False
-        )
+        self.superuser = SimpleNamespace(is_authenticated=True, is_active=True, is_staff=True, is_superuser=True)
+        self.staff = SimpleNamespace(is_authenticated=True, is_active=True, is_staff=True, is_superuser=False)
 
     def test_admin_route_exists(self):
         self.assertEqual(reverse("admin:amaris_monitoring_home"), "/admin/monitoring/")
@@ -58,10 +54,13 @@ class MonitoringAdminTests(SimpleTestCase):
         class Reply:
             status = 200
             headers = {"Content-Type": "text/plain"}
+
             def __enter__(self):
                 return self
+
             def __exit__(self, *args):
                 pass
+
             def read(self, size):
                 return b"up 1\n"
         opener_factory.return_value.open.return_value = Reply()
