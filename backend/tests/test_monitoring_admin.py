@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
@@ -66,7 +65,11 @@ class MonitoringAdminTests(SimpleTestCase):
             def read(self, size):
                 return b"up 1\n"
         opener_factory.return_value.open.return_value = Reply()
-        request = self.factory.get("/admin/monitoring/prometheus/api/v1/query?query=up", HTTP_COOKIE="sessionid=secret", HTTP_AUTHORIZATION="Bearer attack")
+        request = self.factory.get(
+            "/admin/monitoring/prometheus/api/v1/query?query=up",
+            HTTP_COOKIE="sessionid=secret",
+            HTTP_AUTHORIZATION="Bearer attack",
+        )
         request.user = self.superuser
         result = self.site.monitoring_console(request, "prometheus", "api/v1/query")
         self.assertEqual(result.status_code, 200)
