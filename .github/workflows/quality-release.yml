@@ -459,7 +459,8 @@ jobs:
           oidc_response=$(curl --fail --silent --show-error -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=amaris-staging")
           oidc_token=$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$oidc_response")
           echo "::add-mask::$oidc_token"
-          auth=(-H "Authorization: Bearer $oidc_token" -H "X-Amaris-Acceptance: github-actions")
+          synthetic_student=$(python -c 'import uuid; print(uuid.uuid4())')
+          auth=(-H "Authorization: Bearer $oidc_token" -H "X-Amaris-Acceptance: github-actions" -H "X-Amaris-Acceptance-Student: $synthetic_student")
 
           seed=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$STAGING_BASE_URL/api/v1/student/acceptance/seed/" -d '{}')
           course_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["course_slug"])' <<<"$seed")
@@ -470,7 +471,7 @@ jobs:
           search=$(curl --fail --silent --show-error "$STAGING_BASE_URL/api/v1/courses/?search=acceptance")
           python -c 'import json,sys; p=json.load(sys.stdin); slugs=[item["slug"] for item in p["results"]]; assert "acceptance-capacity-mathematics" in slugs' <<<"$search"
 
-          key="acceptance-${GITHUB_SHA:0:32}"
+          key="acceptance-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           checkout_body=$(COURSE_SLUG="$course_slug" CHECKOUT_KEY="$key" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"idempotency_key":os.environ["CHECKOUT_KEY"]}))')
           checkout=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$STAGING_BASE_URL/api/v1/student/checkout/" -d "$checkout_body")
           reference=$(python -c 'import json,sys; p=json.load(sys.stdin); assert p["status"]=="pending"; assert "sandbox.payfast.co.za" in p["gateway_url"]; print(p["payment_reference"])' <<<"$checkout")
@@ -537,10 +538,11 @@ jobs:
           echo "::add-mask::$oidc_token"
           export LOADTEST_AUTH_BEARER="$oidc_token"
 
-          auth=(-H "Authorization: Bearer $oidc_token" -H "X-Amaris-Acceptance: github-actions")
+          synthetic_student=$(python -c 'import uuid; print(uuid.uuid4())')
+          auth=(-H "Authorization: Bearer $oidc_token" -H "X-Amaris-Acceptance: github-actions" -H "X-Amaris-Acceptance-Student: $synthetic_student")
           seed=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$LOADTEST_TARGET_URL/api/v1/student/acceptance/seed/" -d '{}')
           course_slug=$(python -c 'import json,sys; print(json.load(sys.stdin)["course_slug"])' <<<"$seed")
-          key="acceptance-${GITHUB_SHA:0:32}"
+          key="acceptance-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           checkout_body=$(COURSE_SLUG="$course_slug" CHECKOUT_KEY="$key" python -c 'import json,os; print(json.dumps({"course_slug":os.environ["COURSE_SLUG"],"idempotency_key":os.environ["CHECKOUT_KEY"]}))')
           checkout=$(curl --fail --silent --show-error "${auth[@]}" -H "Content-Type: application/json" -X POST "$LOADTEST_TARGET_URL/api/v1/student/checkout/" -d "$checkout_body")
           reference=$(python -c 'import json,sys; print(json.load(sys.stdin)["payment_reference"])' <<<"$checkout")
