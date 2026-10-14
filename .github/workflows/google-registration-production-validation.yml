@@ -1,0 +1,36 @@
+name: Google Registration Production Validation
+
+on:
+  push:
+    branches:
+      - fix/google-registration-production-20261014
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install Render build-only dependencies
+        run: npm install --no-save nitro @tailwindcss/vite@4.3.3
+      - name: Google registration contracts
+        run: node --test tests/google-registration.test.mjs tests/registration-actions.test.mjs
+      - name: Lint
+        run: npm run lint
+      - name: TypeScript checks
+        run: npm run typecheck
+      - name: Render-style production build
+        run: NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
