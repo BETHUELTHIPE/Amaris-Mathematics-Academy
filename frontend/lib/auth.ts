@@ -52,10 +52,13 @@ export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null
     .eq("id", userData.user.id)
     .maybeSingle();
 
+  const linkedProviders = userData.user.app_metadata.providers;
+  const usesGoogle =
+    userData.user.app_metadata.provider === "google" ||
+    (Array.isArray(linkedProviders) && linkedProviders.includes("google"));
   const profileComplete =
-    !profileError &&
-    Boolean(profile) &&
-    isStudentProfileComplete(profile);
+    !usesGoogle ||
+    (!profileError && Boolean(profile) && isStudentProfileComplete(profile));
 
   return mapClaims(
     data.claims,
