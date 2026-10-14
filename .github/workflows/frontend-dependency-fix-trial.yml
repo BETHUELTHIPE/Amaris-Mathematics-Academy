@@ -1,0 +1,48 @@
+name: Frontend Dependency Fix Trial
+
+on:
+  push:
+    branches:
+      - feature/render-native-monitoring-20261014
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install candidate direct dependency fixes
+        run: |
+          npm install --package-lock-only --ignore-scripts --save-dev             @cloudflare/vite-plugin@1.64.0             vinext@1.2.0             drizzle-kit@0.31.11
+          npm pkg set overrides.source-map-js=1.2.2
+          npm install --package-lock-only --ignore-scripts
+      - name: Security audit
+        run: npm audit --audit-level=high
+      - name: Install candidate tree
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Show candidate package metadata
+        if: always()
+        run: |
+          echo '===PACKAGE_JSON_START==='
+          cat package.json
+          echo '===PACKAGE_JSON_END==='
+          echo '===AUDIT_JSON_START==='
+          npm audit --json || true
+          echo '===AUDIT_JSON_END==='
