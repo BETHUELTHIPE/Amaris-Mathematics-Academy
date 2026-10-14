@@ -46,6 +46,22 @@ const loginSchema = z.object({
   next: z.string().optional(),
 });
 
+const profileCompletionSchema = z.object({
+  firstName: z.string().trim().min(2).max(80),
+  lastName: z.string().trim().min(2).max(80),
+  mobile: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9 ()-]{7,24}$/, "Enter a valid mobile number."),
+  province: z.string().trim().min(2).max(60),
+  institution: z.string().trim().min(2).max(120),
+  academicLevel: z.string().trim().min(2).max(80),
+  termsAccepted: z.literal(true, {
+    message: "Accept the Terms and Privacy Policy to continue.",
+  }),
+  next: z.string().optional(),
+});
+
 export async function registerAction(formData: FormData) {
   const parsed = registrationSchema.safeParse({
     firstName: formData.get("firstName"),
@@ -248,11 +264,16 @@ export async function loginAction(formData: FormData) {
 
 export async function googleAuthAction(formData: FormData) {
   const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
+  const flow = formData.get("flow") === "register" ? "register" : "login";
+  const errorPath = flow === "register" ? "/register" : "/login";
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
+      queryParams: {
+        prompt: "select_account",
+      },
     },
   });
 
@@ -262,13 +283,94 @@ export async function googleAuthAction(formData: FormData) {
       status: error?.status,
     });
     redirectWithMessage(
-      "/login",
+      errorPath,
       "error",
       "Google registration is temporarily unavailable. Please use email registration or try again shortly.",
     );
   }
 
   redirect(data.url);
+}
+
+export async function completeGoogleProfileAction(formData: FormData) {
+  const parsed = profileCompletionSchema.safeParse({
+    firstName: formData.get("firstName"),
+    lastName: formData.get("lastName"),
+    mobile: formData.get("mobile"),
+    province: formData.get("province"),
+    institution: formData.get("institution"),
+    academicLevel: formData.get("academicLevel"),
+    termsAccepted: formData.get("terms") === "on",
+    next: formData.get("next"),
+  });
+
+  if (!parsed.success) {
+    redirectWithMessage(
+      "/complete-profile",
+      "error",
+      parsed.error.issues[0]?.message ?? "Complete all required profile fields.",
+    );
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user?.email || !user.email_confirmed_at) {
+    redirectWithMessage(
+      "/login",
+      "error",
+      "Your Google session could not be verified. Please sign in again.",
+    );
+  }
+
+  const values = parsed.data;
+  const termsAcceptedAt = new Date().toISOString();
+  const { error: profileError } = await supabase
+    .from("student_profiles")
+    .update({
+      first_name: values.firstName,
+      last_name: values.lastName,
+      mobile: values.mobile,
+      province: values.province,
+      institution: values.institution,
+      academic_level: values.academicLevel,
+      terms_accepted_at: termsAcceptedAt,
+    })
+    .eq("id", user.id);
+
+  if (profileError) {
+    console.error("student_google_profile_update_failed", {
+      code: safeAuthErrorCode(profileError.code),
+    });
+    redirectWithMessage(
+      "/complete-profile",
+      "error",
+      "Your profile could not be saved. Please try again shortly.",
+    );
+  }
+
+  const { error: metadataError } = await supabase.auth.updateUser({
+    data: {
+      first_name: values.firstName,
+      last_name: values.lastName,
+      mobile: values.mobile,
+      province: values.province,
+      institution: values.institution,
+      academic_level: values.academicLevel,
+      terms_accepted_at: termsAcceptedAt,
+    },
+  });
+  if (metadataError) {
+    console.error("student_google_metadata_update_failed", {
+      code: safeAuthErrorCode(metadataError.code),
+      status: metadataError.status,
+    });
+  }
+
+  redirect(safeRelativePath(values.next));
 }
 
 export async function forgotPasswordAction(formData: FormData) {
