@@ -3,6 +3,7 @@
 The upstreams are fixed Docker service names, not browser-supplied URLs. Never
 publish their ports or expose the monitoring Docker network to the internet.
 """
+
 import base64
 import os
 from pathlib import Path
@@ -21,7 +22,6 @@ from django.http import (
 from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils.crypto import constant_time_compare
-
 
 # Tools deliberately cannot be configured by the requesting browser.
 UPSTREAMS = {
@@ -115,9 +115,7 @@ class AmarisAdminSite(AdminSite):
     def monitoring_console(self, request, tool, subpath=""):
         self._require_superuser(request)
         if not settings.MONITORING_CONSOLE_ENABLED:
-            return HttpResponse(
-                "Monitoring is not configured on this Django host.", status=503
-            )
+            return HttpResponse("Monitoring is not configured on this Django host.", status=503)
         if request.method != "GET":
             return HttpResponseNotAllowed(["GET"])
         if tool not in UPSTREAMS:
