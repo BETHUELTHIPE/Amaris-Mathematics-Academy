@@ -1,0 +1,67 @@
+{
+  "id": null,
+  "uid": "amaris-docker-monitoring",
+  "title": "Amaris Docker Monitoring",
+  "tags": ["amaris", "docker", "monitoring"],
+  "timezone": "browser",
+  "schemaVersion": 40,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Student frontend",
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "amaris-prometheus"},
+      "targets": [{"refId": "A", "expr": "probe_success{job=\"blackbox-http\",service=\"student-frontend\"}"}],
+      "fieldConfig": {"defaults": {"noValue": "N/A"}, "overrides": []}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Production backend",
+      "gridPos": {"h": 7, "w": 6, "x": 6, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "amaris-prometheus"},
+      "targets": [{"refId": "A", "expr": "probe_success{job=\"blackbox-http\",service=\"production-backend\"}"}],
+      "fieldConfig": {"defaults": {"noValue": "N/A"}, "overrides": []}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Flower scrape",
+      "gridPos": {"h": 7, "w": 6, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "amaris-prometheus"},
+      "targets": [{"refId": "A", "expr": "up{job=\"flower\"}"}],
+      "fieldConfig": {"defaults": {"noValue": "N/A"}, "overrides": []}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "cAdvisor scrape",
+      "gridPos": {"h": 7, "w": 6, "x": 18, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "amaris-prometheus"},
+      "targets": [{"refId": "A", "expr": "up{job=\"cadvisor\"}"}],
+      "fieldConfig": {"defaults": {"noValue": "N/A"}, "overrides": []}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "External probe duration",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 7},
+      "datasource": {"type": "prometheus", "uid": "amaris-prometheus"},
+      "targets": [{"refId": "A", "expr": "probe_duration_seconds{job=\"blackbox-http\"}", "legendFormat": "{{service}}"}],
+      "fieldConfig": {"defaults": {"unit": "s", "noValue": "N/A"}, "overrides": []}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Monitoring-host container memory",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 7},
+      "datasource": {"type": "prometheus", "uid": "amaris-prometheus"},
+      "targets": [{"refId": "A", "expr": "container_memory_working_set_bytes{job=\"cadvisor\",image!=\"\"}", "legendFormat": "{{name}}"}],
+      "fieldConfig": {"defaults": {"unit": "bytes", "noValue": "N/A"}, "overrides": []}
+    }
+  ]
+}
