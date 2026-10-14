@@ -9,6 +9,7 @@ const login = source("../app/login/page.tsx");
 const actions = source("../app/auth/actions.ts");
 const callback = source("../app/auth/callback/route.ts");
 const button = source("../components/site/google-auth-button.tsx");
+const completeProfile = source("../app/complete-profile/page.tsx");
 const identity = source("../lib/auth.ts");
 
 test("students can choose Google registration while email registration remains available", () => {
@@ -62,4 +63,29 @@ test("Google callback uses the current Render service origin unless SITE_URL ove
     if (originalRender === undefined) delete process.env.RENDER_EXTERNAL_URL;
     else process.env.RENDER_EXTERNAL_URL = originalRender;
   }
+});
+
+
+test("Google-linked students must complete required Amaris profile fields before dashboard access", () => {
+  assert.match(callback, /student_profiles/);
+  assert.match(callback, /isStudentProfileComplete\(profile\)/);
+  assert.match(callback, /new URL\("\/complete-profile"/);
+  assert.match(identity, /linkedProviders\.includes\("google"\)/);
+  assert.match(identity, /profileComplete/);
+  assert.match(identity, /redirect\([\s\S]*\/complete-profile/);
+  assert.match(completeProfile, /completeGoogleProfileAction/);
+  assert.match(completeProfile, /name="mobile"/);
+  assert.match(completeProfile, /name="province"/);
+  assert.match(completeProfile, /name="institution"/);
+  assert.match(completeProfile, /name="academicLevel"/);
+  assert.match(completeProfile, /name="terms"/);
+});
+
+test("Google registration and login preserve their own safe error destinations", () => {
+  assert.match(registration, /flow="register"/);
+  assert.match(login, /flow="login"/);
+  assert.match(button, /name="flow"/);
+  assert.match(actions, /flow === "register" \? "\/register" : "\/login"/);
+  assert.match(actions, /prompt: "select_account"/);
+  assert.match(callback, /flow === "register" \? "register" : "login"/);
 });
