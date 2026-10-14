@@ -1,0 +1,26 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <h1>Private operations monitoring</h1>
+  {% if monitoring_enabled %}
+    <p>These consoles are proxied through Django Admin and require an active superuser session.</p>
+    <div class="card mb-3"><div class="card-body">
+      <h2>Grafana</h2>
+      <p>View Django, Celery and Render-native CPU, memory and HTTP metrics.</p>
+      <a class="btn btn-primary" href="{% url 'admin:amaris_monitoring_console' tool='grafana' %}">Open Grafana</a>
+    </div></div>
+    <div class="card mb-3"><div class="card-body">
+      <h2>Prometheus</h2>
+      <p>Inspect scrape targets, PromQL queries and alert rules.</p>
+      <a class="btn btn-outline-primary" href="{% url 'admin:amaris_monitoring_console' tool='prometheus' %}">Open Prometheus</a>
+    </div></div>
+    <div class="card mb-3"><div class="card-body">
+      <h2>Flower</h2>
+      <p>Inspect Celery workers and tasks in read-only mode.</p>
+      <a class="btn btn-outline-primary" href="{% url 'admin:amaris_monitoring_console' tool='flower' %}">Open Flower</a>
+    </div></div>
+    <p><strong>Host metrics:</strong> cAdvisor is not used on Render. Infrastructure measurements come from Render's official metrics API through the private Render metrics exporter.</p>
+  {% else %}
+    <p><strong>Unconfigured:</strong> monitoring services are not yet connected to this Django host.</p>
+  {% endif %}
+  <a href="{% url 'admin:index' %}">Return to Django Admin</a>
+{% endblock %}
