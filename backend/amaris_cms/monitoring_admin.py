@@ -54,12 +54,7 @@ class AmarisAdminSite(AdminSite):
     @staticmethod
     def _require_superuser(request):
         user = request.user
-        if not (
-            user.is_authenticated
-            and user.is_active
-            and user.is_staff
-            and user.is_superuser
-        ):
+        if not (user.is_authenticated and user.is_active and user.is_staff and user.is_superuser):
             raise PermissionDenied("Monitoring is reserved for Django superusers.")
 
     def monitoring_home(self, request):
