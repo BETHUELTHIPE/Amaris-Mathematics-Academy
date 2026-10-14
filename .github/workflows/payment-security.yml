@@ -52,7 +52,7 @@ jobs:
       # Payment tests are deterministic and mock/sandbox only. Never add live
       # PayFast credentials or production payment endpoints to this job.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Generate ephemeral Django secret
         shell: bash
         run: printf 'DJANGO_SECRET_KEY=%s\n' "$(openssl rand -hex 64)" >> "$GITHUB_ENV"
