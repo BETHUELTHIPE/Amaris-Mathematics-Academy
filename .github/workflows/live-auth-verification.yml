@@ -1,6 +1,8 @@
 name: Live Student Auth Verification
 
 on:
+  pull_request:
+    branches: [render-live-current-20260918]
   push:
     branches: [render-live-current-20260918]
     paths:
