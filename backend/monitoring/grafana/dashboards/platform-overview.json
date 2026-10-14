@@ -59,7 +59,7 @@
       "gridPos": {"h": 6, "w": 8, "x": 0, "y": 15},
       "id": 6,
       "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"expr": "probe_success{job=\"blackbox_http\", instance=~\"https://.*chatgpt.site/\"}", "legendFormat": "Public site", "refId": "A"}],
+      "targets": [{"expr": "probe_success{job=\"blackbox_http\", instance=\"https://amaris-mathematics-academy-live-students.onrender.com/\"}", "legendFormat": "Public site", "refId": "A"}],
       "title": "Public website uptime",
       "type": "stat"
     },
