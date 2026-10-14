@@ -77,7 +77,7 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
     "jazzmin",
-    "django.contrib.admin",
+    "amaris_cms.admin_config.AmarisAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -490,3 +490,10 @@ JAZZMIN_UI_TWEAKS = {
         "success": "btn-success",
     },
 }
+
+
+# Private Render monitoring consoles. These URLs are server-side only.
+MONITORING_CONSOLE_ENABLED = env_bool("MONITORING_CONSOLE_ENABLED", False)
+MONITORING_GRAFANA_URL = os.getenv("MONITORING_GRAFANA_URL", "").rstrip("/")
+MONITORING_PROMETHEUS_URL = os.getenv("MONITORING_PROMETHEUS_URL", "").rstrip("/")
+MONITORING_FLOWER_URL = os.getenv("MONITORING_FLOWER_URL", "").rstrip("/")

@@ -1,0 +1,98 @@
+groups:
+  - name: amaris-render-monitoring
+    rules:
+      - alert: DjangoMetricsUnavailable
+        expr: up{job="django"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Django metrics endpoint is unavailable"
+
+      - alert: FlowerUnavailable
+        expr: up{job="flower"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Flower monitoring endpoint is unavailable"
+
+      - alert: RenderMetricsExporterUnavailable
+        expr: up{job="render-native"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Render native metrics exporter is unavailable"
+
+      - alert: RenderMetricsRefreshFailed
+        expr: render_metrics_exporter_refresh_success == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Render metrics API refreshes are failing"
+
+      - alert: RenderMetricsStale
+        expr: time() - render_metrics_exporter_last_success_timestamp_seconds > 180
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Render metrics data is stale"
+
+      - alert: ProductionBackendHighCPU
+        expr: render_service_cpu_usage{resource_name="amaris-production-web"} > 0.8
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Production backend CPU usage is high"
+
+      - alert: StudentFrontendHighCPU
+        expr: render_service_cpu_usage{resource_name="amaris-mathematics-academy-live-students"} > 0.8
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Student frontend CPU usage is high"
+
+      - alert: ProductionBackendHighMemory
+        expr: render_service_memory_usage_bytes{resource_name="amaris-production-web"} > 1610612736
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Production backend memory usage is above 1.5 GiB"
+
+      - alert: StudentFrontendHighMemory
+        expr: render_service_memory_usage_bytes{resource_name="amaris-mathematics-academy-live-students"} > 402653184
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Student frontend memory usage is above 384 MiB"
+
+      - alert: ProductionBackendLatencyHigh
+        expr: render_service_http_latency_p95_seconds{resource_name="amaris-production-web"} > 2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Production backend p95 HTTP latency is above 2 seconds"
+
+      - alert: StudentFrontendLatencyHigh
+        expr: render_service_http_latency_p95_seconds{resource_name="amaris-mathematics-academy-live-students"} > 2.5
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Student frontend p95 HTTP latency is above 2.5 seconds"
+
+      - alert: PrometheusRuleEvaluationFailures
+        expr: increase(prometheus_rule_evaluation_failures_total[5m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Prometheus rule evaluations are failing"
+
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Prometheus configuration reload failed"
+
+      - alert: PrometheusTSDBCompactionFailures
+        expr: increase(prometheus_tsdb_compactions_failed_total[15m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "Prometheus TSDB compaction is failing"

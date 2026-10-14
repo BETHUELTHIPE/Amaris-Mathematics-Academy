@@ -1,4 +1,4 @@
-FROM golang:1.27.1-bookworm AS restic-builder
+FROM golang:1.27.2-bookworm AS restic-builder
 
 ARG RESTIC_VERSION=0.19.1
 ARG RESTIC_SOURCE_SHA256=bb9b1a19040744d26d8a79be029d4e6b189c45ccc9d8831d7fe367d3c33df725
@@ -15,13 +15,13 @@ RUN apt-get update \
          "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic-${RESTIC_VERSION}.tar.gz" \
     && echo "${RESTIC_SOURCE_SHA256}  /tmp/restic.tar.gz" | sha256sum --check --strict \
     && tar -xzf /tmp/restic.tar.gz --strip-components=1 \
-    && go get golang.org/x/crypto@v0.55.0 \
-              golang.org/x/net@v0.58.0 \
-              golang.org/x/text@v0.41.0 \
+    && go get golang.org/x/crypto@v0.57.0 \
+              golang.org/x/net@v0.60.0 \
+              golang.org/x/text@v0.42.0 \
               google.golang.org/grpc@v1.83.2 \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/crypto)" = "v0.55.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/net)" = "v0.58.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/text)" = "v0.41.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/crypto)" = "v0.57.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/net)" = "v0.60.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/text)" = "v0.42.0" \
     && test "$(go list -m -f '{{.Version}}' google.golang.org/grpc)" = "v1.83.2" \
     && mkdir -p /out \
     && go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/restic ./cmd/restic \
