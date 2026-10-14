@@ -1,0 +1,26 @@
+name: Container Scan Diagnostic
+
+on:
+  push:
+    branches:
+      - feature/render-native-monitoring-20261014
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production backend image
+        run: docker build --tag amaris-backend:diagnostic backend
+      - name: Print fixable HIGH and CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: amaris-backend:diagnostic
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"
+          scanners: vuln
