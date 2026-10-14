@@ -87,5 +87,5 @@ test("Google registration and login preserve their own safe error destinations",
   assert.match(button, /name="flow"/);
   assert.match(actions, /flow === "register" \? "\/register" : "\/login"/);
   assert.match(actions, /prompt: "select_account"/);
-  assert.match(callback, /flow === "register" \? "register" : "login"/);
+  assert.match(callback, /searchParams\.get\("flow"\) === "register" \? "register" : "login"/);
 });
