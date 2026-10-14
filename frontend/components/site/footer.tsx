@@ -11,7 +11,7 @@ export async function Footer() {
       <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-[1.35fr_.7fr_1.15fr] lg:px-8">
         <div className="max-w-md">
           <div className="flex items-center gap-3 font-semibold">
-            <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#ffcc66] text-sm font-black text-[#07152d] sm:bg-white sm:bg-[url(\'/brand/amaris-academy-icon-192.png\')] sm:bg-contain sm:bg-center sm:bg-no-repeat sm:text-transparent">A</span>
+            <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#ffcc66] text-sm font-black text-[#07152d] sm:hidden">A</span><span aria-hidden="true" className="hidden size-11 shrink-0 rounded-xl bg-white bg-contain bg-center bg-no-repeat p-1 sm:block" style={{ backgroundImage: `url(${academyBrand.logoPath})` }} />
             <span>{academyBrand.name}</span>
           </div>
           <p className="mt-5 text-sm leading-7 text-white/58">Structured mathematics courses for South African school, TVET and university students. Learn clearly, practise deliberately and track real progress.</p>
