@@ -32,6 +32,8 @@ jobs:
         run: npm ci
       - name: Security backport tests
         run: node --test tests/braces-security-backport.test.mjs
+      - name: Normal production build
+        run: npm run build
       - name: Unit tests
         run: npm run test:unit
       - name: Lint
