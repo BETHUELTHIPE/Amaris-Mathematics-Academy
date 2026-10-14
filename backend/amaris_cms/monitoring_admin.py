@@ -127,9 +127,7 @@ class AmarisAdminSite(AdminSite):
             body = response.read(MAX_RESPONSE_BYTES + 1)
             if len(body) > MAX_RESPONSE_BYTES:
                 return HttpResponse("Monitoring response too large.", status=502)
-            content_type = response.headers.get(
-                "Content-Type", "application/octet-stream"
-            )
+            content_type = response.headers.get("Content-Type", "application/octet-stream")
 
         result = HttpResponse(body, status=status, content_type=content_type)
         result["Cache-Control"] = "private, no-store"
