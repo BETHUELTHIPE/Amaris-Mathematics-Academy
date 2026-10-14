@@ -12,6 +12,7 @@ yarn-error.log*
 .env*
 !frontend/.env.example
 !backend/.env.example
+!monitoring/docker/.env.example
 
 # Shared generated work
 /outputs/
