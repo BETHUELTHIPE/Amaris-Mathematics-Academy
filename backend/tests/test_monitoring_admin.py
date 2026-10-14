@@ -63,6 +63,7 @@ class MonitoringAdminTests(SimpleTestCase):
 
             def read(self, size):
                 return b"up 1\n"
+
         opener_factory.return_value.open.return_value = Reply()
         request = self.factory.get(
             "/admin/monitoring/prometheus/api/v1/query?query=up",
