@@ -22,12 +22,12 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install candidate direct dependency fixes
+      - name: Install candidate dependency fixes
         run: |
           npm install --package-lock-only --ignore-scripts --save-dev \
             @cloudflare/vite-plugin@1.64.0 \
-            @vitejs/plugin-rsc@0.5.37 \
-            vinext@1.2.0 \
+            vinext@0.2.1 \
+            eslint-config-next@14.2.35 \
             drizzle-kit@0.31.11
           npm pkg set overrides.source-map-js=1.2.2
           npm install --package-lock-only --ignore-scripts
