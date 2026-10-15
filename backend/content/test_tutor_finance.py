@@ -131,7 +131,7 @@ class TutorRevenueTests(TestCase):
         self.assertNotContains(response, self.student.email)
         self.assertNotContains(response, self.student.first_name)
         self.client.force_login(self.other)
-        self.assertEqual(self.client.get("/tutor/dashboard/").status_code, 403)
+        self.assertEqual(self.client.get("/tutor/dashboard/", secure=True).status_code, 403)
 
     def test_payout_email_requires_confirmed_transfer(self):
         self.pay_course()
