@@ -43,7 +43,7 @@ jobs:
         run: |
           npm run typecheck
           npm run lint
-          npm run test:unit
+          npm test
       - name: Install isolated backend and browser harness
         run: |
           pip install -r paired-backend/backend/requirements.txt -r frontend/e2e/requirements.txt
