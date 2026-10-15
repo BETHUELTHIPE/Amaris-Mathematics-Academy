@@ -35,7 +35,8 @@ def reconcile_tutor_earnings():
         .order_by("-paid_at")[:200]
     ):
         if not TutorEarning.objects.filter(service="live_class", source_reference=booking.reference).exists():
-            # The original record function only processes confirmed bookings; completed ones are handled via a copy-free status check.
+            # The original recorder accepts confirmed bookings only.
+            # Completed bookings were already recorded by the callback.
             if booking.status == LiveClassBooking.Status.CONFIRMED:
                 record_live_class_sale(booking)
     for order in TutorVideoRequest.objects.filter(
