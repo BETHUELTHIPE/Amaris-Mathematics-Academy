@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 
 const input = "min-w-0 min-h-12 w-full rounded-xl border border-[#cbd6e5] bg-white px-4 py-3 text-base font-normal text-[#263852] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1f5bbd]";
@@ -9,6 +10,7 @@ const labels: Record<string, string> = { full_name: "Full name", phone: "Phone",
 export function ApplicationForm({ name, email }: { name: string; email: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [documents, setDocuments] = useState<File[]>([]);
   const [errors, setErrors] = useState<{ field: string; message: string }[]>([]);
   const errorSummary = useRef<HTMLDivElement>(null);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -55,7 +57,14 @@ export function ApplicationForm({ name, email }: { name: string; email: string }
     <fieldset disabled={pending} className="min-w-0 grid gap-4"><legend className="mb-5 text-xl font-semibold">3. Attach your qualifications</legend>
       <label htmlFor="documents" className="text-sm font-semibold">Qualification certificates or academic transcripts</label>
       <p id="file-help" className="text-sm leading-6 text-[#60708a]">Attach 1–5 PDF, JPEG or PNG files. Maximum 5 MB per file, 15 MB in total. Use scans of your relevant qualifications. Do not upload identity documents, bank details or other people’s information.</p>
-      <input id="documents" name="documents" type="file" accept="application/pdf,image/jpeg,image/png" multiple required aria-describedby="file-help" className={`${input} file:mr-4 file:rounded-lg file:border-0 file:bg-[#edf3ff] file:p-2 file:text-[#0b2a5b]`} />
+      <div className="rounded-2xl border border-dashed border-[#cbd6e5] bg-[#f5f7fb] p-5 sm:p-6">
+        <div className="relative inline-flex max-w-full rounded-full bg-[#0b2a5b] text-white transition hover:bg-[#123d79] focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-[#1f5bbd]">
+          <span aria-hidden="true" className="inline-flex min-h-12 items-center justify-center gap-2 px-6 py-3 text-sm font-bold"><Upload className="size-5 shrink-0" />Upload qualifications</span>
+          <input id="documents" name="documents" type="file" accept="application/pdf,image/jpeg,image/png" multiple required aria-label="Upload qualifications" aria-describedby="file-help file-selection" onChange={event => setDocuments(Array.from(event.currentTarget.files ?? []))} className="absolute inset-0 h-full w-full cursor-pointer rounded-full opacity-0 disabled:cursor-wait" />
+        </div>
+        <p id="file-selection" role="status" className="mt-4 text-sm leading-6 text-[#52617a]">{documents.length ? `${documents.length} ${documents.length === 1 ? "file" : "files"} selected · ${(documents.reduce((total, file) => total + file.size, 0) / (1024 * 1024)).toFixed(2)} MB of 15 MB` : "No files selected. You can select several files at once."}</p>
+        {documents.length > 0 && <><ul aria-label="Selected qualifications" className="mt-3 grid gap-2 text-sm text-[#263852]">{documents.map((file, index) => <li key={`${file.name}-${index}`} className="break-all rounded-lg border border-[#dce4ef] bg-white px-3 py-2">{file.name} <span className="text-[#60708a]">({(file.size / (1024 * 1024)).toFixed(2)} MB)</span></li>)}</ul><p className="mt-3 text-xs leading-5 text-[#60708a]">Selecting again replaces your current files. Documents upload when you submit your application.</p></>}
+      </div>
       <label id="consent" className="flex items-start gap-3 rounded-xl bg-[#f5f7fb] p-5 text-sm leading-6"><input type="checkbox" name="consent" value="true" required className="mt-1 size-5 shrink-0 accent-[#1f5bbd]" /><span>I confirm that this application is accurate and these are my qualifications. I have read the recruitment privacy notice below and consent to Amaris reviewing these documents and contacting me about this application.</span></label>
     </fieldset>
     <p aria-live="polite" className="text-sm text-[#52617a]">{pending ? "Submitting your application and private documents. Please keep this page open." : "Submit once. You can return here to view your reference and status."}</p>
