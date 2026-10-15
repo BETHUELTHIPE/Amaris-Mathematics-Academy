@@ -92,3 +92,4 @@ jobs:
           content.test_payments
           content.test_payfast_security
           content.test_live_classes
+          content.test_tutor_finance
