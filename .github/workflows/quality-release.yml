@@ -428,6 +428,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      # This protected environment needs its own STAGING_DATABASE_URL secret. Never
+      # substitute a production secret or skip this check to make a deploy pass.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.15"
+      - name: Verify actual staging DB role and schema before branch promotion
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          python -m pip install "psycopg[binary]==3.2.10"
+          python scripts/release/verify_staging_database_isolation.py
+
       - name: Promote exact main commit to Render staging branch
         shell: bash
         run: |
