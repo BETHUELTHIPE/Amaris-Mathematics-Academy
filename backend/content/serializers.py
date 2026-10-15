@@ -252,6 +252,7 @@ class AnnouncementMediaSerializer(serializers.ModelSerializer):
 
 class AnnouncementSerializer(serializers.ModelSerializer):
     media = AnnouncementMediaSerializer(many=True, read_only=True)
+
     class Meta:
         model = Announcement
         fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at", "media")
