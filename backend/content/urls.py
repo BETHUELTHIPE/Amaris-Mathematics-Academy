@@ -14,7 +14,6 @@ from .student_views import (
     StudentLessonView,
 )
 from .views import (
-    public_marketing_media,
     AmarisAssistantView,
     AnnouncementViewSet,
     ContactEnquiryViewSet,
@@ -27,6 +26,7 @@ from .views import (
     SiteBootstrapView,
     SiteSettingsView,
     TestimonialViewSet,
+    public_marketing_media,
 )
 
 router = DefaultRouter()
