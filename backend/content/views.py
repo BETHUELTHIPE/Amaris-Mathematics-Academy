@@ -1,4 +1,7 @@
+from urllib.parse import urlparse
+
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Count, Prefetch, Q
 from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.utils import timezone
@@ -197,9 +200,6 @@ def public_marketing_media(request, pk):
     )
     if not asset:
         raise Http404()
-    from urllib.parse import urlparse
-    from django.core.exceptions import ImproperlyConfigured
-
     if not settings.CMS_STORAGE_BUCKET_NAME:
         raise Http404()
     url = asset.file.storage.url(asset.file.name, expire=120)
