@@ -38,7 +38,7 @@ class TutorRevenueTests(TestCase):
         self.other = get_user_model().objects.create_user(username="uncontracted.tutor", password="password")
         self.student = StudentRecord.objects.create(
             supabase_user_id=uuid.uuid4(), email="private.student@example.test",
-            first_name="Private", last_name="Student",
+            first_name="HiddenStudent", last_name="Student",
         )
         category = CourseCategory.objects.create(name="Finance test", slug="finance-test")
         self.course = Course.objects.create(
