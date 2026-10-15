@@ -4,7 +4,7 @@
 
 Integration branch `feature/production-tutor-finance-0013-20261015` is based on the *actual* Render production branch `production-release-20260923` at commit `4818aa8644edfedb012dca70559f1cf6d397a628`, not the divergent `main` branch. It retains the existing `VideoRequest` PayFast checkout and Supabase-authenticated tutor API. It does **not** introduce another video order, payment reference scheme, or staff login.
 
-Django migration `content.0013_tutor_finance` depends on the applied `content.0012_tutor_recruitment`; it introduces five additive finance tables only: `TutorPaymentProfile`, `TutorContract`, `TutorCourseAssignment`, `TutorEarning`, and `TutorPayout`. PostgreSQL RLS and revocation of `anon` / `authenticated` Data API permissions protect all five. Do not migrate production until you have a verified restore.
+Django migration `content.0013_tutor_finance` depends on the applied `content.0012_tutor_recruitment`; it introduces five additive finance tables only: `TutorPaymentProfile`, `TutorContract`, `TutorCourseAssignment`, `TutorEarning`, and `TutorPayout`. PostgreSQL RLS and revocation of `anon` / `authenticated` Data API permissions protect all five. Prefer a verified restore; an explicitly approved low-risk additive release may use the saved Amaris skill's documented exception, without claiming backup verification.
 
 ## Server-owned accounting
 
@@ -53,3 +53,11 @@ Neither the Supabase integration nor the Render integration currently provides a
 5. Do not enable actual payouts without an audited disbursement provider, verified payee ownership, signed settlement callbacks, idempotency, refund/reversal reconciliation, disputes/tax handling and a successful test transfer.
 
 **No production deployment or database migration is performed by this PR.**
+
+## Current deployment verification — 15 October 2026
+
+The user requested testing and deployment to staging and production and confirmed `amaris-production-web.onrender.com` as backend; the paired live frontend is `amaris-mathematics-academy-live-students.onrender.com` (frontend PR #201). The saved Amaris skill permits an approved strictly additive release with backup/restore evidence still **NOT VERIFIED**. Record this as accepted release risk, not a successful recovery test. Application rollback targets are backend `4818aa8644edfedb012dca70559f1cf6d397a628` and frontend `4f4724121fdb656eca63805c1fe2c1d6717d9cac`; retain new finance tables on rollback.
+
+The actual staging service uses the existing, separate Render database `dpg-dam2gj6k1f9s73e81tmg-a`, database `amaris_staging_postgres`, role `amaris_staging_postgres_user`. It does not use the production Supabase host. Its external IP allowlist is empty, so external SQL tools cannot verify its contents. Keep that restriction. The startup migration guard now accepts either the original isolated Supabase role/schema or **only this exact Render staging resource, database and role**, and proves the actual connected database identity from inside Render before any migration. Production Supabase enforcement remains intact. Nine offline isolation tests cover wrong host, lookalike domain, wrong role/database, missing credentials and runtime identity mismatch.
+
+The protected tutor-finance release job checks the exact backend and frontend candidate CI results and deploys only the two existing staging service IDs. No paid infrastructure or real transfer is created. Staging deployment and health evidence must be observed before production merge. Live bank transfers remain unavailable until a provider is integrated, and real proof-of-payment email acceptance remains unverified until a genuine provider-confirmed transfer can be tested safely.

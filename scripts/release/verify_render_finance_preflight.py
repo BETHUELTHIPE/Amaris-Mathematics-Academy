@@ -15,6 +15,7 @@ import urllib.parse
 import urllib.request
 
 from cryptography.fernet import Fernet
+from verify_staging_database_isolation import is_isolated_render_staging_dsn
 from verify_staging_database_isolation import main as verify_staging
 
 STAGING = "srv-dam2iivcgkoc7383tq50"
@@ -99,6 +100,18 @@ def main():
             "Staging host appears to be Render PostgreSQL:",
             (stage_url.hostname or "").startswith("dpg-"),
         )
+        if is_isolated_render_staging_dsn(dsn):
+            if stage.get("DATABASE_SCHEMA", "") not in ("", "public"):
+                raise RuntimeError(
+                    "Isolated Render staging database has an unexpected schema override"
+                )
+            print(
+                "PASS: configured DSN matches the exact, separate Render staging database resource."
+            )
+            print(
+                "Internal Render connection proof is mandatory in manage.py before any migration; external access stays blocked."
+            )
+            return 0
         if "amaris_staging_app" not in (stage_url.username or ""):
             raise RuntimeError(
                 "Staging service is not configured with its restricted database role"

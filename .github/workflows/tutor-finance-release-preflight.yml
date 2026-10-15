@@ -11,13 +11,18 @@ on:
 
 permissions:
   contents: read
+  checks: read
+
+concurrency:
+  group: tutor-finance-staging-release
+  cancel-in-progress: false
 
 jobs:
   deployment-preflight:
     if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && (github.event_name == 'workflow_dispatch' || (github.event.pull_request.number == 200 && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feature/production-tutor-finance-0013-20261015'))
     name: Verify actual staging isolation and finance prerequisites
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -32,3 +37,10 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
         run: python scripts/release/verify_render_finance_preflight.py
+      - name: Deploy approved exact candidates to existing staging services after checks
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 200
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/release/deploy_tutor_finance_staging.py
