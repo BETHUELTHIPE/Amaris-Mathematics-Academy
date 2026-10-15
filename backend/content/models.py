@@ -427,12 +427,12 @@ class AnnouncementMedia(TimeStampedModel):
             self.file.seek(pos)
             valid = {
                 ".pdf": header.startswith(b"%PDF-"),
-                ".png": header.startswith(b"\\x89PNG\\r\\n\\x1a\\n"),
-                ".jpg": header.startswith(b"\\xff\\xd8\\xff"),
-                ".jpeg": header.startswith(b"\\xff\\xd8\\xff"),
+                ".png": header.startswith(b"\x89PNG\r\n\x1a\n"),
+                ".jpg": header.startswith(b"\xff\xd8\xff"),
+                ".jpeg": header.startswith(b"\xff\xd8\xff"),
                 ".webp": header[:4] == b"RIFF" and header[8:12] == b"WEBP",
                 ".mp4": header[4:8] == b"ftyp",
-                ".webm": header.startswith(b"\\x1a\\x45\\xdf\\xa3"),
+                ".webm": header.startswith(b"\x1a\x45\xdf\xa3"),
             }
             if not valid.get(extension, False):
                 raise ValidationError({"file": "File content does not match the allowed format."})
