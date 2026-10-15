@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "storages",
     "content",
+    "marketing",
 ]
 
 MIDDLEWARE = [

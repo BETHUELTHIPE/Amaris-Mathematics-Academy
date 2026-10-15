@@ -1,5 +1,6 @@
 from django.contrib import admin, messages
 from django.utils import timezone
+from marketing.admin import AnnouncementMediaInline
 
 from .models import (
     FAQ,
@@ -256,6 +257,23 @@ class FAQAdmin(PublishableAdmin):
 
 @admin.register(Announcement)
 class AnnouncementAdmin(PublishableAdmin):
+    inlines = (AnnouncementMediaInline,)
+
+    def has_module_permission(self, request):
+        return request.user.is_active and request.user.is_superuser
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return request.user.is_active and request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_superuser
+
     list_display = ("title", "priority", "expires_at", "is_published", "updated_at")
     list_editable = ("priority", "is_published")
     search_fields = ("title", "message")
