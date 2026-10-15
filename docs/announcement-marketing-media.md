@@ -1,7 +1,7 @@
 # Amaris Marketing Announcements: images, videos and PDF attachments
 
 - Superuser-managed Django Admin: `/admin/content/announcement/` (create/edit/publish announcements; add media inline), and `/admin/content/announcementmedia/` (manage attachments).
-- Supported types: JPEG, PNG, WebP, MP4, WebM and PDF. Single-file size limit: 100 MiB. The Django model validates extensions, binary file headers and size; this is **not** a substitute for antivirus scanning or a video transcoding pipeline.
+- Supported types: JPEG, PNG, WebP, MP4, WebM and PDF. Single-file size limit: 50 MiB (the verified Supabase CMS bucket limit as of 15 October 2026). The Django model validates extensions, binary file headers and size; this is **not** a substitute for antivirus scanning or a video transcoding pipeline.
 - Upload path: `marketing/announcements/YYYY/MM/` under the **CMS storage bucket**, the existing Django `default` S3 storage. Configure Render environment variables `CMS_STORAGE_BUCKET_NAME=amaris-cms-files`, `STUDENT_STORAGE_BUCKET_NAME`, `AWS_S3_ENDPOINT_URL`, access key, secret and region as appropriate for the existing Supabase S3 integration. Do not put access keys in the code or public frontend.
 - Production upload storage MUST be checked before rollout; the existing Django settings permit a filesystem fallback for local development. Public delivery **fails closed** without the CMS bucket setting.
 - Public page: `/announcements`. Reads only published, active, unexpired announcements via existing read-only API; each media resource is accessed via `/api/v1/marketing-media/<id>/`, which checks publication state before returning a short-lived S3 URL redirect.
