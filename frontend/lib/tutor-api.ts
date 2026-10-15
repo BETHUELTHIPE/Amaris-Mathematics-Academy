@@ -103,6 +103,24 @@ export function getTutorDashboard(): Promise<TutorDashboard> {
   return tutorFetch<TutorDashboard>("/tutor/dashboard/");
 }
 
+export type TutorEarnings = {
+  currency: "ZAR";
+  categories: Record<"course" | "live_class" | "video", {
+    count: number; students: number; gross: string; earned: string;
+  }>;
+  unique_students: number;
+  total: string;
+  paid_out: string;
+  outstanding: string;
+  classes_attended: number;
+  bank_account_mask: string;
+  recipient_verified: boolean;
+};
+
+export function getTutorEarnings(): Promise<TutorEarnings> {
+  return tutorFetch<TutorEarnings>("/tutor/earnings/");
+}
+
 export type SlotInput = {
   programme?: string;
   subject?: string;

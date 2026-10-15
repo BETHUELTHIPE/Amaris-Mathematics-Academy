@@ -6,7 +6,8 @@ import { signOutAction } from "@/app/auth/actions";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { createTutorSlotAction, pauseTutorSlotAction, updateTutorSlotAction } from "@/app/tutor/actions";
-import { getTutorDashboard, TutorApiError, type TutorSlot } from "@/lib/tutor-api";
+import { getTutorDashboard, getTutorEarnings, TutorApiError, type TutorEarnings, type TutorSlot } from "@/lib/tutor-api";
+import { TutorEarningsPanel } from "@/components/site/tutor-earnings";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Tutor Dashboard — Amaris Mathematics Academy", robots: { index: false, follow: false } };
@@ -107,6 +108,9 @@ export default async function TutorDashboardPage({
     );
   }
 
+  let earnings: TutorEarnings | null = null;
+  try { earnings = await getTutorEarnings(); } catch { /* Show unavailable amounts without interrupting the timetable. */ }
+
   return (
     <main className="min-h-screen bg-[#f5f7fb]">
       <Header />
@@ -138,6 +142,7 @@ export default async function TutorDashboardPage({
       </section>
 
       <div className="mx-auto max-w-7xl space-y-8 px-5 py-10 lg:px-8 lg:py-14">
+        <TutorEarningsPanel earnings={earnings} />
         {notices.success && <div role="status" className="flex items-center gap-3 rounded-xl border border-[#a7ddcb] bg-[#ebfbf4] p-4 text-sm text-[#136950]"><CheckCircle2 className="size-5" />{notices.success.slice(0, 180)}</div>}
         {notices.error && <div role="alert" className="rounded-xl border border-[#f5c2bf] bg-[#fff3f3] p-4 text-sm text-[#9b2525]">{notices.error.slice(0, 180)}</div>}
 
