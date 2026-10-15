@@ -112,7 +112,6 @@ def record_live_class_sale(booking: LiveClassBooking):
     )
 
 
-
 def record_existing_video_sale(order: VideoRequest):
     """Use the existing production video-request checkout, never create a second charge."""
     eligible_statuses = (
@@ -167,12 +166,16 @@ def refresh_eligible_earnings():
             if booking_source and not earning.service_delivered_at:
                 earning.service_delivered_at = booking_source.slot.ends_at
         else:
-            video_source = VideoRequest.objects.filter(
-                reference=earning.source_reference,
-                status=VideoRequest.Status.READY,
-                gateway_verified_at__isnull=False,
-                video_ready_at__isnull=False,
-            ).exclude(video_external_id="").first()
+            video_source = (
+                VideoRequest.objects.filter(
+                    reference=earning.source_reference,
+                    status=VideoRequest.Status.READY,
+                    gateway_verified_at__isnull=False,
+                    video_ready_at__isnull=False,
+                )
+                .exclude(video_external_id="")
+                .first()
+            )
             delivered = bool(video_source)
             if video_source and not earning.service_delivered_at:
                 earning.service_delivered_at = video_source.video_ready_at
@@ -212,9 +215,7 @@ def tutor_dashboard_stats(tutor):
         "live_class": set(
             LiveClassBooking.objects.filter(reference__in=class_sources).values_list("student_id", flat=True)
         ),
-        "video": set(
-            VideoRequest.objects.filter(reference__in=video_sources).values_list("student_id", flat=True)
-        ),
+        "video": set(VideoRequest.objects.filter(reference__in=video_sources).values_list("student_id", flat=True)),
     }
     for service, student_ids in people.items():
         categories[service]["students"] = len(student_ids)

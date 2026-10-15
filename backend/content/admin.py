@@ -540,7 +540,6 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-
     actions = ("mark_verified_class_completed",)
 
     @admin.action(description="Confirm completed class after payment and attendance review")

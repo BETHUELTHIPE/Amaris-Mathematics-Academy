@@ -33,9 +33,7 @@ class TutorPaymentProfile(TimeStampedModel):
             or not self.provider_recipient_id
             or not self.recipient_verified_at
         ):
-            raise ValidationError(
-                "A verified payout recipient and encrypted bank account are required for activation."
-            )
+            raise ValidationError("A verified payout recipient and encrypted bank account are required for activation.")
 
     def __str__(self):
         return f"{self.tutor.get_username()} / {self.bank_name or 'unconfigured'} / ****{self.account_last_four}"

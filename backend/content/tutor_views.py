@@ -165,17 +165,21 @@ class TutorEarningsView(TutorOnlyAPIView):
 
         stats = tutor_dashboard_stats(request.user)
         profile = TutorPaymentProfile.objects.filter(tutor=request.user).first()
-        return Response({
-            "currency": "ZAR",
-            "categories": stats["categories"],
-            "unique_students": stats["unique_students"],
-            "total": stats["total"],
-            "paid_out": stats["paid_out"],
-            "outstanding": stats["outstanding"],
-            "classes_attended": stats["classes_attended"],
-            "bank_account_mask": ("****" + profile.account_last_four) if profile and profile.account_last_four else "",
-            "recipient_verified": bool(profile and profile.is_active and profile.recipient_verified_at),
-        })
+        return Response(
+            {
+                "currency": "ZAR",
+                "categories": stats["categories"],
+                "unique_students": stats["unique_students"],
+                "total": stats["total"],
+                "paid_out": stats["paid_out"],
+                "outstanding": stats["outstanding"],
+                "classes_attended": stats["classes_attended"],
+                "bank_account_mask": (
+                    ("****" + profile.account_last_four) if profile and profile.account_last_four else ""
+                ),
+                "recipient_verified": bool(profile and profile.is_active and profile.recipient_verified_at),
+            }
+        )
 
 
 def _slot_data(slot):
