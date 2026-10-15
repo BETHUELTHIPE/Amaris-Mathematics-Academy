@@ -105,6 +105,7 @@ const requiredPublicNavigation: CmsNavigationItem[] = [
   { label: "About", url: "/about", location: "both", order: 40, open_in_new_tab: false },
   { label: "Request a topic video", url: "/request-a-video", location: "both", order: 44, open_in_new_tab: false },
   { label: "Book online live class", url: "/book-online-live-class", location: "both", order: 45, open_in_new_tab: false },
+  { label: "Become a tutor", url: "/tutor/apply", location: "both", order: 47, open_in_new_tab: false },
   { label: "Contact", url: "/contact", location: "both", order: 50, open_in_new_tab: false },
 ];
 

@@ -39,7 +39,7 @@ export default async function TutorLoginPage({ searchParams }: { searchParams: P
           <p className="eyebrow">Tutor sign in</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight">Welcome, tutor.</h2>
           <p className="mt-3 text-sm leading-7 text-[#60708a]">
-            Use your verified Amaris account. Your academy administrator must first assign you to the Tutors permission group.
+            <Link href="/tutor/apply" className="font-semibold text-[#1f5bbd] underline">Apply to become a tutor</Link> if you have not yet been approved. Use your verified Amaris account. Your academy administrator must first assign you to the Tutors permission group.
           </p>
           <div className="mt-6"><GoogleAuthButton label="Continue with Google" next="/tutor/dashboard" /></div>
           <div className="my-6 flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-[#60708a]"><span className="h-px flex-1 bg-[#dce4ef]" />or use email<span className="h-px flex-1 bg-[#dce4ef]" /></div>
