@@ -824,3 +824,7 @@ class PaymentReconciliationRun(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.started_at:%Y-%m-%d %H:%M} — {self.status}"
+
+
+# Django discovers the recruitment models through this application module.
+from .tutor_application_models import TutorApplication, TutorApplicationDocument  # noqa: E402,F401

@@ -76,7 +76,7 @@ def error_400(request, exception=None):
     return _render_error(request, 400)
 
 
-def error_403(request, reason=""):
+def error_403(request, reason="", exception=None):
     return _render_error(request, 403)
 
 

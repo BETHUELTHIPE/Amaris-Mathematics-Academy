@@ -304,6 +304,16 @@ else:
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 
+# Recruitment files use the private CMS bucket with a separate local fallback outside public media.
+STORAGES["tutor_qualifications"] = (
+    STORAGES["default"]
+    if _supabase_s3_values[0]
+    else {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {"location": BASE_DIR / "private-tutor-qualifications"},
+    }
+)
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 STORAGES["student_data"] = STORAGES["student_private"]
@@ -417,6 +427,11 @@ if OPENAI_ASSISTANT_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
 CELERY_BEAT_SCHEDULE = {
+    "deliver-tutor-application-acknowledgements": {
+        "task": "content.tasks.deliver_tutor_application_acknowledgements",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
     "publish-scheduled-content": {
         "task": "content.tasks.publish_scheduled_content",
         "schedule": 60.0,

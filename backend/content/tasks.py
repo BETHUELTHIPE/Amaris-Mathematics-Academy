@@ -544,3 +544,16 @@ def archive_missing_invoice_pdfs(_self) -> int:
         except Exception:
             continue
     return queued
+
+
+@shared_task(ignore_result=True)
+def deliver_tutor_application_acknowledgements() -> int:
+    from content.services.tutor_applications import deliver_application_acknowledgement
+
+    delivered = 0
+    for _ in range(50):
+        count = deliver_application_acknowledgement()
+        delivered += count
+        if not count:
+            break
+    return delivered

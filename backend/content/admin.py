@@ -711,3 +711,6 @@ class VideoRequestAdmin(TimeStampedAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+from . import tutor_application_admin as _tutor_application_admin  # noqa: E402,F401
