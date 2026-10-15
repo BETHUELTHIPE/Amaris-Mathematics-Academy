@@ -39,26 +39,18 @@ def _contract_for(tutor_id, service, when):
     return matching[0]
 
 
-def _record(
-    tutor_id, service, source_reference, label, amount, paid_at, *, delivered_at=None
-):
+def _record(tutor_id, service, source_reference, label, amount, paid_at, *, delivered_at=None):
     """Called ONLY after a verified provider notification, inside the caller's transaction."""
     if paid_at is None:
         raise TutorRevenueError("Gateway payment verification is required.")
     if amount <= 0:
         raise TutorRevenueError("Negative or zero revenue is not eligible.")
-    if TutorEarning.objects.filter(
-        service=service, source_reference=source_reference
-    ).exists():
-        return TutorEarning.objects.get(
-            service=service, source_reference=source_reference
-        )
+    if TutorEarning.objects.filter(service=service, source_reference=source_reference).exists():
+        return TutorEarning.objects.get(service=service, source_reference=source_reference)
     contract = _contract_for(tutor_id, service, paid_at)
     if not contract:
         return None  # No guessed contract; admin must resolve this sale.
-    tutor_amount = (amount * contract.tutor_percent / Decimal("100")).quantize(
-        CENT, rounding=ROUND_HALF_UP
-    )
+    tutor_amount = (amount * contract.tutor_percent / Decimal("100")).quantize(CENT, rounding=ROUND_HALF_UP)
     earning, _ = TutorEarning.objects.get_or_create(
         service=service,
         source_reference=source_reference,
@@ -82,16 +74,12 @@ def _record(
 
 
 def record_course_sale(payment: Payment):
-    if (
-        payment.status != Payment.Status.PAID
-        or not payment.gateway_verified_at
-        or payment.currency != "ZAR"
-    ):
+    if payment.status != Payment.Status.PAID or not payment.gateway_verified_at or payment.currency != "ZAR":
         raise TutorRevenueError("Only verified, paid ZAR course sales qualify.")
     tutor_ids = list(
-        TutorCourseAssignment.objects.filter(
-            course=payment.course, is_active=True
-        ).values_list("tutor_id", flat=True)[:2]
+        TutorCourseAssignment.objects.filter(course=payment.course, is_active=True).values_list("tutor_id", flat=True)[
+            :2
+        ]
     )
     if len(tutor_ids) != 1:
         return None  # A service sale must have one unambiguous responsible tutor.
@@ -108,8 +96,7 @@ def record_course_sale(payment: Payment):
 
 def record_live_class_sale(booking: LiveClassBooking):
     if (
-        booking.status
-        not in (LiveClassBooking.Status.CONFIRMED, LiveClassBooking.Status.COMPLETED)
+        booking.status not in (LiveClassBooking.Status.CONFIRMED, LiveClassBooking.Status.COMPLETED)
         or not booking.gateway_verified_at
         or not booking.paid_at
         or booking.currency != "ZAR"
@@ -150,9 +137,7 @@ def record_existing_video_sale(order: VideoRequest):
         f"Video request · {order.topic}",
         order.amount,
         order.gateway_verified_at,
-        delivered_at=(
-            order.video_ready_at if order.status == VideoRequest.Status.READY else None
-        ),
+        delivered_at=(order.video_ready_at if order.status == VideoRequest.Status.READY else None),
     )
 
 
@@ -200,9 +185,7 @@ def refresh_eligible_earnings():
             continue
         earning.state = TutorEarning.State.READY
         earning.eligible_at = timezone.now()
-        earning.save(
-            update_fields=["state", "eligible_at", "service_delivered_at", "updated_at"]
-        )
+        earning.save(update_fields=["state", "eligible_at", "service_delivered_at", "updated_at"])
         TutorPayout.objects.get_or_create(earning=earning)
         ready += 1
     return ready
@@ -210,9 +193,7 @@ def refresh_eligible_earnings():
 
 def tutor_dashboard_stats(tutor):
     """Only aggregate service/category totals and this tutor's own payout ledger."""
-    earnings = TutorEarning.objects.filter(tutor=tutor).exclude(
-        state=TutorEarning.State.REVERSED
-    )
+    earnings = TutorEarning.objects.filter(tutor=tutor).exclude(state=TutorEarning.State.REVERSED)
     categories = {
         service: {"count": 0, "gross": Decimal("0"), "earned": Decimal("0")}
         for service, _ in TutorContract.Service.choices
@@ -228,44 +209,24 @@ def tutor_dashboard_stats(tutor):
             "earned": row["amount"] or Decimal("0"),
         }
     # Distinct paying-student counts (aggregates only; never serialize identity).
-    course_sources = earnings.filter(service="course").values_list(
-        "source_reference", flat=True
-    )
-    class_sources = earnings.filter(service="live_class").values_list(
-        "source_reference", flat=True
-    )
-    video_sources = earnings.filter(service="video").values_list(
-        "source_reference", flat=True
-    )
+    course_sources = earnings.filter(service="course").values_list("source_reference", flat=True)
+    class_sources = earnings.filter(service="live_class").values_list("source_reference", flat=True)
+    video_sources = earnings.filter(service="video").values_list("source_reference", flat=True)
     people = {
-        "course": set(
-            Payment.objects.filter(reference__in=course_sources).values_list(
-                "student_id", flat=True
-            )
-        ),
+        "course": set(Payment.objects.filter(reference__in=course_sources).values_list("student_id", flat=True)),
         "live_class": set(
-            LiveClassBooking.objects.filter(reference__in=class_sources).values_list(
-                "student_id", flat=True
-            )
+            LiveClassBooking.objects.filter(reference__in=class_sources).values_list("student_id", flat=True)
         ),
-        "video": set(
-            VideoRequest.objects.filter(reference__in=video_sources).values_list(
-                "student_id", flat=True
-            )
-        ),
+        "video": set(VideoRequest.objects.filter(reference__in=video_sources).values_list("student_id", flat=True)),
     }
     for service, student_ids in people.items():
         categories[service]["students"] = len(student_ids)
     unique_students = len(set().union(*people.values()))
-    total = sum(
-        (Decimal(str(row["earned"])) for row in categories.values()), Decimal("0")
+    total = sum((Decimal(str(row["earned"])) for row in categories.values()), Decimal("0"))
+    sent = earnings.filter(state=TutorEarning.State.PAID).aggregate(value=Sum("tutor_amount"))["value"] or Decimal("0")
+    awaiting = earnings.exclude(state=TutorEarning.State.PAID).aggregate(value=Sum("tutor_amount"))["value"] or Decimal(
+        "0"
     )
-    sent = earnings.filter(state=TutorEarning.State.PAID).aggregate(
-        value=Sum("tutor_amount")
-    )["value"] or Decimal("0")
-    awaiting = earnings.exclude(state=TutorEarning.State.PAID).aggregate(
-        value=Sum("tutor_amount")
-    )["value"] or Decimal("0")
     attended = LiveClassBooking.objects.filter(
         slot__tutor=tutor,
         status=LiveClassBooking.Status.COMPLETED,

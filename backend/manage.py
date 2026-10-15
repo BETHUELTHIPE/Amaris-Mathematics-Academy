@@ -14,12 +14,8 @@ def main() -> None:
         from pathlib import Path
 
         if os.getenv("RENDER_GIT_BRANCH") != "staging":
-            raise SystemExit(
-                "Staging migration blocked: Render is not on the staging branch."
-            )
-        sys.path.insert(
-            0, str(Path(__file__).resolve().parents[1] / "scripts" / "release")
-        )
+            raise SystemExit("Staging migration blocked: Render is not on the staging branch.")
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "release"))
         from verify_staging_database_isolation import is_isolated_render_staging_dsn
         from verify_staging_database_isolation import main as verify_staging_connection
 
@@ -32,9 +28,7 @@ def main() -> None:
         expected_schema = "public" if isolated_render else "amaris_staging"
         configured_schema = os.environ.get("DATABASE_SCHEMA", "").strip()
         if configured_schema and configured_schema != expected_schema:
-            raise SystemExit(
-                "Staging migration blocked: invalid Django database schema."
-            )
+            raise SystemExit("Staging migration blocked: invalid Django database schema.")
         os.environ["STAGING_DATABASE_URL"] = configured_url
         if verify_staging_connection() != 0:
             raise SystemExit("Staging migration blocked: unsafe database connection.")
