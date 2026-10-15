@@ -10,7 +10,15 @@ from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from content.models import Course, CourseCategory, Payment, StudentRecord, TutorAvailabilitySlot, VideoRequest
+from content.models import (
+    Course,
+    CourseCategory,
+    LiveClassBooking,
+    Payment,
+    StudentRecord,
+    TutorAvailabilitySlot,
+    VideoRequest,
+)
 from content.services.payments import create_checkout, process_payfast_notification
 from content.services.tutor_finance import (
     record_course_sale,
@@ -25,7 +33,10 @@ from content.tutor_finance_models import (
     TutorEarning,
     TutorPayout,
 )
-from content.tutor_finance_tasks import email_tutor_payout_receipt
+from content.tutor_finance_tasks import (
+    email_tutor_payout_receipt,
+    reconcile_tutor_earnings,
+)
 
 
 class VerifiedGateway:
@@ -51,7 +62,9 @@ class ProductionTutorFinanceTests(TestCase):
             first_name="PrivateStudent",
             last_name="Confidential",
         )
-        category = CourseCategory.objects.create(name="Finance regression", slug="finance-regression")
+        category = CourseCategory.objects.create(
+            name="Finance regression", slug="finance-regression"
+        )
         self.course = Course.objects.create(
             category=category,
             title="Calculus tutorial",
@@ -73,7 +86,9 @@ class ProductionTutorFinanceTests(TestCase):
         TutorCourseAssignment.objects.create(course=self.course, tutor=self.tutor)
 
     def checkout(self, accepted=True, key="finance-prod-checkout-001"):
-        checkout = create_checkout(student=self.student, course=self.course, idempotency_key=key)
+        checkout = create_checkout(
+            student=self.student, course=self.course, idempotency_key=key
+        )
         return process_payfast_notification(
             {
                 "m_payment_id": checkout.payment_reference,
@@ -216,4 +231,53 @@ class ProductionTutorFinanceTests(TestCase):
         self.assertEqual(refresh_eligible_earnings(), 1)
         earning.refresh_from_db()
         self.assertEqual(earning.state, TutorEarning.State.READY)
-        self.assertEqual(TutorPayout.objects.get().state, TutorPayout.State.AWAITING_PROVIDER)
+        self.assertEqual(
+            TutorPayout.objects.get().state, TutorPayout.State.AWAITING_PROVIDER
+        )
+
+    def test_reconciliation_recovers_completed_paid_class_without_double_credit(self):
+        paid_at = timezone.now() - timedelta(days=9)
+        TutorContract.objects.create(
+            tutor=self.tutor,
+            service=TutorContract.Service.LIVE_CLASS,
+            tutor_percent=Decimal("50.00"),
+            effective_from=paid_at - timedelta(days=1),
+            contract_reference="SIGNED-CLASS-001",
+        )
+        slot = TutorAvailabilitySlot.objects.create(
+            tutor=self.tutor,
+            programme="caps",
+            subject="mathematics",
+            level="Grade 12",
+            starts_at=paid_at + timedelta(days=1),
+            ends_at=paid_at + timedelta(days=1, hours=2),
+            zoom_join_url="https://zoom.example.test/synthetic",
+            is_active=True,
+        )
+        LiveClassBooking.objects.create(
+            reference="LVC-FINANCE-COMPLETED-001",
+            idempotency_key="finance-completed-001",
+            student=self.student,
+            slot=slot,
+            programme="caps",
+            subject="mathematics",
+            level="Grade 12",
+            topic="Synthetic class",
+            amount=Decimal("500.00"),
+            currency="ZAR",
+            status=LiveClassBooking.Status.COMPLETED,
+            paid_at=paid_at,
+            gateway_verified_at=paid_at,
+            provider_reference="SYNTHETIC-PAYFAST-CLASS-001",
+        )
+        self.assertEqual(reconcile_tutor_earnings.run(), 1)
+        self.assertEqual(reconcile_tutor_earnings.run(), 0)
+        earning = TutorEarning.objects.get()
+        self.assertEqual(earning.tutor_amount, Decimal("250.00"))
+        self.assertEqual(earning.academy_amount, Decimal("250.00"))
+        self.assertEqual(earning.service_delivered_at, slot.ends_at)
+        self.assertEqual(
+            TutorPayout.objects.get().state, TutorPayout.State.AWAITING_PROVIDER
+        )
+        self.assertEqual(email_tutor_payout_receipt.run(), 0)
+        self.assertEqual(len(mail.outbox), 0)

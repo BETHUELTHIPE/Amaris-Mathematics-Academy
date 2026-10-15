@@ -1,0 +1,34 @@
+name: Tutor finance deployment preflight
+
+on:
+  pull_request:
+    branches: [production-release-20260923]
+    paths:
+      - backend/content/**
+      - scripts/release/verify_render_finance_preflight.py
+      - .github/workflows/tutor-finance-release-preflight.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deployment-preflight:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && (github.event_name == 'workflow_dispatch' || (github.event.pull_request.number == 200 && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feature/production-tutor-finance-0013-20261015'))
+    name: Verify actual staging isolation and finance prerequisites
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - name: Install locked backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Read-only check of intended Render services
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: python scripts/release/verify_render_finance_preflight.py
