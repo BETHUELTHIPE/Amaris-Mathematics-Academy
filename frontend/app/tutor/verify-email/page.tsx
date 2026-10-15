@@ -1,0 +1,11 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { Header } from "@/components/site/header";
+import { Footer } from "@/components/site/footer";
+import { verifyApplicant, resendApplicantVerification } from "@/app/tutor/register/actions";
+export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Verify your tutor applicant email" };
+export default async function VerifyApplicant({ searchParams }: { searchParams: Promise<{ email?: string; error?: string; requested?: string }> }) {
+  const { email = "", error, requested } = await searchParams;
+  return <main className="min-h-screen bg-[#f5f7fb]"><Header /><section className="mx-auto max-w-xl px-5 py-14"><div className="rounded-3xl border border-[#dce4ef] bg-white p-8"><p className="eyebrow">Tutor recruitment · Step 2</p><h1 className="mt-4 text-4xl font-semibold">Verify your email.</h1><p className="my-5 text-sm leading-7 text-[#60708a]">Use the verification link or six-digit code in your email. After verification, you can complete your application.</p>{requested && <p role="status" className="mb-5 rounded-xl bg-green-50 p-4 text-green-900">If this account needs verification, check your inbox and spam folder. If already registered, sign in with your existing password.</p>}{error && <p role="alert" className="mb-5 rounded-xl bg-red-50 p-4 text-red-900">{error}</p>}<form action={verifyApplicant} className="grid gap-5"><label className="grid gap-2 text-sm font-semibold">Email address<input name="email" type="email" required autoComplete="email" defaultValue={email} className="min-h-12 rounded-xl border border-[#cbd6e5] px-4" /></label><label className="grid gap-2 text-sm font-semibold">Six-digit verification code<input name="token" required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} className="min-h-12 rounded-xl border border-[#cbd6e5] px-4" /></label><button type="submit" className="min-h-12 rounded-full bg-[#0b2a5b] p-3 font-bold text-white">Verify and continue to application</button><button formAction={resendApplicantVerification} formNoValidate className="min-h-11 font-semibold text-[#1f5bbd]">Request a new code</button></form><Link href="/tutor/apply/login" className="mt-5 block text-sm font-semibold text-[#1f5bbd]">Already verified? Sign in</Link></div></section><Footer /></main>;
+}

@@ -48,10 +48,10 @@ async function rateLimitResponse(request: Request, env: Env, pathname: string): 
 
   let limiter: RateLimit | undefined;
   let scope = "";
-  if (pathname === "/login" || pathname.startsWith("/auth/")) {
+  if (pathname === "/login" || pathname === "/tutor/apply/login" || pathname === "/tutor/verify-email" || pathname.startsWith("/auth/")) {
     limiter = env.AUTH_RATE_LIMITER;
     scope = "auth";
-  } else if (pathname === "/register") {
+  } else if (pathname === "/register" || pathname === "/tutor/register") {
     limiter = env.REGISTER_RATE_LIMITER;
     scope = "register";
   } else if (pathname === "/forgot-password" || pathname === "/reset-password") {
