@@ -5,7 +5,6 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
-
 ACCEPTED_SUFFIXES = {
     "image": {".png", ".jpg", ".jpeg", ".webp", ".gif"},
     "video": {".mp4", ".mov", ".webm"},
@@ -25,9 +24,7 @@ class AnnouncementMedia(models.Model):
         VIDEO = "video", "Video"
         PDF = "pdf", "PDF document"
 
-    announcement = models.ForeignKey(
-        "content.Announcement", related_name="marketing_media", on_delete=models.CASCADE
-    )
+    announcement = models.ForeignKey("content.Announcement", related_name="marketing_media", on_delete=models.CASCADE)
     media_type = models.CharField(max_length=8, choices=MediaType.choices)
     file = models.FileField(upload_to=marketing_upload_path)
     caption = models.CharField(max_length=220, blank=True)
