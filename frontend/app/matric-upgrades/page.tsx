@@ -35,7 +35,7 @@ export default function MatricUpgradesPage() {
             <p className="mt-6 max-w-2xl text-lg leading-8 text-white/80">Passed matric but need higher marks? Did not finish Grade 12? Working day shifts or night shifts? Amaris is here to help you prepare for a second chance — with online lessons designed around real South African lives.</p>
             <div className="mt-9 flex flex-wrap gap-3">
               <a href="/register" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#ffcc66] px-6 py-3 font-bold text-[#07152d] transition hover:bg-[#ffe09a]">Start learning with Amaris <ArrowRight className="size-4" /></a>
-              <a href="/book-online-class" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/40 px-6 py-3 font-semibold text-white transition hover:bg-white/10">Book an online lesson</a>
+              <a href="/book-online-live-class" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/40 px-6 py-3 font-semibold text-white transition hover:bg-white/10">Book an online lesson</a>
             </div>
             <p className="mt-5 flex items-center gap-2 text-sm text-white/65"><ShieldCheck className="size-4 text-[#ffcc66]" /> Online tutoring across South Africa · Exams registered separately</p>
           </div>
