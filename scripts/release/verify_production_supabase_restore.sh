@@ -32,17 +32,20 @@ PY
 # or applying migrations. Only structural facts and aggregate counts are output.
 psql "$AMARIS_RESTORE_DATABASE_URL" -X -v ON_ERROR_STOP=1 -At <<'SQL'
 BEGIN TRANSACTION READ ONLY;
-SELECT CASE
-  WHEN to_regclass('public.django_migrations') IS NOT NULL
-    AND to_regclass('public.content_payment') IS NOT NULL
-    AND to_regclass('public.content_liveclassbooking') IS NOT NULL
-    AND to_regclass('public.content_videorequest') IS NOT NULL
-    AND to_regclass('auth.users') IS NOT NULL
-  THEN 'RESTORE_TABLE_STRUCTURE_PRESENT' ELSE 1/0::text END;
-SELECT CASE
-  WHEN EXISTS(SELECT 1 FROM public.django_migrations
-              WHERE app='content' AND name='0012_tutor_recruitment')
-  THEN 'MIGRATION_0012_PRESENT' ELSE 1/0::text END;
+DO $$
+BEGIN
+  IF to_regclass('public.django_migrations') IS NULL
+      OR to_regclass('public.content_payment') IS NULL
+      OR to_regclass('public.content_liveclassbooking') IS NULL
+      OR to_regclass('public.content_videorequest') IS NULL
+      OR to_regclass('auth.users') IS NULL THEN
+    RAISE EXCEPTION 'Expected restored Django/Auth tables are missing';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.django_migrations
+                WHERE app='content' AND name='0012_tutor_recruitment') THEN
+    RAISE EXCEPTION 'Restored database is missing the production content migration baseline';
+  END IF;
+END $$;
 SELECT 'payment_rows=' || COUNT(*) FROM public.content_payment;
 SELECT 'live_class_booking_rows=' || COUNT(*) FROM public.content_liveclassbooking;
 SELECT 'video_request_rows=' || COUNT(*) FROM public.content_videorequest;
