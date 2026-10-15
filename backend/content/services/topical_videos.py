@@ -1,4 +1,5 @@
 """PayFast-verified topical video checkout. No student-controlled pricing or paid flags."""
+
 import os
 import re
 from decimal import Decimal, InvalidOperation
@@ -8,9 +9,14 @@ from django.utils import timezone
 from content.models import Payment, LiveClassBooking
 from content.tutor_finance_models import TutorContract, TutorVideoRequest
 from content.services.payments import (
-    CheckoutSession, NotificationResult, PaymentSecurityError,
-    PAYFAST_LIVE_URL, PAYFAST_SANDBOX_URL,
-    _payfast_credentials, _payfast_mode, generate_payfast_signature,
+    CheckoutSession,
+    NotificationResult,
+    PaymentSecurityError,
+    PAYFAST_LIVE_URL,
+    PAYFAST_SANDBOX_URL,
+    _payfast_credentials,
+    _payfast_mode,
+    generate_payfast_signature,
 )
 from content.services.live_classes import _public_urls
 from content.services.tutor_finance import _contract_for, record_topical_video_sale
@@ -44,15 +50,23 @@ def create_video_checkout(*, student, tutor, programme, topic, idempotency_key):
         order, created = TutorVideoRequest.objects.get_or_create(
             idempotency_key=key,
             defaults=dict(
-                reference=reference, student=student, tutor=tutor,
-                programme=cleaned_programme, topic=cleaned_topic,
-                price=price, currency="ZAR",
+                reference=reference,
+                student=student,
+                tutor=tutor,
+                programme=cleaned_programme,
+                topic=cleaned_topic,
+                price=price,
+                currency="ZAR",
             ),
         )
         if not created:
-            if (order.student_id != student.pk or order.tutor_id != tutor.pk
-                    or order.programme != cleaned_programme or order.topic != cleaned_topic
-                    or order.price != price):
+            if (
+                order.student_id != student.pk
+                or order.tutor_id != tutor.pk
+                or order.programme != cleaned_programme
+                or order.topic != cleaned_topic
+                or order.price != price
+            ):
                 raise PaymentSecurityError("Checkout key was already used for another order.")
             if order.status != TutorVideoRequest.Status.PENDING:
                 raise PaymentSecurityError("This topical video order is no longer pending.")
@@ -106,13 +120,17 @@ def process_video_notification(payload, *, gateway):
         amount = Decimal(str(payload.get("amount_gross", "")))
     except (InvalidOperation, ValueError):
         return NotificationResult(False, order.status, reason="invalid_amount")
-    if (amount != order.price
-            or str(payload.get("custom_str1", "")) != str(order.student.supabase_user_id)
-            or str(payload.get("custom_str2", "")) != order.reference):
+    if (
+        amount != order.price
+        or str(payload.get("custom_str1", "")) != str(order.student.supabase_user_id)
+        or str(payload.get("custom_str2", "")) != order.reference
+    ):
         return NotificationResult(False, order.status, reason="payment_mismatch")
-    if (Payment.objects.filter(provider_reference=provider_ref).exists()
-            or LiveClassBooking.objects.filter(provider_reference=provider_ref).exists()
-            or TutorVideoRequest.objects.filter(provider_reference=provider_ref).exclude(pk=order.pk).exists()):
+    if (
+        Payment.objects.filter(provider_reference=provider_ref).exists()
+        or LiveClassBooking.objects.filter(provider_reference=provider_ref).exists()
+        or TutorVideoRequest.objects.filter(provider_reference=provider_ref).exclude(pk=order.pk).exists()
+    ):
         return NotificationResult(False, order.status, reason="duplicate_gateway_reference")
     with transaction.atomic():
         locked = TutorVideoRequest.objects.select_for_update().get(pk=order.pk)
@@ -127,9 +145,7 @@ def process_video_notification(payload, *, gateway):
             locked.paid_at = timezone.now()
         elif status in {"CANCELLED", "FAILED"}:
             locked.status = TutorVideoRequest.Status.CANCELLED
-        locked.save(update_fields=[
-            "provider_reference", "gateway_verified_at", "status", "paid_at", "updated_at"
-        ])
+        locked.save(update_fields=["provider_reference", "gateway_verified_at", "status", "paid_at", "updated_at"])
         if locked.status == TutorVideoRequest.Status.PAID:
             record_topical_video_sale(locked)
     return NotificationResult(True, locked.status)

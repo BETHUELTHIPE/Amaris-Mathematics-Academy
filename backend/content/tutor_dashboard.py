@@ -1,4 +1,5 @@
 """Tutor-only earnings page: server-rendered, no student PII or bank details."""
+
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
 from django.shortcuts import render
@@ -23,10 +24,20 @@ def tutor_dashboard(request):
         item.update(stats["categories"][item["key"]])
         item["bar_width"] = max(0, round(100 * item["count"] / max_count))
     profile = TutorPaymentProfile.objects.filter(tutor=request.user).first()
-    return render(request, "tutor/earnings_dashboard.html", {
-        "tutor_name": request.user.get_full_name().strip() or request.user.get_username(),
-        "stats": stats,
-        "entries": entries,
-        "bank_mask": ("•••• " + profile.account_last_four) if profile and profile.account_last_four else "Not configured",
-        "bank_status": "Verified" if profile and profile.recipient_verified_at and profile.is_active else "Pending verification",
-    })
+    return render(
+        request,
+        "tutor/earnings_dashboard.html",
+        {
+            "tutor_name": request.user.get_full_name().strip() or request.user.get_username(),
+            "stats": stats,
+            "entries": entries,
+            "bank_mask": (
+                ("•••• " + profile.account_last_four) if profile and profile.account_last_four else "Not configured"
+            ),
+            "bank_status": (
+                "Verified"
+                if profile and profile.recipient_verified_at and profile.is_active
+                else "Pending verification"
+            ),
+        },
+    )

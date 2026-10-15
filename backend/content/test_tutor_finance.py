@@ -1,4 +1,5 @@
 """Tutor finance safeguards: verified revenue, split maths, idempotency, privacy, encrypted bank data."""
+
 import uuid
 from datetime import timedelta
 from decimal import Decimal
@@ -15,7 +16,11 @@ from content.services.topical_videos import create_video_checkout, process_video
 from content.services.tutor_finance import record_course_sale, tutor_dashboard_stats
 from content.tutor_finance_admin import TutorPaymentProfileForm
 from content.tutor_finance_models import (
-    TutorContract, TutorCourseAssignment, TutorEarning, TutorPaymentProfile, TutorPayout,
+    TutorContract,
+    TutorCourseAssignment,
+    TutorEarning,
+    TutorPaymentProfile,
+    TutorPayout,
 )
 from content.tutor_finance_tasks import email_tutor_payout_receipt, reconcile_tutor_earnings
 
@@ -32,23 +37,34 @@ class VerifiedGateway:
 class TutorRevenueTests(TestCase):
     def setUp(self):
         self.tutor = get_user_model().objects.create_user(
-            username="tutor.ana", password="secure-tutor-test-password",
-            email="tutor.ana@example.test", first_name="Ana", last_name="Tutor",
+            username="tutor.ana",
+            password="secure-tutor-test-password",
+            email="tutor.ana@example.test",
+            first_name="Ana",
+            last_name="Tutor",
         )
         self.other = get_user_model().objects.create_user(username="uncontracted.tutor", password="password")
         self.student = StudentRecord.objects.create(
-            supabase_user_id=uuid.uuid4(), email="private.student@example.test",
-            first_name="HiddenStudent", last_name="Student",
+            supabase_user_id=uuid.uuid4(),
+            email="private.student@example.test",
+            first_name="HiddenStudent",
+            last_name="Student",
         )
         category = CourseCategory.objects.create(name="Finance test", slug="finance-test")
         self.course = Course.objects.create(
-            category=category, title="Calculus", slug="finance-calculus",
-            short_description="Test", description="Test",
-            curriculum="CAPS", academic_level="Grade 12",
-            price=Decimal("250.00"), status=Course.Status.PUBLISHED,
+            category=category,
+            title="Calculus",
+            slug="finance-calculus",
+            short_description="Test",
+            description="Test",
+            curriculum="CAPS",
+            academic_level="Grade 12",
+            price=Decimal("250.00"),
+            status=Course.Status.PUBLISHED,
         )
         self.contract = TutorContract.objects.create(
-            tutor=self.tutor, service=TutorContract.Service.COURSE,
+            tutor=self.tutor,
+            service=TutorContract.Service.COURSE,
             tutor_percent=Decimal("60.00"),
             effective_from=timezone.now() - timedelta(days=1),
             contract_reference="TEST-60-40",
@@ -57,11 +73,15 @@ class TutorRevenueTests(TestCase):
 
     def pay_course(self):
         checkout = create_checkout(
-            student=self.student, course=self.course, idempotency_key="finance-course-001",
+            student=self.student,
+            course=self.course,
+            idempotency_key="finance-course-001",
         )
         payload = {
-            "m_payment_id": checkout.payment_reference, "pf_payment_id": "FINANCE-PF-001",
-            "payment_status": "COMPLETE", "amount_gross": "250.00",
+            "m_payment_id": checkout.payment_reference,
+            "pf_payment_id": "FINANCE-PF-001",
+            "payment_status": "COMPLETE",
+            "amount_gross": "250.00",
             "custom_str1": str(self.student.supabase_user_id),
             "custom_str2": self.course.slug,
         }
@@ -81,11 +101,17 @@ class TutorRevenueTests(TestCase):
 
     def test_unverified_callback_creates_no_tutor_income(self):
         session = create_checkout(student=self.student, course=self.course, idempotency_key="finance-denied-001")
-        response = process_payfast_notification({
-            "m_payment_id": session.payment_reference, "pf_payment_id": "BAD-PF-001",
-            "payment_status": "COMPLETE", "amount_gross": "250.00",
-            "custom_str1": str(self.student.supabase_user_id), "custom_str2": self.course.slug,
-        }, gateway=VerifiedGateway(False))
+        response = process_payfast_notification(
+            {
+                "m_payment_id": session.payment_reference,
+                "pf_payment_id": "BAD-PF-001",
+                "payment_status": "COMPLETE",
+                "amount_gross": "250.00",
+                "custom_str1": str(self.student.supabase_user_id),
+                "custom_str2": self.course.slug,
+            },
+            gateway=VerifiedGateway(False),
+        )
         self.assertFalse(response.accepted)
         self.assertFalse(TutorEarning.objects.exists())
 
@@ -128,11 +154,16 @@ class TutorRevenueTests(TestCase):
 
     def test_account_numbers_are_encrypted_and_write_only(self):
         with override_settings(TUTOR_BANK_FERNET_KEY=Fernet.generate_key().decode()):
-            form = TutorPaymentProfileForm(data={
-                "tutor": str(self.tutor.pk), "account_holder": "Ana Tutor",
-                "bank_name": "Example Bank", "branch_code": "000000",
-                "account_number": "1234567890", "is_active": False,
-            })
+            form = TutorPaymentProfileForm(
+                data={
+                    "tutor": str(self.tutor.pk),
+                    "account_holder": "Ana Tutor",
+                    "bank_name": "Example Bank",
+                    "branch_code": "000000",
+                    "account_number": "1234567890",
+                    "is_active": False,
+                }
+            )
             self.assertTrue(form.is_valid(), form.errors)
             profile = form.save()
             self.assertNotIn("1234567890", profile.encrypted_account_number)
@@ -141,23 +172,30 @@ class TutorRevenueTests(TestCase):
 
     def test_paid_video_sale_creates_one_request_and_revenue_event(self):
         TutorContract.objects.create(
-            tutor=self.tutor, service=TutorContract.Service.VIDEO,
+            tutor=self.tutor,
+            service=TutorContract.Service.VIDEO,
             tutor_percent=Decimal("50.00"),
             effective_from=timezone.now() - timedelta(days=1),
             contract_reference="TEST-50-50",
         )
         session = create_video_checkout(
-            student=self.student, tutor=self.tutor,
-            topic="Quadratics", programme="CAPS Grade 12",
+            student=self.student,
+            tutor=self.tutor,
+            topic="Quadratics",
+            programme="CAPS Grade 12",
             idempotency_key="finance-video-001",
         )
-        result = process_video_notification({
-            "m_payment_id": session.payment_reference,
-            "pf_payment_id": "VIDEO-PF-001", "payment_status": "COMPLETE",
-            "amount_gross": session.fields["amount"],
-            "custom_str1": str(self.student.supabase_user_id),
-            "custom_str2": session.payment_reference,
-        }, gateway=VerifiedGateway())
+        result = process_video_notification(
+            {
+                "m_payment_id": session.payment_reference,
+                "pf_payment_id": "VIDEO-PF-001",
+                "payment_status": "COMPLETE",
+                "amount_gross": session.fields["amount"],
+                "custom_str1": str(self.student.supabase_user_id),
+                "custom_str2": session.payment_reference,
+            },
+            gateway=VerifiedGateway(),
+        )
         self.assertTrue(result.accepted)
         earning = TutorEarning.objects.get()
         self.assertEqual(earning.service, TutorContract.Service.VIDEO)

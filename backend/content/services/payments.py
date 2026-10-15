@@ -272,6 +272,7 @@ def _fulfill_verified_payment(payment: Payment) -> None:
 
     # Create exactly one tutor revenue entry, only after trusted PayFast verification.
     from content.services.tutor_finance import record_course_sale
+
     record_course_sale(payment)
 
     NotificationOutbox.objects.get_or_create(

@@ -1,4 +1,5 @@
 """Superuser-only financial controls. Raw account numbers are write-only and encrypted."""
+
 import re
 from cryptography.fernet import Fernet, InvalidToken
 from django import forms
@@ -8,7 +9,12 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from .tutor_finance_models import (
-    TutorContract, TutorCourseAssignment, TutorEarning, TutorPaymentProfile, TutorPayout, TutorVideoRequest,
+    TutorContract,
+    TutorCourseAssignment,
+    TutorEarning,
+    TutorPaymentProfile,
+    TutorPayout,
+    TutorVideoRequest,
 )
 from .services.tutor_finance import record_video_delivery
 
@@ -81,8 +87,18 @@ class TutorPaymentProfileAdmin(FinanceSuperuserAdmin):
     search_fields = ("tutor__username", "tutor__email", "bank_name")
     autocomplete_fields = ("tutor",)
     readonly_fields = ("masked_account", "recipient_verified_at", "created_at", "updated_at")
-    fields = ("tutor", "account_holder", "bank_name", "branch_code", "account_number",
-              "masked_account", "is_active", "recipient_verified_at", "created_at", "updated_at")
+    fields = (
+        "tutor",
+        "account_holder",
+        "bank_name",
+        "branch_code",
+        "account_number",
+        "masked_account",
+        "is_active",
+        "recipient_verified_at",
+        "created_at",
+        "updated_at",
+    )
 
     @admin.display(description="Account")
     def masked_account(self, obj):
@@ -96,7 +112,15 @@ class TutorPaymentProfileAdmin(FinanceSuperuserAdmin):
 
 @admin.register(TutorContract)
 class TutorContractAdmin(FinanceSuperuserAdmin):
-    list_display = ("tutor", "service", "tutor_percent", "academy_percent", "contract_reference", "effective_from", "is_active")
+    list_display = (
+        "tutor",
+        "service",
+        "tutor_percent",
+        "academy_percent",
+        "contract_reference",
+        "effective_from",
+        "is_active",
+    )
     autocomplete_fields = ("tutor",)
     list_filter = ("service", "is_active")
     search_fields = ("tutor__username", "contract_reference")
@@ -114,7 +138,16 @@ class TutorCourseAssignmentAdmin(FinanceSuperuserAdmin):
 
 @admin.register(TutorEarning)
 class TutorEarningAdmin(FinanceSuperuserAdmin):
-    list_display = ("tutor", "service", "service_label", "gross", "tutor_percent", "tutor_amount", "academy_amount", "state")
+    list_display = (
+        "tutor",
+        "service",
+        "service_label",
+        "gross",
+        "tutor_percent",
+        "tutor_amount",
+        "academy_amount",
+        "state",
+    )
     list_filter = ("service", "state", "payment_verified_at")
     search_fields = ("source_reference", "tutor__username")
     readonly_fields = [field.name for field in TutorEarning._meta.fields]

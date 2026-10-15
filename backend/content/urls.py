@@ -46,7 +46,9 @@ urlpatterns = [
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("student/topical-videos/tutors/", TutorVideoOptionsView.as_view(), name="topical-video-tutors"),
     path("student/topical-videos/checkout/", VideoRequestCheckoutView.as_view(), name="topical-video-checkout"),
-    path("student/topical-videos/orders/<str:reference>/", VideoRequestStatusView.as_view(), name="topical-video-status"),
+    path(
+        "student/topical-videos/orders/<str:reference>/", VideoRequestStatusView.as_view(), name="topical-video-status"
+    ),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
     path(
         "student/acceptance/payments/<str:reference>/complete/",

@@ -67,7 +67,11 @@ urlpatterns = [
     path("errors/404/", error_views.error_404, name="error-404"),
     path("errors/429/", error_views.error_429, name="error-429"),
     path("errors/500/", error_views.error_500, name="error-500"),
-    path("tutor/login/", LoginView.as_view(template_name="tutor/login.html", redirect_authenticated_user=False), name="tutor-login"),
+    path(
+        "tutor/login/",
+        LoginView.as_view(template_name="tutor/login.html", redirect_authenticated_user=False),
+        name="tutor-login",
+    ),
     path("tutor/logout/", LogoutView.as_view(next_page="/tutor/login/"), name="tutor-logout"),
     path("tutor/dashboard/", tutor_dashboard, name="tutor-dashboard"),
     path("admin/", admin.site.urls),

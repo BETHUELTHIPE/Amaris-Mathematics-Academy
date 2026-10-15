@@ -425,9 +425,11 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
             return
         count = 0
         for booking in queryset.select_related("slot"):
-            if (booking.status == LiveClassBooking.Status.CONFIRMED
-                    and booking.gateway_verified_at
-                    and booking.slot.ends_at <= timezone.now()):
+            if (
+                booking.status == LiveClassBooking.Status.CONFIRMED
+                and booking.gateway_verified_at
+                and booking.slot.ends_at <= timezone.now()
+            ):
                 booking.status = LiveClassBooking.Status.COMPLETED
                 booking.save(update_fields=("status", "updated_at"))
                 count += 1

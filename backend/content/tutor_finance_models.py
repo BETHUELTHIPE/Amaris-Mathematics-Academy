@@ -1,4 +1,5 @@
 """Financial records for tutor work. Never expose these models through public serializers."""
+
 from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -16,7 +17,9 @@ class TutorPaymentProfile(TimeStampedModel):
     branch_code = models.CharField(max_length=20, blank=True)
     encrypted_account_number = models.TextField(blank=True, editable=False)
     account_last_four = models.CharField(max_length=4, blank=True, editable=False)
-    provider_recipient_id = models.CharField(max_length=120, blank=True, help_text="Verified recipient token, not an API secret.")
+    provider_recipient_id = models.CharField(
+        max_length=120, blank=True, help_text="Verified recipient token, not an API secret."
+    )
     recipient_verified_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=False, help_text="Enable after bank ownership and contract checks.")
 
@@ -38,7 +41,8 @@ class TutorContract(TimeStampedModel):
     tutor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="finance_contracts")
     service = models.CharField(max_length=20, choices=Service.choices)
     tutor_percent = models.DecimalField(
-        max_digits=5, decimal_places=2,
+        max_digits=5,
+        decimal_places=2,
         validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("100.00"))],
         help_text="Tutor percentage of gross sale: 60 means tutor 60%, Amaris 40%.",
     )
@@ -81,6 +85,7 @@ class TutorCourseAssignment(TimeStampedModel):
 
 class TutorVideoRequest(TimeStampedModel):
     """Dedicated verified payment object. Never accept a frontend 'paid' flag."""
+
     class Status(models.TextChoices):
         PENDING = "pending", "Pending payment"
         PAID = "paid", "Paid / awaiting video"
@@ -90,7 +95,9 @@ class TutorVideoRequest(TimeStampedModel):
 
     reference = models.CharField(max_length=100, unique=True)
     idempotency_key = models.CharField(max_length=64, unique=True)
-    student = models.ForeignKey("content.StudentRecord", on_delete=models.PROTECT, related_name="topical_video_requests")
+    student = models.ForeignKey(
+        "content.StudentRecord", on_delete=models.PROTECT, related_name="topical_video_requests"
+    )
     tutor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="video_requests")
     topic = models.CharField(max_length=180)
     programme = models.CharField(max_length=60)
@@ -129,7 +136,9 @@ class TutorEarning(TimeStampedModel):
     eligible_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=("service", "source_reference"), name="tutor_earning_source_unique")]
+        constraints = [
+            models.UniqueConstraint(fields=("service", "source_reference"), name="tutor_earning_source_unique")
+        ]
         indexes = [models.Index(fields=("tutor", "service", "state"), name="tutor_earnings_summary_idx")]
 
     def __str__(self):
