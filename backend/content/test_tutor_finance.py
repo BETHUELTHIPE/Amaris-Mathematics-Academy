@@ -99,7 +99,7 @@ class TutorRevenueTests(TestCase):
     def test_tutor_dashboard_hides_student_identity_and_bank_account(self):
         self.pay_course()
         self.client.force_login(self.tutor)
-        response = self.client.get("/tutor/dashboard/")
+        response = self.client.get("/tutor/dashboard/", secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Courses sold")
         self.assertContains(response, "R 150.00")
