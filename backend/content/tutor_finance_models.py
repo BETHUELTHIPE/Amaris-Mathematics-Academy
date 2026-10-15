@@ -1,6 +1,7 @@
 """Financial records for tutor work. Never expose these models through public serializers."""
 
 from decimal import Decimal
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator

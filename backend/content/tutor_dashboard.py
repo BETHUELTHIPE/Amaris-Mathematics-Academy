@@ -4,8 +4,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
 from django.shortcuts import render
 
-from content.tutor_finance_models import TutorContract, TutorPaymentProfile
 from content.services.tutor_finance import tutor_dashboard_stats
+from content.tutor_finance_models import TutorContract, TutorPaymentProfile
 
 
 @login_required(login_url="/tutor/login/")

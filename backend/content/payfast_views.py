@@ -10,8 +10,8 @@ from rest_framework.views import APIView
 
 from .serializers import ErrorDetailSerializer, PayFastITNRequestSerializer, PayFastITNStatusSerializer
 from .services.live_classes import process_live_class_notification
-from .services.topical_videos import process_video_notification
 from .services.payments import HttpPayFastVerificationGateway, process_payfast_notification
+from .services.topical_videos import process_video_notification
 
 DEFAULT_PAYFAST_NETWORKS = (
     "197.97.145.144/28",

@@ -19,10 +19,9 @@ from content.tutor_finance_models import (
     TutorContract,
     TutorCourseAssignment,
     TutorEarning,
-    TutorPaymentProfile,
     TutorPayout,
 )
-from content.tutor_finance_tasks import email_tutor_payout_receipt, reconcile_tutor_earnings
+from content.tutor_finance_tasks import email_tutor_payout_receipt
 
 
 class VerifiedGateway:

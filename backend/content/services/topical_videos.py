@@ -3,23 +3,24 @@
 import os
 import re
 from decimal import Decimal, InvalidOperation
+
 from django.db import transaction
 from django.utils import timezone
 
-from content.models import Payment, LiveClassBooking
-from content.tutor_finance_models import TutorContract, TutorVideoRequest
+from content.models import LiveClassBooking, Payment
+from content.services.live_classes import _public_urls
 from content.services.payments import (
+    PAYFAST_LIVE_URL,
+    PAYFAST_SANDBOX_URL,
     CheckoutSession,
     NotificationResult,
     PaymentSecurityError,
-    PAYFAST_LIVE_URL,
-    PAYFAST_SANDBOX_URL,
     _payfast_credentials,
     _payfast_mode,
     generate_payfast_signature,
 )
-from content.services.live_classes import _public_urls
 from content.services.tutor_finance import _contract_for, record_topical_video_sale
+from content.tutor_finance_models import TutorContract, TutorVideoRequest
 
 
 def video_price():

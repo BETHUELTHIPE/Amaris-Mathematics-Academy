@@ -6,13 +6,13 @@ from django.db import transaction
 from django.utils import timezone
 
 from content.models import LiveClassBooking, Payment
-from content.tutor_finance_models import TutorEarning, TutorPayout, TutorVideoRequest
 from content.services.tutor_finance import (
     record_course_sale,
     record_live_class_sale,
     record_topical_video_sale,
     refresh_eligible_earnings,
 )
+from content.tutor_finance_models import TutorEarning, TutorPayout, TutorVideoRequest
 
 
 @shared_task(ignore_result=True)

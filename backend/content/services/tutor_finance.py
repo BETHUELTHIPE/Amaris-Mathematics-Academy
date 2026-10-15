@@ -1,10 +1,10 @@
 """Server-owned tutor earnings: verified income, immutable contract snapshots, no student PII on tutor views."""
 
 from datetime import timedelta
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from content.models import LiveClassBooking, Payment

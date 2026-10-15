@@ -3,7 +3,6 @@ from rest_framework.routers import DefaultRouter
 
 from .live_class_views import LiveClassBookingStatusView, LiveClassCheckoutView, LiveClassSlotView
 from .payfast_views import PayFastITNView
-from .topical_video_views import TutorVideoOptionsView, VideoRequestCheckoutView, VideoRequestStatusView
 from .student_views import (
     AcceptancePaymentCompleteView,
     AcceptanceSeedView,
@@ -14,6 +13,7 @@ from .student_views import (
     StudentCoursesView,
     StudentLessonView,
 )
+from .topical_video_views import TutorVideoOptionsView, VideoRequestCheckoutView, VideoRequestStatusView
 from .views import (
     AmarisAssistantView,
     AnnouncementViewSet,

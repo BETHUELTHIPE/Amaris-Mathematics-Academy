@@ -4,11 +4,10 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
-from rest_framework import serializers
+from rest_framework import serializers, status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
-from rest_framework import status
 
 from content.authentication import SupabaseStudentAuthentication
 from content.services.payments import PaymentSecurityError

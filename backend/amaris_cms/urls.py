@@ -4,12 +4,13 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.auth.views import LoginView, LogoutView
-from content.tutor_dashboard import tutor_dashboard
 from django.db import connection
 from django.http import JsonResponse
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from redis import Redis
+
+from content.tutor_dashboard import tutor_dashboard
 
 from . import error_views
 
