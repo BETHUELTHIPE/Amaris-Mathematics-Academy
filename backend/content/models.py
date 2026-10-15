@@ -387,6 +387,61 @@ class Announcement(PublishableModel):
         return self.title
 
 
+class AnnouncementMedia(TimeStampedModel):
+    """Superuser-managed marketing attachments stored in the CMS S3 bucket."""
+
+    class Kind(models.TextChoices):
+        IMAGE = "image", "Image"
+        VIDEO = "video", "Video"
+        PDF = "pdf", "PDF"
+
+    announcement = models.ForeignKey(Announcement, related_name="media", on_delete=models.CASCADE)
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    title = models.CharField(max_length=180)
+    file = models.FileField(upload_to="marketing/announcements/%Y/%m/")
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ("order", "id")
+
+    def clean(self):
+        super().clean()
+        if not self.file:
+            raise ValidationError({"file": "Upload a marketing file."})
+        from pathlib import Path
+
+        extensions = {
+            self.Kind.IMAGE: {".jpg", ".jpeg", ".png", ".webp"},
+            self.Kind.VIDEO: {".mp4", ".webm"},
+            self.Kind.PDF: {".pdf"},
+        }
+        extension = Path(self.file.name).suffix.lower()
+        if extension not in extensions.get(self.Kind(self.kind), set()):
+            raise ValidationError({"file": "File extension does not match the selected media type."})
+        # Existing stored objects should not trigger a remote S3 HEAD during metadata edits.
+        if not self.file._committed:
+            if self.file.size > 50 * 1024 * 1024:
+                raise ValidationError({"file": "Maximum file size is 50 MB (Supabase bucket limit)."})
+            # Validate signatures to reject renamed HTML or executable files.
+            pos = self.file.tell()
+            header = self.file.read(16)
+            self.file.seek(pos)
+            valid = {
+                ".pdf": header.startswith(b"%PDF-"),
+                ".png": header.startswith(b"\x89PNG\r\n\x1a\n"),
+                ".jpg": header.startswith(b"\xff\xd8\xff"),
+                ".jpeg": header.startswith(b"\xff\xd8\xff"),
+                ".webp": header[:4] == b"RIFF" and header[8:12] == b"WEBP",
+                ".mp4": header[4:8] == b"ftyp",
+                ".webm": header.startswith(b"\x1a\x45\xdf\xa3"),
+            }
+            if not valid.get(extension, False):
+                raise ValidationError({"file": "File content does not match the allowed format."})
+
+    def __str__(self):
+        return self.title
+
+
 class ContactEnquiry(TimeStampedModel):
     class Status(models.TextChoices):
         NEW = "new", "New"
