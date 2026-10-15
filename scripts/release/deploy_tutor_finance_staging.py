@@ -131,16 +131,19 @@ def main():
     )
     deploy(BACKEND, sha)
     deploy(FRONTEND, FRONTEND_SHA)
-    for base in (
-        "https://amaris-mathematics-academy-staging.onrender.com",
-        "https://amaris-mathematics-academy-staging-x4ax.onrender.com",
-    ):
+    # Django uses an APPEND_SLASH health URL; the Next.js frontend route is
+    # canonical without a trailing slash. NoRedirect deliberately rejects 308s.
+    health_routes = (
+        ("https://amaris-mathematics-academy-staging.onrender.com", "/health/ready/"),
+        ("https://amaris-mathematics-academy-staging-x4ax.onrender.com", "/health/ready"),
+    )
+    for base, path in health_routes:
         with urllib.request.build_opener(NoRedirect()).open(
-            base + "/health/ready/", timeout=30
+            base + path, timeout=30
         ) as response:
             if response.status != 200:
                 raise RuntimeError("Staging readiness failed")
-        print("PASS staging readiness:", base, flush=True)
+        print("PASS staging readiness:", base + path, flush=True)
     print(
         "PASS staging deployment complete; production was not changed by this job",
         flush=True,
