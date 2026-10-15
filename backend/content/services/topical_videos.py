@@ -28,7 +28,7 @@ def video_price():
         price = Decimal(os.getenv("TUTOR_TOPICAL_VIDEO_PRICE_ZAR", "450.00"))
     except InvalidOperation as exc:
         raise PaymentSecurityError("Topical video pricing is not configured.") from exc
-    if price <= 0 or price.as_tuple().exponent < -2:
+    if not price.is_finite() or price <= 0 or price != price.quantize(Decimal("0.01")):
         raise PaymentSecurityError("Topical video price must be a positive ZAR amount.")
     return price
 
