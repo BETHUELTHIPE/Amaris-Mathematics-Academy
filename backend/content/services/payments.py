@@ -62,9 +62,15 @@ class NotificationResult:
 
 
 def _payfast_mode() -> str:
-    mode = os.getenv("PAYFAST_MODE", "sandbox").strip().lower()
+    # Both names are used in managed deployments. Resolve them here so
+    # checkout, ITN validation and synthetic acceptance use the same mode.
+    configured_mode = os.getenv("PAYFAST_MODE", "").strip().lower()
+    configured_env = os.getenv("PAYFAST_ENV", "").strip().lower()
+    if configured_mode and configured_env and configured_mode != configured_env:
+        raise PaymentSecurityError("PAYFAST_MODE and PAYFAST_ENV must agree when both are configured.")
+    mode = configured_mode or configured_env or "sandbox"
     if mode not in {"sandbox", "live"}:
-        raise PaymentSecurityError("PAYFAST_MODE must be sandbox or live.")
+        raise PaymentSecurityError("PayFast environment must be sandbox or live.")
     return mode
 
 
@@ -182,7 +188,9 @@ class HttpPayFastVerificationGateway:
     """Validate PayFast ITN signatures and confirm the payload with PayFast."""
 
     def verify_notification(self, payload: Mapping[str, str]) -> bool:
-        _, _, passphrase = _payfast_credentials()
+        merchant_id, _, passphrase = _payfast_credentials()
+        if str(payload.get("merchant_id", "")).strip() != merchant_id:
+            return False
         supplied_signature = str(payload.get("signature", "")).strip().lower()
         if not supplied_signature:
             return False

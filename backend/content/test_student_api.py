@@ -478,16 +478,20 @@ class StudentJourneyApiTests(APITestCase):
             )
         reference = checkout.data["payment_reference"]
 
-        with patch.dict(os.environ, {"PAYFAST_MODE": "live"}):
-            completed = self.client.post(
-                reverse("student-acceptance-payment-complete", args=[reference]),
-                {},
-                format="json",
-                secure=True,
-            )
+        for mode, alias in (("live", ""), ("", "live"), ("sandbox", "live"), ("", "invalid")):
+            with (
+                self.subTest(mode=mode, alias=alias),
+                patch.dict(os.environ, {"PAYFAST_MODE": mode, "PAYFAST_ENV": alias}),
+            ):
+                completed = self.client.post(
+                    reverse("student-acceptance-payment-complete", args=[reference]),
+                    {},
+                    format="json",
+                    secure=True,
+                )
 
-        self.assertEqual(completed.status_code, 403)
-        self.assertEqual(Payment.objects.get(reference=reference).status, Payment.Status.PENDING)
+                self.assertEqual(completed.status_code, 403)
+                self.assertEqual(Payment.objects.get(reference=reference).status, Payment.Status.PENDING)
 
     def test_anonymous_student_journey_is_rejected(self):
         self.client.force_authenticate(user=None)

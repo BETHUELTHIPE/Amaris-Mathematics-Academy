@@ -62,6 +62,17 @@ def main():
     try:
         stage = service_env(STAGING)
         prod = service_env(PRODUCTION)
+        for label, values in (("Staging", stage), ("Production", prod)):
+            mode = values.get("PAYFAST_MODE", "").strip().lower()
+            alias = values.get("PAYFAST_ENV", "").strip().lower()
+            valid = {"", "sandbox", "live"}
+            if mode not in valid or alias not in valid or (mode and alias and mode != alias):
+                raise RuntimeError("Conflicting or invalid direct PayFast environment configuration")
+            print(label, "direct PayFast mode:", mode or alias or "not directly configured")
+            print(label, "direct PayFast credentials complete:", all(
+                bool(values.get(key, "").strip())
+                for key in ("PAYFAST_MERCHANT_ID", "PAYFAST_MERCHANT_KEY", "PAYFAST_PASSPHRASE")
+            ))
         # Presence only. These are service variables; linked groups are not
         # returned by this API. Missing direct configuration fails closed.
         print(
