@@ -1,0 +1,57 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Tutor earnings · Amaris Academy</title>
+<style>
+:root{color-scheme:light;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f7fc;color:#142544}
+*{box-sizing:border-box}body{margin:0}a{color:inherit}.shell{max-width:1160px;margin:auto;padding:28px 22px 90px}
+.top{background:#091e42;color:#fff}.top .shell{padding-top:18px;padding-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.logo{font-weight:850;font-size:18px;letter-spacing:-.6px}.logo span{color:#ffd273}.top a{color:#d7e6ff;font-size:13px;text-decoration:none}
+.eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:11px;font-weight:750;color:#2e64ac}
+.intro{padding:35px 0 20px;display:flex;align-items:end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-size:clamp(29px,4vw,44px);letter-spacing:-.045em;margin:9px 0}h2{font-size:19px;letter-spacing:-.02em;margin:0 0 17px}
+.muted{color:#62738c;font-size:14px;line-height:1.6}.badge{display:inline-flex;align-items:center;gap:7px;border-radius:100px;background:#e7f6ed;color:#166342;padding:9px 13px;font-weight:750;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.card{background:white;border:1px solid #e0e8f2;border-radius:20px;padding:23px;box-shadow:0 10px 32px rgba(11,42,91,.035)}
+.metric{font-size:33px;font-weight:850;letter-spacing:-.055em;margin:13px 0 2px;font-variant-numeric:tabular-nums}
+label{display:block;font-weight:650;color:#536781;font-size:13px}
+.split{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-top:20px}
+.stat{display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid #ebeff5;gap:20px}
+.stat:last-child{border:0}.count{font-size:24px;font-weight:850;font-variant-numeric:tabular-nums}
+.bar{height:9px;background:#edf2f9;border-radius:8px;overflow:hidden;margin-top:9px}.bar span{display:block;background:linear-gradient(90deg,#2463bb,#76a7ed);height:100%;border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13px}th{text-align:left;color:#61738d;font-weight:700;font-size:12px;padding:11px 9px;border-bottom:1px solid #e3ebf5}td{padding:14px 9px;border-bottom:1px solid #f0f3f7}th:last-child,td:last-child{text-align:right}
+.pill{display:inline-block;background:#edf3ff;color:#315e9b;border-radius:20px;padding:5px 8px;font-size:11px;font-weight:700}
+.note{padding:16px;background:#eff5ff;border-radius:14px;color:#33547c;font-size:13px;line-height:1.65}
+.overflow{overflow:auto}footer{margin-top:20px;color:#7888a0;font-size:12px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}.split{grid-template-columns:1fr}.shell{padding-left:17px;padding-right:17px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="shell"><div class="logo">Amaris <span>Mathematics Academy</span> · Tutor Portal</div><div><span style="color:#d6e5ff;font-size:13px;margin-right:16px">{{ tutor_name }}</span><form method="post" action="/tutor/logout/" style="display:inline">{% csrf_token %}<button style="border:0;background:none;color:#d6e5ff;cursor:pointer">Sign out</button></form></div></div></header>
+<main class="shell">
+<section class="intro"><div><div class="eyebrow">Tutor revenue centre</div><h1>Earnings & activity overview</h1><p class="muted">Verified sales, your contract share and payout progress. No student payment identities are displayed.</p></div><span class="badge">● Payment-verified records</span></section>
+<section class="grid" aria-label="Income overview">
+<div class="card"><label>Your total earnings</label><div class="metric">R {{ stats.total|floatformat:2 }}</div><div class="muted">Gross tutor earnings before any adjustments</div></div>
+<div class="card"><label>Confirmed payouts</label><div class="metric">R {{ stats.paid_out|floatformat:2 }}</div><div class="muted">Bank payouts confirmed by a provider</div></div>
+<div class="card"><label>Earned, not yet paid</label><div class="metric">R {{ stats.outstanding|floatformat:2 }}</div><div class="muted">Includes delivery holds and pending transfers</div></div>
+</section>
+<section class="split">
+<div class="card"><h2>Student purchases by service</h2><p class="muted">Each count represents a verified paid service order, not a student's name or payment details.</p>
+{% for entry in entries %}
+<div class="stat"><div style="flex:1"><strong>{{ entry.title }}</strong><div class="muted">{{ entry.subtitle }}</div><div class="bar" role="meter" aria-label="{{ entry.title }}" aria-valuenow="{{ entry.count }}" aria-valuemin="0" aria-valuemax="{{ entry.count }}"><span style="width:{{ entry.bar_width }}%"></span></div></div><div class="count">{{ entry.count }}</div></div>
+{% endfor %}
+</div>
+<div class="card"><h2>Session delivery & payouts</h2><div class="stat"><div><strong>Classes attended</strong><div class="muted">Completed after attendance review</div></div><div class="count">{{ stats.classes_attended }}</div></div>
+<div class="stat"><div><strong>Payment destination</strong><div class="muted">{{ bank_mask }}</div></div><span class="pill">{{ bank_status }}</span></div>
+<div class="note" style="margin-top:18px"><strong>How your share works</strong><p>After a payment is verified, the tutor and Academy shares are recorded at the contract rate for that sale. Payouts stay pending until delivery and settlement checks pass. A payout receipt is sent only after the bank transfer is confirmed.</p></div>
+</div></section>
+<section class="card" style="margin-top:20px"><h2>Recent verified sales</h2><div class="overflow"><table><thead><tr><th>Service</th><th>Paid date</th><th>Gross</th><th>Your share</th><th>Payout stage</th></tr></thead><tbody>
+{% for item in stats.recent %}<tr><td>{{ item.service_label }}</td><td>{{ item.payment_verified_at|date:"d M Y" }}</td><td>R {{ item.gross|floatformat:2 }}</td><td><strong>R {{ item.tutor_amount|floatformat:2 }}</strong></td><td><span class="pill">{{ item.state|capfirst }}</span></td></tr>
+{% empty %}<tr><td colspan="5">No verified tutor sales yet. Paid orders will appear after they are assigned to an active contract.</td></tr>{% endfor %}
+</tbody></table></div></section>
+<footer>Private tutor financial information · Amaris Mathematics Academy. Figures exclude unverified orders; refunds and corrections may change outstanding amounts.</footer>
+</main>
+</body></html>
