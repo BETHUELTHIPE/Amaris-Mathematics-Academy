@@ -159,6 +159,7 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             page.wait_for_url("**/tutor/apply")
             page.get_by_role("button", name="Submit tutor application", exact=True).wait_for()
             audit(page, "Application form desktop")
+            page.evaluate("window.scrollTo(0, 0)")
             page.screenshot(path=str(ARTIFACTS / "application-desktop.png"), full_page=True)
             context.close()
             # A fresh browser session explicitly tests applicant email/password login.
@@ -184,6 +185,7 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             page.get_by_role("button", name="Submit tutor application", exact=True).click()
             page.get_by_role("heading", name="Application received", exact=True).wait_for(timeout=45000)
             audit(page, "Application receipt mobile")
+            page.evaluate("window.scrollTo(0, 0)")
             page.screenshot(path=str(ARTIFACTS / "receipt-mobile.png"), full_page=True)
             reference = page.locator("strong").filter(has_text="AMARIS-TUTOR-").inner_text()
             assert page.get_by_text("Your acknowledgement email has been sent.", exact=False).is_visible()

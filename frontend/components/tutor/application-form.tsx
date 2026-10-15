@@ -25,7 +25,7 @@ export function ApplicationForm({ name, email }: { name: string; email: string }
       try {
         const response = await fetch("/api/tutor-applications", { method: "POST", body: data, headers: { Accept: "application/json" } });
         const body = await response.json() as Record<string, unknown> & { application?: { reference?: string } };
-        if (response.ok && body.application?.reference) { router.refresh(); return; }
+        if (response.ok && body.application?.reference) { router.replace("/tutor/apply?submitted=1#application-status"); return; }
         if (response.status === 401) problems = [{ field: "detail", message: "Your session expired. Sign in again in another tab, then retry this form." }];
         else problems = Object.entries(body).map(([field, message]) => ({ field, message: Array.isArray(message) ? message.join(" ") : typeof message === "string" ? message : "Check this field." }));
       } catch { problems = [{ field: "detail", message: "The service did not respond. Your entries and files are still selected. Please retry; an application received already will not be duplicated." }]; }
