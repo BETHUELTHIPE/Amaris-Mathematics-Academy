@@ -3,7 +3,6 @@
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Sum, Q
 from django.utils import timezone
@@ -13,7 +12,6 @@ from content.tutor_finance_models import (
     TutorContract,
     TutorCourseAssignment,
     TutorEarning,
-    TutorPaymentProfile,
     TutorPayout,
     TutorVideoRequest,
 )
