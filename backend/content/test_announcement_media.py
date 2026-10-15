@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -60,3 +62,27 @@ class MarketingMediaTests(TestCase):
             announcement=self.announcement, kind="pdf", title="No storage", file="marketing/announcements/guide.pdf"
         )
         self.assertEqual(self.client.get(reverse("public-marketing-media", args=[obj.pk])).status_code, 404)
+
+    @override_settings(
+        CMS_STORAGE_BUCKET_NAME="amaris-cms-files",
+        AWS_S3_ENDPOINT_URL="https://example.supabase.co/storage/v1/s3",
+    )
+    def test_signed_media_redirect_for_published_announcement(self):
+        obj = AnnouncementMedia.objects.create(
+            announcement=self.announcement,
+            kind="pdf",
+            title="Public guide",
+            file="marketing/announcements/public-guide.pdf",
+        )
+        signed_url = "https://example.supabase.co/storage/v1/s3/amaris-cms-files/public-guide.pdf?X-Amz-Signature=fake"
+        with patch.object(type(obj.file.storage), "url", return_value=signed_url):
+            response = self.client.get(reverse("public-marketing-media", args=[obj.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], signed_url)
+        self.assertIn("no-store", response["Cache-Control"])
+
+    def test_anonymous_cannot_edit_marketing_admin(self):
+        self.assertEqual(
+            self.client.get(reverse("admin:content_announcementmedia_add")).status_code,
+            302,
+        )
