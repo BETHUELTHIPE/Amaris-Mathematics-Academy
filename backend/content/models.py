@@ -416,7 +416,7 @@ class AnnouncementMedia(TimeStampedModel):
             self.Kind.PDF: {".pdf"},
         }
         extension = Path(self.file.name).suffix.lower()
-        if extension not in extensions.get(self.kind, set()):
+        if extension not in extensions.get(self.Kind(self.kind), set()):
             raise ValidationError({"file": "File extension does not match the selected media type."})
         if getattr(self.file, "size", 0) > 100 * 1024 * 1024:
             raise ValidationError({"file": "Maximum file size is 100 MB."})
