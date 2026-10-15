@@ -5,6 +5,7 @@ from rest_framework import serializers
 from .models import (
     FAQ,
     Announcement,
+    AnnouncementMedia,
     ContactEnquiry,
     Course,
     CourseCategory,
@@ -235,10 +236,25 @@ class FAQSerializer(serializers.ModelSerializer):
         fields = ("id", "question", "answer", "category", "order")
 
 
+class AnnouncementMediaSerializer(serializers.ModelSerializer):
+    download_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AnnouncementMedia
+        fields = ("id", "title", "kind", "order", "download_url")
+
+    @extend_schema_field(OpenApiTypes.URI)
+    def get_download_url(self, obj):
+        request = self.context.get("request")
+        path = f"/api/v1/marketing-media/{obj.pk}/"
+        return request.build_absolute_uri(path) if request else path
+
+
 class AnnouncementSerializer(serializers.ModelSerializer):
+    media = AnnouncementMediaSerializer(many=True, read_only=True)
     class Meta:
         model = Announcement
-        fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at")
+        fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at", "media")
 
 
 class AmarisAssistantRequestSerializer(serializers.Serializer):
