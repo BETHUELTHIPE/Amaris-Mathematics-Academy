@@ -13,8 +13,12 @@ class MarketingMediaTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.admin = User.objects.create_superuser("marketing_super", "super@example.test", "temporary-test-password")
-        self.staff = User.objects.create_user("marketing_staff", "staff@example.test", "temporary-test-password", is_staff=True)
-        self.announcement = Announcement.objects.create(title="New exam preparation", message="Enrol now", is_published=True)
+        self.staff = User.objects.create_user(
+            "marketing_staff", "staff@example.test", "temporary-test-password", is_staff=True
+        )
+        self.announcement = Announcement.objects.create(
+            title="New exam preparation", message="Enrol now", is_published=True
+        )
 
     def test_staff_cannot_access_marketing_admin(self):
         self.client.force_login(self.staff)
