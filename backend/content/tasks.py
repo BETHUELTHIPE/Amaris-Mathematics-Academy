@@ -557,3 +557,6 @@ def deliver_tutor_application_acknowledgements() -> int:
         if not count:
             break
     return delivered
+
+# Celery autodiscovery imports content.tasks. Register finance jobs without executing them.
+from . import tutor_finance_tasks  # noqa: F401

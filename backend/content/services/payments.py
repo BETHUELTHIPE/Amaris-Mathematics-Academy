@@ -289,6 +289,11 @@ def _fulfill_verified_payment(payment: Payment) -> None:
     if ticket.enrollment_id != enrollment.pk:
         raise PaymentSecurityError("Existing service ticket does not match the verified enrollment.")
 
+    # Contract shares are snapshotted only for a server-verified payment with an enrollment.
+    from content.services.tutor_finance import record_course_sale
+
+    record_course_sale(payment)
+
     NotificationOutbox.objects.get_or_create(
         payment=payment,
         defaults={

@@ -136,6 +136,48 @@ class TutorDashboardResponseSerializer(serializers.Serializer):
     summary = TutorSummarySerializer()
 
 
+class TutorEarningsCategorySerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    students = serializers.IntegerField()
+    gross = serializers.DecimalField(max_digits=12, decimal_places=2)
+    earned = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class TutorEarningsResponseSerializer(serializers.Serializer):
+    currency = serializers.CharField()
+    categories = serializers.DictField(child=TutorEarningsCategorySerializer())
+    unique_students = serializers.IntegerField()
+    total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    paid_out = serializers.DecimalField(max_digits=12, decimal_places=2)
+    outstanding = serializers.DecimalField(max_digits=12, decimal_places=2)
+    classes_attended = serializers.IntegerField()
+    bank_account_mask = serializers.CharField()
+    recipient_verified = serializers.BooleanField()
+
+
+class TutorEarningsView(TutorOnlyAPIView):
+    """Amounts and aggregate paid-student counts, never student identities or bank numbers."""
+
+    @extend_schema(responses={200: TutorEarningsResponseSerializer})
+    def get(self, request):
+        from content.services.tutor_finance import tutor_dashboard_stats
+        from content.tutor_finance_models import TutorPaymentProfile
+
+        stats = tutor_dashboard_stats(request.user)
+        profile = TutorPaymentProfile.objects.filter(tutor=request.user).first()
+        return Response({
+            "currency": "ZAR",
+            "categories": stats["categories"],
+            "unique_students": stats["unique_students"],
+            "total": stats["total"],
+            "paid_out": stats["paid_out"],
+            "outstanding": stats["outstanding"],
+            "classes_attended": stats["classes_attended"],
+            "bank_account_mask": ("****" + profile.account_last_four) if profile and profile.account_last_four else "",
+            "recipient_verified": bool(profile and profile.is_active and profile.recipient_verified_at),
+        })
+
+
 def _slot_data(slot):
     reserved = slot.bookings.filter(status__in=RESERVED_STATUSES).exists()
     return {
