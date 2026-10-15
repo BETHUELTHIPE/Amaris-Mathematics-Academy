@@ -365,6 +365,12 @@ def process_video_request_notification(
                 "updated_at",
             )
         )
+        # A verified video payment is attributed only when its tutor is already assigned.
+        # Later assignments are captured by the reconciliation job.
+        if request.status == VideoRequest.Status.QUEUED and request.assigned_tutor_id:
+            from content.services.tutor_finance import record_existing_video_sale
+
+            record_existing_video_sale(request)
     return NotificationResult(
         True,
         request.status,

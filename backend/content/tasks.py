@@ -16,6 +16,9 @@ from content.services.invoices import archive_invoice_pdf, mark_invoice_archive_
 from content.services.reconciliation import reconcile_verified_payments
 from content.services.video_requests import video_request_eta, video_request_queue_position
 
+# Celery autodiscovery imports content.tasks; register the finance jobs.
+from . import tutor_finance_tasks  # noqa: F401
+
 
 @shared_task(
     bind=True,

@@ -136,6 +136,58 @@ class TutorDashboardResponseSerializer(serializers.Serializer):
     summary = TutorSummarySerializer()
 
 
+class TutorEarningsCategorySerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    students = serializers.IntegerField()
+    gross = serializers.DecimalField(max_digits=12, decimal_places=2)
+    earned = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class TutorEarningsResponseSerializer(serializers.Serializer):
+    currency = serializers.CharField()
+    categories = serializers.DictField(child=TutorEarningsCategorySerializer())
+    unique_students = serializers.IntegerField()
+    total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    paid_out = serializers.DecimalField(max_digits=12, decimal_places=2)
+    outstanding = serializers.DecimalField(max_digits=12, decimal_places=2)
+    classes_attended = serializers.IntegerField()
+    bank_account_mask = serializers.CharField()
+    recipient_verified = serializers.BooleanField()
+
+
+class TutorEarningsView(TutorOnlyAPIView):
+    """Amounts and aggregate paid-student counts, never student identities or bank numbers."""
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response["Cache-Control"] = "private, no-store"
+        response["Vary"] = "Authorization"
+        return response
+
+    @extend_schema(responses={200: TutorEarningsResponseSerializer})
+    def get(self, request):
+        from content.services.tutor_finance import tutor_dashboard_stats
+        from content.tutor_finance_models import TutorPaymentProfile
+
+        stats = tutor_dashboard_stats(request.user)
+        profile = TutorPaymentProfile.objects.filter(tutor=request.user).first()
+        return Response(
+            {
+                "currency": "ZAR",
+                "categories": stats["categories"],
+                "unique_students": stats["unique_students"],
+                "total": stats["total"],
+                "paid_out": stats["paid_out"],
+                "outstanding": stats["outstanding"],
+                "classes_attended": stats["classes_attended"],
+                "bank_account_mask": (
+                    ("****" + profile.account_last_four) if profile and profile.account_last_four else ""
+                ),
+                "recipient_verified": bool(profile and profile.is_active and profile.recipient_verified_at),
+            }
+        )
+
+
 def _slot_data(slot):
     reserved = slot.bookings.filter(status__in=RESERVED_STATUSES).exists()
     return {
@@ -169,7 +221,14 @@ def _save_tutor_slot(tutor, attrs, *, slot=None):
             if slot.starts_at <= timezone.now():
                 raise serializers.ValidationError({"detail": "Past sessions cannot be edited."})
 
-        for key in ("programme", "subject", "level", "starts_at", "zoom_join_url", "is_active"):
+        for key in (
+            "programme",
+            "subject",
+            "level",
+            "starts_at",
+            "zoom_join_url",
+            "is_active",
+        ):
             if key in attrs:
                 setattr(slot, key, attrs[key])
 
@@ -221,7 +280,9 @@ class TutorDashboardView(TutorOnlyAPIView):
                     "ends_at": booking.slot.ends_at,
                     "duration_hours": booking.slot.duration_hours,
                     "amount": f"{booking.amount:.2f}",
-                    "student_name": f"{booking.student.first_name} {booking.student.last_name}".strip() if paid else "",
+                    "student_name": (
+                        f"{booking.student.first_name} {booking.student.last_name}".strip() if paid else ""
+                    ),
                     "student_email": booking.student.email if paid else "",
                     "zoom_join_url": booking.slot.zoom_join_url if paid else "",
                 }
@@ -241,7 +302,8 @@ class TutorDashboardView(TutorOnlyAPIView):
                         tutor=request.user, starts_at__gt=now, is_active=True
                     ).count(),
                     "confirmed_classes": LiveClassBooking.objects.filter(
-                        slot__tutor=request.user, status=LiveClassBooking.Status.CONFIRMED
+                        slot__tutor=request.user,
+                        status=LiveClassBooking.Status.CONFIRMED,
                     ).count(),
                 },
             }
@@ -264,7 +326,10 @@ class TutorSlotUpdateView(TutorOnlyAPIView):
             try:
                 owned_slot = TutorAvailabilitySlot.objects.get(pk=slot_id, tutor=request.user)
             except TutorAvailabilitySlot.DoesNotExist:
-                return Response({"detail": "Tutor session not found."}, status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {"detail": "Tutor session not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
             data = {
                 "programme": owned_slot.programme,
                 "subject": owned_slot.subject,

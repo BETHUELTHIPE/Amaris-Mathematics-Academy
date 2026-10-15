@@ -410,6 +410,7 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD") or os.getenv("GMAIL_APP_P
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT_SECONDS", "10"))
+TUTOR_BANK_FERNET_KEY = os.getenv("TUTOR_BANK_FERNET_KEY", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@example.invalid>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
@@ -427,6 +428,15 @@ if OPENAI_ASSISTANT_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
 CELERY_BEAT_SCHEDULE = {
+    "reconcile-tutor-earnings": {
+        "task": "content.tutor_finance_tasks.reconcile_tutor_earnings",
+        "schedule": 600.0,
+    },
+    "email-tutor-payout-receipts": {
+        "task": "content.tutor_finance_tasks.email_tutor_payout_receipt",
+        "schedule": 60.0,
+        "options": {"queue": "notifications"},
+    },
     "deliver-tutor-application-acknowledgements": {
         "task": "content.tasks.deliver_tutor_application_acknowledgements",
         "schedule": 30.0,

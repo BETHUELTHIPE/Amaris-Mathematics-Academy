@@ -540,6 +540,26 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+    actions = ("mark_verified_class_completed",)
+
+    @admin.action(description="Confirm completed class after payment and attendance review")
+    def mark_verified_class_completed(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(request, "Superuser approval is required.", messages.ERROR)
+            return
+        completed = 0
+        for booking in queryset.select_related("slot"):
+            if (
+                booking.status == LiveClassBooking.Status.CONFIRMED
+                and booking.gateway_verified_at
+                and booking.paid_at
+                and booking.slot.ends_at <= timezone.now()
+            ):
+                booking.status = LiveClassBooking.Status.COMPLETED
+                booking.save(update_fields=("status", "updated_at"))
+                completed += 1
+        self.message_user(request, f"Reviewed and marked {completed} class(es) completed.", messages.SUCCESS)
+
 
 class VideoRequestDocumentInline(admin.TabularInline):
     model = VideoRequestDocument
