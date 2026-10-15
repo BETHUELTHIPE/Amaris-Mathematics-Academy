@@ -1,3 +1,5 @@
+from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
+from django.views.decorators.cache import never_cache
 from django.conf import settings
 from django.db.models import Count, Prefetch, Q
 from django.utils import timezone
@@ -182,16 +184,10 @@ class AnnouncementViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
 
-from django.http import Http404, HttpResponseRedirect
-from django.views.decorators.cache import never_cache
-
-
 @never_cache
 def public_marketing_media(request, pk):
     """Grant a short-lived URL only for currently published announcements."""
     if request.method != "GET":
-        from django.http import HttpResponseNotAllowed
-
         return HttpResponseNotAllowed(["GET"])
     now = timezone.now()
     asset = (
