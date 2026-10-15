@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .live_class_views import LiveClassBookingStatusView, LiveClassCheckoutView, LiveClassSlotView
 from .payfast_views import PayFastITNView
+from .topical_video_views import TutorVideoOptionsView, VideoRequestCheckoutView, VideoRequestStatusView
 from .student_views import (
     AcceptancePaymentCompleteView,
     AcceptanceSeedView,
@@ -43,6 +44,9 @@ urlpatterns = [
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
+    path("student/topical-videos/tutors/", TutorVideoOptionsView.as_view(), name="topical-video-tutors"),
+    path("student/topical-videos/checkout/", VideoRequestCheckoutView.as_view(), name="topical-video-checkout"),
+    path("student/topical-videos/orders/<str:reference>/", VideoRequestStatusView.as_view(), name="topical-video-status"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
     path(
         "student/acceptance/payments/<str:reference>/complete/",
