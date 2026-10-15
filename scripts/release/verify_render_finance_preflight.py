@@ -84,7 +84,22 @@ def main():
             raise RuntimeError(
                 "Staging service lacks a directly configured database connection"
             )
-        if "amaris_staging_app" not in (urllib.parse.urlsplit(dsn).username or ""):
+        stage_url = urllib.parse.urlsplit(dsn)
+        prod_url = urllib.parse.urlsplit(prod.get("DATABASE_URL", ""))
+        project = "epkcuseloinygkakxxdu"
+        print(
+            "Staging references production Supabase project:",
+            project in ((stage_url.hostname or "") + (stage_url.username or "")),
+        )
+        print(
+            "Staging and production database hosts match:",
+            bool(stage_url.hostname and stage_url.hostname == prod_url.hostname),
+        )
+        print(
+            "Staging host appears to be Render PostgreSQL:",
+            (stage_url.hostname or "").startswith("dpg-"),
+        )
+        if "amaris_staging_app" not in (stage_url.username or ""):
             raise RuntimeError(
                 "Staging service is not configured with its restricted database role"
             )

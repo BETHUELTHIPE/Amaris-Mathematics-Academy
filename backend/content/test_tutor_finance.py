@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from content.models import (
     Course,
@@ -62,9 +63,7 @@ class ProductionTutorFinanceTests(TestCase):
             first_name="PrivateStudent",
             last_name="Confidential",
         )
-        category = CourseCategory.objects.create(
-            name="Finance regression", slug="finance-regression"
-        )
+        category = CourseCategory.objects.create(name="Finance regression", slug="finance-regression")
         self.course = Course.objects.create(
             category=category,
             title="Calculus tutorial",
@@ -86,9 +85,7 @@ class ProductionTutorFinanceTests(TestCase):
         TutorCourseAssignment.objects.create(course=self.course, tutor=self.tutor)
 
     def checkout(self, accepted=True, key="finance-prod-checkout-001"):
-        checkout = create_checkout(
-            student=self.student, course=self.course, idempotency_key=key
-        )
+        checkout = create_checkout(student=self.student, course=self.course, idempotency_key=key)
         return process_payfast_notification(
             {
                 "m_payment_id": checkout.payment_reference,
@@ -223,6 +220,26 @@ class ProductionTutorFinanceTests(TestCase):
         response = self.client.get("/api/v1/tutor/earnings/", secure=True)
         self.assertIn(response.status_code, (401, 403))
 
+    def test_earnings_api_is_private_and_contains_no_student_identity(self):
+        self.checkout()
+        client = APIClient()
+        client.force_authenticate(user=self.tutor)
+        response = client.get("/api/v1/tutor/earnings/", secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertIn("Authorization", response["Vary"])
+        self.assertEqual(response.data["categories"]["course"]["count"], 1)
+        self.assertEqual(response.data["unique_students"], 1)
+        self.assertEqual(response.data["total"], Decimal("150.00"))
+        self.assertNotIn(self.student.email.encode(), response.content)
+        self.assertNotIn(self.student.first_name.encode(), response.content)
+        self.assertNotIn(str(self.student.supabase_user_id).encode(), response.content)
+        other = get_user_model().objects.create_user(username="another.finance.tutor")
+        client.force_authenticate(user=other)
+        other_response = client.get("/api/v1/tutor/earnings/", secure=True)
+        self.assertEqual(other_response.data["unique_students"], 0)
+        self.assertEqual(other_response.data["total"], Decimal("0"))
+
     def test_hold_is_not_a_real_payout(self):
         self.checkout()
         earning = TutorEarning.objects.get()
@@ -231,9 +248,7 @@ class ProductionTutorFinanceTests(TestCase):
         self.assertEqual(refresh_eligible_earnings(), 1)
         earning.refresh_from_db()
         self.assertEqual(earning.state, TutorEarning.State.READY)
-        self.assertEqual(
-            TutorPayout.objects.get().state, TutorPayout.State.AWAITING_PROVIDER
-        )
+        self.assertEqual(TutorPayout.objects.get().state, TutorPayout.State.AWAITING_PROVIDER)
 
     def test_reconciliation_recovers_completed_paid_class_without_double_credit(self):
         paid_at = timezone.now() - timedelta(days=9)
@@ -276,8 +291,6 @@ class ProductionTutorFinanceTests(TestCase):
         self.assertEqual(earning.tutor_amount, Decimal("250.00"))
         self.assertEqual(earning.academy_amount, Decimal("250.00"))
         self.assertEqual(earning.service_delivered_at, slot.ends_at)
-        self.assertEqual(
-            TutorPayout.objects.get().state, TutorPayout.State.AWAITING_PROVIDER
-        )
+        self.assertEqual(TutorPayout.objects.get().state, TutorPayout.State.AWAITING_PROVIDER)
         self.assertEqual(email_tutor_payout_receipt.run(), 0)
         self.assertEqual(len(mail.outbox), 0)

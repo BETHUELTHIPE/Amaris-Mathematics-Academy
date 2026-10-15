@@ -55,11 +55,15 @@ class SupabaseTutorAuthentication(BaseAuthentication):
 
         users = list(
             get_user_model()
-            .objects.filter(email__iexact=email, is_active=True, groups__name=TUTOR_GROUP)
+            .objects.filter(
+                email__iexact=email, is_active=True, groups__name=TUTOR_GROUP
+            )
             .distinct()[:2]
         )
         if len(users) != 1:
-            raise AuthenticationFailed("Tutor access has not been approved for this account.")
+            raise AuthenticationFailed(
+                "Tutor access has not been approved for this account."
+            )
         return users[0], {"provider": "supabase", "role": "tutor"}
 
     def authenticate_header(self, request):
@@ -76,7 +80,9 @@ class TutorSlotWriteSerializer(serializers.Serializer):
     subject = serializers.ChoiceField(choices=TutorAvailabilitySlot.Subject.choices)
     level = serializers.CharField(max_length=80, trim_whitespace=True, min_length=2)
     starts_at = serializers.DateTimeField()
-    duration_hours = serializers.IntegerField(min_value=1, max_value=LIVE_CLASS_MAX_HOURS)
+    duration_hours = serializers.IntegerField(
+        min_value=1, max_value=LIVE_CLASS_MAX_HOURS
+    )
     zoom_join_url = serializers.URLField(max_length=200)
     is_active = serializers.BooleanField(default=True)
 
@@ -158,6 +164,12 @@ class TutorEarningsResponseSerializer(serializers.Serializer):
 class TutorEarningsView(TutorOnlyAPIView):
     """Amounts and aggregate paid-student counts, never student identities or bank numbers."""
 
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response["Cache-Control"] = "private, no-store"
+        response["Vary"] = "Authorization"
+        return response
+
     @extend_schema(responses={200: TutorEarningsResponseSerializer})
     def get(self, request):
         from content.services.tutor_finance import tutor_dashboard_stats
@@ -175,9 +187,13 @@ class TutorEarningsView(TutorOnlyAPIView):
                 "outstanding": stats["outstanding"],
                 "classes_attended": stats["classes_attended"],
                 "bank_account_mask": (
-                    ("****" + profile.account_last_four) if profile and profile.account_last_four else ""
+                    ("****" + profile.account_last_four)
+                    if profile and profile.account_last_four
+                    else ""
                 ),
-                "recipient_verified": bool(profile and profile.is_active and profile.recipient_verified_at),
+                "recipient_verified": bool(
+                    profile and profile.is_active and profile.recipient_verified_at
+                ),
             }
         )
 
@@ -207,21 +223,36 @@ def _save_tutor_slot(tutor, attrs, *, slot=None):
         if slot is None:
             slot = TutorAvailabilitySlot(tutor=tutor)
         else:
-            slot = TutorAvailabilitySlot.objects.select_for_update().get(pk=slot.pk, tutor_id=tutor.pk)
+            slot = TutorAvailabilitySlot.objects.select_for_update().get(
+                pk=slot.pk, tutor_id=tutor.pk
+            )
             if slot.bookings.filter(status__in=RESERVED_STATUSES).exists():
                 raise serializers.ValidationError(
-                    {"detail": "A reserved or paid session cannot be changed. Contact the academy."}
+                    {
+                        "detail": "A reserved or paid session cannot be changed. Contact the academy."
+                    }
                 )
             if slot.starts_at <= timezone.now():
-                raise serializers.ValidationError({"detail": "Past sessions cannot be edited."})
+                raise serializers.ValidationError(
+                    {"detail": "Past sessions cannot be edited."}
+                )
 
-        for key in ("programme", "subject", "level", "starts_at", "zoom_join_url", "is_active"):
+        for key in (
+            "programme",
+            "subject",
+            "level",
+            "starts_at",
+            "zoom_join_url",
+            "is_active",
+        ):
             if key in attrs:
                 setattr(slot, key, attrs[key])
 
         hours = attrs.get("duration_hours", slot.duration_hours if slot.pk else None)
         if hours is None or not 1 <= hours <= LIVE_CLASS_MAX_HOURS:
-            raise serializers.ValidationError({"duration_hours": "Choose a valid number of hours."})
+            raise serializers.ValidationError(
+                {"duration_hours": "Choose a valid number of hours."}
+            )
         slot.ends_at = slot.starts_at + timedelta(hours=hours)
 
         try:
@@ -229,8 +260,12 @@ def _save_tutor_slot(tutor, attrs, *, slot=None):
             slot.save()
         except (DjangoValidationError, IntegrityError) as exc:
             if isinstance(exc, DjangoValidationError):
-                raise serializers.ValidationError({"detail": "; ".join(exc.messages)}) from exc
-            raise serializers.ValidationError({"detail": "This tutor time is no longer available."}) from exc
+                raise serializers.ValidationError(
+                    {"detail": "; ".join(exc.messages)}
+                ) from exc
+            raise serializers.ValidationError(
+                {"detail": "This tutor time is no longer available."}
+            ) from exc
         return slot
 
 
@@ -267,7 +302,11 @@ class TutorDashboardView(TutorOnlyAPIView):
                     "ends_at": booking.slot.ends_at,
                     "duration_hours": booking.slot.duration_hours,
                     "amount": f"{booking.amount:.2f}",
-                    "student_name": f"{booking.student.first_name} {booking.student.last_name}".strip() if paid else "",
+                    "student_name": (
+                        f"{booking.student.first_name} {booking.student.last_name}".strip()
+                        if paid
+                        else ""
+                    ),
                     "student_email": booking.student.email if paid else "",
                     "zoom_join_url": booking.slot.zoom_join_url if paid else "",
                 }
@@ -275,7 +314,8 @@ class TutorDashboardView(TutorOnlyAPIView):
         return Response(
             {
                 "tutor": {
-                    "name": request.user.get_full_name().strip() or request.user.username,
+                    "name": request.user.get_full_name().strip()
+                    or request.user.username,
                     "email": request.user.email,
                 },
                 "rate_per_hour": f"{LIVE_CLASS_PRICE:.2f}",
@@ -287,7 +327,8 @@ class TutorDashboardView(TutorOnlyAPIView):
                         tutor=request.user, starts_at__gt=now, is_active=True
                     ).count(),
                     "confirmed_classes": LiveClassBooking.objects.filter(
-                        slot__tutor=request.user, status=LiveClassBooking.Status.CONFIRMED
+                        slot__tutor=request.user,
+                        status=LiveClassBooking.Status.CONFIRMED,
                     ).count(),
                 },
             }
@@ -295,7 +336,9 @@ class TutorDashboardView(TutorOnlyAPIView):
 
 
 class TutorSlotCreateView(TutorOnlyAPIView):
-    @extend_schema(request=TutorSlotWriteSerializer, responses={201: TutorSlotResponseSerializer})
+    @extend_schema(
+        request=TutorSlotWriteSerializer, responses={201: TutorSlotResponseSerializer}
+    )
     def post(self, request):
         serializer = TutorSlotWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -304,13 +347,20 @@ class TutorSlotCreateView(TutorOnlyAPIView):
 
 
 class TutorSlotUpdateView(TutorOnlyAPIView):
-    @extend_schema(request=TutorSlotWriteSerializer, responses={200: TutorSlotResponseSerializer})
+    @extend_schema(
+        request=TutorSlotWriteSerializer, responses={200: TutorSlotResponseSerializer}
+    )
     def patch(self, request, slot_id: int):
         with transaction.atomic():
             try:
-                owned_slot = TutorAvailabilitySlot.objects.get(pk=slot_id, tutor=request.user)
+                owned_slot = TutorAvailabilitySlot.objects.get(
+                    pk=slot_id, tutor=request.user
+                )
             except TutorAvailabilitySlot.DoesNotExist:
-                return Response({"detail": "Tutor session not found."}, status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {"detail": "Tutor session not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
             data = {
                 "programme": owned_slot.programme,
                 "subject": owned_slot.subject,
@@ -323,5 +373,7 @@ class TutorSlotUpdateView(TutorOnlyAPIView):
             data.update(request.data)
             serializer = TutorSlotWriteSerializer(data=data)
             serializer.is_valid(raise_exception=True)
-            slot = _save_tutor_slot(request.user, serializer.validated_data, slot=owned_slot)
+            slot = _save_tutor_slot(
+                request.user, serializer.validated_data, slot=owned_slot
+            )
         return Response(_slot_data(slot))
