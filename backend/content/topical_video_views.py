@@ -37,11 +37,22 @@ class VideoOrderStatusSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
 
 
+class TutorVideoChoiceSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class TutorVideoOptionsResponseSerializer(serializers.Serializer):
+    price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    currency = serializers.CharField()
+    tutors = TutorVideoChoiceSerializer(many=True)
+
+
 class TutorVideoOptionsView(APIView):
     authentication_classes = (SupabaseStudentAuthentication,)
     permission_classes = (IsAuthenticated,)
 
-    @extend_schema(responses={200: serializers.DictField()})
+    @extend_schema(responses={200: TutorVideoOptionsResponseSerializer})
     def get(self, request):
         ids = (
             TutorContract.objects.filter(
