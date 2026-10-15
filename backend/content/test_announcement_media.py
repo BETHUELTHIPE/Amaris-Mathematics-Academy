@@ -1,3 +1,4 @@
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -86,3 +87,77 @@ class MarketingMediaTests(TestCase):
             self.client.get(reverse("admin:content_announcementmedia_add"), secure=True).status_code,
             302,
         )
+
+    def test_reject_file_over_supabase_bucket_limit(self):
+        file = SimpleUploadedFile("oversize.pdf", b"%PDF-1.7\n")
+        file.size = 50 * 1024 * 1024 + 1
+        obj = AnnouncementMedia(announcement=self.announcement, kind="pdf", title="Oversize")
+        obj.file = file
+        with self.assertRaisesMessage(ValidationError, "Maximum file size is 50 MB"):
+            obj.full_clean()
+
+    def test_reject_non_video_file_disguised_as_mp4(self):
+        obj = AnnouncementMedia(announcement=self.announcement, kind="video", title="Invalid video")
+        obj.file = SimpleUploadedFile("advert.mp4", b"<html>not a video</html>")
+        with self.assertRaisesMessage(ValidationError, "File content does not match"):
+            obj.full_clean()
+
+    def test_staff_post_cannot_create_change_or_delete_media(self):
+        asset = AnnouncementMedia.objects.create(
+            announcement=self.announcement,
+            kind="pdf",
+            title="Existing",
+            file="marketing/announcements/existing.pdf",
+        )
+        self.client.force_login(self.staff)
+        attempts = (
+            (reverse("admin:content_announcementmedia_add"), {"announcement": self.announcement.pk, "title": "Injected", "kind": "pdf", "order": 0}),
+            (reverse("admin:content_announcementmedia_change", args=[asset.pk]), {"announcement": self.announcement.pk, "title": "Injected", "kind": "pdf", "order": 0}),
+            (reverse("admin:content_announcementmedia_delete", args=[asset.pk]), {"post": "yes"}),
+        )
+        for url, data in attempts:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.post(url, data, secure=True).status_code, 403)
+        asset.refresh_from_db()
+        self.assertEqual(asset.title, "Existing")
+        self.assertEqual(AnnouncementMedia.objects.count(), 1)
+
+    def test_superuser_can_create_change_and_delete_pdf(self):
+        self.client.force_login(self.admin)
+        with TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                add = self.client.post(
+                    reverse("admin:content_announcementmedia_add"),
+                    {
+                        "announcement": self.announcement.pk,
+                        "kind": "pdf",
+                        "title": "Marketing guide",
+                        "order": 1,
+                        "file": SimpleUploadedFile("marketing-guide.pdf", b"%PDF-1.7\n", content_type="application/pdf"),
+                        "_save": "Save",
+                    },
+                    secure=True,
+                )
+                self.assertEqual(add.status_code, 302)
+                asset = AnnouncementMedia.objects.get(title="Marketing guide")
+                change = self.client.post(
+                    reverse("admin:content_announcementmedia_change", args=[asset.pk]),
+                    {
+                        "announcement": self.announcement.pk,
+                        "kind": "pdf",
+                        "title": "Updated guide",
+                        "order": 2,
+                        "_save": "Save",
+                    },
+                    secure=True,
+                )
+                self.assertEqual(change.status_code, 302)
+                asset.refresh_from_db()
+                self.assertEqual(asset.title, "Updated guide")
+                delete = self.client.post(
+                    reverse("admin:content_announcementmedia_delete", args=[asset.pk]),
+                    {"post": "yes"},
+                    secure=True,
+                )
+                self.assertEqual(delete.status_code, 302)
+                self.assertFalse(AnnouncementMedia.objects.filter(pk=asset.pk).exists())
