@@ -175,7 +175,11 @@ class AnnouncementViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         now = timezone.now()
-        return Announcement.objects.filter(live_filter(now)).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now)).prefetch_related("media")
+        return (
+            Announcement.objects.filter(live_filter(now))
+            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+            .prefetch_related("media")
+        )
 
 
 from django.http import Http404, HttpResponseRedirect
@@ -187,19 +191,20 @@ def public_marketing_media(request, pk):
     """Grant a short-lived URL only for currently published announcements."""
     if request.method != "GET":
         from django.http import HttpResponseNotAllowed
+
         return HttpResponseNotAllowed(["GET"])
     now = timezone.now()
-    asset = AnnouncementMedia.objects.filter(
-        pk=pk, announcement__is_published=True
-    ).filter(
-        Q(announcement__publish_at__isnull=True) | Q(announcement__publish_at__lte=now)
-    ).filter(
-        Q(announcement__expires_at__isnull=True) | Q(announcement__expires_at__gt=now)
-    ).first()
+    asset = (
+        AnnouncementMedia.objects.filter(pk=pk, announcement__is_published=True)
+        .filter(Q(announcement__publish_at__isnull=True) | Q(announcement__publish_at__lte=now))
+        .filter(Q(announcement__expires_at__isnull=True) | Q(announcement__expires_at__gt=now))
+        .first()
+    )
     if not asset:
         raise Http404()
     from urllib.parse import urlparse
     from django.core.exceptions import ImproperlyConfigured
+
     if not settings.CMS_STORAGE_BUCKET_NAME:
         raise Http404()
     url = asset.file.storage.url(asset.file.name, expire=120)
@@ -276,9 +281,11 @@ class SiteBootstrapView(generics.GenericAPIView):
     def get(self, request):
         now = timezone.now()
         settings = SiteSettings.objects.first()
-        announcements = Announcement.objects.filter(live_filter(now)).filter(
-            Q(expires_at__isnull=True) | Q(expires_at__gt=now)
-        ).prefetch_related("media")
+        announcements = (
+            Announcement.objects.filter(live_filter(now))
+            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+            .prefetch_related("media")
+        )
         payload = {
             "settings": SiteSettingsSerializer(settings, context={"request": request}).data if settings else None,
             "navigation": NavigationItemSerializer(
