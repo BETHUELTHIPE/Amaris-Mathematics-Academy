@@ -418,10 +418,11 @@ class AnnouncementMedia(TimeStampedModel):
         extension = Path(self.file.name).suffix.lower()
         if extension not in extensions.get(self.Kind(self.kind), set()):
             raise ValidationError({"file": "File extension does not match the selected media type."})
-        if getattr(self.file, "size", 0) > 100 * 1024 * 1024:
-            raise ValidationError({"file": "Maximum file size is 100 MB."})
-        # Validate file signatures to avoid publishing renamed executable/html files.
+        # Existing stored objects should not trigger a remote S3 HEAD during metadata edits.
         if not self.file._committed:
+            if self.file.size > 50 * 1024 * 1024:
+                raise ValidationError({"file": "Maximum file size is 50 MB (Supabase bucket limit)."})
+            # Validate signatures to reject renamed HTML or executable files.
             pos = self.file.tell()
             header = self.file.read(16)
             self.file.seek(pos)
