@@ -307,3 +307,7 @@ def expire_live_class_holds(_self) -> int:
         status=LiveClassBooking.Status.PENDING_PAYMENT,
         hold_expires_at__lte=timezone.now(),
     ).update(status=LiveClassBooking.Status.EXPIRED)
+
+
+# Register separate finance tasks with Celery auto-discovery.
+from content.tutor_finance_tasks import email_tutor_payout_receipt, reconcile_tutor_earnings  # noqa: E402,F401
