@@ -202,9 +202,9 @@ def public_marketing_media(request, pk):
     )
     if not asset:
         raise Http404()
-    if not getattr(settings, 'SUPABASE_S3_ADMIN_BUCKET', ''):
+    if not getattr(settings, "SUPABASE_S3_ADMIN_BUCKET", ""):
         raise Http404()
-    if settings.STORAGES['default']['BACKEND'] != 'amaris_cms.storage.SupabaseS3Storage':
+    if settings.STORAGES["default"]["BACKEND"] != "amaris_cms.storage.SupabaseS3Storage":
         raise Http404()
     url = asset.file.storage.url(asset.file.name, expire=120)
     # S3 backend signs this URL. Do not accept untrusted arbitrary redirect hosts.
