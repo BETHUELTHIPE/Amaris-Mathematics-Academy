@@ -4,6 +4,7 @@ from django.utils import timezone
 from .models import (
     FAQ,
     Announcement,
+    AnnouncementMedia,
     ContactEnquiry,
     Course,
     CourseCategory,
@@ -254,11 +255,46 @@ class FAQAdmin(PublishableAdmin):
     search_fields = ("question", "answer", "category")
 
 
+class SuperuserMarketingAdmin:
+    def _allowed(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_module_permission(self, request):
+        return self._allowed(request)
+
+    def has_view_permission(self, request, obj=None):
+        return self._allowed(request)
+
+    def has_add_permission(self, request):
+        return self._allowed(request)
+
+    def has_change_permission(self, request, obj=None):
+        return self._allowed(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return self._allowed(request)
+
+
+class AnnouncementMediaInline(SuperuserMarketingAdmin, admin.TabularInline):
+    model = AnnouncementMedia
+    extra = 0
+    fields = ("kind", "title", "file", "order")
+
+
 @admin.register(Announcement)
-class AnnouncementAdmin(PublishableAdmin):
+class AnnouncementAdmin(SuperuserMarketingAdmin, PublishableAdmin):
     list_display = ("title", "priority", "expires_at", "is_published", "updated_at")
     list_editable = ("priority", "is_published")
     search_fields = ("title", "message")
+    inlines = (AnnouncementMediaInline,)
+
+
+@admin.register(AnnouncementMedia)
+class AnnouncementMediaAdmin(SuperuserMarketingAdmin, TimeStampedAdmin):
+    list_display = ("title", "announcement", "kind", "order", "created_at")
+    list_filter = ("kind",)
+    search_fields = ("title", "announcement__title")
+    autocomplete_fields = ("announcement",)
 
 
 @admin.register(ContactEnquiry)

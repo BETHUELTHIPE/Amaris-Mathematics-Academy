@@ -26,6 +26,7 @@ from .views import (
     SiteBootstrapView,
     SiteSettingsView,
     TestimonialViewSet,
+    public_marketing_media,
 )
 
 router = DefaultRouter()
@@ -40,6 +41,7 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
