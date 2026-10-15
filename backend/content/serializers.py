@@ -2,6 +2,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from marketing.models import AnnouncementMedia
+
 from .models import (
     FAQ,
     Announcement,
@@ -235,10 +237,27 @@ class FAQSerializer(serializers.ModelSerializer):
         fields = ("id", "question", "answer", "category", "order")
 
 
+class AnnouncementMediaSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AnnouncementMedia
+        fields = ("id", "media_type", "url", "caption", "alt_text", "order")
+        read_only_fields = fields
+
+    def get_url(self, obj):
+        # S3 storage generates short-lived signed URLs for the published media.
+        request = self.context.get("request")
+        url = obj.file.url if obj.file else None
+        return request.build_absolute_uri(url) if request and url else url
+
+
 class AnnouncementSerializer(serializers.ModelSerializer):
+    media = AnnouncementMediaSerializer(source="marketing_media", many=True, read_only=True)
+
     class Meta:
         model = Announcement
-        fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at")
+        fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at", "media")
 
 
 class AmarisAssistantRequestSerializer(serializers.Serializer):
