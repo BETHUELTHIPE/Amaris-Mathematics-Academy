@@ -15,6 +15,8 @@ import tempfile
 import threading
 import time
 import uuid
+from email import policy
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.request import urlopen
@@ -185,10 +187,18 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             page.screenshot(path=str(ARTIFACTS / "receipt-mobile.png"), full_page=True)
             reference = page.locator("strong").filter(has_text="AMARIS-TUTOR-").inner_text()
             assert page.get_by_text("Your acknowledgement email has been sent.", exact=False).is_visible()
-            page.get_by_role("link", name="qualification.pdf", exact=True).click()
-            mail = "\n".join(path.read_text() for path in (root / "mail").glob("*"))
-            assert "Amaris tutor application received" in mail and reference in mail
-            assert USER["email"] in mail
+            with page.expect_download() as download_info:
+                page.get_by_role("link", name="qualification.pdf", exact=True).click()
+            download = download_info.value
+            assert download.suggested_filename == "qualification.pdf"
+            assert Path(download.path()).read_bytes().startswith(b"%PDF-")
+            messages = [BytesParser(policy=policy.default).parsebytes(path.read_bytes()) for path in (root / "mail").glob("*")]
+            assert len(messages) == 1
+            message = messages[0]
+            assert "Amaris tutor application received" in str(message["Subject"])
+            assert reference in message.get_body(preferencelist=("plain",)).get_content()
+            assert USER["email"] in str(message["To"])
+            assert not list(message.iter_attachments())
             assert len(list((root / "qualifications").rglob("*.pdf"))) == 1
             context.close()
             browser.close()

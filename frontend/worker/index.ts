@@ -24,7 +24,7 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
-const protectedPrefixes = ["/dashboard", "/documents", "/checkout", "/book-online-live-class", "/request-a-video", "/api/video-requests", "/api/auth-state"];
+const protectedPrefixes = ["/tutor", "/api/tutor-applications", "/dashboard", "/documents", "/checkout", "/book-online-live-class", "/request-a-video", "/api/video-requests", "/api/auth-state"];
 const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const csp = [
   "default-src 'self'",

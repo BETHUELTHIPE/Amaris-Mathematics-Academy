@@ -39,7 +39,7 @@ export function ApplicationForm({ name, email }: { name: string; email: string }
     {errors.length > 0 && <div ref={errorSummary} tabIndex={-1} role="alert" className="rounded-xl border border-red-300 bg-red-50 p-5 text-red-900"><h2 className="font-bold">Please check your application</h2><ul className="mt-2 list-disc space-y-2 pl-5">{errors.map(({ field, message }) => <li key={field}>{labels[field] ? <a href={`#${field}`} className="underline">{labels[field]}</a> : "Application"}: {message}</li>)}</ul></div>}
     <fieldset disabled={pending} className="min-w-0 grid gap-5"><legend className="mb-5 text-xl font-semibold">1. Your details</legend>
       <Field label="Full name" name="full_name" maxLength={160} minLength={2} autoComplete="name" defaultValue={name === "Student" ? "" : name} />
-      <div className="grid gap-5 sm:grid-cols-2"><Field label="Mobile number" name="phone" type="tel" autoComplete="tel" maxLength={30} pattern="\+?[0-9 ()\-]{7,30}" /><Field label="City, province and country" name="location" minLength={2} maxLength={120} autoComplete="address-level2" /></div>
+      <div className="grid gap-5 sm:grid-cols-2"><Field label="Mobile number" name="phone" type="tel" autoComplete="tel" maxLength={30} minLength={7} /><Field label="City, province and country" name="location" minLength={2} maxLength={120} autoComplete="address-level2" /></div>
     </fieldset>
     <fieldset disabled={pending} className="min-w-0 grid gap-5"><legend className="mb-5 text-xl font-semibold">2. Qualifications and teaching</legend>
       <Field label="Relevant qualification title" name="qualification" minLength={2} maxLength={200} placeholder="e.g. BSc Mathematics, teaching diploma" />
