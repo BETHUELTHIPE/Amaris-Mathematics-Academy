@@ -1,12 +1,11 @@
 """Superuser-only financial controls. Raw account numbers are write-only and encrypted."""
 
 import re
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet
 from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
-from django.utils import timezone
 
 from .tutor_finance_models import (
     TutorContract,
