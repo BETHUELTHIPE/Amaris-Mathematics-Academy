@@ -87,3 +87,4 @@ jobs:
           content.tests.PaymentReconciliationTests
           content.test_payments
           content.test_payfast_security
+          content.test_tutor_finance
