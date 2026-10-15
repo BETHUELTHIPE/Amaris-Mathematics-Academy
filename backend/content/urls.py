@@ -21,6 +21,11 @@ from .student_views import (
     StudentNotificationsView,
     StudentOrdersView,
 )
+from .tutor_application_views import (
+    TutorApplicationAcknowledgementView,
+    TutorApplicationDocumentView,
+    TutorApplicationView,
+)
 from .tutor_views import TutorDashboardView, TutorSlotCreateView, TutorSlotUpdateView
 from .video_request_views import (
     VideoRequestCheckoutView,
@@ -57,6 +62,17 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path(
+        "tutor-applications/acknowledgement/",
+        TutorApplicationAcknowledgementView.as_view(),
+        name="tutor-application-acknowledgement",
+    ),
+    path("tutor-applications/", TutorApplicationView.as_view(), name="tutor-applications"),
+    path(
+        "tutor-applications/documents/<uuid:document_id>/",
+        TutorApplicationDocumentView.as_view(),
+        name="tutor-application-document",
+    ),
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
     path("tutor/dashboard/", TutorDashboardView.as_view(), name="tutor-dashboard"),

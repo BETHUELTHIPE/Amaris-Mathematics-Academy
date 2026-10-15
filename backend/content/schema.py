@@ -38,3 +38,16 @@ class SupabaseTutorAuthenticationScheme(OpenApiAuthenticationExtension):
                 "or a GitHub synthetic acceptance identity does not grant tutor access."
             ),
         }
+
+
+class ApplicantAuthenticationScheme(OpenApiAuthenticationExtension):
+    target_class = "content.tutor_application_views.ApplicantAuthentication"
+    name = "SupabaseApplicantBearerAuth"
+
+    def get_security_definition(self, auto_schema):
+        return {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Verified Supabase applicant account; does not grant approved tutor permissions.",
+        }
