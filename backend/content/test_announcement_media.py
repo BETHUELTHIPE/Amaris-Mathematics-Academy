@@ -30,11 +30,11 @@ class MarketingMediaTests(TestCase):
         ]
         for url in urls:
             with self.subTest(url=url):
-                self.assertEqual(self.client.get(url).status_code, 403)
+                self.assertEqual(self.client.get(url, secure=True).status_code, 403)
 
     def test_superuser_can_access_media_admin(self):
         self.client.force_login(self.admin)
-        self.assertEqual(self.client.get(reverse("admin:content_announcementmedia_changelist")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("admin:content_announcementmedia_changelist"), secure=True).status_code, 200)
 
     def test_reject_disguised_executable_pdf(self):
         obj = AnnouncementMedia(announcement=self.announcement, kind="pdf", title="Fake PDF")
@@ -54,14 +54,14 @@ class MarketingMediaTests(TestCase):
         obj = AnnouncementMedia.objects.create(
             announcement=self.announcement, kind="pdf", title="Private", file="marketing/announcements/guide.pdf"
         )
-        self.assertEqual(self.client.get(reverse("public-marketing-media", args=[obj.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse("public-marketing-media", args=[obj.pk]), secure=True).status_code, 404)
 
     @override_settings(CMS_STORAGE_BUCKET_NAME="")
     def test_public_media_fails_closed_without_s3(self):
         obj = AnnouncementMedia.objects.create(
             announcement=self.announcement, kind="pdf", title="No storage", file="marketing/announcements/guide.pdf"
         )
-        self.assertEqual(self.client.get(reverse("public-marketing-media", args=[obj.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse("public-marketing-media", args=[obj.pk]), secure=True).status_code, 404)
 
     @override_settings(
         CMS_STORAGE_BUCKET_NAME="amaris-cms-files",
@@ -75,14 +75,14 @@ class MarketingMediaTests(TestCase):
             file="marketing/announcements/public-guide.pdf",
         )
         signed_url = "https://example.supabase.co/storage/v1/s3/amaris-cms-files/public-guide.pdf?X-Amz-Signature=fake"
-        with patch.object(type(obj.file.storage), "url", return_value=signed_url):
-            response = self.client.get(reverse("public-marketing-media", args=[obj.pk]))
+        with patch.object(obj.file.storage, "url", return_value=signed_url):
+            response = self.client.get(reverse("public-marketing-media", args=[obj.pk]), secure=True)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], signed_url)
         self.assertIn("no-store", response["Cache-Control"])
 
     def test_anonymous_cannot_edit_marketing_admin(self):
         self.assertEqual(
-            self.client.get(reverse("admin:content_announcementmedia_add")).status_code,
+            self.client.get(reverse("admin:content_announcementmedia_add"), secure=True).status_code,
             302,
         )
