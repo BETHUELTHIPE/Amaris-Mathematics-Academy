@@ -32,7 +32,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}th{text-align:left;colo
 <body>
 <header class="top"><div class="shell"><div class="logo">Amaris <span>Mathematics Academy</span> · Tutor Portal</div><div><span style="color:#d6e5ff;font-size:13px;margin-right:16px">{{ tutor_name }}</span><form method="post" action="/tutor/logout/" style="display:inline">{% csrf_token %}<button style="border:0;background:none;color:#d6e5ff;cursor:pointer">Sign out</button></form></div></div></header>
 <main class="shell">
-<section class="intro"><div><div class="eyebrow">Tutor revenue centre</div><h1>Earnings & activity overview</h1><p class="muted">Verified sales, your contract share and payout progress. No student payment identities are displayed.</p></div><span class="badge">● Payment-verified records</span></section>
+<section class="intro"><div><div class="eyebrow">Tutor revenue centre</div><h1>Earnings & activity overview</h1><p class="muted">Verified sales, your contract share and payout progress. No student payment identities are displayed.</p></div><span class="badge">● {{ stats.unique_students }} unique paying students</span></section>
 <section class="grid" aria-label="Income overview">
 <div class="card"><label>Your total earnings</label><div class="metric">R {{ stats.total|floatformat:2 }}</div><div class="muted">Gross tutor earnings before any adjustments</div></div>
 <div class="card"><label>Confirmed payouts</label><div class="metric">R {{ stats.paid_out|floatformat:2 }}</div><div class="muted">Bank payouts confirmed by a provider</div></div>
@@ -41,7 +41,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}th{text-align:left;colo
 <section class="split">
 <div class="card"><h2>Student purchases by service</h2><p class="muted">Each count represents a verified paid service order, not a student's name or payment details.</p>
 {% for entry in entries %}
-<div class="stat"><div style="flex:1"><strong>{{ entry.title }}</strong><div class="muted">{{ entry.subtitle }}</div><div class="bar" role="meter" aria-label="{{ entry.title }}" aria-valuenow="{{ entry.count }}" aria-valuemin="0" aria-valuemax="{{ entry.count }}"><span style="width:{{ entry.bar_width }}%"></span></div></div><div class="count">{{ entry.count }}</div></div>
+<div class="stat"><div style="flex:1"><strong>{{ entry.title }}</strong><div class="muted">{{ entry.subtitle }} · {{ entry.students }} unique paying students</div><div class="bar" role="meter" aria-label="{{ entry.title }}" aria-valuenow="{{ entry.count }}" aria-valuemin="0" aria-valuemax="{{ entry.count }}"><span style="width:{{ entry.bar_width }}%"></span></div></div><div class="count">{{ entry.count }}</div></div>
 {% endfor %}
 </div>
 <div class="card"><h2>Session delivery & payouts</h2><div class="stat"><div><strong>Classes attended</strong><div class="muted">Completed after attendance review</div></div><div class="count">{{ stats.classes_attended }}</div></div>
