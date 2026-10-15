@@ -35,7 +35,9 @@ class MarketingMediaTests(TestCase):
 
     def test_superuser_can_access_media_admin(self):
         self.client.force_login(self.admin)
-        self.assertEqual(self.client.get(reverse("admin:content_announcementmedia_changelist"), secure=True).status_code, 200)
+        self.assertEqual(
+            self.client.get(reverse("admin:content_announcementmedia_changelist"), secure=True).status_code, 200
+        )
 
     def test_reject_disguised_executable_pdf(self):
         obj = AnnouncementMedia(announcement=self.announcement, kind="pdf", title="Fake PDF")
@@ -55,14 +57,18 @@ class MarketingMediaTests(TestCase):
         obj = AnnouncementMedia.objects.create(
             announcement=self.announcement, kind="pdf", title="Private", file="marketing/announcements/guide.pdf"
         )
-        self.assertEqual(self.client.get(reverse("public-marketing-media", args=[obj.pk]), secure=True).status_code, 404)
+        self.assertEqual(
+            self.client.get(reverse("public-marketing-media", args=[obj.pk]), secure=True).status_code, 404
+        )
 
     @override_settings(CMS_STORAGE_BUCKET_NAME="")
     def test_public_media_fails_closed_without_s3(self):
         obj = AnnouncementMedia.objects.create(
             announcement=self.announcement, kind="pdf", title="No storage", file="marketing/announcements/guide.pdf"
         )
-        self.assertEqual(self.client.get(reverse("public-marketing-media", args=[obj.pk]), secure=True).status_code, 404)
+        self.assertEqual(
+            self.client.get(reverse("public-marketing-media", args=[obj.pk]), secure=True).status_code, 404
+        )
 
     @override_settings(
         CMS_STORAGE_BUCKET_NAME="amaris-cms-files",
@@ -111,8 +117,14 @@ class MarketingMediaTests(TestCase):
         )
         self.client.force_login(self.staff)
         attempts = (
-            (reverse("admin:content_announcementmedia_add"), {"announcement": self.announcement.pk, "title": "Injected", "kind": "pdf", "order": 0}),
-            (reverse("admin:content_announcementmedia_change", args=[asset.pk]), {"announcement": self.announcement.pk, "title": "Injected", "kind": "pdf", "order": 0}),
+            (
+                reverse("admin:content_announcementmedia_add"),
+                {"announcement": self.announcement.pk, "title": "Injected", "kind": "pdf", "order": 0},
+            ),
+            (
+                reverse("admin:content_announcementmedia_change", args=[asset.pk]),
+                {"announcement": self.announcement.pk, "title": "Injected", "kind": "pdf", "order": 0},
+            ),
             (reverse("admin:content_announcementmedia_delete", args=[asset.pk]), {"post": "yes"}),
         )
         for url, data in attempts:
@@ -133,7 +145,9 @@ class MarketingMediaTests(TestCase):
                         "kind": "pdf",
                         "title": "Marketing guide",
                         "order": 1,
-                        "file": SimpleUploadedFile("marketing-guide.pdf", b"%PDF-1.7\n", content_type="application/pdf"),
+                        "file": SimpleUploadedFile(
+                            "marketing-guide.pdf", b"%PDF-1.7\n", content_type="application/pdf"
+                        ),
                         "_save": "Save",
                     },
                     secure=True,
