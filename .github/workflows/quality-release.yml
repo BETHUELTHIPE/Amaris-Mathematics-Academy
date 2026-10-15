@@ -120,6 +120,11 @@ jobs:
       - name: Production-acceptance gate contract
         working-directory: ${{ github.workspace }}
         run: python -m unittest discover -s scripts/release -p 'test_*.py'
+      - name: Check operator backup and restore shell scripts syntax
+        working-directory: ${{ github.workspace }}
+        run: |
+          bash -n scripts/release/export_production_supabase_backup.sh
+          bash -n scripts/release/verify_production_supabase_restore.sh
 
   frontend-quality:
     name: Frontend, accessibility, Lighthouse, and SBOM
