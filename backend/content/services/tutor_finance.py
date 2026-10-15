@@ -180,6 +180,18 @@ def tutor_dashboard_stats(tutor):
             "gross": row["gross"] or Decimal("0"),
             "earned": row["amount"] or Decimal("0"),
         }
+    # Distinct paying-student counts (aggregates only; never serialize identity).
+    course_sources = earnings.filter(service="course").values_list("source_reference", flat=True)
+    class_sources = earnings.filter(service="live_class").values_list("source_reference", flat=True)
+    video_sources = earnings.filter(service="video").values_list("source_reference", flat=True)
+    people = {
+        "course": set(Payment.objects.filter(reference__in=course_sources).values_list("student_id", flat=True)),
+        "live_class": set(LiveClassBooking.objects.filter(reference__in=class_sources).values_list("student_id", flat=True)),
+        "video": set(TutorVideoRequest.objects.filter(reference__in=video_sources).values_list("student_id", flat=True)),
+    }
+    for service, student_ids in people.items():
+        categories[service]["students"] = len(student_ids)
+    unique_students = len(set().union(*people.values()))
     total = sum((row["earned"] for row in categories.values()), Decimal("0"))
     sent = earnings.filter(state=TutorEarning.State.PAID).aggregate(value=Sum("tutor_amount"))["value"] or Decimal("0")
     awaiting = earnings.exclude(state=TutorEarning.State.PAID).aggregate(value=Sum("tutor_amount"))["value"] or Decimal("0")
@@ -188,7 +200,7 @@ def tutor_dashboard_stats(tutor):
         gateway_verified_at__isnull=False
     ).count()
     return {
-        "categories": categories, "total": total, "paid_out": sent,
+        "categories": categories, "unique_students": unique_students, "total": total, "paid_out": sent,
         "outstanding": awaiting, "classes_attended": attended,
         "recent": earnings.order_by("-payment_verified_at").values(
             "service", "service_label", "gross", "tutor_amount", "state", "payment_verified_at"
