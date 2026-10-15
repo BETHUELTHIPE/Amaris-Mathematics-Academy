@@ -164,24 +164,24 @@ def refresh_eligible_earnings():
             ).first()
             delivered = bool(source and source.enrollment_id)
         elif earning.service == TutorContract.Service.LIVE_CLASS:
-            source = LiveClassBooking.objects.filter(
+            booking_source = LiveClassBooking.objects.filter(
                 reference=earning.source_reference,
                 status=LiveClassBooking.Status.COMPLETED,
                 gateway_verified_at__isnull=False,
             ).first()
-            delivered = bool(source)
-            if delivered and not earning.service_delivered_at:
-                earning.service_delivered_at = source.slot.ends_at
+            delivered = bool(booking_source)
+            if booking_source and not earning.service_delivered_at:
+                earning.service_delivered_at = booking_source.slot.ends_at
         else:
-            source = TutorVideoRequest.objects.filter(
+            video_source = TutorVideoRequest.objects.filter(
                 reference=earning.source_reference,
                 status=TutorVideoRequest.Status.DELIVERED,
                 gateway_verified_at__isnull=False,
                 delivered_at__isnull=False,
             ).first()
-            delivered = bool(source)
-            if delivered and not earning.service_delivered_at:
-                earning.service_delivered_at = source.delivered_at
+            delivered = bool(video_source)
+            if video_source and not earning.service_delivered_at:
+                earning.service_delivered_at = video_source.delivered_at
         if not delivered:
             continue
         earning.state = TutorEarning.State.READY
@@ -225,7 +225,7 @@ def tutor_dashboard_stats(tutor):
     for service, student_ids in people.items():
         categories[service]["students"] = len(student_ids)
     unique_students = len(set().union(*people.values()))
-    total = sum((row["earned"] for row in categories.values()), Decimal("0"))
+    total = sum((Decimal(str(row["earned"])) for row in categories.values()), Decimal("0"))
     sent = earnings.filter(state=TutorEarning.State.PAID).aggregate(value=Sum("tutor_amount"))["value"] or Decimal("0")
     awaiting = earnings.exclude(state=TutorEarning.State.PAID).aggregate(value=Sum("tutor_amount"))["value"] or Decimal(
         "0"
