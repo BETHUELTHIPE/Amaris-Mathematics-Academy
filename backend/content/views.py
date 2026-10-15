@@ -175,7 +175,7 @@ class AnnouncementViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         now = timezone.now()
-        return Announcement.objects.filter(live_filter(now)).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        return Announcement.objects.filter(live_filter(now)).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now)).prefetch_related("media")
 
 
 from django.http import Http404, HttpResponseRedirect
@@ -278,7 +278,7 @@ class SiteBootstrapView(generics.GenericAPIView):
         settings = SiteSettings.objects.first()
         announcements = Announcement.objects.filter(live_filter(now)).filter(
             Q(expires_at__isnull=True) | Q(expires_at__gt=now)
-        )
+        ).prefetch_related("media")
         payload = {
             "settings": SiteSettingsSerializer(settings, context={"request": request}).data if settings else None,
             "navigation": NavigationItemSerializer(
