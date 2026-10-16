@@ -1,5 +1,10 @@
 # Amaris Apache Airflow — opt-in operations stack
 
+**Using only Render?** Use [the Render Docker Blueprint](render/README.md).
+It replaces Compose networking and bind mounts with Render services and baked-in
+DAGs. No VPS, SSH host or purchased domain is needed. Importing it provisions
+additional paid resources; source preparation does not deploy anything.
+
 This adds a separate Airflow 3 Docker deployment profile and a read-only
 Django Admin monitor. It does **not** launch production resources, modify
 PayFast or tutor payout logic, or change Supabase database tables.

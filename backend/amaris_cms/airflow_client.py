@@ -6,6 +6,7 @@ No Airflow credentials, raw exception messages or task logs enter HTML responses
 
 import json
 import re
+import ssl
 from urllib import error as url_error
 from urllib import parse as url_parse
 from urllib import request as url_request
@@ -65,7 +66,8 @@ def _read(path, query=None):
     try:
         # urllib uses validated TLS certificates by default; no redirect to
         # untrusted destinations is permitted for credential-bearing requests.
-        opener = url_request.build_opener(_NoRedirect())
+        context = ssl.create_default_context(cafile=getattr(settings, "AIRFLOW_API_CA_CERT_FILE", "") or None)
+        opener = url_request.build_opener(_NoRedirect(), url_request.HTTPSHandler(context=context))
         with opener.open(req, timeout=4) as response:
             if response.status != 200:
                 raise AirflowUnavailable("Airflow returned an unexpected status.")
