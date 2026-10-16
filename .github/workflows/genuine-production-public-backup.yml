@@ -1,134 +1,163 @@
-name: Genuine Production Application DB Backup and Isolated Restore
+name: Genuine Encrypted Production App Backup and Isolated Restore
 
 on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: "Type BACKUP_PUBLIC_SCHEMA_ONLY to perform a read-only production dump and isolated restore"
-        required: true
+        description: "Type BACKUP_PUBLIC_SCHEMA_ONLY to take and retain an encrypted production application-schema backup"
         type: string
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: genuine-production-backup
+  group: production-genuine-backup-restore
   cancel-in-progress: false
 
 jobs:
-  backup-restore:
-    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'BACKUP_PUBLIC_SCHEMA_ONLY'
+  isolated-restoration:
+    if: github.ref == 'refs/heads/main' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && inputs.confirmation == 'BACKUP_PUBLIC_SCHEMA_ONLY'
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 50
+    timeout-minutes: 45
     env:
-      SOURCE_DATABASE_URL: ${{ secrets.AMARIS_PRODUCTION_DATABASE_URL }}
-      BACKUP_PASSPHRASE: ${{ secrets.AMARIS_BACKUP_PASSPHRASE }}
-      PGSSLMODE: require
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      AMARIS_BACKUP_PASSPHRASE: ${{ secrets.AMARIS_BACKUP_PASSPHRASE }}
     steps:
-      - name: Require explicit source and encryption secrets
+      - name: Require protected encryption passphrase
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${SOURCE_DATABASE_URL:-}" || { echo "::error::AMARIS_PRODUCTION_DATABASE_URL missing in production environment"; exit 1; }
-          test -n "${BACKUP_PASSPHRASE:-}" || { echo "::error::AMARIS_BACKUP_PASSPHRASE missing in production environment"; exit 1; }
           python3 - <<'PY'
           import os
-          from urllib.parse import urlsplit
-          url = urlsplit(os.environ["SOURCE_DATABASE_URL"])
-          host = (url.hostname or "").lower()
-          user = url.username or ""
-          project = "epkcuseloinygkakxxdu"
-          direct = host == f"db.{project}.supabase.co"
-          pooled = host.endswith(".pooler.supabase.com") and project in user
-          if url.scheme not in ("postgresql", "postgres") or not (direct or pooled):
-              raise SystemExit("BLOCK: source does not identify the expected Supabase production project")
-          if url.path != "/postgres":
-              raise SystemExit("BLOCK: expected production database 'postgres'")
-          print("PASS: target Supabase production project verified (no credentials logged)")
+          phrase = os.getenv("AMARIS_BACKUP_PASSPHRASE", "")
+          if len(phrase) < 32:
+              raise SystemExit("BLOCK: set AMARIS_BACKUP_PASSPHRASE to a unique secret of at least 32 characters in GitHub's protected production environment")
+          print("PASS: protected durable-backup encryption key present (value not logged)")
           PY
-
-      - name: Create genuine read-only PostgreSQL 17 application-schema backup
+      - name: Retrieve production DB location directly from Render without logging secrets
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/amaris-backup"
-          chmod 700 "$RUNNER_TEMP/amaris-backup"
-          docker run --rm --user "$(id -u):$(id -g)" \
-            -e SOURCE_DATABASE_URL -e PGSSLMODE -e PGOPTIONS='-c default_transaction_read_only=on' \
-            -v "$RUNNER_TEMP/amaris-backup:/backup" postgres:17-alpine \
-            sh -ec 'pg_dump --format=custom --no-owner --no-acl --schema=public --file=/backup/production-public.dump "$SOURCE_DATABASE_URL"'
-          test -s "$RUNNER_TEMP/amaris-backup/production-public.dump"
-          echo "PASS: actual production public application schema dumped (no records printed)"
+          test -n "${RENDER_API_KEY:-}" || { echo "::error::RENDER_API_KEY secret absent"; exit 1; }
+          umask 077
+          mkdir -p "$RUNNER_TEMP/amaris-real-restore"
+          python3 - <<'PY'
+          import json, os, urllib.request
+          from urllib.parse import urlsplit
+          service = "srv-dapn6b3tqb8s73d3r7n0"
+          req = urllib.request.Request(
+              f"https://api.render.com/v1/services/{service}/env-vars/DATABASE_URL",
+              headers={"Authorization": "Bearer " + os.environ["RENDER_API_KEY"],
+                       "Accept": "application/json"},
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=15) as response:
+                  data = json.load(response)
+          except Exception as exc:
+              raise SystemExit("BLOCK: unable to read Render production DATABASE_URL (" + type(exc).__name__ + ")")
+          value = data.get("value", "")
+          url = urlsplit(value)
+          project = "epkcuseloinygkakxxdu"
+          host = (url.hostname or "").lower()
+          pooled = host.endswith(".pooler.supabase.com") and project in (url.username or "")
+          direct = host == f"db.{project}.supabase.co"
+          if url.scheme not in {"postgres", "postgresql"} or url.path != "/postgres" or not (pooled or direct):
+              raise SystemExit("BLOCK: Render DATABASE_URL does not identify the expected Supabase production project")
+          location = os.path.join(os.environ["RUNNER_TEMP"], "amaris-real-restore", "db.env")
+          with open(location, "w", encoding="utf-8") as file:
+              file.write("SOURCE_DATABASE_URL=" + value + "\n")
+          os.chmod(location, 0o600)
+          print("PASS: production Render service points to expected Supabase project; secret stored only on ephemeral runner")
+          PY
 
-      - name: Encrypt backup before storing it as an artifact
+      - name: Dump the genuine public application schema from production without writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --env-file "$RUNNER_TEMP/amaris-real-restore/db.env" \
+            -e PGSSLMODE=require -e PGOPTIONS='-c default_transaction_read_only=on' \
+            -v "$RUNNER_TEMP/amaris-real-restore:/backup" postgres:17-alpine \
+            sh -ec 'pg_dump --format=custom --no-owner --no-acl --schema=public --file=/backup/production-public.dump "$SOURCE_DATABASE_URL"'
+          test -s "$RUNNER_TEMP/amaris-real-restore/production-public.dump"
+          echo "PASS: actual production public schema dump obtained; no rows logged"
+
+      - name: Encrypt temporary dump and exercise decryption
         shell: bash
         run: |
           set -euo pipefail
           umask 077
-          printf %s "$BACKUP_PASSPHRASE" > "$RUNNER_TEMP/amaris-backup/key"
-          unset BACKUP_PASSPHRASE
+          printf %s "$AMARIS_BACKUP_PASSPHRASE" > "$RUNNER_TEMP/amaris-real-restore/ephemeral-key"
           gpg --batch --yes --pinentry-mode loopback --cipher-algo AES256 \
-            --passphrase-file "$RUNNER_TEMP/amaris-backup/key" --symmetric \
-            --output "$RUNNER_TEMP/amaris-backup/production-public.dump.gpg" \
-            "$RUNNER_TEMP/amaris-backup/production-public.dump"
-          test -s "$RUNNER_TEMP/amaris-backup/production-public.dump.gpg"
-          shred -u "$RUNNER_TEMP/amaris-backup/production-public.dump"
-          echo "PASS: backup encrypted; plaintext dump shredded before artifact upload"
+            --passphrase-file "$RUNNER_TEMP/amaris-real-restore/ephemeral-key" --symmetric \
+            --output "$RUNNER_TEMP/amaris-real-restore/production-public.dump.gpg" \
+            "$RUNNER_TEMP/amaris-real-restore/production-public.dump"
+          shred -u "$RUNNER_TEMP/amaris-real-restore/production-public.dump"
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-file "$RUNNER_TEMP/amaris-real-restore/ephemeral-key" --decrypt \
+            --output "$RUNNER_TEMP/amaris-real-restore/restore.dump" \
+            "$RUNNER_TEMP/amaris-real-restore/production-public.dump.gpg"
+          echo "PASS: actual backup encryption/decryption verified with disposable key"
 
-      - name: Decrypt and restore to an isolated PostgreSQL 17 container
+      - name: Restore encrypted source into network-isolated PostgreSQL 17
         shell: bash
         run: |
           set -euo pipefail
-          gpg --batch --yes --pinentry-mode loopback \
-            --passphrase-file "$RUNNER_TEMP/amaris-backup/key" --decrypt \
-            --output "$RUNNER_TEMP/amaris-backup/restore.dump" \
-            "$RUNNER_TEMP/amaris-backup/production-public.dump.gpg"
-          docker run -d --name amaris-restore-only --network none \
+          docker run -d --name amaris-isolated-restore --network none \
             -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17-alpine
-          for attempt in $(seq 1 40); do
-            docker exec amaris-restore-only pg_isready -U postgres && break
-            test "$attempt" -lt 40
+          for n in $(seq 1 40); do
+            docker exec amaris-isolated-restore pg_isready -U postgres && break
+            test "$n" -lt 40
             sleep 2
           done
-          docker cp "$RUNNER_TEMP/amaris-backup/restore.dump" amaris-restore-only:/tmp/restore.dump
-          docker exec amaris-restore-only pg_restore --exit-on-error --no-owner --no-acl \
-            -U postgres -d postgres /tmp/restore.dump
-          echo "PASS: actual production public schema restored into isolated, network-disabled PostgreSQL 17"
+          docker cp "$RUNNER_TEMP/amaris-real-restore/restore.dump" amaris-isolated-restore:/tmp/restore.dump
+          # The postgres base image creates a default public schema; remove it in
+          # this disposable network-disabled target so pg_restore can recreate it.
+          docker exec amaris-isolated-restore psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'DROP SCHEMA IF EXISTS public CASCADE;'
+          # Restore genuine public tables and row data first. Supabase Auth is a
+          # managed external schema not included in this app-scoped archive.
+          docker exec amaris-isolated-restore pg_restore --exit-on-error --no-owner --no-acl \
+            --section=pre-data --section=data -U postgres -d postgres /tmp/restore.dump
+          # Satisfy the app's one cross-schema FK using synthetic auth IDs
+          # taken from already restored app rows, strictly inside the isolated
+          # target. This is NOT an auth-system backup.
+          docker exec amaris-isolated-restore psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY); INSERT INTO auth.users(id) SELECT id FROM public.student_profiles ON CONFLICT DO NOTHING; CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE RETURN NULL::uuid;'
+          docker exec amaris-isolated-restore pg_restore --exit-on-error --no-owner --no-acl \
+            --section=post-data -U postgres -d postgres /tmp/restore.dump
+          echo "PASS: genuine production public application schema/data/constraints restored; Supabase Auth remains out of scope"
 
-      - name: Compare source and restored migration/table counts without printing private data
+      - name: Compare public-schema source and restored application records
         shell: bash
         run: |
           set -euo pipefail
-          src_migrations=$(docker run --rm -e SOURCE_DATABASE_URL -e PGSSLMODE \
-            -e PGOPTIONS='-c default_transaction_read_only=on' postgres:17-alpine \
-            psql "$SOURCE_DATABASE_URL" -AtXqc 'SELECT count(*) FROM public.django_migrations;')
-          dest_migrations=$(docker exec amaris-restore-only psql -U postgres -d postgres \
-            -AtXqc 'SELECT count(*) FROM public.django_migrations;')
-          test "$src_migrations" = "$dest_migrations" || { echo "::error::Migration count mismatch"; exit 1; }
-          src_announcements=$(docker run --rm -e SOURCE_DATABASE_URL -e PGSSLMODE \
-            -e PGOPTIONS='-c default_transaction_read_only=on' postgres:17-alpine \
-            psql "$SOURCE_DATABASE_URL" -AtXqc 'SELECT count(*) FROM public.content_announcement;')
-          dest_announcements=$(docker exec amaris-restore-only psql -U postgres -d postgres \
-            -AtXqc 'SELECT count(*) FROM public.content_announcement;')
-          test "$src_announcements" = "$dest_announcements" || { echo "::error::Announcement count mismatch"; exit 1; }
-          echo "PASS: real source and isolated restore match on Django migration and announcement row counts"
+          for table in django_migrations content_announcement; do
+            src=$(docker run --rm --env-file "$RUNNER_TEMP/amaris-real-restore/db.env" \
+              -e PGSSLMODE=require -e PGOPTIONS='-c default_transaction_read_only=on' \
+              postgres:17-alpine sh -ec "psql \"\$SOURCE_DATABASE_URL\" -AtXqc 'SELECT count(*) FROM public.$table;'")
+            restored=$(docker exec amaris-isolated-restore psql -U postgres -d postgres \
+              -AtXqc "SELECT count(*) FROM public.$table;")
+            test "$src" = "$restored" || { echo "::error::row-count mismatch for $table"; exit 1; }
+          done
+          echo "PASS: restored production migrations and announcements match source row counts; no data printed"
 
-      - name: Keep encrypted backup for operator-approved download
+      - name: Retain ONLY encrypted application-schema backup for recovery
         uses: actions/upload-artifact@v4
         with:
-          name: encrypted-amaris-public-backup-${{ github.run_id }}
-          path: ${{ runner.temp }}/amaris-backup/production-public.dump.gpg
+          name: encrypted-amaris-production-public-${{ github.run_id }}
+          path: ${{ runner.temp }}/amaris-real-restore/production-public.dump.gpg
           retention-days: 7
           if-no-files-found: error
 
-      - name: Remove temporary plaintext, key and isolated restore container
+      - name: Wipe ephemeral production data and isolation resources
         if: always()
         shell: bash
         run: |
-          docker rm -f amaris-restore-only 2>/dev/null || true
-          if [ -d "$RUNNER_TEMP/amaris-backup" ]; then
-            find "$RUNNER_TEMP/amaris-backup" -type f ! -name 'production-public.dump.gpg' \
-              -exec shred -u {} + 2>/dev/null || true
-            rm -rf "$RUNNER_TEMP/amaris-backup"
+          docker rm -f amaris-isolated-restore >/dev/null 2>&1 || true
+          if [ -d "$RUNNER_TEMP/amaris-real-restore" ]; then
+            find "$RUNNER_TEMP/amaris-real-restore" -type f -exec shred -u {} + 2>/dev/null || true
+            rm -rf "$RUNNER_TEMP/amaris-real-restore"
           fi
