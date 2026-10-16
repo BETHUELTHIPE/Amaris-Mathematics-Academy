@@ -25,8 +25,9 @@ export type StudentWorkflow = {
 
 const VIDEO_PAID = new Set(["queued", "tutor_assigned", "recording", "processing", "review", "ready"]);
 const VIDEO_ASSIGNED = new Set(["tutor_assigned", "recording", "processing", "review", "ready"]);
-const VIDEO_RECORDING = new Set(["recording", "processing", "review", "ready"]);
-const VIDEO_REVIEWED = new Set(["review", "ready"]);
+const VIDEO_RECORDING_COMPLETE = new Set(["processing", "review", "ready"]);
+const VIDEO_PROCESSING_COMPLETE = new Set(["review", "ready"]);
+const VIDEO_REVIEWED = new Set(["ready"]);
 const LIVE_CONFIRMED = new Set(["confirmed", "completed"]);
 const ATTENTION = new Set(["failed", "cancelled", "expired", "refunded", "payment_review"]);
 
@@ -35,11 +36,12 @@ function stepsFor(order: StudentOrder, enrolled: boolean): { labels: string[]; c
 
   if (order.kind === "video_request") {
     return {
-      labels: ["Request received", "Payment verified", "Tutor assigned", "Video preparation", "Quality review", "Video ready"],
+      labels: ["Request received", "Payment verified", "Tutor assigned", "Recording complete", "Processing complete", "Quality review", "Video ready"],
       confirmed: 1
         + Number(VIDEO_PAID.has(status))
         + Number(VIDEO_ASSIGNED.has(status))
-        + Number(VIDEO_RECORDING.has(status))
+        + Number(VIDEO_RECORDING_COMPLETE.has(status))
+        + Number(VIDEO_PROCESSING_COMPLETE.has(status))
         + Number(VIDEO_REVIEWED.has(status))
         + Number(status === "ready"),
     };
