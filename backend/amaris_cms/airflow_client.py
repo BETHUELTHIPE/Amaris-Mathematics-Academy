@@ -3,6 +3,7 @@
 Never accepts an arbitrary URL or DAG name from an unauthenticated user.
 No Airflow credentials, raw exception messages or task logs enter HTML responses.
 """
+
 import json
 import re
 from urllib import error as url_error
