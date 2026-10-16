@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/public-live-performance-probe.yml'
+      - 'scripts/release/public_live_performance_probe.py'
   workflow_dispatch:
 
 permissions:
