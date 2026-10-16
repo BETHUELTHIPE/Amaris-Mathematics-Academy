@@ -45,7 +45,7 @@ export default function Home() {
         <div className="relative mx-auto grid min-h-[600px] max-w-7xl items-center px-5 py-16 sm:min-h-[690px] sm:py-20 lg:px-8">
           <div className="max-w-2xl rounded-[2rem] bg-[#07152d] p-6 sm:p-9 sm:shadow-[0_28px_90px_rgba(0,0,0,.24)]">
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 py-2 text-sm text-white/80"><span className="size-2 rounded-full bg-[#ffcc66]" /> Mathematics for school, TVET & university</div>
-            <h1 className="text-5xl font-semibold leading-[1.02] tracking-[-0.055em] sm:text-6xl lg:text-[5.4rem]">Master mathematics,<br /><span className="text-[#ffcc66]">one clear step</span> at a time.</h1>
+            <h1 className="text-[clamp(2.15rem,9vw,3rem)] font-semibold leading-[1.04] tracking-[-0.055em] sm:text-6xl lg:text-[5.4rem]">Master mathematics,<br /><span className="text-[#ffcc66]">one clear step</span> at a time.</h1>
             <p className="mt-7 max-w-xl text-lg leading-8 text-white/70">Structured lessons, worked examples and deliberate practice—built to turn uncertainty into confident problem-solving.</p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <a href="/courses" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#ffcc66] px-6 py-3.5 font-bold text-[#07152d] transition hover:bg-[#ffd780]">Browse courses <ArrowRight className="size-4" /></a>
