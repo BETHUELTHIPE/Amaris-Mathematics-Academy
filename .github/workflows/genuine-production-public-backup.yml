@@ -1,6 +1,9 @@
 name: Genuine Production Application DB Backup and Isolated Restore
 
 on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/genuine-production-public-backup.yml']
   workflow_dispatch:
     inputs:
       confirmation:
@@ -17,7 +20,7 @@ concurrency:
 
 jobs:
   backup-restore:
-    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'BACKUP_PUBLIC_SCHEMA_ONLY'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.confirmation == 'BACKUP_PUBLIC_SCHEMA_ONLY')
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 50
