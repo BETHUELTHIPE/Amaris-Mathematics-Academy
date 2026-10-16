@@ -138,7 +138,7 @@ class ResilientRedisCache(RedisCache):
         # Escape them to prevent the scan from expanding beyond the alias.
         pattern = "".join(("\\" + char) if char in "*?[]\\" else char for char in namespace) + "*"
         try:
-            client = self._cache.get_client(write=True)
+            client = getattr(self, "_cache").get_client(write=True)
             batch = []
             namespace_bytes = namespace.encode("utf-8")
             for key in client.scan_iter(match=pattern, count=100):
