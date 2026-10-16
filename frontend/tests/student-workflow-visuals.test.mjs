@@ -82,3 +82,13 @@ test("new dashboard component relies on student-owned API without Airflow secret
   assert.match(refresh, /aria-label="Refresh my workflow progress"/);
   assert.doesNotMatch(page + visual, /AIRFLOW_API_TOKEN|\/api\/v2\/dags|iframe|supabase\.service_role|GRAFANA_API_KEY/);
 });
+
+test("synthetic workflow records are impossible in the Render production build", async () => {
+  const localConfig = await readFile(new URL("../vite.config.ts", import.meta.url), "utf8");
+  const productionConfig = await readFile(new URL("../vite.node.config.ts", import.meta.url), "utf8");
+  const api = await readFile(new URL("../lib/student-api.ts", import.meta.url), "utf8");
+  assert.match(localConfig, /syntheticE2EStudent && process\.env\.E2E_WORKFLOW_FIXTURES === "true"/);
+  assert.match(productionConfig, /__E2E_SYNTHETIC_STUDENT__: JSON\.stringify\(false\)/);
+  assert.match(productionConfig, /__E2E_SYNTHETIC_WORKFLOWS__: JSON\.stringify\(false\)/);
+  assert.match(api, /if \(__E2E_SYNTHETIC_STUDENT__\) return __E2E_SYNTHETIC_WORKFLOWS__ \? visualTestOrders : \[\]/);
+});
