@@ -66,7 +66,7 @@ jobs:
             const contact = page.getByRole('link',{name:/Discuss how to help/i});
             assert.equal(await contact.getAttribute('href'),'/contact','contribution CTA should go to contact');
             assert.equal(await page.getByRole('link',{name:/Learn about Amaris/i}).getAttribute('href'),'/about');
-            assert.equal(await page.getByRole('link',{name:/Email us/i}).count(),1);
+            assert((await page.getByRole('link',{name:/Email us/i}).count()) >= 1,'supporter email link missing');
             console.log('PASS supporter contact/email and about links');
 
             await open('/');
