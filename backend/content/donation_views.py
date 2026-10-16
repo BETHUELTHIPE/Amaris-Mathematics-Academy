@@ -39,7 +39,10 @@ class DonationAvailabilityView(APIView):
     def get(self, request):
         ready = donations_available()
         # Do not advertise real-money payments in sandbox.
-        live = _payfast_mode() == "live"
+        try:
+            live = _payfast_mode() == "live"
+        except PaymentSecurityError:
+            live = False
         return Response(
             {"available": ready and live, "test_mode": ready and not live, "currency": "ZAR", "minimum": "20.00"},
             headers={"Cache-Control": "no-store"},
