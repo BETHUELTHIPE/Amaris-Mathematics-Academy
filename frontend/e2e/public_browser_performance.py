@@ -89,9 +89,30 @@ def measure(browser, path, width, height, mobile):
         raise AssertionError(f"CLS above 0.10 in Chrome lab {path} {width}: {after['cls']}")
     if not after["lcpMs"] or after["lcpMs"] > 6000:
         raise AssertionError(f"missing or slow lab LCP {path} {width}: {after['lcpMs']}")
+    interaction_ms = None
+    if path == "/courses" and width in (320, 1440):
+        search = page.get_by_role("textbox", name="Search mathematics courses")
+        search.wait_for(timeout=8000)
+        t0 = time.perf_counter()
+        search.fill("amaris-no-matching-course-xyz")
+        page.get_by_text("No courses match that search.").wait_for(timeout=8000)
+        interaction_ms = round((time.perf_counter() - t0) * 1000)
+        if interaction_ms > 3000:
+            raise AssertionError(f"Search response took too long: {interaction_ms}ms")
+        search.fill("")
+
+    if mobile and path == "/":
+        page.evaluate("window.scrollTo(0, 0)")
+        menu = page.locator(".header-mobile-menu > summary")
+        menu.wait_for(timeout=8000)
+        menu.click()
+        page.locator(".header-mobile-menu[open]").wait_for(timeout=8000)
+        menu.click()
+
     record = {"page": path, "width": width, "mobile": mobile,
               "cls": round(after["cls"], 4), "lcpMs": round(after["lcpMs"]),
-              "longTasks": after["longTasks"], "overflow": False}
+              "longTasks": after["longTasks"], "overflow": False,
+              "courseSearchResponseMs": interaction_ms}
     print("PASS browser", json.dumps(record, sort_keys=True), flush=True)
     context.close()
     return record
