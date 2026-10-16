@@ -68,14 +68,14 @@ def main() -> None:
                 })""")
                 require(metrics["content"] <= metrics["viewport"] + 2, "Student page overflows horizontally.")
 
-                # Mask all per-student cards and any visible identity before saving.
-                page.screenshot(
+                # Screenshot ONLY this panel, never a full private student page.
+                # Mask every student-specific card and progress line before
+                # uploading the image to GitHub Actions evidence.
+                panel.screenshot(
                     path=str(OUT / (name + "-redacted.png")),
-                    full_page=True,
                     mask=[
-                        page.locator("#my-workflows article"),
-                        page.locator("#my-workflows [role=progressbar]").locator(".."),
-                        page.locator("h1"),
+                        panel.locator("article"),
+                        panel.locator('[role="progressbar"]').locator(".."),
                     ],
                 )
                 print("PASS production verified-student workflow UI: " + name, flush=True)
