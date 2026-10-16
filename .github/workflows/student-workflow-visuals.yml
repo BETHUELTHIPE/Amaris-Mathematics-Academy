@@ -7,6 +7,7 @@ on:
     paths:
       - "frontend/app/dashboard/page.tsx"
       - "frontend/components/site/student-workflow-visuals.tsx"
+      - "frontend/components/site/student-workflow-refresh.tsx"
       - "frontend/components/site/dashboard-navigation.tsx"
       - "frontend/lib/student-workflow-states.ts"
       - "frontend/tests/student-workflow-visuals.test.mjs"
@@ -37,4 +38,4 @@ jobs:
       - name: Static typing
         run: npm run typecheck
       - name: Check edited frontend files with ESLint
-        run: npx eslint app/dashboard/page.tsx components/site/student-workflow-visuals.tsx components/site/dashboard-navigation.tsx lib/student-workflow-states.ts
+        run: npx eslint app/dashboard/page.tsx components/site/student-workflow-visuals.tsx components/site/student-workflow-refresh.tsx components/site/dashboard-navigation.tsx lib/student-workflow-states.ts
