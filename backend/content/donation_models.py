@@ -21,7 +21,7 @@ class DonationContribution(TimeStampedModel):
         CANCELLED = "cancelled", "Cancelled"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    reference = models.CharField(max_length=44, unique=True, editable=False)
+    reference = models.CharField(max_length=80, unique=True, editable=False)
     donor_name = models.CharField(max_length=100)
     donor_email = models.EmailField()
     purpose = models.CharField(max_length=16, choices=Purpose.choices)
