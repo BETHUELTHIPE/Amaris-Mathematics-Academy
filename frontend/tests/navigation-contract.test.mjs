@@ -54,8 +54,8 @@ test("keeps Book online live class immediately next to Contact", () => {
 
 test("renders managed links in desktop and mobile header navigation", () => {
   assert.match(headerSource, /getManagedNavigation\("header"\)/);
-  assert.match(headerSource, /links\.map/);
-  assert.match(authControlsSource, /links\.map/);
+  assert.match(headerSource, /<AuthControls links=\{links\}/);
+  assert.match(authControlsSource, /<HeaderNavigation links=\{links\}/);
 });
 
 

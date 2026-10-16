@@ -7,10 +7,10 @@ const login = read("../app/tutor/login/page.tsx");
 const page = read("../app/tutor/dashboard/page.tsx");
 const actions = read("../app/tutor/actions.ts");
 const api = read("../lib/tutor-api.ts");
-const nav = read("../components/site/auth-controls.tsx");
+const nav = read("../lib/navigation.ts");
 
 test("tutor access is visible without mixing into student dashboard", () => {
-  assert.match(nav, /href="\/tutor\/login"/);
+  assert.match(nav, /url: "\/tutor\/login"/);
   assert.match(login, /tutorLoginAction/);
   assert.match(actions, /supabase.auth.signInWithPassword/);
   assert.match(login, /GoogleAuthButton/);
