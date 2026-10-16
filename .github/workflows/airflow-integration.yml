@@ -9,6 +9,9 @@ on:
       - "backend/amaris_cms/settings.py"
       - "backend/templates/admin/**"
       - "backend/tests/test_airflow_admin.py"
+      - "backend/tests/test_shared_airflow.py"
+      - "backend/ops/shared_airflow/**"
+      - "backend/Dockerfile"
       - ".github/workflows/airflow-integration.yml"
   workflow_dispatch:
 
@@ -45,7 +48,29 @@ jobs:
         working-directory: backend
         env:
           DJANGO_DEBUG: "true"
-        run: python manage.py test tests.test_airflow_admin tests.test_monitoring_admin --verbosity 2
+        run: python manage.py test tests.test_airflow_admin tests.test_monitoring_admin tests.test_shared_airflow --verbosity 2
+
+  shared-container-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install disposable test tooling
+        run: python -m pip install cryptography
+      - name: Build the shared image without provisioning a cloud service
+        run: docker build --build-arg AMARIS_IMAGE_VARIANT=shared-airflow -t amaris-shared-airflow:test backend
+      - name: Verify website and Airflow in one 2 GB container
+        run: python airflow/tests/smoke_shared_image.py
+      - name: Preserve measured synthetic memory evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-airflow-memory
+          path: artifacts/shared-airflow/
+          if-no-files-found: warn
 
   render-image-smoke:
     runs-on: ubuntu-latest

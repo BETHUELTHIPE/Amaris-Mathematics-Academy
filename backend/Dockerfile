@@ -1,3 +1,5 @@
+ARG AMARIS_IMAGE_VARIANT=django-runtime
+
 FROM golang:1.27.2-bookworm AS restic-builder
 
 ARG RESTIC_VERSION=0.19.1
@@ -30,7 +32,7 @@ RUN apt-get update \
     && rm -f /tmp/restic.tar.gz \
     && rm -rf /var/lib/apt/lists/*
 
-FROM python:3.13.15-slim
+FROM python:3.13.15-slim AS django-runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -70,3 +72,20 @@ USER amaris
 EXPOSE 8000
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["gunicorn", "amaris_cms.asgi:application", "--config", "/app/gunicorn.conf.py"]
+
+# Optional single-container deployment. The default final stage remains Django.
+# Airflow has its own dependency environment; never install it into Django's.
+FROM django-runtime AS shared-airflow
+USER root
+RUN python -m venv /opt/airflow-venv \
+    && /opt/airflow-venv/bin/pip install --no-cache-dir \
+      "apache-airflow==3.3.2" "apache-airflow-providers-fab==3.9.0" \
+      --constraint https://raw.githubusercontent.com/apache/airflow/constraints-3.3.2/constraints-3.13.txt \
+    && mkdir -p /opt/airflow \
+    && chown amaris:amaris /opt/airflow
+USER amaris
+CMD ["python", "/app/ops/shared_airflow/run.py"]
+
+# Render can select the optional stage with the non-secret build argument
+# AMARIS_IMAGE_VARIANT=shared-airflow, without creating another Render service.
+FROM ${AMARIS_IMAGE_VARIANT} AS final
