@@ -1,0 +1,45 @@
+name: Trusted CMS S3 Media Roundtrip
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trusted-cms-s3-roundtrip.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cms-s3-test-one-at-a-time
+  cancel-in-progress: false
+
+jobs:
+  disposable-s3-media-test:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    env:
+      SUPABASE_STORAGE_S3_ACCESS_KEY_ID: ${{ secrets.SUPABASE_STORAGE_S3_ACCESS_KEY_ID }}
+      SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY: ${{ secrets.SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install pinned boto3 and Pillow
+        run: python -m pip install boto3==1.40.43 Pillow==12.3.0
+      - name: Ensure one-second MP4 encoder is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libx264
+      - name: Test real CMS S3 uploads and signed-download bytes, then clean up
+        run: python -u scripts/release/verify_supabase_media_roundtrip.py
