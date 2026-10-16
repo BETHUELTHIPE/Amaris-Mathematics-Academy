@@ -24,28 +24,26 @@ export default async function DashboardPage() {
   const profileSaved = user.emailVerified;
   const recommended = courses.slice(0, 2);
 
+  // Start independent student-scoped reads together so the workflow panel
+  // does not add another serial API round trip to the dashboard loading path.
+  const pendingSecondary = Promise.allSettled([
+    getStudentVideoRequests(),
+    getStudentOrders(),
+  ]);
+
   let enrolledCourses: Awaited<ReturnType<typeof getStudentCourses>> = [];
   let courseServiceAvailable = true;
-  let videoRequests: Awaited<ReturnType<typeof getStudentVideoRequests>> = [];
-  let videoRequestServiceAvailable = true;
-  let orders: Awaited<ReturnType<typeof getStudentOrders>> = [];
-  let orderServiceAvailable = true;
   try {
     enrolledCourses = await getStudentCourses();
   } catch {
     courseServiceAvailable = false;
   }
-  try {
-    videoRequests = await getStudentVideoRequests();
-  } catch {
-    videoRequestServiceAvailable = false;
-  }
 
-  try {
-    orders = await getStudentOrders();
-  } catch {
-    orderServiceAvailable = false;
-  }
+  const [videoResult, ordersResult] = await pendingSecondary;
+  const videoRequestServiceAvailable = videoResult.status === "fulfilled";
+  const videoRequests = videoResult.status === "fulfilled" ? videoResult.value : [];
+  const orderServiceAvailable = ordersResult.status === "fulfilled";
+  const orders = ordersResult.status === "fulfilled" ? ordersResult.value : [];
 
   const lessonsStarted = enrolledCourses.filter((item) => item.resume.last_lesson).length;
 
