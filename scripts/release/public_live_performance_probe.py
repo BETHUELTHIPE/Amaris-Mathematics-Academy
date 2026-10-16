@@ -37,11 +37,34 @@ def probe(label, url):
     return content
 
 
+def check_public_conditional_get():
+    url = BACKEND + "/api/v1/announcements/"
+    request = urllib.request.Request(url, headers={"Accept-Encoding": "identity"})
+    with urllib.request.urlopen(request, timeout=35) as response:
+        if response.status != 200:
+            raise RuntimeError("public announcements did not return 200")
+        etag = response.headers.get("ETag", "")
+    if not etag:
+        raise RuntimeError("production public announcements did not return an ETag")
+    conditional = urllib.request.Request(
+        url, headers={"Accept-Encoding": "identity", "If-None-Match": etag}
+    )
+    try:
+        with urllib.request.urlopen(conditional, timeout=35) as response:
+            status = response.status
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+    if status != 304:
+        raise RuntimeError(f"expected conditional HTTP 304, got {status}")
+    print("PASS live public anonymous CMS ETag and HTTP 304")
+
+
 def main():
     html = probe("frontend homepage", FRONTEND + "/")
     probe("frontend announcements", FRONTEND + "/announcements")
     probe("backend health", BACKEND + "/health/")
     probe("public announcements API", BACKEND + "/api/v1/announcements/")
+    check_public_conditional_get()
 
     paths = re.findall(rb'/_next/static/[A-Za-z0-9_./-]+[.]js', html)
     paths = [p.decode("ascii", "ignore") for p in paths]
