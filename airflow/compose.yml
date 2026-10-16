@@ -13,7 +13,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__CORE__AUTH_MANAGER: "${AIRFLOW_AUTH_MANAGER:?Set a restricted Airflow auth manager}"
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "False"
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${AIRFLOW_DB_USER:?}:${AIRFLOW_DB_PASSWORD:?}@airflow-postgres:5432/${AIRFLOW_DB_NAME:-airflow}"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg://${AIRFLOW_DB_USER:?}:${AIRFLOW_DB_PASSWORD:?}@airflow-postgres:5432/${AIRFLOW_DB_NAME:-airflow}"
     AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW_FERNET_KEY:?}"
     AIRFLOW__API__SECRET_KEY: "${AIRFLOW_API_SECRET_KEY:?}"
     AIRFLOW__API_AUTH__JWT_SECRET: "${AIRFLOW_JWT_SECRET:?}"
