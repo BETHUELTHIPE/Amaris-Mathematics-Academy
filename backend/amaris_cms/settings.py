@@ -497,3 +497,10 @@ MONITORING_CONSOLE_ENABLED = env_bool("MONITORING_CONSOLE_ENABLED", False)
 MONITORING_GRAFANA_URL = os.getenv("MONITORING_GRAFANA_URL", "").rstrip("/")
 MONITORING_PROMETHEUS_URL = os.getenv("MONITORING_PROMETHEUS_URL", "").rstrip("/")
 MONITORING_FLOWER_URL = os.getenv("MONITORING_FLOWER_URL", "").rstrip("/")
+
+# Airflow 3 read-only API integration. Credentials never reach browser responses.
+# Remains OFF until private HTTPS connectivity and a least-privilege token exist.
+AIRFLOW_MONITORING_ENABLED = env_bool("AIRFLOW_MONITORING_ENABLED", False)
+AIRFLOW_API_BASE_URL = os.getenv("AIRFLOW_API_BASE_URL", "").rstrip("/")
+AIRFLOW_API_TOKEN = os.getenv("AIRFLOW_API_TOKEN", "")
+AIRFLOW_MONITORED_DAGS = env_list("AIRFLOW_MONITORED_DAGS", "amaris_service_health")
