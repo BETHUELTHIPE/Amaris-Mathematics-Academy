@@ -1,3 +1,25 @@
+export type AnnouncementMedia = {
+  id: number;
+  title: string;
+  kind: "image" | "video" | "pdf";
+  order: number;
+  download_url: string;
+};
+
+export function safeCmsMediaUrl(value: string, cmsApiUrl?: string): string | null {
+  if (!cmsApiUrl || !value || /[\\\\\u0000-\u001f\u007f]/.test(value)) return null;
+  try {
+    const base = new URL(cmsApiUrl);
+    const target = new URL(value, base);
+    if (base.protocol !== "https:" || target.protocol !== "https:" || target.origin !== base.origin) return null;
+    if (!/^\\/api\\/v1\\/marketing-media\\/\\d+\\/$/.test(target.pathname)) return null;
+    if (target.search || target.hash || target.username || target.password) return null;
+    return target.href;
+  } catch {
+    return null;
+  }
+}
+
 export type Announcement = {
   id: number;
   title: string;
@@ -6,6 +28,7 @@ export type Announcement = {
   link_url: string;
   priority: number;
   expires_at: string | null;
+  media?: AnnouncementMedia[];
 };
 
 export function safeAnnouncementLink(value: string): string | null {
@@ -29,7 +52,17 @@ export function prepareAnnouncements(value: unknown, now = Date.now()): Announce
       typeof item.link_url === "string" && typeof item.priority === "number" &&
       Number.isFinite(item.priority) && (item.expires_at === null || typeof item.expires_at === "string");
     return valid && (item.expires_at === null || Date.parse(item.expires_at) > now);
-  }).sort((a, b) => b.priority - a.priority || b.id - a.id);
+  }).map((item) => ({
+    ...item,
+    media: Array.isArray(item.media) ? item.media.filter((asset: unknown): asset is AnnouncementMedia => {
+      if (!asset || typeof asset !== "object") return false;
+      const candidate = asset as Record<string, unknown>;
+      return Number.isSafeInteger(candidate.id) && typeof candidate.title === "string" &&
+        typeof candidate.download_url === "string" &&
+        ["image", "video", "pdf"].includes(String(candidate.kind)) &&
+        Number.isSafeInteger(candidate.order);
+    }) : [],
+  })).sort((a, b) => b.priority - a.priority || b.id - a.id);
 }
 
 export function filterAnnouncements(items: Announcement[], query: string, priorityOnly: boolean) {
