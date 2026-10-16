@@ -1,0 +1,105 @@
+# Dedicated Airflow 3 stack for a separately approved self-hosted VPS.
+# NO public API binding, NO production data writes, NO new Render services.
+name: amaris-airflow
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:3.3.2-python3.12
+  restart: unless-stopped
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__CORE__AUTH_MANAGER: "${AIRFLOW_AUTH_MANAGER:?Set a restricted Airflow auth manager}"
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "False"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${AIRFLOW_DB_USER:?}:${AIRFLOW_DB_PASSWORD:?}@airflow-postgres:5432/${AIRFLOW_DB_NAME:-airflow}"
+    AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW_FERNET_KEY:?}"
+    AIRFLOW__API__SECRET_KEY: "${AIRFLOW_API_SECRET_KEY:?}"
+    AIRFLOW__API_AUTH__JWT_SECRET: "${AIRFLOW_JWT_SECRET:?}"
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: "http://airflow-api:8080/execution/"
+    AIRFLOW__METRICS__STATSD_ON: "True"
+    AIRFLOW__METRICS__STATSD_HOST: "statsd-exporter"
+    AIRFLOW__METRICS__STATSD_PORT: "9125"
+    AIRFLOW__METRICS__STATSD_PREFIX: "airflow"
+    AMARIS_BACKEND_PUBLIC_URL: "https://amaris-production-web.onrender.com"
+    AMARIS_STUDENT_PUBLIC_URL: "https://amaris-mathematics-academy-live-students.onrender.com"
+  volumes:
+    - ./dags:/opt/airflow/dags:ro
+    - airflow_logs:/opt/airflow/logs
+  networks: [airflow_internal]
+
+services:
+  airflow-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${AIRFLOW_DB_NAME:-airflow}"
+      POSTGRES_USER: "${AIRFLOW_DB_USER:?}"
+      POSTGRES_PASSWORD: "${AIRFLOW_DB_PASSWORD:?}"
+    volumes:
+      - airflow_postgres:/var/lib/postgresql/data
+    networks: [airflow_internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  airflow-init:
+    <<: *airflow-common
+    restart: "no"
+    command: db migrate
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+
+  airflow-api:
+    <<: *airflow-common
+    command: api-server
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    ports:
+      # Never bind the API to 0.0.0.0. Use a hardened HTTPS tunnel/reverse proxy.
+      - "127.0.0.1:8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-api:
+        condition: service_healthy
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-api:
+        condition: service_healthy
+
+  statsd-exporter:
+    image: prom/statsd-exporter:v0.28.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9102:9102"
+    networks: [airflow_internal]
+    healthcheck:
+      test: ["CMD", "/bin/statsd_exporter", "--version"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+networks:
+  airflow_internal:
+    internal: false
+
+volumes:
+  airflow_postgres:
+  airflow_logs:
