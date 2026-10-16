@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, BookOpen, Clock3, Search } from "lucide-react";
 import { Header } from "@/components/site/header";
+import { FormCloseLink } from "@/components/site/form-close-link";
 import { Footer } from "@/components/site/footer";
 import { getManagedCourses } from "@/lib/cms";
 import { formatRand } from "@/lib/courses";
@@ -52,6 +53,7 @@ export default async function CoursesPage({ searchParams }: { searchParams: Prom
               <input name="q" defaultValue={query} maxLength={100} className="h-12 w-full rounded-xl border border-[#d7e0ec] bg-[#f7f9fc] pl-11 pr-4 text-base outline-none transition focus:border-[#2767d8] focus:ring-4 focus:ring-[#2767d8]/10" placeholder="Search algebra, calculus, Grade 12…" />
             </label>
             <button type="submit" className="h-12 rounded-xl bg-[#0b2a5b] px-5 text-sm font-bold text-white transition hover:bg-[#2767d8]">Search courses</button>
+            <FormCloseLink href="/" />
           </form>
           <nav className="mt-4 flex gap-2 overflow-x-auto" aria-label="Course pathways">
             {pathways.map((item) => <Link key={item} href={pathwayHref(item)} aria-current={pathway === item ? "page" : undefined} className={`whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition ${pathway === item ? "bg-[#0b2a5b] text-white" : "bg-[#edf2f8] text-[#38465e] hover:bg-[#dfe8f3]"}`}>{item}</Link>)}
