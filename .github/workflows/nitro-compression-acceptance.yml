@@ -30,7 +30,7 @@ jobs:
           set -euo pipefail
           cd frontend
           NODE_ENV=development npm ci --include=dev
-          npm install --no-save nitro @tailwindcss/vite@4.3.3
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
           NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
       - name: Verify emitted Brotli/gzip static variants and content negotiation
         shell: bash
