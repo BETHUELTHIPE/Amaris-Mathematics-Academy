@@ -27,8 +27,8 @@ export function DonationCheckoutForm() {
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/donations/config",{cache:"no-store",signal:controller.signal})
-      .then(response=>response.ok?response.json():{available:false})
-      .then((body:{available?:boolean})=>setAvailability(body.available===true?"enabled":"disabled"))
+      .then(async response=>response.ok ? (await response.json()) as {available?:boolean} : {available:false})
+      .then(body=>setAvailability(body.available===true?"enabled":"disabled"))
       .catch(()=>{if(!controller.signal.aborted)setAvailability("disabled")});
     return ()=>controller.abort();
   },[]);
