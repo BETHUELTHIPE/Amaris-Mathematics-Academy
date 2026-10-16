@@ -1,10 +1,14 @@
 name: Genuine Encrypted Production App Backup and Isolated Restore
 
 on:
+  # Monthly on the 1st at 04:17 South Africa time (02:17 UTC).
+  # Use a non-top-of-hour minute to reduce scheduled-run delays.
+  schedule:
+    - cron: '17 2 1 * *'
   workflow_dispatch:
     inputs:
       confirmation:
-        description: "Type BACKUP_PUBLIC_SCHEMA_ONLY to take and retain an encrypted production application-schema backup"
+        description: "Optional manual backup: type BACKUP_PUBLIC_SCHEMA_ONLY (scheduled monthly backups need no input)"
         type: string
         required: true
 
@@ -17,7 +21,7 @@ concurrency:
 
 jobs:
   isolated-restoration:
-    if: github.ref == 'refs/heads/main' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && inputs.confirmation == 'BACKUP_PUBLIC_SCHEMA_ONLY'
+    if: github.ref == 'refs/heads/main' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && (github.event_name == 'schedule' || inputs.confirmation == 'BACKUP_PUBLIC_SCHEMA_ONLY')
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 45
@@ -149,7 +153,7 @@ jobs:
         with:
           name: encrypted-amaris-production-public-${{ github.run_id }}
           path: ${{ runner.temp }}/amaris-real-restore/production-public.dump.gpg
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
 
       - name: Wipe ephemeral production data and isolation resources
