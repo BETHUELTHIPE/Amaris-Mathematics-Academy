@@ -40,7 +40,7 @@ jobs:
         run: |
           npm run typecheck
           npm run lint
-          npm run test:unit
+          npm test
       - name: Install browser harness
         run: pip install -r frontend/e2e/requirements.txt
       - name: Build production-equivalent Nitro Node server
