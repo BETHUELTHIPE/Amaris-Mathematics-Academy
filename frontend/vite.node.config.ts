@@ -13,6 +13,8 @@ export default defineConfig({
     // Render/Nitro must still replace the compile-time symbol so the
     // production server never evaluates an undefined global.
     __E2E_SYNTHETIC_STUDENT__: JSON.stringify(false),
+    // Never compile fake student workflow data into any Render production runtime.
+    __E2E_SYNTHETIC_WORKFLOWS__: JSON.stringify(false),
   },
   resolve: {
     alias: {
