@@ -1,0 +1,62 @@
+name: Browser LCP CLS and Mobile Responsiveness
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/app/page.tsx'
+      - 'frontend/app/courses/page.tsx'
+      - 'frontend/app/globals.css'
+      - 'frontend/e2e/public_browser_performance.py'
+      - '.github/workflows/browser-performance-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Type-check, lint and run public contract tests
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run test:unit
+      - name: Install browser harness
+        run: pip install -r frontend/e2e/requirements.txt
+      - name: Build production-equivalent Nitro Node server
+        working-directory: frontend
+        run: |
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Verify 320/390/768/1440 viewport, LCP, CLS and horizontal overflow
+        env:
+          AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: python -u frontend/e2e/public_browser_performance.py
+      - name: Preserve Chrome screenshots and browser metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-public-browser-performance
+          path: frontend/artifacts/browser-performance/
+          retention-days: 7
+          if-no-files-found: warn
