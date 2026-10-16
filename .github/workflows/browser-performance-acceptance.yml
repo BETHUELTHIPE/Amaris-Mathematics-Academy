@@ -8,6 +8,7 @@ on:
       - 'frontend/app/courses/page.tsx'
       - 'frontend/app/globals.css'
       - 'frontend/e2e/public_browser_performance.py'
+      - 'frontend/scripts/performance/summarize-lighthouse-bottlenecks.mjs'
       - '.github/workflows/browser-performance-acceptance.yml'
   workflow_dispatch:
 
@@ -57,6 +58,12 @@ jobs:
         env:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: npm run test:lighthouse:mobile
+      - name: Diagnose mobile LCP, JavaScript blocking and unused bundles
+        if: always()
+        working-directory: frontend
+        shell: bash
+        run: |
+          node scripts/performance/summarize-lighthouse-bottlenecks.mjs .lighthouseci/mobile | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Preserve Chrome screenshots and browser metrics
         if: always()
         uses: actions/upload-artifact@v4
