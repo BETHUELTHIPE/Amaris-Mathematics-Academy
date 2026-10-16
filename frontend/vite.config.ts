@@ -13,6 +13,9 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const syntheticE2EStudent =
   process.env.NODE_ENV !== "production" && process.env.E2E_SYNTHETIC_STUDENT === "true";
 
+// Both switches must be true, and the application must be a development build.
+const syntheticWorkflowFixtures = syntheticE2EStudent && process.env.E2E_WORKFLOW_FIXTURES === "true";
+
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
@@ -60,6 +63,7 @@ export default defineConfig(async () => {
       // Cloudflare worker modules do not inherit arbitrary Node process.env values.
       // Compile this non-secret test switch into development E2E builds only.
       __E2E_SYNTHETIC_STUDENT__: JSON.stringify(syntheticE2EStudent),
+      __E2E_SYNTHETIC_WORKFLOWS__: JSON.stringify(syntheticWorkflowFixtures),
     },
     server: {
       host: "0.0.0.0",

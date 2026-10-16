@@ -2,8 +2,10 @@ import { env } from "cloudflare:workers";
 import { normalizeCmsApiBaseUrl } from "@/lib/cms-api-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireVerifiedStudent } from "@/lib/auth";
+import { visualTestCourses, visualTestOrders } from "@/lib/student-workflow-e2e-fixtures";
 
 declare const __E2E_SYNTHETIC_STUDENT__: boolean;
+declare const __E2E_SYNTHETIC_WORKFLOWS__: boolean;
 
 export type ResumeState = {
   course_slug: string;
@@ -330,12 +332,12 @@ export async function downloadStudentCourseInvoice(reference: string): Promise<R
 }
 
 export async function getStudentCourses(): Promise<StudentCourse[]> {
-  if (__E2E_SYNTHETIC_STUDENT__) return [];
+  if (__E2E_SYNTHETIC_STUDENT__) return __E2E_SYNTHETIC_WORKFLOWS__ ? visualTestCourses : [];
   return studentFetch<StudentCourse[]>("/student/courses/");
 }
 
 export async function getStudentOrders(): Promise<StudentOrder[]> {
-  if (__E2E_SYNTHETIC_STUDENT__) return [];
+  if (__E2E_SYNTHETIC_STUDENT__) return __E2E_SYNTHETIC_WORKFLOWS__ ? visualTestOrders : [];
   return studentFetch<StudentOrder[]>("/student/orders/");
 }
 
