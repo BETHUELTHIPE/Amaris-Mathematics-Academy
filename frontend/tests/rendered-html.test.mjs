@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
+import { registerHooks } from "node:module";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === "cloudflare:workers") {
+      return {
+        shortCircuit: true,
+        url: "data:text/javascript,export const env = {};",
+      };
+    }
+    return nextResolve(specifier, context);
+  },
+});
 
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;

@@ -2,7 +2,7 @@ name: Quality Gates and Release
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, staging, production-release-20260923]
   push:
     branches: [main]
   workflow_dispatch:
@@ -61,6 +61,7 @@ jobs:
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_ci
       DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false" # Ephemeral CI PostgreSQL; real staging/production enforcement remains on.
       # Django TestCase deliberately keeps transactions open; production remains 30s by default.
       DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: "0"
       CELERY_BROKER_URL: redis://127.0.0.1:6379/0
@@ -184,6 +185,7 @@ jobs:
   responsive-browser:
     name: Responsive browser E2E
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
@@ -204,6 +206,7 @@ jobs:
       - name: Install Playwright test dependency
         run: python -m pip install --upgrade pip && pip install -r e2e/requirements.txt
       - name: Install Chromium, Firefox, and WebKit
+        timeout-minutes: 10
         run: python -m playwright install --with-deps chromium firefox webkit
       - name: Run mobile, tablet, and desktop browser tests
         shell: bash
@@ -299,7 +302,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Audit Node dependencies
         working-directory: frontend
-        run: npm audit --audit-level=high
+        # The deployed bundle excludes devDependencies; build/test tooling is
+        # isolated in CI and is not part of the production runtime image.
+        run: npm audit --omit=dev --audit-level=high
 
   secret-security:
     name: Repository secret scan

@@ -14,6 +14,7 @@ ARTIFACT_DIR = Path(os.getenv("E2E_ARTIFACT_DIR", "artifacts/e2e"))
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 
 VIEWPORTS = {
+    "narrow-mobile": {"width": 320, "height": 700},
     "mobile": {"width": 390, "height": 844},
     "tablet": {"width": 834, "height": 1112},
     "desktop": {"width": 1440, "height": 1000},
@@ -55,7 +56,7 @@ def assert_no_horizontal_overflow(page: Page, surface: str) -> None:
 def check_navigation(page: Page, viewport_name: str) -> None:
     goto(page, "/")
     require(page.get_by_role("link", name="Amaris Mathematics Academy home").is_visible(), "Home link is not visible")
-    if viewport_name in {"mobile", "tablet"}:
+    if viewport_name in {"narrow-mobile", "mobile", "tablet"}:
         menu = page.locator("summary").filter(has_text="Menu")
         require(menu.is_visible(), f"Compact navigation menu is missing on {viewport_name}")
         menu.click()
@@ -101,6 +102,9 @@ def check_offline_recovery(page: Page) -> None:
 
     page.context.set_offline(True)
     try:
+        # Confirm browser offline state before submitting. This keeps the test
+        # deterministic if Chromium dispatches its offline event asynchronously.
+        page.wait_for_function("() => navigator.onLine === false", timeout=5_000)
         # Firefox mobile emulation can hold pointer-actionability checks while
         # the browser is offline. Native keyboard activation still exercises
         # the real form submit handler without bypassing the application logic.
@@ -165,7 +169,33 @@ def check_dashboard(page: Page) -> None:
     require(page.get_by_role("heading", name=re.compile(r"Welcome, Responsive\.")).is_visible(), "Synthetic student dashboard did not render")
     require(page.get_by_role("navigation", name="Dashboard navigation").is_visible(), "Dashboard navigation is not visible")
     require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(), "Dashboard course shelf is not visible")
+    navigation = page.get_by_role("navigation", name="Dashboard navigation")
+    require(navigation.is_visible(), "Dashboard navigation is not visible")
+    course_link = navigation.get_by_role("link", name="My courses")
+    require(course_link.is_visible(), "My courses is not navigable on this viewport")
+    require(course_link.get_attribute("href") == "/dashboard#my-courses", "My courses does not link to its section")
+    require(page.locator("#my-courses").count() == 1, "Dashboard needs exactly one My courses target")
+    course_link.focus()
+    require(course_link.evaluate("(el) => document.activeElement === el"), "Dashboard course link is not keyboard focusable")
+    require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(), "Dashboard course shelf is not visible")
     assert_no_horizontal_overflow(page, "dashboard")
+
+    orders_link = navigation.get_by_role("link", name="Orders & payments")
+    notifications_link = navigation.get_by_role("link", name="Notifications")
+    require(orders_link.get_attribute("href") == "/dashboard/orders", "Orders navigation has the wrong destination")
+    require(notifications_link.get_attribute("href") == "/dashboard/notifications", "Notifications navigation has the wrong destination")
+
+    goto(page, "/dashboard/orders")
+    require(page.get_by_role("heading", name="Orders & payments", exact=True).is_visible(), "Orders page is not visible")
+    require(page.get_by_role("heading", name="No orders yet.", exact=True).is_visible(), "Orders empty state is not visible")
+    assert_no_horizontal_overflow(page, "orders")
+
+    goto(page, "/dashboard/notifications")
+    require(page.get_by_role("heading", name="Notifications", exact=True).is_visible(), "Notifications page is not visible")
+    require(page.get_by_role("heading", name="You’re all caught up.", exact=True).is_visible(), "Notifications empty state is not visible")
+    assert_no_horizontal_overflow(page, "notifications")
+
+    goto(page, "/dashboard")
 
 
 def check_table(page: Page) -> None:

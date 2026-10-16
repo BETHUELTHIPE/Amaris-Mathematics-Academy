@@ -1,0 +1,64 @@
+{
+  "payment": {
+    "title": "Payment Policy",
+    "effective": "30 September 2026",
+    "intro": "This policy explains how Amaris Mathematics Academy handles payments for online courses and live mathematics classes. Please read the price and service details before confirming a checkout.",
+    "sections": [
+      {
+        "title": "Prices and checkout",
+        "body": "Prices are shown in South African rand before payment. Online courses are priced on their course pages. A one-hour live class is R250. Checkout is processed by PayFast; available payment methods may depend on your device and PayFast. We do not ask you to send card details by email or WhatsApp."
+      },
+      {
+        "title": "When access or a booking begins",
+        "body": "Starting checkout or returning from PayFast does not itself activate a course or confirm a class. We verify payment through our server before granting private course access or reserving a live class. A live-class checkout holds an available tutor slot for a limited time. If verification is still pending, keep your payment reference and check your account or contact us."
+      },
+      {
+        "title": "Receipts and invoices",
+        "body": "After a verified purchase, we create an invoice and send confirmation to the email on your student account. A confirmed live-class invoice is available as a PDF from your booking confirmation page after delivery. Keep the payment and booking references for support."
+      },
+      {
+        "title": "Failed, duplicate or late payments",
+        "body": "A failed or cancelled checkout does not grant access. If money was taken but your course or class is not confirmed, contact us with the reference and the email on your account. A payment verified after a live-class slot is no longer available is reviewed by our team; we will work with you on a replacement class or an appropriate refund. Please do not pay again until we have checked the first transaction."
+      },
+      {
+        "title": "Cancellations and refunds",
+        "body": "To request a cancellation or refund, email us with your name, account email, payment reference, service purchased and the reason. For a live class, contact us as soon as you know you cannot attend. We review the payment, whether access or teaching has begun, any service issue and your rights under applicable South African law. We will explain the outcome and the payment method used for any approved refund. Nothing in this policy limits rights that the law gives you."
+      },
+      {
+        "title": "Payment support",
+        "body": "Email bethuelmoukangwe8@gmail.com or call 071 415 6665. We may ask for the transaction reference and account email, but never for your password or full card number."
+      }
+    ]
+  },
+  "working": {
+    "title": "How We Work Policy",
+    "effective": "30 September 2026",
+    "intro": "This policy describes how Amaris Mathematics Academy delivers its online learning and live classes, and what students can expect when working with us.",
+    "sections": [
+      {
+        "title": "Getting started",
+        "body": "Create your own student profile and verify your email before buying. Choose a course that fits your curriculum and level, or select an available live-class slot and tell us the topic you want to cover. Keep your account details current so we can send your booking and learning information."
+      },
+      {
+        "title": "Online courses",
+        "body": "After payment is verified, purchased course lessons are available through your private dashboard. Courses use structured videos, worked examples and practice activities. You can return to your lessons and track progress. Your course access and learning materials are personal to your account."
+      },
+      {
+        "title": "Live classes",
+        "body": "Available one-hour tutor slots show the subject, level, tutor, time and price before checkout. A class is confirmed only after payment verification. We then email the class details and provide the Zoom join link to the confirmed student. We aim to send a reminder around 30 minutes before the start. Times are shown in South Africa time."
+      },
+      {
+        "title": "Preparation and attendance",
+        "body": "Please bring your topic, questions and any relevant work to the class, join on time and use a reliable internet connection. If you cannot attend, contact us as early as possible with your booking reference. We review requests to move a class against tutor availability and the circumstances. We cannot promise a particular mark or examination result."
+      },
+      {
+        "title": "Changes and service issues",
+        "body": "If a tutor or platform issue prevents a booked class from taking place, contact us so we can investigate and arrange a suitable new time or an appropriate refund. If a paid course or lesson is inaccessible, send us the course name, account email and payment reference. We will check the verified purchase and help restore access."
+      },
+      {
+        "title": "Student information and support",
+        "body": "We use account, progress, payment and booking information to provide the service and respond to support requests. Student invoices are stored separately from academy administration files and downloads require an authenticated account. See our Privacy Policy and Student Terms for more detail. Reach us at bethuelmoukangwe8@gmail.com or 071 415 6665."
+      }
+    ]
+  }
+}

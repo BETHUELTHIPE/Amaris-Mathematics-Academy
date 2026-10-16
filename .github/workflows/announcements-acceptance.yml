@@ -1,0 +1,60 @@
+name: Announcements acceptance
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/app/announcements/**'
+      - 'frontend/lib/announcements.ts'
+      - 'frontend/lib/cms.ts'
+      - 'frontend/tests/announcements.test.mjs'
+      - 'frontend/e2e/announcements.mjs'
+      - '.github/workflows/announcements-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: announcements-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  noticeboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Install locked dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Type, lint, build and frontend tests
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+      - name: Install Render adapters and browser driver
+        working-directory: frontend
+        run: npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3 playwright@1.62.0
+      - name: Build Render runtime
+        working-directory: frontend
+        run: NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Synthetic notices, native search, mobile layout and accessibility
+        working-directory: frontend
+        env:
+          ANNOUNCEMENTS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          ANNOUNCEMENTS_ARTIFACTS: ${{ github.workspace }}/artifacts/announcements
+        run: node e2e/announcements.mjs
+      - name: Preserve synthetic screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: announcements-browser-evidence
+          path: artifacts/announcements
+          retention-days: 7

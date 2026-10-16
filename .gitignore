@@ -16,6 +16,7 @@ yarn-error.log*
 # Shared generated work
 /outputs/
 /work/
+/.venv/
 
 # Django backend runtime output
 /backend/staticfiles/
