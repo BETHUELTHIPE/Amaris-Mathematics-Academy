@@ -19,5 +19,5 @@ export default defineConfig({
       "cloudflare:workers": resolve(root, "node/cloudflare-workers.ts"),
     },
   },
-  // Render runs the Nitro Node server directly (not Docker Nginx). Pre-compress\n  // only public static assets; never cache private student/payment responses.\n  plugins: [\n    vinext(),\n    tailwindcss(),\n    nitro({ compressPublicAssets: { gzip: true, brotli: true, zstd: false } }),\n  ],
+  plugins: [vinext(), tailwindcss(), nitro()],
 });
