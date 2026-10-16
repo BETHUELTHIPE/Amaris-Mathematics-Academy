@@ -3,7 +3,10 @@
 name: amaris-airflow
 
 x-airflow-common: &airflow-common
-  image: apache/airflow:3.3.2-python3.12
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: amaris-airflow:3.3.2-statsd
   restart: unless-stopped
   environment: &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
