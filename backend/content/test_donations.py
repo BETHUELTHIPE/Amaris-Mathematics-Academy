@@ -142,10 +142,10 @@ class DonationPaymentTests(TestCase):
             "idempotency_key": "fixture-" + "abcdefghijk123",
             "consent": True,
         }
-        created = self.client.post("/api/v1/donations/checkout/", data, format="json")
+        created = self.client.post("/api/v1/donations/checkout/", data, format="json", secure=True)
         self.assertEqual(created.status_code, 201, created.data)
         self.assertTrue(created.data["gateway_url"].startswith("https://"))
-        status = self.client.get("/api/v1/donations/" + created.data["payment_reference"] + "/")
+        status = self.client.get("/api/v1/donations/" + created.data["payment_reference"] + "/", secure=True)
         self.assertEqual(status.status_code, 200, status.data)
         self.assertEqual(status.data["status"], "pending")
         self.assertNotIn("donor_email", status.data)
