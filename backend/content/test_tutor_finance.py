@@ -127,11 +127,42 @@ class TutorRevenueTests(TestCase):
         response = self.client.get("/tutor/dashboard/", secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Courses sold")
+        self.assertContains(response, "My financial processing status")
+        self.assertEqual(response.context["processing"]["held"], 1)
+        self.assertEqual(response.context["processing"]["paid"], 0)
         self.assertContains(response, "R 150.00")
         self.assertNotContains(response, self.student.email)
         self.assertNotContains(response, self.student.first_name)
         self.client.force_login(self.other)
         self.assertEqual(self.client.get("/tutor/dashboard/", secure=True).status_code, 403)
+
+    def test_processing_status_does_not_include_another_tutors_records(self):
+        self.pay_course()
+        other_contract = TutorContract.objects.create(
+            tutor=self.other,
+            service=TutorContract.Service.COURSE,
+            tutor_percent=Decimal("50.00"),
+            effective_from=timezone.now() - timedelta(days=1),
+            contract_reference="TEST-OTHER-50",
+        )
+        TutorEarning.objects.create(
+            tutor=self.other, contract=other_contract,
+            service=TutorContract.Service.COURSE,
+            source_reference="private-other-tutor-sale",
+            service_label="Private sale",
+            gross=Decimal("100.00"),
+            tutor_percent=Decimal("50.00"),
+            tutor_amount=Decimal("50.00"),
+            academy_amount=Decimal("50.00"),
+            payment_verified_at=timezone.now(),
+            state=TutorEarning.State.READY,
+        )
+        self.client.force_login(self.tutor)
+        response = self.client.get("/tutor/dashboard/", secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["processing"]["held"], 1)
+        self.assertEqual(response.context["processing"]["ready"], 0)
+        self.assertNotContains(response, "private-other-tutor-sale")
 
     def test_payout_email_requires_confirmed_transfer(self):
         self.pay_course()

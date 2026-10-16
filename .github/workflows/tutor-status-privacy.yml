@@ -1,0 +1,55 @@
+name: Tutor workflow status privacy tests
+
+on:
+  pull_request:
+    branches:
+      - feature/tutor-revenue-ledger-20261015
+    paths:
+      - "backend/content/tutor_dashboard.py"
+      - "backend/templates/tutor/earnings_dashboard.html"
+      - "backend/content/test_tutor_finance.py"
+      - ".github/workflows/tutor-status-privacy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tutor-dashboard-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_tutor_status_test
+          POSTGRES_USER: amaris_tutor_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U amaris_tutor_test -d amaris_tutor_status_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_DEBUG: "true"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+      DATABASE_URL: "postgresql://amaris_tutor_test@127.0.0.1:5432/amaris_tutor_status_test"
+      DATABASE_SSL_REQUIRED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install backend testing requirements
+        run: python -m pip install -r requirements-dev.txt
+      - name: Check migration compatibility
+        run: python manage.py makemigrations --check --dry-run
+      - name: Tutor finance and privacy regressions
+        run: python manage.py test content.test_tutor_finance --verbosity 2

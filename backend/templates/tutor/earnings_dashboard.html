@@ -5,6 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
+<meta http-equiv="refresh" content="60">
 <title>Tutor earnings · Amaris Academy</title>
 <style>
 :root{color-scheme:light;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f7fc;color:#142544}
@@ -48,6 +49,20 @@ table{border-collapse:collapse;width:100%;font-size:13px}th{text-align:left;colo
 <div class="stat"><div><strong>Payment destination</strong><div class="muted">{{ bank_mask }}</div></div><span class="pill">{{ bank_status }}</span></div>
 <div class="note" style="margin-top:18px"><strong>How your share works</strong><p>After a payment is verified, the tutor and Academy shares are recorded at the contract rate for that sale. Payouts stay pending until delivery and settlement checks pass. A payout receipt is sent only after the bank transfer is confirmed.</p></div>
 </div></section>
+<section class="card" style="margin-top:20px" aria-label="Your financial workflow status">
+<h2>My financial processing status</h2>
+<p class="muted">These are actual stages from your verified earnings ledger, not raw Airflow jobs or estimates. Refreshes every 60 seconds.</p>
+<div class="grid">
+<div><label>On delivery or settlement hold</label><div class="metric">{{ processing.held }}</div></div>
+<div><label>Eligible for payout</label><div class="metric">{{ processing.ready }}</div></div>
+<div><label>Confirmed paid</label><div class="metric">{{ processing.paid }}</div></div>
+</div>
+<div class="stat"><div><strong>Pending external payout provider</strong><div class="muted">Your own payout records waiting for bank-transfer integration</div></div><span class="pill">{{ processing.payout_pending }}</span></div>
+<div class="stat"><div><strong>Transfers processing</strong></div><span class="pill">{{ processing.payout_processing }}</span></div>
+<div class="stat"><div><strong>Failed payouts requiring review</strong></div><span class="pill">{{ processing.payout_failed }}</span></div>
+<div class="stat"><div><strong>Refunded or reversed services</strong></div><span class="pill">{{ processing.reversed }}</span></div>
+<p class="muted">Last ledger update: {{ processing.last_updated|date:"d M Y H:i"|default:"No verified records yet" }} (South Africa time). No bank transfer is assumed successful until verified by the provider.</p>
+</section>
 <section class="card" style="margin-top:20px"><h2>Recent verified sales</h2><div class="overflow"><table><thead><tr><th>Service</th><th>Paid date</th><th>Gross</th><th>Your share</th><th>Payout stage</th></tr></thead><tbody>
 {% for item in stats.recent %}<tr><td>{{ item.service_label }}</td><td>{{ item.payment_verified_at|date:"d M Y" }}</td><td>R {{ item.gross|floatformat:2 }}</td><td><strong>R {{ item.tutor_amount|floatformat:2 }}</strong></td><td><span class="pill">{{ item.state|capfirst }}</span></td></tr>
 {% empty %}<tr><td colspan="5">No verified tutor sales yet. Paid orders will appear after they are assigned to an active contract.</td></tr>{% endfor %}
