@@ -52,17 +52,20 @@ export function prepareAnnouncements(value: unknown, now = Date.now()): Announce
       typeof item.link_url === "string" && typeof item.priority === "number" &&
       Number.isFinite(item.priority) && (item.expires_at === null || typeof item.expires_at === "string");
     return valid && (item.expires_at === null || Date.parse(item.expires_at) > now);
-  }).map((item) => ({
-    ...item,
-    media: Array.isArray(item.media) ? item.media.filter((asset: unknown): asset is AnnouncementMedia => {
-      if (!asset || typeof asset !== "object") return false;
-      const candidate = asset as Record<string, unknown>;
-      return Number.isSafeInteger(candidate.id) && typeof candidate.title === "string" &&
-        typeof candidate.download_url === "string" &&
-        ["image", "video", "pdf"].includes(String(candidate.kind)) &&
-        Number.isSafeInteger(candidate.order);
-    }) : [],
-  })).sort((a, b) => b.priority - a.priority || b.id - a.id);
+  }).map((item) => {
+    if (!("media" in item)) return item;
+    return {
+      ...item,
+      media: Array.isArray(item.media) ? item.media.filter((asset: unknown): asset is AnnouncementMedia => {
+        if (!asset || typeof asset !== "object") return false;
+        const candidate = asset as Record<string, unknown>;
+        return Number.isSafeInteger(candidate.id) && typeof candidate.title === "string" &&
+          typeof candidate.download_url === "string" &&
+          ["image", "video", "pdf"].includes(String(candidate.kind)) &&
+          Number.isSafeInteger(candidate.order);
+      }) : [],
+    };
+  }).sort((a, b) => b.priority - a.priority || b.id - a.id);
 }
 
 export function filterAnnouncements(items: Announcement[], query: string, priorityOnly: boolean) {
