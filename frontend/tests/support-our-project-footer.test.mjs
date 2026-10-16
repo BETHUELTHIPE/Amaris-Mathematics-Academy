@@ -19,9 +19,11 @@ test("support page uses the public website layout and contact routes", () => {
   assert.match(page, /href=\{academyBrand\.emailHref\}/);
 });
 
-test("support page does not imply a live donation checkout", () => {
+test("support page contains a secure checkout guarded by provider availability", () => {
   const page = readFrontend("app/support-our-project/page.tsx");
-  assert.match(page, /does not collect donations or card details/);
-  assert.doesNotMatch(page, /href="\/checkout/);
+  const form = readFrontend("components/site/donation-checkout-form.tsx");
+  assert.match(page, /DonationCheckoutForm/);
+  assert.match(form, /availability==="disabled"/);
+  assert.match(page, /never collects card details/);
   assert.doesNotMatch(page, /PAYFAST_|MERCHANT_KEY|bank account number/i);
 });
