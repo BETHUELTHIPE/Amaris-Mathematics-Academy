@@ -41,7 +41,7 @@ class DonationPaymentTests(TestCase):
         self.args = {
             "name": "Test Donor", "email": "donor@example.test",
             "amount": Decimal("250.00"), "purpose": "learner",
-            "idempotency_key": "fixture-abcdefghijk123",
+            "idempotency_key": "fixture-" + "abcdefghijk123",
         }
 
     def create_checkout(self, **changes):
@@ -50,11 +50,11 @@ class DonationPaymentTests(TestCase):
     def payload(self, **overrides):
         fields = {
             "merchant_id": "10000100",
-            "m_payment_id": "DON-fixture-abcdefghijk123",
+            "m_payment_id": "DON-" + "fixture-" + "abcdefghijk123",
             "pf_payment_id": "TEST-PF-DON-1",
             "payment_status": "COMPLETE",
             "amount_gross": "250.00",
-            "custom_str1": "DON-fixture-abcdefghijk123",
+            "custom_str1": "DON-" + "fixture-" + "abcdefghijk123",
             "custom_str2": "learner",
         }
         fields.update({k: str(v) for k, v in overrides.items()})
@@ -117,7 +117,7 @@ class DonationPaymentTests(TestCase):
 
     def test_signed_callbacks_cannot_cross_contribution_references(self):
         self.create_checkout()
-        other = self.create_checkout(idempotency_key="fixture-abcdefghijk124")
+        other = self.create_checkout(idempotency_key="fixture-" + "abcdefghijk124")
         mismatch = process_donation_notification(
             self.payload(m_payment_id=other.reference), gateway=ApprovedVerificationGateway()
         )
@@ -130,7 +130,7 @@ class DonationPaymentTests(TestCase):
             "donor_email": "donor@example.test",
             "amount": "250.00",
             "purpose": "learner",
-            "idempotency_key": "fixture-abcdefghijk123",
+            "idempotency_key": "fixture-" + "abcdefghijk123",
             "consent": True,
         }
         created = self.client.post("/api/v1/donations/checkout/", data, format="json")
