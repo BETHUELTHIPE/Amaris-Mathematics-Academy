@@ -11,7 +11,6 @@ from urllib import request as url_request
 
 from django.conf import settings
 
-
 MAX_BODY = 256 * 1024
 MAX_WORKFLOWS = 12
 DAG_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,180}$")
@@ -23,10 +22,7 @@ class AirflowUnavailable(Exception):
 
 def monitored_dags():
     configured = getattr(settings, "AIRFLOW_MONITORED_DAGS", [])
-    return tuple(
-        dag_id for dag_id in configured[:MAX_WORKFLOWS]
-        if DAG_ID_RE.fullmatch(dag_id)
-    )
+    return tuple(dag_id for dag_id in configured[:MAX_WORKFLOWS] if DAG_ID_RE.fullmatch(dag_id))
 
 
 def is_configured():
@@ -126,11 +122,15 @@ def get_workflow_tasks(dag_id):
     items = payload.get("task_instances", [])
     if not isinstance(items, list):
         raise AirflowUnavailable("Invalid task response.")
-    tasks = [{
-        "task_id": str(item.get("task_id", ""))[:180],
-        "state": str(item.get("state") or "waiting")[:32],
-        "try_number": item.get("try_number"),
-        "start_date": item.get("start_date"),
-        "end_date": item.get("end_date"),
-    } for item in items[:100] if isinstance(item, dict)]
+    tasks = [
+        {
+            "task_id": str(item.get("task_id", ""))[:180],
+            "state": str(item.get("state") or "waiting")[:32],
+            "try_number": item.get("try_number"),
+            "start_date": item.get("start_date"),
+            "end_date": item.get("end_date"),
+        }
+        for item in items[:100]
+        if isinstance(item, dict)
+    ]
     return summary, tasks
