@@ -8,8 +8,9 @@ import {
 } from "lucide-react";
 import { requireVerifiedStudent } from "@/lib/auth";
 import { StudentDashboardShell } from "@/components/site/student-dashboard-shell";
+import { StudentWorkflowVisuals } from "@/components/site/student-workflow-visuals";
 import { courses } from "@/lib/courses";
-import { getStudentCourses, getStudentVideoRequests } from "@/lib/student-api";
+import { getStudentCourses, getStudentOrders, getStudentVideoRequests } from "@/lib/student-api";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -27,6 +28,8 @@ export default async function DashboardPage() {
   let courseServiceAvailable = true;
   let videoRequests: Awaited<ReturnType<typeof getStudentVideoRequests>> = [];
   let videoRequestServiceAvailable = true;
+  let orders: Awaited<ReturnType<typeof getStudentOrders>> = [];
+  let orderServiceAvailable = true;
   try {
     enrolledCourses = await getStudentCourses();
   } catch {
@@ -36,6 +39,12 @@ export default async function DashboardPage() {
     videoRequests = await getStudentVideoRequests();
   } catch {
     videoRequestServiceAvailable = false;
+  }
+
+  try {
+    orders = await getStudentOrders();
+  } catch {
+    orderServiceAvailable = false;
   }
 
   const lessonsStarted = enrolledCourses.filter((item) => item.resume.last_lesson).length;
@@ -68,6 +77,13 @@ export default async function DashboardPage() {
         {!videoRequestServiceAvailable && <div className="mt-6 rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-5 text-sm text-[#765314]">
           Video-request progress is temporarily unavailable. Your documents and paid tickets remain private; try again shortly.
         </div>}
+
+        <StudentWorkflowVisuals
+          orders={orders}
+          courses={enrolledCourses}
+          ordersAvailable={orderServiceAvailable}
+          coursesAvailable={courseServiceAvailable}
+        />
 
         {enrolledCourses.length > 0 ? <section id="my-courses" className="mt-6 min-w-0 scroll-mt-36 rounded-3xl border border-[#dce4ef] bg-white p-5 sm:p-9">
           <p className="eyebrow">My courses</p>
