@@ -5,7 +5,7 @@ from django.core.exceptions import PermissionDenied
 from django.test import RequestFactory, SimpleTestCase, override_settings
 from django.urls import reverse
 
-from amaris_cms.airflow_client import get_workflow, get_workflow_tasks, is_configured
+from amaris_cms.airflow_client import AirflowUnavailable, get_workflow, get_workflow_tasks, is_configured
 from amaris_cms.monitoring_admin import AmarisAdminSite
 
 AIRFLOW_TEST_SETTINGS = {
@@ -110,6 +110,22 @@ class AirflowMonitorTests(SimpleTestCase):
         summary, tasks = get_workflow_tasks("amaris_service_health")
         self.assertEqual(summary["state"], "running")
         self.assertEqual(tasks[0]["task_id"], "check_api")
+
+    @override_settings(**AIRFLOW_TEST_SETTINGS, AIRFLOW_API_CA_CERT_FILE="/etc/secrets/airflow-ca.pem")
+    @patch("amaris_cms.airflow_client.ssl.create_default_context")
+    @patch("amaris_cms.airflow_client.url_request.build_opener")
+    def test_private_ca_is_loaded_without_disabling_tls(self, opener, context):
+        opener.return_value.open.side_effect = OSError("unreachable")
+        with self.assertRaises(AirflowUnavailable):
+            get_workflow("amaris_service_health")
+        context.assert_called_once_with(cafile="/etc/secrets/airflow-ca.pem")
+
+    @override_settings(**AIRFLOW_TEST_SETTINGS, AIRFLOW_API_CA_CERT_FILE="/missing/airflow-ca.pem")
+    @patch("amaris_cms.airflow_client.url_request.build_opener")
+    def test_missing_private_ca_fails_closed_before_request(self, opener):
+        with self.assertRaises(AirflowUnavailable):
+            get_workflow("amaris_service_health")
+        opener.assert_not_called()
 
     @override_settings(**AIRFLOW_TEST_SETTINGS)
     @patch("amaris_cms.airflow_client._read")

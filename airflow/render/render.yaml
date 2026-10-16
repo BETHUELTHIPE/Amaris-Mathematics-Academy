@@ -1,0 +1,148 @@
+# Separate opt-in PAID Airflow stack; import only after cost/release approval.
+# Keep existing Amaris services outside this Blueprint. See README.md.
+previews:
+  generation: 'off'
+services:
+- type: pserv
+  name: amaris-airflow-api
+  runtime: docker
+  plan: standard
+  region: frankfurt
+  branch: main
+  dockerContext: airflow
+  dockerfilePath: airflow/render/Dockerfile
+  dockerCommand: python /opt/airflow/render/start.py api
+  autoDeployTrigger: 'off'
+  numInstances: 1
+  maxShutdownDelaySeconds: 120
+  envVars:
+  - fromGroup: amaris-airflow-runtime
+  - key: AIRFLOW_API_HOST
+    fromService:
+      type: pserv
+      name: amaris-airflow-api
+      property: host
+  - key: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+    fromDatabase:
+      name: amaris-airflow-metadata
+      property: connectionString
+  - key: AIRFLOW__CORE__FERNET_KEY
+    sync: false
+  - key: AIRFLOW_TLS_CA_PEM
+    sync: false
+  - key: AIRFLOW_TLS_CERT_PEM
+    sync: false
+  - key: AIRFLOW_TLS_KEY_PEM
+    sync: false
+  preDeployCommand: python /opt/airflow/render/start.py migrate
+- type: worker
+  name: amaris-airflow-scheduler
+  runtime: docker
+  plan: standard
+  region: frankfurt
+  branch: main
+  dockerContext: airflow
+  dockerfilePath: airflow/render/Dockerfile
+  dockerCommand: python /opt/airflow/render/start.py scheduler
+  autoDeployTrigger: 'off'
+  numInstances: 1
+  maxShutdownDelaySeconds: 120
+  envVars:
+  - fromGroup: amaris-airflow-runtime
+  - key: AIRFLOW_API_HOST
+    fromService:
+      type: pserv
+      name: amaris-airflow-api
+      property: host
+  - key: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+    fromDatabase:
+      name: amaris-airflow-metadata
+      property: connectionString
+  - key: AIRFLOW__CORE__FERNET_KEY
+    fromService:
+      type: pserv
+      name: amaris-airflow-api
+      envVarKey: AIRFLOW__CORE__FERNET_KEY
+  - key: AIRFLOW_TLS_CA_PEM
+    fromService:
+      type: pserv
+      name: amaris-airflow-api
+      envVarKey: AIRFLOW_TLS_CA_PEM
+  disk:
+    name: airflow-task-logs
+    mountPath: /opt/airflow/logs
+    sizeGB: 1
+- type: worker
+  name: amaris-airflow-dag-processor
+  runtime: docker
+  plan: starter
+  region: frankfurt
+  branch: main
+  dockerContext: airflow
+  dockerfilePath: airflow/render/Dockerfile
+  dockerCommand: python /opt/airflow/render/start.py dag-processor
+  autoDeployTrigger: 'off'
+  numInstances: 1
+  maxShutdownDelaySeconds: 120
+  envVars:
+  - fromGroup: amaris-airflow-runtime
+  - key: AIRFLOW_API_HOST
+    fromService:
+      type: pserv
+      name: amaris-airflow-api
+      property: host
+  - key: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+    fromDatabase:
+      name: amaris-airflow-metadata
+      property: connectionString
+  - key: AIRFLOW__CORE__FERNET_KEY
+    fromService:
+      type: pserv
+      name: amaris-airflow-api
+      envVarKey: AIRFLOW__CORE__FERNET_KEY
+  - key: AIRFLOW_TLS_CA_PEM
+    fromService:
+      type: pserv
+      name: amaris-airflow-api
+      envVarKey: AIRFLOW_TLS_CA_PEM
+databases:
+- name: amaris-airflow-metadata
+  databaseName: airflow
+  user: airflow
+  plan: basic-1gb
+  region: frankfurt
+  postgresMajorVersion: '17'
+  ipAllowList: []
+envVarGroups:
+- name: amaris-airflow-runtime
+  envVars:
+  - key: AIRFLOW__CORE__AUTH_MANAGER
+    value: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+  - key: AIRFLOW__CORE__EXECUTOR
+    value: LocalExecutor
+  - key: AIRFLOW__CORE__LOAD_EXAMPLES
+    value: 'False'
+  - key: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
+    value: 'True'
+  - key: AIRFLOW__CORE__PARALLELISM
+    value: '2'
+  - key: AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG
+    value: '2'
+  - key: AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG
+    value: '1'
+  - key: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE
+    value: '2'
+  - key: AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW
+    value: '2'
+  - key: AIRFLOW__METRICS__STATSD_ON
+    value: 'False'
+  - key: AIRFLOW__LOGGING__LOGGING_LEVEL
+    value: INFO
+  - key: AMARIS_BACKEND_PUBLIC_URL
+    value: https://amaris-production-web.onrender.com
+  - key: AMARIS_STUDENT_PUBLIC_URL
+    value: https://amaris-mathematics-academy-live-students.onrender.com
+  - key: AIRFLOW__API__SECRET_KEY
+    generateValue: true
+  - key: AIRFLOW__API_AUTH__JWT_SECRET
+    generateValue: true
