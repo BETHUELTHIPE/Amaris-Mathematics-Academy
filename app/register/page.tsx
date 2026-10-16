@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
-import { FormCloseLink } from "@/components/site/form-close-link";
+import { FormBackLink, FormCloseLink } from "@/components/site/form-close-link";
 import { getStudentIdentity } from "@/lib/auth";
 import { SafeFormDraft } from "@/components/site/safe-form-draft";
 
@@ -50,7 +50,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="Password" name="password" type="password" autoComplete="new-password" /><AuthField label="Confirm password" name="confirmPassword" type="password" autoComplete="new-password" /></div>
           <p className="-mt-2 text-xs leading-5 text-[#68778f]">Use 12–72 characters with uppercase, lowercase, a number and a symbol.</p>
           <label className="flex items-start gap-3 rounded-xl bg-[#f5f7fb] p-4 text-sm leading-6 text-[#52617a]"><input name="terms" type="checkbox" required className="mt-1 size-4 accent-[#1f5bbd]" /><span>I accept the <Link href="/terms" className="font-semibold text-[#1f5bbd] underline">Terms</Link> and <Link href="/privacy" className="font-semibold text-[#1f5bbd] underline">Privacy Policy</Link>.</span></label>
-          <button type="submit" className="min-h-12 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white transition hover:bg-[#123d79]">Create account</button>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><FormBackLink href="/" /><button type="submit" className="min-h-12 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white transition hover:bg-[#123d79]">Create account</button></div>
         </form>
         <p className="mt-6 text-center text-sm text-[#69778f]">Already registered? <Link href="/login" className="font-bold text-[#1f5bbd]">Log in</Link></p>
       </div>
