@@ -1,0 +1,84 @@
+name: AI Guide Public Browser Smoke
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ai-guide-public-browser-smoke.yml'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ai-guide-public-browser-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  anonymous-live-browser:
+    name: Anonymous Chrome — public Amaris AI Guide
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Chromium browser test
+        run: |
+          mkdir -p /tmp/amaris-public-browser
+          cd /tmp/amaris-public-browser
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Test real deployed website in Chromium (no login or payment)
+        shell: bash
+        run: |
+          cd /tmp/amaris-public-browser
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright';
+          import assert from 'node:assert/strict';
+          const base = 'https://amaris-mathematics-academy-live-students.onrender.com';
+          const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+          const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+          try {
+            const response = await page.goto(base + '/ai-guide', { waitUntil: 'domcontentloaded', timeout: 60000 });
+            assert(response, 'No response from /ai-guide');
+            console.log('AI_GUIDE_HTTP_STATUS=' + response.status());
+            assert.equal(response.status(), 200, 'AI Guide route must return HTTP 200');
+            await page.getByRole('heading', { name: /We explain Amaris in simple English/i }).waitFor({ timeout: 15000 });
+            const footer = page.locator('footer a[href="/ai-guide"]');
+            assert.equal(await footer.count(), 1, 'AI Guide missing from footer on AI Guide page');
+            console.log('PASS: Guide page content and footer link');
+            await page.getByRole('heading', { name: /Welcome to Amaris/i }).waitFor();
+            await page.getByRole('button', { name: /Next step/i }).click();
+            await page.getByRole('heading', { name: /Who can study with us/i }).waitFor();
+            await page.getByRole('button', { name: 'Listen', exact: true }).click();
+            console.log('PASS: Guide step navigation and Listen button');
+            await page.getByRole('button', { name: /Amaris Assistant/i }).first().click();
+            await page.getByRole('dialog', { name: /Amaris Assistant/i }).waitFor({ timeout: 15000 });
+            await page.getByRole('button', { name: /Chat assistant/i }).waitFor();
+            await page.getByRole('button', { name: /Voice assistant/i }).waitFor();
+            console.log('PASS: Existing chat and voice assistant opens');
+            const home = await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+            assert(home, 'No response from homepage');
+            assert.equal(home.status(), 200, 'Homepage must return HTTP 200');
+            assert.equal(await page.locator('footer a[href="/ai-guide"]').count(), 1, 'AI Guide missing from public homepage footer');
+            console.log('HOME_HTTP_STATUS=' + home.status());
+            console.log('PASS: AI Guide link appears in homepage footer');
+            const health = await page.request.get(base + '/health/ready/', { timeout: 20000 });
+            console.log('READY_HTTP_STATUS=' + health.status());
+            assert.equal(health.status(), 200, 'Health readiness must return HTTP 200');
+            console.log('PASS: Production /health/ready/');
+            console.log('RESULT: PUBLIC_BROWSER_SMOKE_PASSED');
+          } catch (error) {
+            console.error('RESULT: PUBLIC_BROWSER_SMOKE_FAILED');
+            console.error(error);
+            await page.screenshot({ path: '/tmp/amaris-ai-guide-smoke-failed.png', fullPage: true }).catch(() => {});
+            process.exitCode = 1;
+          } finally {
+            await browser.close();
+          }
+          NODE
+      - name: Record result
+        if: always()
+        run: echo "Checked live anonymous Chrome UI, no student records or payment used"
