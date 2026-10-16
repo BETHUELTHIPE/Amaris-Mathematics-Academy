@@ -147,7 +147,7 @@ export default async function SupportOurProjectPage() {
         <div className="mx-auto flex max-w-7xl flex-col justify-between gap-8 rounded-[2rem] bg-[#0b2a5b] p-8 text-white md:flex-row md:items-center sm:p-12">
           <div className="max-w-2xl">
             <p className="text-sm font-semibold uppercase tracking-[.16em] text-[#ffcc66]">Get involved</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Let's talk about what we can build together.</h2>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Let&apos;s talk about what we can build together.</h2>
             <p className="mt-4 text-base leading-8 text-white/70">
               Send our team a short message about how you would like to support the Amaris education project.
             </p>
