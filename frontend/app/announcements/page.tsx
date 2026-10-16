@@ -1,10 +1,11 @@
+/* eslint-disable @next/next/no-img-element -- CMS-hosted announcement images require ordinary signed redirect handling */
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowDown, ArrowRight, Bell, BookOpen, CalendarDays, Check, Clock3, GraduationCap, Megaphone, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { getManagedAnnouncements } from "@/lib/cms";
-import { announcementDeadline, filterAnnouncements, safeAnnouncementLink, type Announcement } from "@/lib/announcements";
+import { announcementDeadline, filterAnnouncements, safeAnnouncementLink, safeCmsMediaUrl, type Announcement } from "@/lib/announcements";
 
 export const metadata: Metadata = {
   title: "Announcements",
@@ -23,6 +24,23 @@ function NoticeLink({ notice, light = false }: { notice: Announcement; light?: b
     {notice.link_label || "Learn more"}<ArrowRight aria-hidden="true" className="size-4 shrink-0" />
     {external && <span className="sr-only"> (opens in a new tab)</span>}
   </a>;
+}
+
+function NoticeMedia({ notice, light = false }: { notice: Announcement; light?: boolean }) {
+  const media = (notice.media ?? []).flatMap((asset) => {
+    const url = safeCmsMediaUrl(asset.download_url, process.env.CMS_API_URL);
+    return url ? [{ asset, url }] : [];
+  });
+  if (!media.length) return null;
+  return <div className="mt-6 grid gap-4 sm:grid-cols-2" aria-label="Announcement media">
+    {media.map(({ asset, url }) => <div key={asset.id} className={`overflow-hidden rounded-xl border ${light ? "border-white/20 bg-white/10" : "border-[#dce4ef] bg-[#f8faff]"}`}>
+      {asset.kind === "image" && <img src={url} alt={asset.title} loading="lazy" decoding="async" className="h-auto w-full object-contain" />}
+      {asset.kind === "video" && <video src={url} controls preload="none" playsInline aria-label={asset.title} className="aspect-video w-full bg-black" />}
+      {asset.kind === "pdf" && <a href={url} target="_blank" rel="noopener noreferrer" className={`block px-5 py-5 text-sm font-bold underline underline-offset-4 ${focusRing}`}>
+        View PDF: {asset.title}<span className="sr-only"> (opens in a new tab)</span>
+      </a>}
+    </div>)}
+  </div>;
 }
 
 function Deadline({ notice }: { notice: Announcement }) {
@@ -105,11 +123,11 @@ export default async function AnnouncementsPage({ searchParams }: {
               {(query || priorityOnly) && <p role="status" className="mt-6 break-words text-sm text-[#455874]">{filtered.length} {filtered.length === 1 ? "notice" : "notices"}{query ? ` matching “${query}”` : " in priority notices"}. <a href="/announcements#updates" className={`ml-2 inline-flex min-h-11 items-center font-bold text-[#184b9e] underline underline-offset-4 ${focusRing}`}>Clear filters</a></p>}
               {featured && <article className="mt-6 overflow-hidden rounded-[1.5rem] border border-[#1e4276] bg-[#0b2a5b] text-white">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/15 px-6 py-4 text-xs sm:px-8"><span className="flex items-center gap-2 font-bold uppercase tracking-[.13em] text-[#ffcc66]"><Sparkles aria-hidden="true" className="size-4" />Featured notice</span><span className="text-[#d0dcee]">{featured.priority > 0 ? "Priority announcement" : "Academy announcement"}</span></div>
-                <div className="p-6 sm:p-8"><h3 className="break-words text-2xl font-semibold leading-snug tracking-tight sm:text-3xl">{featured.title}</h3><p className="mt-5 whitespace-pre-wrap break-words text-sm leading-8 text-[#d0dcee]">{featured.message}</p><NoticeLink notice={featured} light /><div className="text-[#c0d0e7]"><Deadline notice={featured} /></div></div>
+                <div className="p-6 sm:p-8"><h3 className="break-words text-2xl font-semibold leading-snug tracking-tight sm:text-3xl">{featured.title}</h3><p className="mt-5 whitespace-pre-wrap break-words text-sm leading-8 text-[#d0dcee]">{featured.message}</p><NoticeLink notice={featured} light /><NoticeMedia notice={featured} light /><div className="text-[#c0d0e7]"><Deadline notice={featured} /></div></div>
               </article>}
               <div className="mt-6 space-y-4">{feed.map((notice) => <article key={notice.id} className="rounded-2xl border border-[#dce4ef] bg-white p-6 sm:p-7">
                 <div className="mb-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.13em] text-[#184b9e]"><Bell aria-hidden="true" className="size-4" />{notice.priority > 0 ? "Priority notice" : "Academy update"}</div>
-                <h3 className="break-words text-xl font-semibold leading-snug tracking-tight">{notice.title}</h3><p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-[#455874]">{notice.message}</p><NoticeLink notice={notice} /><div className="text-[#52647f]"><Deadline notice={notice} /></div>
+                <h3 className="break-words text-xl font-semibold leading-snug tracking-tight">{notice.title}</h3><p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-[#455874]">{notice.message}</p><NoticeLink notice={notice} /><NoticeMedia notice={notice} /><div className="text-[#52647f]"><Deadline notice={notice} /></div>
               </article>)}</div>
               {!filtered.length && <div className="mt-6 rounded-[1.5rem] border border-dashed border-[#b9c9de] bg-white px-6 py-14 text-center"><span className="mx-auto grid size-16 place-items-center rounded-2xl bg-[#edf3ff]"><Megaphone aria-hidden="true" className="size-7 text-[#1f5bbd]" /></span><h3 className="mt-6 text-2xl font-semibold tracking-tight">{query || priorityOnly ? "No notices match just yet." : "A quiet noticeboard. A clear path ahead."}</h3><p className="mx-auto mt-3 max-w-md text-sm leading-7 text-[#52647f]">{query || priorityOnly ? "Try a different keyword or view all announcements." : "There are no published announcements at the moment. New academy notices will appear here when they are published."}</p><Link href={query || priorityOnly ? "/announcements#updates" : "/courses"} className={`mt-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#0b2a5b] px-5 py-3 text-sm font-bold text-white ${focusRing}`}>{query || priorityOnly ? "View all updates" : "Explore your next course"}<ArrowRight aria-hidden="true" className="size-4" /></Link></div>}
             </>}
