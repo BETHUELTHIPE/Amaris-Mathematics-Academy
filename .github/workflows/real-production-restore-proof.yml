@@ -111,7 +111,7 @@ jobs:
           # taken from already restored app rows, strictly inside the isolated
           # target. This is NOT an auth-system backup.
           docker exec amaris-isolated-restore psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -c 'CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY); INSERT INTO auth.users(id) SELECT id FROM public.student_profiles ON CONFLICT DO NOTHING; CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $ SELECT NULL::uuid $;'
+            -c 'CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY); INSERT INTO auth.users(id) SELECT id FROM public.student_profiles ON CONFLICT DO NOTHING; CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE RETURN NULL::uuid;'
           docker exec amaris-isolated-restore pg_restore --exit-on-error --no-owner --no-acl \
             --section=post-data -U postgres -d postgres /tmp/restore.dump
           echo "PASS: genuine production public application schema/data/constraints restored; Supabase Auth remains out of scope"
