@@ -3,11 +3,10 @@ from __future__ import annotations
 import logging
 import os
 import re
-import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
-from collections.abc import Mapping
 
 from django.conf import settings
 from django.core.mail import send_mail
