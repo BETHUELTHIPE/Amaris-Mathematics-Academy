@@ -107,7 +107,15 @@ def measure(browser, path, width, height, mobile):
         menu.wait_for(timeout=8000)
         menu.click()
         page.locator(".header-mobile-menu[open]").wait_for(timeout=8000)
+        # The progressive-enhancement script must preserve Escape and
+        # restore focus to the disclosure without hydrating React.
+        menu.press("Escape")
+        page.locator(".header-mobile-menu:not([open])").wait_for(timeout=8000)
+        assert menu.evaluate("(el) => document.activeElement === el"), "Escape lost keyboard focus"
         menu.click()
+        page.locator(".header-mobile-menu[open]").wait_for(timeout=8000)
+        page.locator("main").click(position={"x": 8, "y": 8}, force=True)
+        page.locator(".header-mobile-menu:not([open])").wait_for(timeout=8000)
 
     record = {"page": path, "width": width, "mobile": mobile,
               "cls": round(after["cls"], 4), "lcpMs": round(after["lcpMs"]),
