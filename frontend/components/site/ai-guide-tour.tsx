@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Bot, Square, Volume2 } from "lucide-react";
+import { rankedEnglishVoices, selectEnglishVoice } from "@/lib/speech-voices";
 
 const lessons = [
   {
@@ -69,14 +70,23 @@ const lessons = [
 export function AiGuideTour() {
   const [index, setIndex] = useState(0);
   const [speaking, setSpeaking] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState("automatic");
+  const [speed, setSpeed] = useState(0.95);
   const [message, setMessage] = useState("Select Listen to hear this explanation.");
   const current = lessons[index];
 
   useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const synthesis = window.speechSynthesis;
+    const loadVoices = () => setVoices(rankedEnglishVoices(synthesis.getVoices()));
+
+    // Some browsers provide system voices after the first render.
+    loadVoices();
+    synthesis.addEventListener("voiceschanged", loadVoices);
     return () => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
+      synthesis.removeEventListener("voiceschanged", loadVoices);
+      synthesis.cancel();
     };
   }, []);
 
@@ -100,11 +110,20 @@ export function AiGuideTour() {
     }
     stop();
     const utterance = new SpeechSynthesisUtterance(current.spoken);
-    utterance.lang = "en-ZA";
-    utterance.rate = 0.92;
+    const selected = selectEnglishVoice(voices, selectedVoiceURI === "automatic" ? null : selectedVoiceURI);
+    if (selected) utterance.voice = selected;
+    utterance.lang = selected?.lang ?? "en-ZA";
+    utterance.rate = speed;
+    utterance.pitch = 1;
+    utterance.volume = 1;
     utterance.onstart = () => { setSpeaking(true); setMessage("Reading this step aloud…"); };
     utterance.onend = () => { setSpeaking(false); setMessage("Finished reading. You can continue to the next step."); };
-    utterance.onerror = () => { setSpeaking(false); setMessage("The voice could not play. Please read the explanation instead."); };
+    utterance.onerror = (event) => {
+      setSpeaking(false);
+      if (event.error !== "canceled" && event.error !== "interrupted") {
+        setMessage("The voice could not play. Please read the explanation instead.");
+      }
+    };
     window.speechSynthesis.speak(utterance);
   }
 
@@ -119,14 +138,41 @@ export function AiGuideTour() {
       <ul className="mt-6 grid gap-3">
         {current.points.map((point) => <li key={point} className="rounded-xl bg-[#f3f7fc] px-5 py-3 text-sm leading-6 text-[#243852]">{point}</li>)}
       </ul>
-      <div className="mt-7 flex flex-wrap gap-3">
+      <div className="mt-7 grid gap-4 rounded-2xl bg-[#f3f7fc] p-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <label htmlFor="amaris-guide-voice" className="text-sm font-semibold text-[#0b2a5b]">Speaking voice</label>
+          <select
+            id="amaris-guide-voice"
+            value={voices.some((voice) => voice.voiceURI === selectedVoiceURI) ? selectedVoiceURI : "automatic"}
+            onChange={(event) => { stop(); setSelectedVoiceURI(event.target.value); }}
+            className="min-h-11 w-full rounded-xl border border-[#c9d5e5] bg-white px-3 text-sm text-[#07152d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"
+          >
+            <option value="automatic">Best available English voice</option>
+            {voices.map((voice) => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-2">
+          <label htmlFor="amaris-guide-pace" className="text-sm font-semibold text-[#0b2a5b]">Speaking pace</label>
+          <select
+            id="amaris-guide-pace"
+            value={speed}
+            onChange={(event) => { stop(); setSpeed(Number(event.target.value)); }}
+            className="min-h-11 w-full rounded-xl border border-[#c9d5e5] bg-white px-3 text-sm text-[#07152d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"
+          >
+            <option value={0.85}>Relaxed</option>
+            <option value={0.95}>Natural (recommended)</option>
+            <option value={1.05}>Brisk</option>
+          </select>
+        </div>
+      </div>
+      <div className="mt-5 flex flex-wrap gap-3">
         <button type="button" onClick={() => move(index - 1)} disabled={index === 0} className="inline-flex min-h-12 items-center gap-2 rounded-full border border-[#c9d5e5] px-5 py-2 text-sm font-semibold text-[#0b2a5b] hover:bg-[#edf3ff] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"><ArrowLeft className="size-4" aria-hidden="true" /> Previous</button>
         <button type="button" onClick={() => move(index + 1)} disabled={index === lessons.length - 1} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#0b2a5b] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1f5bbd] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]">Next step <ArrowRight className="size-4" aria-hidden="true" /></button>
         <button type="button" onClick={listen} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#ffcc66] px-5 py-2 text-sm font-semibold text-[#07152d] hover:bg-[#ffe09a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"><Volume2 className="size-4" aria-hidden="true" /> Listen</button>
         <button type="button" onClick={() => { stop(); setMessage("Voice stopped."); }} disabled={!speaking} className="inline-flex min-h-12 items-center gap-2 rounded-full border border-[#c9d5e5] px-5 py-2 text-sm font-semibold text-[#0b2a5b] hover:bg-[#edf3ff] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"><Square className="size-3" aria-hidden="true" /> Stop voice</button>
       </div>
       <p role="status" aria-live="polite" className="mt-4 text-sm text-[#60708a]">{message}</p>
-      <p className="mt-3 text-xs leading-5 text-[#60708a]">Voice playback uses the speech feature in your browser. This step-by-step explanation is prepared information, not a live AI answer.</p>
+      <p className="mt-3 text-xs leading-5 text-[#60708a]">Voice quality and accents depend on voices installed in your browser or device. Select a different voice or pace if you prefer. This step-by-step explanation is prepared information, not a live AI answer.</p>
     </section>
   );
 }
