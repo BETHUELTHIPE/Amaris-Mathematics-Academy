@@ -1,0 +1,25 @@
+name: Public Production Performance Probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/public-live-performance-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  anonymous-live-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Probe public Render HTTP pages, latency and JS compression
+        run: python -u scripts/release/public_live_performance_probe.py
