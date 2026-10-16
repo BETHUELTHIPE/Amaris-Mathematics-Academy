@@ -38,7 +38,7 @@ def main():
         os.environ,
         SHARED_AIRFLOW_ENABLED="true",
         SHARED_AIRFLOW_SCHEMA="amaris_airflow",
-        SHARED_AIRFLOW_DATABASE_URL="postgresql://airflow_ci:ci-only-password@localhost:5433/amaris",
+        SHARED_AIRFLOW_DATABASE_URL="postgresql://airflow_ci:ci-only-password@localhost:5433/amaris?sslmode=prefer",
         SHARED_AIRFLOW_FERNET_KEY=Fernet.generate_key().decode(),
         SHARED_AIRFLOW_JWT_SECRET="ci-only-jwt",
         SHARED_AIRFLOW_API_SECRET="ci-only-api",

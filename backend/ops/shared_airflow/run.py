@@ -54,6 +54,11 @@ def airflow_environment(source, directory):
             "AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG": "1",
             "AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG": "1",
             "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN": re.sub(r"^postgres(?:ql)?://", "postgresql+psycopg2://", database),
+            # psycopg's async dialect accepts the same libpq SSL settings as the
+            # sync URL. Airflow's default asyncpg derivation rejects sslmode.
+            "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN_ASYNC": re.sub(
+                r"^postgres(?:ql)?://", "postgresql+psycopg://", database
+            ),
             "AIRFLOW__DATABASE__SQL_ALCHEMY_SCHEMA": schema,
             "AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE": "1",
             "AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW": "1",
