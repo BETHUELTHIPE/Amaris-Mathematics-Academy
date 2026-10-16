@@ -1,9 +1,6 @@
 name: One-time Real Production Restore Proof
 
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/real-production-restore-proof.yml']
   workflow_dispatch:
 
 permissions:
