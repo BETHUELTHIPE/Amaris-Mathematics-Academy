@@ -32,6 +32,19 @@
       <p>Started: {{ detail.start_date|default:"Not recorded" }}</p>
       <p>Finished: {{ detail.end_date|default:"Not recorded" }}</p>
     </div>
+    <h2>Latest task status visualisation</h2>
+    <p class="aw-muted">Each card shows an actual task instance state. Task dependency arrows are not inferred.</p>
+    <div class="aw-grid" role="list" aria-label="Latest Airflow task statuses">
+      {% for task in tasks %}
+        <div class="aw-card" role="listitem">
+          <h2>{{ task.task_id }}</h2>
+          <span class="aw-state aw-state--{{ task.state|lower }}">{{ task.state }}</span>
+          <p class="aw-muted">Attempts: {{ task.try_number|default_if_none:"—" }}</p>
+        </div>
+      {% empty %}
+        <p>No recorded task instances yet.</p>
+      {% endfor %}
+    </div>
     <h2>Tasks in the most recent run</h2>
     <div class="aw-table-wrap"><table class="aw-table">
       <thead><tr><th>Task</th><th>State</th><th>Attempts</th><th>Started</th><th>Finished</th></tr></thead>
