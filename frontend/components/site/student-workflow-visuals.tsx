@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AlertCircle, ArrowUpRight, Check, Clock3, CircleDot } from "lucide-react";
 import type { StudentCourse, StudentOrder } from "@/lib/student-api";
 import { studentWorkflow } from "@/lib/student-workflow-states";
+import { StudentWorkflowRefresh } from "@/components/site/student-workflow-refresh";
 
 export function StudentWorkflowVisuals({
   orders,
@@ -32,9 +33,12 @@ export function StudentWorkflowVisuals({
           Follow the verified stages of your purchases, live classes and requested videos. Only your own academy records appear here.
         </p>
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+      <StudentWorkflowRefresh />
       <Link href="/dashboard/orders" className="inline-flex min-h-11 shrink-0 items-center gap-2 self-start rounded-full border border-[#bfd0e8] px-4 text-sm font-bold text-[#194f95]">
         All activity <ArrowUpRight aria-hidden="true" className="size-4" />
       </Link>
+      </div>
     </div>
 
     {!ordersAvailable ? <div role="status" className="mt-5 rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-4 text-sm leading-6 text-[#765314]">
@@ -99,7 +103,7 @@ export function StudentWorkflowVisuals({
     </div>}
 
     <p className="mt-5 text-xs leading-5 text-[#60708a]">
-      These stages reflect your private Django student records when the dashboard loads. They are not the internal Apache Airflow task graph, and updates may appear after processing is confirmed.
+      These stages reflect your private Django student records when the dashboard loads or you refresh. They are not the internal Apache Airflow task graph, and updates may appear after processing is confirmed.
     </p>
   </section>;
 }
