@@ -85,9 +85,10 @@ class ResilientRedisCache(RedisCache):
             )
             return self._fallback_get(key, default=default, version=version)
 
-        if value is None:
-            return self._fallback_get(key, default=default, version=version)
-        return value
+        # A successful Redis miss is authoritative. Returning a process-local
+        # fallback entry here could resurrect stale public data after another
+        # worker invalidated the Redis namespace.
+        return default if value is None else value
 
     def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         fallback_result = self._fallback_set(
