@@ -11,6 +11,6 @@ CMS labels, destinations and new-tab settings are preserved. Account controls co
 
 Native details/summary disclosures work without JavaScript. A small client enhancement closes menus on outside pointer interaction, Escape, and a desktop/mobile breakpoint change. Escape returns keyboard focus to the disclosure. Desktop menus close when focus moves away; mobile sections use native accordion grouping so touch targets do not move during activation.
 
-Animations use a brief fade/slide and chevron rotation, disabled for reduced-motion users. Mobile menus scroll within the remaining viewport height. No backend, authentication, payment or footer changes.
+Animations use a brief fade/slide and chevron rotation, disabled for reduced-motion users. Mobile menus scroll within the remaining viewport height. Footer navigation links also have a minimum 24px target height, addressing the mobile application-receipt accessibility check. No backend, authentication or payment changes.
 
 Verification: TypeScript, focused ESLint, navigation and tutor portal contracts, grouping tests (including custom CMS links), Render/Nitro production build, and Chromium checks for desktop and mobile menu operation, keyboard controls, native navigation, responsive geometry, reduced motion and WCAG accessibility.
