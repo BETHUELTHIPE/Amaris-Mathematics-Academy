@@ -2,7 +2,6 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .donation_views import DonationAvailabilityView, DonationCheckoutView, DonationStatusView
-
 from .live_class_views import (
     LiveClassBookingStatusView,
     LiveClassCheckoutView,
