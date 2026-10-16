@@ -43,7 +43,7 @@ def main():
     probe("backend health", BACKEND + "/health/")
     probe("public announcements API", BACKEND + "/api/v1/announcements/")
 
-    paths = re.findall(rb'/_next/static/[^"\\s<>]+\\.js', html)
+    paths = re.findall(rb'/_next/static/[A-Za-z0-9_./-]+[.]js', html)
     paths = [p.decode("ascii", "ignore") for p in paths]
     chosen = next((p for p in paths if "framework" in p), paths[0] if paths else "")
     if not chosen:
