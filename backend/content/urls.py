@@ -1,4 +1,5 @@
 from django.urls import include, path
+from .donation_views import DonationAvailabilityView, DonationCheckoutView, DonationStatusView
 from rest_framework.routers import DefaultRouter
 
 from .live_class_views import (
@@ -63,6 +64,9 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("donations/config/", DonationAvailabilityView.as_view(), name="donation-config"),
+    path("donations/checkout/", DonationCheckoutView.as_view(), name="donation-checkout"),
+    path("donations/<str:reference>/", DonationStatusView.as_view(), name="donation-status"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(
         "tutor-applications/acknowledgement/",
