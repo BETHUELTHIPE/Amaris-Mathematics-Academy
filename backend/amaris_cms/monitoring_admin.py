@@ -11,6 +11,8 @@ from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseNotFou
 from django.template.response import TemplateResponse
 from django.urls import path
 
+from .airflow_client import AirflowUnavailable, get_workflow, get_workflow_tasks, is_configured, monitored_dags
+
 PROXY_PREFIX = "/admin/monitoring/"
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
@@ -34,6 +36,16 @@ class AmarisAdminSite(AdminSite):
     def get_urls(self):
         extra = [
             path(
+                "airflow/",
+                self.admin_view(self.airflow_home),
+                name="amaris_airflow_home",
+            ),
+            path(
+                "airflow/<slug:dag_id>/",
+                self.admin_view(self.airflow_detail),
+                name="amaris_airflow_detail",
+            ),
+            path(
                 "monitoring/",
                 self.admin_view(self.monitoring_home),
                 name="amaris_monitoring_home",
@@ -56,6 +68,59 @@ class AmarisAdminSite(AdminSite):
         user = request.user
         if not (user.is_authenticated and user.is_active and user.is_staff and user.is_superuser):
             raise PermissionDenied("Monitoring is reserved for Django superusers.")
+
+    def airflow_home(self, request):
+        self._require_superuser(request)
+        if request.method != "GET":
+            return HttpResponseNotAllowed(["GET"])
+        configured = is_configured()
+        workflows = []
+        unavailable = False
+        if configured:
+            for dag_id in monitored_dags():
+                try:
+                    workflows.append(get_workflow(dag_id))
+                except AirflowUnavailable:
+                    unavailable = True
+                    workflows.append({"dag_id": dag_id, "state": "unavailable"})
+        return TemplateResponse(
+            request,
+            "admin/amaris_airflow.html",
+            {
+                **self.each_context(request),
+                "title": "Airflow workflow monitoring",
+                "airflow_configured": configured,
+                "airflow_unavailable": unavailable,
+                "workflows": workflows,
+                "detail": None,
+            },
+        )
+
+    def airflow_detail(self, request, dag_id):
+        self._require_superuser(request)
+        if request.method != "GET":
+            return HttpResponseNotAllowed(["GET"])
+        if dag_id not in monitored_dags():
+            return HttpResponseNotFound()
+        if not is_configured():
+            return HttpResponse("Airflow is not configured.", status=503)
+        try:
+            summary, tasks = get_workflow_tasks(dag_id)
+        except AirflowUnavailable:
+            return HttpResponse("Airflow is temporarily unavailable.", status=503)
+        return TemplateResponse(
+            request,
+            "admin/amaris_airflow.html",
+            {
+                **self.each_context(request),
+                "title": f"Airflow: {dag_id}",
+                "airflow_configured": True,
+                "airflow_unavailable": False,
+                "workflows": [],
+                "detail": summary,
+                "tasks": tasks,
+            },
+        )
 
     def monitoring_home(self, request):
         self._require_superuser(request)
