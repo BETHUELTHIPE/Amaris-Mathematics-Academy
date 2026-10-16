@@ -18,7 +18,9 @@ from .services.payments import PaymentSecurityError, _payfast_mode
 class DonationCheckoutSerializer(serializers.Serializer):
     donor_name = serializers.CharField(max_length=100, min_length=2, trim_whitespace=True)
     donor_email = serializers.EmailField()
-    amount = serializers.DecimalField(max_digits=9, decimal_places=2, min_value=Decimal("20.00"), max_value=Decimal("100000.00"))
+    amount = serializers.DecimalField(
+        max_digits=9, decimal_places=2, min_value=Decimal("20.00"), max_value=Decimal("100000.00")
+    )
     purpose = serializers.ChoiceField(choices=DonationContribution.Purpose.choices)
     idempotency_key = serializers.RegexField(r"^[A-Za-z0-9_-]{12,64}$")
     consent = serializers.BooleanField()
@@ -57,8 +59,10 @@ class DonationCheckoutView(APIView):
         values = serializer.validated_data
         try:
             checkout = create_donation_checkout(
-                name=values["donor_name"], email=values["donor_email"],
-                amount=values["amount"], purpose=values["purpose"],
+                name=values["donor_name"],
+                email=values["donor_email"],
+                amount=values["amount"],
+                purpose=values["purpose"],
                 idempotency_key=values["idempotency_key"],
             )
         except PaymentSecurityError as exc:

@@ -24,23 +24,28 @@ class ApprovedVerificationGateway:
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
-@patch.dict(os.environ, {
-    "DONATIONS_ENABLED": "true",
-    "DONATIONS_LIVE_ENABLED": "false",
-    "PAYFAST_ENV": "sandbox",
-    "PAYFAST_MODE": "",
-    "PAYFAST_MERCHANT_ID": "10000100",
-    "PAYFAST_MERCHANT_KEY": "synthetic-merchant-key",
-    "PAYFAST_PASSPHRASE": "synthetic-passphrase",
-    "PUBLIC_API_URL": "https://api.example.test",
-    "PUBLIC_SITE_URL": "https://students.example.test",
-})
+@patch.dict(
+    os.environ,
+    {
+        "DONATIONS_ENABLED": "true",
+        "DONATIONS_LIVE_ENABLED": "false",
+        "PAYFAST_ENV": "sandbox",
+        "PAYFAST_MODE": "",
+        "PAYFAST_MERCHANT_ID": "10000100",
+        "PAYFAST_MERCHANT_KEY": "synthetic-merchant-key",
+        "PAYFAST_PASSPHRASE": "synthetic-passphrase",
+        "PUBLIC_API_URL": "https://api.example.test",
+        "PUBLIC_SITE_URL": "https://students.example.test",
+    },
+)
 class DonationPaymentTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.args = {
-            "name": "Test Donor", "email": "donor@example.test",
-            "amount": Decimal("250.00"), "purpose": "learner",
+            "name": "Test Donor",
+            "email": "donor@example.test",
+            "amount": Decimal("250.00"),
+            "purpose": "learner",
             "idempotency_key": "fixture-" + "abcdefghijk123",
         }
 
@@ -92,7 +97,9 @@ class DonationPaymentTests(TestCase):
         invalid = process_donation_notification(self.payload(), gateway=ApprovedVerificationGateway(False))
         self.assertFalse(invalid.accepted)
         self.assertEqual(DonationContribution.objects.get().status, "pending")
-        mismatch = process_donation_notification(self.payload(amount_gross="251.00"), gateway=ApprovedVerificationGateway())
+        mismatch = process_donation_notification(
+            self.payload(amount_gross="251.00"), gateway=ApprovedVerificationGateway()
+        )
         self.assertFalse(mismatch.accepted)
         self.assertEqual(DonationContribution.objects.get().status, "pending")
 
@@ -111,7 +118,9 @@ class DonationPaymentTests(TestCase):
         duplicate = process_donation_notification(self.payload(), gateway=ApprovedVerificationGateway())
         self.assertTrue(duplicate.duplicate)
         self.assertEqual(len(mail.outbox), 1)
-        rejected = process_donation_notification(self.payload(payment_status="FAILED"), gateway=ApprovedVerificationGateway())
+        rejected = process_donation_notification(
+            self.payload(payment_status="FAILED"), gateway=ApprovedVerificationGateway()
+        )
         self.assertFalse(rejected.accepted)
         self.assertEqual(DonationContribution.objects.get().status, "paid")
 
@@ -143,6 +152,8 @@ class DonationPaymentTests(TestCase):
         self.assertNotIn("donor_name", status.data)
 
     def test_live_money_requires_explicit_double_enable(self):
-        with patch.dict(os.environ, {"PAYFAST_ENV": "live", "DONATIONS_LIVE_ENABLED": "false", "PAYFAST_MERCHANT_ID": "87654321"}):
+        with patch.dict(
+            os.environ, {"PAYFAST_ENV": "live", "DONATIONS_LIVE_ENABLED": "false", "PAYFAST_MERCHANT_ID": "87654321"}
+        ):
             with self.assertRaises(PaymentSecurityError):
                 self.create_checkout()

@@ -16,9 +16,15 @@ from django.utils import timezone
 
 from content.donation_models import DonationContribution
 from content.services.payments import (
-    DEFAULT_PUBLIC_SITE_URL, PAYFAST_LIVE_URL, PAYFAST_SANDBOX_URL,
-    NotificationResult, PayFastVerificationGateway, PaymentSecurityError,
-    _payfast_credentials, _payfast_mode, build_payfast_notify_url,
+    DEFAULT_PUBLIC_SITE_URL,
+    PAYFAST_LIVE_URL,
+    PAYFAST_SANDBOX_URL,
+    NotificationResult,
+    PayFastVerificationGateway,
+    PaymentSecurityError,
+    _payfast_credentials,
+    _payfast_mode,
+    build_payfast_notify_url,
     generate_payfast_signature,
 )
 
@@ -67,7 +73,12 @@ def _checkout_urls(reference: str) -> tuple[str, str, str]:
 
 
 def create_donation_checkout(
-    *, name: str, email: str, amount: Decimal, purpose: str, idempotency_key: str,
+    *,
+    name: str,
+    email: str,
+    amount: Decimal,
+    purpose: str,
+    idempotency_key: str,
 ) -> DonationCheckout:
     _require_donations_ready()
     if not isinstance(amount, Decimal) or not amount.is_finite() or amount != amount.quantize(Decimal("0.01")):
@@ -91,8 +102,10 @@ def create_donation_checkout(
         donation, created = DonationContribution.objects.get_or_create(
             reference=reference,
             defaults={
-                "donor_name": name.strip(), "donor_email": email.strip().lower(),
-                "amount": amount, "purpose": purpose,
+                "donor_name": name.strip(),
+                "donor_email": email.strip().lower(),
+                "amount": amount,
+                "purpose": purpose,
             },
         )
         if not created and (
@@ -157,20 +170,29 @@ def _send_donation_acknowledgement(pk):
 
 
 def process_donation_notification(
-    payload: Mapping[str, str], *, gateway: PayFastVerificationGateway,
+    payload: Mapping[str, str],
+    *,
+    gateway: PayFastVerificationGateway,
 ) -> NotificationResult:
     ref = str(payload.get("m_payment_id", "")).strip()
     provider_ref = str(payload.get("pf_payment_id", "")).strip()
     gateway_status = str(payload.get("payment_status", "")).strip().upper()
     pending = DonationContribution.Status.PENDING
-    if not ref.startswith("DON-") or not provider_ref or gateway_status not in {"PENDING", "COMPLETE", "FAILED", "CANCELLED"}:
+    if (
+        not ref.startswith("DON-")
+        or not provider_ref
+        or gateway_status not in {"PENDING", "COMPLETE", "FAILED", "CANCELLED"}
+    ):
         return NotificationResult(False, pending, reason="invalid_donation_callback")
     try:
         donation = DonationContribution.objects.get(reference=ref)
     except DonationContribution.DoesNotExist:
         return NotificationResult(False, pending, reason="unknown_donation")
 
-    if donation.status != DonationContribution.Status.PAID and (timezone.now() - donation.created_at).total_seconds() > 7 * 86400:
+    if (
+        donation.status != DonationContribution.Status.PAID
+        and (timezone.now() - donation.created_at).total_seconds() > 7 * 86400
+    ):
         return NotificationResult(False, donation.status, reason="callback_window_expired")
     try:
         verified = gateway.verify_notification(payload)
@@ -201,15 +223,17 @@ def process_donation_notification(
         with transaction.atomic():
             locked = DonationContribution.objects.select_for_update().get(pk=donation.pk)
             if (
-                (locked.provider_reference and locked.provider_reference != provider_ref)
-                or DonationContribution.objects.filter(provider_reference=provider_ref).exclude(pk=locked.pk).exists()
-            ):
+                locked.provider_reference and locked.provider_reference != provider_ref
+            ) or DonationContribution.objects.filter(provider_reference=provider_ref).exclude(pk=locked.pk).exists():
                 return NotificationResult(False, locked.status, reason="provider_reference_replay")
             if locked.status == DonationContribution.Status.PAID:
                 if target != DonationContribution.Status.PAID:
                     return NotificationResult(False, locked.status, reason="paid_is_immutable")
                 return NotificationResult(True, locked.status, duplicate=True)
-            if locked.status in (DonationContribution.Status.FAILED, DonationContribution.Status.CANCELLED) and target != locked.status:
+            if (
+                locked.status in (DonationContribution.Status.FAILED, DonationContribution.Status.CANCELLED)
+                and target != locked.status
+            ):
                 # A late verified payment must go to manual reconciliation.
                 return NotificationResult(False, locked.status, reason="final_status_requires_reconciliation")
             locked.provider_reference = provider_ref
@@ -219,10 +243,16 @@ def process_donation_notification(
             if target == DonationContribution.Status.PAID:
                 locked.paid_at = timezone.now()
                 transaction.on_commit(lambda pk=locked.pk: _send_donation_acknowledgement(pk))
-            locked.save(update_fields=[
-                "provider_reference", "gateway_verified_at", "last_callback_status",
-                "status", "paid_at", "updated_at",
-            ])
+            locked.save(
+                update_fields=[
+                    "provider_reference",
+                    "gateway_verified_at",
+                    "last_callback_status",
+                    "status",
+                    "paid_at",
+                    "updated_at",
+                ]
+            )
     except IntegrityError:
         return NotificationResult(False, pending, reason="provider_reference_replay")
     return NotificationResult(True, target)

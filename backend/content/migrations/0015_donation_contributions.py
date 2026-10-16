@@ -32,19 +32,38 @@ class Migration(migrations.Migration):
                 ("reference", models.CharField(editable=False, max_length=80, unique=True)),
                 ("donor_name", models.CharField(max_length=100)),
                 ("donor_email", models.EmailField(max_length=254)),
-                ("purpose", models.CharField(choices=[
-                    ("learner", "Support a learner"),
-                    ("resources", "Learning resources"),
-                    ("technology", "Technology and accessibility"),
-                    ("general", "General education project"),
-                ], max_length=16)),
+                (
+                    "purpose",
+                    models.CharField(
+                        choices=[
+                            ("learner", "Support a learner"),
+                            ("resources", "Learning resources"),
+                            ("technology", "Technology and accessibility"),
+                            ("general", "General education project"),
+                        ],
+                        max_length=16,
+                    ),
+                ),
                 ("amount", models.DecimalField(decimal_places=2, max_digits=9)),
                 ("currency", models.CharField(default="ZAR", max_length=3)),
-                ("status", models.CharField(choices=[
-                    ("pending", "Awaiting verification"), ("paid", "Verified by PayFast"),
-                    ("failed", "Failed"), ("cancelled", "Cancelled"),
-                ], db_index=True, default="pending", max_length=12)),
-                ("provider_reference", models.CharField(blank=True, editable=False, max_length=160, null=True, unique=True)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Awaiting verification"),
+                            ("paid", "Verified by PayFast"),
+                            ("failed", "Failed"),
+                            ("cancelled", "Cancelled"),
+                        ],
+                        db_index=True,
+                        default="pending",
+                        max_length=12,
+                    ),
+                ),
+                (
+                    "provider_reference",
+                    models.CharField(blank=True, editable=False, max_length=160, null=True, unique=True),
+                ),
                 ("gateway_verified_at", models.DateTimeField(blank=True, editable=False, null=True)),
                 ("paid_at", models.DateTimeField(blank=True, editable=False, null=True)),
                 ("receipt_sent_at", models.DateTimeField(blank=True, editable=False, null=True)),
