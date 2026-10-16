@@ -37,7 +37,8 @@ jobs:
         run: |
           set -euo pipefail
           cd frontend
-          javascript_file=$(find .output/public -type f -name '*.js' -size +1024c -print -quit)
+          # Exercise the largest shipped JS asset, not a tiny error-handler chunk.
+          javascript_file=$(python3 -c 'from pathlib import Path; xs=[p for p in Path(".output/public").rglob("*.js") if p.stat().st_size>1024]; print(max(xs, key=lambda p:p.stat().st_size) if xs else "")')
           test -n "$javascript_file"
           test -s "$javascript_file.br"
           test -s "$javascript_file.gz"
