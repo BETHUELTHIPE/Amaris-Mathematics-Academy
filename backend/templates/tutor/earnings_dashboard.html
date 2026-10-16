@@ -61,7 +61,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}th{text-align:left;colo
 <div class="stat"><div><strong>Transfers processing</strong></div><span class="pill">{{ processing.payout_processing }}</span></div>
 <div class="stat"><div><strong>Failed payouts requiring review</strong></div><span class="pill">{{ processing.payout_failed }}</span></div>
 <div class="stat"><div><strong>Refunded or reversed services</strong></div><span class="pill">{{ processing.reversed }}</span></div>
-<p class="muted">Last ledger update: {{ processing.last_updated|date:"d M Y H:i" |default:"No verified records yet" }} (South Africa time). No bank transfer is assumed successful until verified by the provider.</p>
+<p class="muted">Last ledger update: {{ processing.last_updated|date:"d M Y H:i"|default:"No verified records yet" }} (South Africa time). No bank transfer is assumed successful until verified by the provider.</p>
 </section>
 <section class="card" style="margin-top:20px"><h2>Recent verified sales</h2><div class="overflow"><table><thead><tr><th>Service</th><th>Paid date</th><th>Gross</th><th>Your share</th><th>Payout stage</th></tr></thead><tbody>
 {% for item in stats.recent %}<tr><td>{{ item.service_label }}</td><td>{{ item.payment_verified_at|date:"d M Y" }}</td><td>R {{ item.gross|floatformat:2 }}</td><td><strong>R {{ item.tutor_amount|floatformat:2 }}</strong></td><td><span class="pill">{{ item.state|capfirst }}</span></td></tr>
