@@ -1,0 +1,33 @@
+name: Donation Backend Formatting (Feature Branch Only)
+
+on:
+  push:
+    branches: [feature/donation-checkout-20261017]
+    paths: [.github/workflows/donation-format-branch.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  format-donation-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Autoformat only new donation code
+        run: |
+          python -m pip install black==26.5.1
+          black backend/content/donation_admin.py backend/content/donation_models.py backend/content/donation_views.py backend/content/services/donations.py backend/content/migrations/0015_donation_contributions.py backend/content/test_donations.py backend/content/apps.py backend/content/payfast_views.py backend/content/urls.py backend/amaris_cms/settings.py
+      - name: Commit formatted changes to this isolated feature branch
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add backend
+            git commit -m "style: black format isolated contribution implementation"
+            git push origin HEAD:refs/heads/feature/donation-checkout-20261017
+          fi
