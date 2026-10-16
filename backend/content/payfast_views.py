@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import ErrorDetailSerializer, PayFastITNRequestSerializer, PayFastITNStatusSerializer
+from .services.donations import process_donation_notification
 from .services.live_classes import process_live_class_notification
 from .services.payments import HttpPayFastVerificationGateway, process_payfast_notification
 from .services.video_requests import process_video_request_notification
@@ -66,7 +67,9 @@ class PayFastITNView(APIView):
         payload = {str(key): str(value) for key, value in request.data.items()}
         gateway = HttpPayFastVerificationGateway()
         local_reference = str(payload.get("m_payment_id", ""))
-        if local_reference.startswith("LCB-"):
+        if local_reference.startswith("DON-"):
+            result = process_donation_notification(payload, gateway=gateway)
+        elif local_reference.startswith("LCB-"):
             result = process_live_class_notification(payload, gateway=gateway)
         elif local_reference.startswith("VRQ-"):
             result = process_video_request_notification(payload, gateway=gateway)
