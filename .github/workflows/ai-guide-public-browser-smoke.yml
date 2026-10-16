@@ -40,6 +40,10 @@ jobs:
           const base = 'https://amaris-mathematics-academy-live-students.onrender.com';
           const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
           const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+          const browserErrors = [];
+          page.on('pageerror', error => { browserErrors.push('PAGEERROR: ' + error.message); console.log('PAGEERROR: ' + error.message); });
+          page.on('console', message => { if (message.type() === 'error') { browserErrors.push('CONSOLE: ' + message.text()); console.log('CONSOLE_ERROR: ' + message.text()); } });
+          page.on('requestfailed', req => { browserErrors.push('REQUESTFAILED: ' + req.url() + ' ' + req.failure()?.errorText); console.log('REQUEST_FAILED: ' + req.url() + ' ' + req.failure()?.errorText); });
           try {
             const response = await page.goto(base + '/ai-guide', { waitUntil: 'domcontentloaded', timeout: 60000 });
             assert(response, 'No response from /ai-guide');
@@ -50,8 +54,16 @@ jobs:
             assert.equal(await footer.count(), 1, 'AI Guide missing from footer on AI Guide page');
             console.log('PASS: Guide page content and footer link');
             await page.getByRole('heading', { name: /Welcome to Amaris/i }).waitFor();
+            await page.waitForLoadState('load', { timeout: 20000 });
+            console.log('DOC_READY_STATE=' + await page.evaluate(() => document.readyState));
+            console.log('PUBLIC_SCRIPT_SRCS=' + JSON.stringify(await page.locator('script[src]').evaluateAll(items => items.map(n => n.getAttribute('src')).slice(0, 25))));
+            await page.waitForTimeout(4500);
+            console.log('BEFORE_NEXT=' + JSON.stringify(await page.locator('h2').allTextContents()));
             await page.getByRole('button', { name: /Next step/i }).click();
-            await page.getByRole('heading', { name: /Who can study with us/i }).waitFor();
+            await page.waitForTimeout(1500);
+            console.log('AFTER_NEXT=' + JSON.stringify(await page.locator('h2').allTextContents()));
+            console.log('BROWSER_ERRORS=' + JSON.stringify(browserErrors.slice(0, 15)));
+            await page.getByRole('heading', { name: /Who can study with us/i }).waitFor({ timeout: 10000 });
             await page.getByRole('button', { name: 'Listen', exact: true }).click();
             console.log('PASS: Guide step navigation and Listen button');
             await page.getByRole('button', { name: /Amaris Assistant/i }).first().click();
