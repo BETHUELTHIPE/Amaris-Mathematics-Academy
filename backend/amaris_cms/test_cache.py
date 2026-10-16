@@ -155,9 +155,7 @@ class PublicApiConditionalResponseTests(SimpleTestCase):
         self.assertEqual(first.status_code, 200)
         self.assertIn("public", first["Cache-Control"])
         self.assertTrue(first["ETag"].startswith('"'))
-        second = middleware(
-            self.requests.get("/api/v1/courses/", HTTP_IF_NONE_MATCH=first["ETag"])
-        )
+        second = middleware(self.requests.get("/api/v1/courses/", HTTP_IF_NONE_MATCH=first["ETag"]))
         self.assertEqual(second.status_code, 304)
         self.assertEqual(second.content, b"")
 
@@ -174,7 +172,5 @@ class PublicApiConditionalResponseTests(SimpleTestCase):
             self.requests.get("/api/v1/courses/", HTTP_COOKIE="sessionid=private"),
         ):
             self.assertNotIn("ETag", middleware(request))
-        private = PublicApiConditionalGetMiddleware(
-            lambda _request: self.response(cache_control="private, no-store")
-        )
+        private = PublicApiConditionalGetMiddleware(lambda _request: self.response(cache_control="private, no-store"))
         self.assertNotIn("ETag", private(self.requests.get("/api/v1/courses/")))
