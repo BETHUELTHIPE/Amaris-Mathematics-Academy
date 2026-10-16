@@ -17,7 +17,7 @@ permissions:
 jobs:
   browser-performance:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,11 +52,18 @@ jobs:
         env:
           AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: python -u frontend/e2e/public_browser_performance.py
+      - name: Run existing strict mobile Lighthouse LCP, CLS and accessibility gate
+        working-directory: frontend
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: npm run test:lighthouse:mobile
       - name: Preserve Chrome screenshots and browser metrics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: amaris-public-browser-performance
-          path: frontend/artifacts/browser-performance/
+          path: |
+            frontend/artifacts/browser-performance/
+            frontend/.lighthouseci/mobile/
           retention-days: 7
           if-no-files-found: warn
