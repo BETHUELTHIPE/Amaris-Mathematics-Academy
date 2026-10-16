@@ -112,7 +112,7 @@ class ScopedRedisInvalidationTests(SimpleTestCase):
             b"amaris-private:1:payment-key",
             b"amaris-public-other:1:key",
         ]
-        with patch.object(primary._cache, "get_client", return_value=redis_client):
+        with patch.object(getattr(primary, "_cache"), "get_client", return_value=redis_client):
             self.assertTrue(primary.clear())
 
         redis_client.flushdb.assert_not_called()
