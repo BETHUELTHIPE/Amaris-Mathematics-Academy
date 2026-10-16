@@ -116,7 +116,6 @@ class RedisIntegrationTests(SimpleTestCase):
         self.assertTrue(default_client.ping())
         self.assertTrue(public_client.ping())
 
-
     def test_scoped_cache_clear_preserves_other_alias_in_same_real_redis_database(self):
         # Confirm namespace isolation against actual Redis, not just mocks.
         shared_url = _redis_url(13)
