@@ -27,7 +27,7 @@ async function FeaturedCourses() {
   const courses = await getManagedCourses();
   const featured = courses.filter((course) => course.featured);
   return (
-        <Suspense fallback={<FeaturedCoursesPlaceholder />}><FeaturedCourses /></Suspense>
+        <div className="mt-10 grid gap-5 lg:grid-cols-3">{featured.map((course, index) => <article key={course.slug} className="group flex min-h-[360px] flex-col rounded-3xl border border-[#dce4ef] bg-white p-7 shadow-[0_20px_55px_rgba(7,21,45,.055)] transition hover:-translate-y-1 hover:shadow-[0_25px_70px_rgba(7,21,45,.1)]"><div className="flex items-center justify-between"><span className="rounded-full bg-[#edf3ff] px-3 py-1 text-xs font-bold text-[#1f5bbd]">{course.curriculum}</span><span className="text-sm font-semibold text-[#60708a]">0{index+1}</span></div><h3 className="mt-10 text-3xl font-semibold leading-tight tracking-[-0.035em]">{course.title}</h3><p className="mt-4 text-sm leading-7 text-[#60708a]">{course.description}</p><div className="mt-auto flex items-end justify-between pt-8"><div><p className="text-xs text-[#60708a]">{course.lessons} lessons · {course.hours} hours</p><p className="mt-1 text-2xl font-bold">{formatRand(course.price)}</p></div><a href={`/courses/${course.slug}`} className="grid size-12 place-items-center rounded-full bg-[#0b2a5b] text-white transition group-hover:bg-[#2767d8]" aria-label={`View ${course.title}`}><ArrowRight className="size-5" /></a></div></article>)}</div>
   );
 }
 
@@ -64,7 +64,7 @@ export default function Home() {
 
       <section className="home-deferred-featured mx-auto max-w-7xl px-5 py-24 lg:px-8">
         <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end"><div><p className="eyebrow">Featured courses</p><h2 className="section-title mt-3">Choose the next result<br />you want to earn.</h2></div><a href="/courses" className="inline-flex items-center gap-2 font-bold text-[#1f5bbd]">View all mathematics courses <ArrowRight className="size-4" /></a></div>
-        <div className="mt-10 grid gap-5 lg:grid-cols-3">{featured.map((course, index) => <article key={course.slug} className="group flex min-h-[360px] flex-col rounded-3xl border border-[#dce4ef] bg-white p-7 shadow-[0_20px_55px_rgba(7,21,45,.055)] transition hover:-translate-y-1 hover:shadow-[0_25px_70px_rgba(7,21,45,.1)]"><div className="flex items-center justify-between"><span className="rounded-full bg-[#edf3ff] px-3 py-1 text-xs font-bold text-[#1f5bbd]">{course.curriculum}</span><span className="text-sm font-semibold text-[#60708a]">0{index+1}</span></div><h3 className="mt-10 text-3xl font-semibold leading-tight tracking-[-0.035em]">{course.title}</h3><p className="mt-4 text-sm leading-7 text-[#60708a]">{course.description}</p><div className="mt-auto flex items-end justify-between pt-8"><div><p className="text-xs text-[#60708a]">{course.lessons} lessons · {course.hours} hours</p><p className="mt-1 text-2xl font-bold">{formatRand(course.price)}</p></div><a href={`/courses/${course.slug}`} className="grid size-12 place-items-center rounded-full bg-[#0b2a5b] text-white transition group-hover:bg-[#2767d8]" aria-label={`View ${course.title}`}><ArrowRight className="size-5" /></a></div></article>)}</div>
+        <Suspense fallback={<FeaturedCoursesPlaceholder />}><FeaturedCourses /></Suspense>
       </section>
 
       <section className="home-deferred-steps mx-auto max-w-7xl px-5 py-24 lg:px-8">
