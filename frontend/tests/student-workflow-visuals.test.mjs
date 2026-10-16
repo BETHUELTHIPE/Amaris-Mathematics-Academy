@@ -68,13 +68,17 @@ test("new dashboard component relies on student-owned API without Airflow secret
   const page = await readFile(new URL("./app/dashboard/page.tsx", base), "utf8");
   const visual = await readFile(new URL("./components/site/student-workflow-visuals.tsx", base), "utf8");
   const navigation = await readFile(new URL("./components/site/dashboard-navigation.tsx", base), "utf8");
+  const refresh = await readFile(new URL("./components/site/student-workflow-refresh.tsx", base), "utf8");
   assert.match(page, /requireVerifiedStudent\("\/dashboard"\)/);
-  assert.match(page, /await getStudentOrders\(\)/);
+  assert.match(page, /getStudentOrders\(\)/);
+  assert.match(page, /Promise\.allSettled\(/);
   assert.match(page, /<StudentWorkflowVisuals/);
   assert.match(visual, /studentWorkflow\(order, coursesAvailable/);
   assert.match(visual, /ordersAvailable/);
   assert.match(visual, /temporarily unavailable/);
   assert.match(visual, /aria-label=\{"Progress for "/);
   assert.match(navigation, /label: "My workflows", href: "\/dashboard#my-workflows"/);
+  assert.match(refresh, /router\.refresh\(\)/);
+  assert.match(refresh, /aria-label="Refresh my workflow progress"/);
   assert.doesNotMatch(page + visual, /AIRFLOW_API_TOKEN|\/api\/v2\/dags|iframe|supabase\.service_role|GRAFANA_API_KEY/);
 });
