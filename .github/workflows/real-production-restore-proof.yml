@@ -99,6 +99,10 @@ jobs:
             sleep 2
           done
           docker cp "$RUNNER_TEMP/amaris-real-restore/restore.dump" amaris-isolated-restore:/tmp/restore.dump
+          # The postgres base image creates a default public schema; remove it in
+          # this disposable network-disabled target so pg_restore can recreate it.
+          docker exec amaris-isolated-restore psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'DROP SCHEMA IF EXISTS public CASCADE;'
           docker exec amaris-isolated-restore pg_restore --exit-on-error --no-owner --no-acl \
             -U postgres -d postgres /tmp/restore.dump
           echo "PASS: real production public schema restored into network-isolated PostgreSQL"
