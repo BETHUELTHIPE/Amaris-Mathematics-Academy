@@ -23,3 +23,14 @@ test("speaking guide remains usable without speech support", () => {
   assert.match(tour, /not supported in this browser/);
   assert.match(tour, /aria-live="polite"/);
 });
+
+
+test("guide exposes clear voice choice and pace controls", () => {
+  const tour = fromFrontend("components/site/ai-guide-tour.tsx");
+  const assistant = fromFrontend("components/site/amaris-assistant.tsx");
+  assert.match(tour, /Best available English voice/);
+  assert.match(tour, /Natural \\(recommended\\)/);
+  assert.match(tour, /voiceschanged/);
+  assert.match(assistant, /selectEnglishVoice/);
+  assert.match(assistant, /Best available English voice/);
+});
