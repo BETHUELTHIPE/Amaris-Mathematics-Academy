@@ -5,7 +5,7 @@ from django.core.exceptions import PermissionDenied
 from django.test import RequestFactory, SimpleTestCase, override_settings
 from django.urls import reverse
 
-from amaris_cms.airflow_client import AirflowUnavailable, get_workflow, get_workflow_tasks, is_configured
+from amaris_cms.airflow_client import get_workflow, get_workflow_tasks, is_configured
 from amaris_cms.monitoring_admin import AmarisAdminSite
 
 AIRFLOW_TEST_SETTINGS = {
