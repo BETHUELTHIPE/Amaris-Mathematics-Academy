@@ -79,7 +79,7 @@ FROM django-runtime AS shared-airflow
 USER root
 RUN python -m venv /opt/airflow-venv \
     && /opt/airflow-venv/bin/pip install --no-cache-dir \
-      "apache-airflow==3.3.2" "apache-airflow-providers-fab==3.9.0" \
+      "apache-airflow==3.3.2" "apache-airflow-providers-fab==3.9.0" "psycopg2-binary==2.9.13" \
       --constraint https://raw.githubusercontent.com/apache/airflow/constraints-3.3.2/constraints-3.13.txt \
     && mkdir -p /opt/airflow \
     && chown amaris:amaris /opt/airflow
