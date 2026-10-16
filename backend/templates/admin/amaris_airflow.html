@@ -1,0 +1,62 @@
+{% extends "admin/base_site.html" %}
+{% block extrahead %}
+  {{ block.super }}
+  {% if airflow_configured %}<meta http-equiv="refresh" content="30">{% endif %}
+{% endblock %}
+{% block content %}
+  <style>
+    .aw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin:20px 0}
+    .aw-card{background:var(--body-bg,#fff);border:1px solid var(--hairline-color,#d5dbe4);border-radius:12px;padding:18px;min-width:0}
+    .aw-card h2{margin:0 0 12px}.aw-muted{opacity:.75}.aw-state{display:inline-block;border-radius:20px;padding:4px 10px;background:#e3e8ef;color:#203049;font-weight:700}
+    .aw-state--success{background:#def5e7;color:#116637}.aw-state--failed{background:#ffe0df;color:#952b30}
+    .aw-state--running{background:#dcedff;color:#134a81}.aw-state--queued{background:#fff3d6;color:#6a4c13}
+    .aw-table{width:100%;border-collapse:collapse}.aw-table th,.aw-table td{padding:12px;border-bottom:1px solid var(--hairline-color,#d5dbe4);text-align:left;overflow-wrap:anywhere}
+    .aw-table-wrap{overflow-x:auto}.aw-banner{padding:16px;border:1px solid #d1a34c;border-radius:10px;margin:16px 0}
+  </style>
+  <p><a href="{% url 'admin:amaris_monitoring_home' %}">Operations monitoring</a> / Airflow</p>
+  <h1>Apache Airflow workflow monitoring</h1>
+  <p class="aw-muted">Live Airflow API results, refreshed every 30 seconds when configured. This view never triggers, pauses, retries or modifies workflows.</p>
+
+  {% if not airflow_configured %}
+    <div class="aw-banner" role="status"><strong>Not configured.</strong> Connect Airflow's private HTTPS API and a read-only service token. No workflow state is being estimated.</div>
+  {% elif airflow_unavailable %}
+    <div class="aw-banner" role="alert"><strong>Partial outage:</strong> one or more Airflow workflows could not be queried. Unavailable results are not shown as successful.</div>
+  {% endif %}
+
+  {% if detail %}
+    <p><a href="{% url 'admin:amaris_airflow_home' %}">← All workflows</a></p>
+    <div class="aw-card">
+      <h2>{{ detail.dag_id }}</h2>
+      <p>Latest state: <span class="aw-state aw-state--{{ detail.state|lower }}">{{ detail.state }}</span></p>
+      <p>Run identifier: <code>{{ detail.run_id|default:"No run recorded" }}</code></p>
+      <p>Started: {{ detail.start_date|default:"Not recorded" }}</p>
+      <p>Finished: {{ detail.end_date|default:"Not recorded" }}</p>
+    </div>
+    <h2>Tasks in the most recent run</h2>
+    <div class="aw-table-wrap"><table class="aw-table">
+      <thead><tr><th>Task</th><th>State</th><th>Attempts</th><th>Started</th><th>Finished</th></tr></thead>
+      <tbody>
+        {% for task in tasks %}
+          <tr><th scope="row">{{ task.task_id }}</th><td><span class="aw-state aw-state--{{ task.state|lower }}">{{ task.state }}</span></td><td>{{ task.try_number|default_if_none:"—" }}</td><td>{{ task.start_date|default:"—" }}</td><td>{{ task.end_date|default:"—" }}</td></tr>
+        {% empty %}
+          <tr><td colspan="5">There are no recorded tasks for the latest run.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  {% elif airflow_configured %}
+    <div class="aw-grid">
+      {% for item in workflows %}
+        <article class="aw-card">
+          <h2>{{ item.dag_id }}</h2>
+          <p>Latest state: <span class="aw-state aw-state--{{ item.state|lower }}">{{ item.state }}</span></p>
+          <p class="aw-muted">Started: {{ item.start_date|default:"Not recorded" }}</p>
+          <p class="aw-muted">Finished: {{ item.end_date|default:"Not recorded" }}</p>
+          <a href="{% url 'admin:amaris_airflow_detail' dag_id=item.dag_id %}">View task progress</a>
+        </article>
+      {% empty %}
+        <p>No allowlisted workflows were found.</p>
+      {% endfor %}
+    </div>
+  {% endif %}
+  <p><a href="{% url 'admin:amaris_monitoring_home' %}">Back to Grafana, Prometheus and Flower</a></p>
+{% endblock %}
