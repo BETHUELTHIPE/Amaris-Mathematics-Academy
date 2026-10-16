@@ -5,7 +5,6 @@ No Airflow credentials, raw exception messages or task logs enter HTML responses
 """
 import json
 import re
-import ssl
 from urllib import error as url_error
 from urllib import parse as url_parse
 from urllib import request as url_request
