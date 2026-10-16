@@ -122,6 +122,18 @@ class ScopedRedisInvalidationTests(SimpleTestCase):
         self.assertEqual(other._fallback_get("payment-key"), "payment")
         other._fallback_store.clear()
 
+    def test_authoritative_redis_miss_never_resurrects_stale_fallback(self):
+        cache = ResilientRedisCache(
+            "redis://localhost:6399/0",
+            {"KEY_PREFIX": "amaris-public", "TIMEOUT": 30},
+        )
+        cache._fallback_store.clear()
+        cache._fallback_set("deleted", "stale", timeout=30)
+        cache._redis_retry_after = 0.0
+        with patch("django.core.cache.backends.redis.RedisCache.get", return_value=None):
+            self.assertIsNone(cache.get("deleted"))
+        cache._fallback_store.clear()
+
     def test_clear_fails_closed_on_missing_namespace(self):
         cache = ResilientRedisCache("redis://localhost:6399/0", {"KEY_PREFIX": ""})
         with self.assertRaises(ValueError):
