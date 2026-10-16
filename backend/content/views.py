@@ -1,10 +1,13 @@
 import logging
+from urllib.parse import urlparse
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Count, Prefetch, Q
+from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.utils import timezone
 from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
+from django.views.decorators.cache import cache_page, never_cache
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
@@ -14,6 +17,7 @@ from rest_framework.throttling import AnonRateThrottle
 from .models import (
     FAQ,
     Announcement,
+    AnnouncementMedia,
     ContactEnquiry,
     Course,
     CourseCategory,
@@ -176,7 +180,41 @@ class AnnouncementViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         now = timezone.now()
-        return Announcement.objects.filter(live_filter(now)).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        return (
+            Announcement.objects.filter(live_filter(now))
+            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+            .prefetch_related("media")
+        )
+
+
+@never_cache
+def public_marketing_media(request, pk):
+    """Grant a short-lived URL only for currently published announcements."""
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    now = timezone.now()
+    asset = (
+        AnnouncementMedia.objects.filter(pk=pk, announcement__is_published=True)
+        .filter(Q(announcement__publish_at__isnull=True) | Q(announcement__publish_at__lte=now))
+        .filter(Q(announcement__expires_at__isnull=True) | Q(announcement__expires_at__gt=now))
+        .first()
+    )
+    if not asset:
+        raise Http404()
+    if not getattr(settings, "SUPABASE_S3_ADMIN_BUCKET", ""):
+        raise Http404()
+    if settings.STORAGES["default"]["BACKEND"] != "amaris_cms.storage.SupabaseS3Storage":
+        raise Http404()
+    url = asset.file.storage.url(asset.file.name, expire=120)
+    # S3 backend signs this URL. Do not accept untrusted arbitrary redirect hosts.
+    parsed = urlparse(url)
+    endpoint = urlparse(settings.SUPABASE_S3_ENDPOINT_URL)
+    if parsed.scheme != "https" or not endpoint.hostname or parsed.hostname != endpoint.hostname:
+        raise ImproperlyConfigured("Invalid CMS S3 storage endpoint for marketing media.")
+    response = HttpResponseRedirect(url)
+    response["Cache-Control"] = "private, no-store"
+    response["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 class EnquiryThrottle(AnonRateThrottle):
