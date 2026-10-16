@@ -340,6 +340,8 @@ REST_FRAMEWORK = {
         "enquiries": "5/hour",
         "assistant": "30/hour",
         "video_requests": "20/hour",
+        "donations": "8/hour",
+        "donation_status": "30/hour",
     },
 }
 
