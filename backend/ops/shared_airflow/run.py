@@ -60,8 +60,10 @@ def airflow_environment(source, directory):
                 r"^postgres(?:ql)?://", "postgresql+psycopg://", database
             ),
             "AIRFLOW__DATABASE__SQL_ALCHEMY_SCHEMA": schema,
-            "AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE": "1",
-            "AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW": "1",
+            # Airflow initialization holds a lock/session while creating schema
+            # objects. A two-connection total deadlocks even with one task.
+            "AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE": "2",
+            "AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW": "2",
             "AIRFLOW__CORE__FERNET_KEY": source["SHARED_AIRFLOW_FERNET_KEY"],
             "AIRFLOW__API_AUTH__JWT_SECRET": source["SHARED_AIRFLOW_JWT_SECRET"],
             "AIRFLOW__API__SECRET_KEY": source["SHARED_AIRFLOW_API_SECRET"],
