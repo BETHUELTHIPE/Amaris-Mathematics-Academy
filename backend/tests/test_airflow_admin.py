@@ -8,7 +8,6 @@ from django.urls import reverse
 from amaris_cms.airflow_client import AirflowUnavailable, get_workflow, get_workflow_tasks, is_configured
 from amaris_cms.monitoring_admin import AmarisAdminSite
 
-
 AIRFLOW_TEST_SETTINGS = {
     "DEBUG": False,
     "AIRFLOW_MONITORING_ENABLED": True,
@@ -22,12 +21,8 @@ class AirflowMonitorTests(SimpleTestCase):
     def setUp(self):
         self.site = AmarisAdminSite()
         self.factory = RequestFactory()
-        self.superuser = SimpleNamespace(
-            is_authenticated=True, is_active=True, is_staff=True, is_superuser=True
-        )
-        self.staff = SimpleNamespace(
-            is_authenticated=True, is_active=True, is_staff=True, is_superuser=False
-        )
+        self.superuser = SimpleNamespace(is_authenticated=True, is_active=True, is_staff=True, is_superuser=True)
+        self.staff = SimpleNamespace(is_authenticated=True, is_active=True, is_staff=True, is_superuser=False)
 
     def test_routes_are_admin_only(self):
         self.assertEqual(reverse("admin:amaris_airflow_home"), "/admin/airflow/")
@@ -87,10 +82,13 @@ class AirflowMonitorTests(SimpleTestCase):
     def test_no_secrets_in_workflow_response(self, opener):
         class Reply:
             status = 200
+
             def __enter__(self):
                 return self
+
             def __exit__(self, *args):
                 return None
+
             def read(self, size):
                 return b'{"dag_runs":[{"dag_run_id":"scheduled__2026","state":"success"}]}'
 
