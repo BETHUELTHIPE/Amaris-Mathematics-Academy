@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import uuid
+
 from django.db import models
+
 from .models import TimeStampedModel
 
 
