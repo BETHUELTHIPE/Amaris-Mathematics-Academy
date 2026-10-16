@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, CreditCard, ShieldCheck } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
+import { FormCloseLink } from "@/components/site/form-close-link";
 import { requireVerifiedStudent } from "@/lib/auth";
 import { createStudentCheckout } from "@/lib/student-api";
 
@@ -34,8 +35,9 @@ export default async function CheckoutPage({ params }: { params: Promise<{ slug:
         <form method="post" action={checkout.gateway_url} className="mt-7">
           {Object.entries(checkout.fields).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
           <button type="submit" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white">
-            Continue to PayFast
+            Next: Continue to PayFast
           </button>
+          <div className="mt-3 flex justify-center"><FormCloseLink href={`/courses/${slug}`} /></div>
         </form>
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-center text-xs text-[#60708a]"><ShieldCheck className="size-4" />Server-priced · signed checkout · verified callback required</div>
       </div>
