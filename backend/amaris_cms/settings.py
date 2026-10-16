@@ -108,6 +108,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_prometheus.middleware.PrometheusAfterMiddleware",
+    "amaris_cms.middleware.PublicApiConditionalGetMiddleware",
 ]
 
 ROOT_URLCONF = "amaris_cms.urls"

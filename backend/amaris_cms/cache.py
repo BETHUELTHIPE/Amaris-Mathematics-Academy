@@ -85,9 +85,10 @@ class ResilientRedisCache(RedisCache):
             )
             return self._fallback_get(key, default=default, version=version)
 
-        if value is None:
-            return self._fallback_get(key, default=default, version=version)
-        return value
+        # A successful Redis miss is authoritative. Returning a process-local
+        # fallback entry here could resurrect stale public data after another
+        # worker invalidated the Redis namespace.
+        return default if value is None else value
 
     def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         fallback_result = self._fallback_set(
@@ -112,13 +113,47 @@ class ResilientRedisCache(RedisCache):
             return fallback_result
 
     def clear(self):
+        """Invalidate only this cache alias, never FLUSHDB a shared Redis database.
+
+        Django's RedisCache.clear() flushes the entire selected Redis DB, even
+        if KEY_PREFIX differs. Content updates must not clear session or other
+        aliases that might be configured on the same Redis database.
+        """
+        if not self.key_prefix:
+            raise ValueError("Cache invalidation requires a nonempty KEY_PREFIX.")
+
+        # The standard Django key function creates <prefix>:<version>:<key>.
+        # Match the entire namespace (including the colon) to avoid deleting
+        # similar prefixes or keys with other versions.
+        namespace = self.make_key("")
+        if not namespace.startswith(f"{self.key_prefix}:") or not namespace.endswith(":"):
+            raise ValueError("Unsupported cache key function for scoped invalidation.")
+
         with self._fallback_lock:
-            self._fallback_store.clear()
+            for key in tuple(self._fallback_store):
+                if key.startswith(namespace):
+                    self._fallback_store.pop(key, None)
+
+        # Redis glob characters may be present in a configured KEY_PREFIX.
+        # Escape them to prevent the scan from expanding beyond the alias.
+        pattern = "".join(("\\" + char) if char in "*?[]\\" else char for char in namespace) + "*"
         try:
-            return super().clear()
+            client = self._cache.get_client(write=True)  # type: ignore[attr-defined]
+            batch = []
+            namespace_bytes = namespace.encode("utf-8")
+            for key in client.scan_iter(match=pattern, count=100):
+                if not (key.startswith(namespace_bytes) if isinstance(key, bytes) else key.startswith(namespace)):
+                    continue
+                batch.append(key)
+                if len(batch) >= 100:
+                    client.delete(*batch)
+                    batch.clear()
+            if batch:
+                client.delete(*batch)
+            return True
         except self._cache_errors:
             self._warn_once(
                 "clear",
-                "Redis cache invalidation was unavailable; local fallback cache was cleared.",
+                "Scoped Redis cache invalidation failed; only this alias's local fallback entries were cleared.",
             )
-            return True
+            return False
