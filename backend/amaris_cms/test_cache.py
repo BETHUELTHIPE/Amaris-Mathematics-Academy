@@ -5,9 +5,8 @@ from unittest.mock import Mock, patch
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase
 
-from amaris_cms.middleware import PublicApiConditionalGetMiddleware
-
 from amaris_cms.cache import ResilientRedisCache
+from amaris_cms.middleware import PublicApiConditionalGetMiddleware
 
 
 class ResilientRedisFallbackTests(SimpleTestCase):
