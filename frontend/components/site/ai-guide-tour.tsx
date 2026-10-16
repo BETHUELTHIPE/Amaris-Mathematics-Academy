@@ -47,6 +47,18 @@ const lessons = [
     spoken: "Many students also work. You can ask Amaris about lessons before or after work, or use suitable learning materials at your own pace. Live tutor availability is not guaranteed at every hour.",
   },
   {
+    title: "How does our website work?",
+    lead: "The website has different parts that work together to help you study.",
+    points: ["The website shows courses and lets you register.", "Our secure systems manage lessons and bookings.", "Your information and study records belong behind protected access."],
+    spoken: "Think of our website like a school office on the internet. The public pages show you what you can study. Behind the scenes, our computer systems manage accounts, lessons and bookings. We work to keep private student details protected.",
+  },
+  {
+    title: "What is AWS?",
+    lead: "AWS is a possible future home for parts of the website.",
+    points: ["AWS offers computers and storage over the internet.", "It can help a growing website serve more learners.", "An AWS deployment is planned, not confirmed as live."],
+    spoken: "You may hear us talk about AWS. This stands for Amazon Web Services. It provides cloud computers and other services. Amaris has an AWS architecture plan, but that does not mean our website has moved to AWS yet.",
+  },
+  {
     title: "How can I get help?",
     lead: "Our website has an assistant, and you can contact our team.",
     points: ["Tap the Amaris Assistant button to type or speak a question.", "Visit Contact if you need personal support.", "Do not share passwords, bank card details, or verification codes."],
