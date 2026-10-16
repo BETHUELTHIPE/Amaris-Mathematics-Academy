@@ -1,9 +1,9 @@
 import hashlib
 import re
+import uuid
 
 from django.utils.cache import get_conditional_response, patch_cache_control
 from django.utils.http import quote_etag
-import uuid
 
 CORRELATION_PATTERN = re.compile(r"^AMR-[A-Za-z0-9-]{8,64}$")
 
