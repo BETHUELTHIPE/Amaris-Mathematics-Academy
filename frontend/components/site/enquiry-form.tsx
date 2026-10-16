@@ -11,6 +11,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Button } from "@/components/ui/button";
 import { academyBrand } from "@/lib/brand";
 import { ClearSafeFormDraft, SafeFormDraft } from "@/components/site/safe-form-draft";
+import { FormCloseLink } from "@/components/site/form-close-link";
 
 function FieldError({ message }: { message?: string }) {
   return message ? <p className="mt-2 text-sm font-medium text-[#b42318]" role="alert">{message}</p> : null;
@@ -18,14 +19,14 @@ function FieldError({ message }: { message?: string }) {
 
 function SubmitButton() {
   const { pending } = useFormStatus();
-  return <Button type="submit" disabled={pending} className="h-12 rounded-full bg-[#0b2a5b] px-7 text-base font-bold text-white hover:bg-[#133b76]">{pending ? <><LoaderCircle className="size-4 animate-spin" />Sending enquiry…</> : <>Send enquiry <Send className="size-4" /></>}</Button>;
+  return <Button type="submit" disabled={pending} className="h-12 rounded-full bg-[#0b2a5b] px-7 text-base font-bold text-white hover:bg-[#133b76]">{pending ? <><LoaderCircle className="size-4 animate-spin" />Sending enquiry…</> : <>Next: Send enquiry <Send className="size-4" /></>}</Button>;
 }
 
 export function EnquiryForm() {
   const [state, formAction] = useActionState(submitEnquiry, initialEnquiryState);
 
   if (state.status === "success") {
-    return <><ClearSafeFormDraft draftKey="contact-enquiry-v1" /><div className="mt-8 overflow-hidden rounded-2xl border border-[#a6d7be] bg-white" role="status"><div className="flex items-center gap-3 border-b border-[#dce4ef] bg-[#f6f8fc] px-5 py-4">{/* Static brand asset: direct delivery avoids loading the Next/Vinext image runtime for the enquiry form. */}<img src={academyBrand.logoPath} alt="Amaris Mathematics Academy logo" width={48} height={48} className="size-12 object-contain" /><div><p className="font-bold text-[#07152d]">{academyBrand.name}</p><p className="text-xs text-[#60708a]">{academyBrand.phoneDisplay} · {academyBrand.email}</p></div></div><div className="p-6"><CheckCircle2 className="size-8 text-[#147a4b]" /><h3 className="mt-4 text-xl font-semibold text-[#0a4d30]">Enquiry received</h3><p className="mt-2 text-base leading-7 text-[#396554]">{state.message}</p><p className="mt-4 text-sm text-[#557365]">For urgent support, call <a href={academyBrand.phoneHref} className="font-semibold underline">{academyBrand.phoneDisplay}</a>.</p><p className="mt-5 border-t border-[#dce4ef] pt-4 text-xs leading-5 text-[#60708a]">{academyBrand.address} · {academyBrand.website}</p></div></div></>;
+    return <><ClearSafeFormDraft draftKey="contact-enquiry-v1" /><div className="mt-8 overflow-hidden rounded-2xl border border-[#a6d7be] bg-white" role="status"><div className="flex items-center gap-3 border-b border-[#dce4ef] bg-[#f6f8fc] px-5 py-4">{/* Static brand asset: direct delivery avoids loading the Next/Vinext image runtime for the enquiry form. */}<img src={academyBrand.logoPath} alt="Amaris Mathematics Academy logo" width={48} height={48} className="size-12 object-contain" /><div><p className="font-bold text-[#07152d]">{academyBrand.name}</p><p className="text-xs text-[#60708a]">{academyBrand.phoneDisplay} · {academyBrand.email}</p></div></div><div className="p-6"><div className="flex justify-end"><FormCloseLink href="/contact" /></div><CheckCircle2 className="size-8 text-[#147a4b]" /><h3 className="mt-4 text-xl font-semibold text-[#0a4d30]">Enquiry received</h3><p className="mt-2 text-base leading-7 text-[#396554]">{state.message}</p><p className="mt-4 text-sm text-[#557365]">For urgent support, call <a href={academyBrand.phoneHref} className="font-semibold underline">{academyBrand.phoneDisplay}</a>.</p><p className="mt-5 border-t border-[#dce4ef] pt-4 text-xs leading-5 text-[#60708a]">{academyBrand.address} · {academyBrand.website}</p></div></div></>;
   }
 
   return (
@@ -43,7 +44,7 @@ export function EnquiryForm() {
       </div>
       <div><div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"><label htmlFor="message" className="text-sm font-semibold text-[#263951]">How can we help? <span className="text-[#b42318]">*</span></label><span className="text-xs text-[#60708a]">20–2,000 characters</span></div><Textarea id="message" name="message" required minLength={20} maxLength={2000} aria-invalid={Boolean(state.errors?.message)} className="mt-2 min-h-40 resize-y rounded-xl border-[#cdd8e6] bg-[#fbfcfe] p-4 text-base leading-7" placeholder="Tell us what you need help with, including your study level or order reference when relevant." /><FieldError message={state.errors?.message} /></div>
       <div><div className="flex items-start gap-3 text-sm leading-6 text-[#60708a]"><input id="consent" name="consent" type="checkbox" required value="on" aria-labelledby="consent-label" aria-invalid={Boolean(state.errors?.consent)} className="mt-0.5 size-6 shrink-0 cursor-pointer rounded border border-[#9aabc0] accent-[#1f5bbd]" /><span id="consent-label">I agree that Amaris Mathematics Academy may use these details to respond to my enquiry. <span className="text-[#b42318]">*</span></span></div><FieldError message={state.errors?.consent} /></div>
-      <div className="flex flex-col gap-4 border-t border-[#e4eaf2] pt-6 sm:flex-row sm:items-center sm:justify-between"><SubmitButton /><p className="text-sm text-[#60708a]">Prefer to speak? <a href={academyBrand.phoneHref} className="font-semibold text-[#1f5bbd] hover:underline">Call {academyBrand.phoneDisplay}</a></p></div>
+      <div className="flex flex-col gap-4 border-t border-[#e4eaf2] pt-6 sm:flex-row sm:items-center sm:justify-between"><div className="flex flex-wrap items-center gap-3"><SubmitButton /><FormCloseLink href="/" /></div><p className="text-sm text-[#60708a]">Prefer to speak? <a href={academyBrand.phoneHref} className="font-semibold text-[#1f5bbd] hover:underline">Call {academyBrand.phoneDisplay}</a></p></div>
     </form>
   );
 }

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { CreditCard, FileUp, LoaderCircle, ShieldCheck } from "lucide-react";
 import type { VideoRequestCheckoutSession } from "@/lib/student-api";
 import type { VideoRequestPackage } from "@/lib/video-requests";
+import { FormCloseLink } from "@/components/site/form-close-link";
 
 const programmes = [
   ["caps", "CAPS"],
@@ -71,8 +72,9 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
             <input key={name} type="hidden" name={name} value={value} />
           ))}
           <button type="submit" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white">
-            <CreditCard className="size-4" /> Continue to PayFast
+            <CreditCard className="size-4" /> Next: Continue to PayFast
           </button>
+          <div className="mt-3 flex justify-center"><FormCloseLink href="/dashboard" /></div>
         </form>
         <button type="button" onClick={() => setCheckout(null)} className="mt-3 min-h-11 w-full rounded-full border border-[#b7c5d8] px-5 font-semibold text-[#0b2a5b]">
           Change request details
@@ -141,8 +143,9 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
 
       <button disabled={submitting} type="submit" className="mt-7 flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white disabled:cursor-wait disabled:opacity-70">
         {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-        {submitting ? "Securing request…" : "Review secure payment"}
+        {submitting ? "Securing request…" : "Next: Review secure payment"}
       </button>
+      <div className="mt-3 flex justify-center"><FormCloseLink href="/dashboard" /></div>
       <p className="mt-4 text-center text-xs leading-6 text-[#60708a]">Server-priced · private documents · verified payment required · student-only delivery</p>
     </form>
   );
