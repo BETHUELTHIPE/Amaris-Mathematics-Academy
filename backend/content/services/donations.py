@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from functools import partial
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -241,7 +242,7 @@ def process_donation_notification(
             locked.status = target
             if target == DonationContribution.Status.PAID:
                 locked.paid_at = timezone.now()
-                transaction.on_commit(lambda pk=locked.pk: _send_donation_acknowledgement(pk))
+                transaction.on_commit(partial(_send_donation_acknowledgement, locked.pk))
             locked.save(
                 update_fields=[
                     "provider_reference",
