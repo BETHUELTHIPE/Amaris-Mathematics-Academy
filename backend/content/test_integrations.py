@@ -117,6 +117,28 @@ class RedisIntegrationTests(SimpleTestCase):
         self.assertTrue(public_client.ping())
 
 
+    def test_scoped_cache_clear_preserves_other_alias_in_same_real_redis_database(self):
+        # Confirm namespace isolation against actual Redis, not just mocks.
+        shared_url = _redis_url(13)
+        _redis_client(self, shared_url)
+        private_cache = _django_redis_cache(shared_url, "amaris-test-private")
+        public_cache = _django_redis_cache(shared_url, "amaris-test-public")
+        marker = f"perf-{uuid.uuid4().hex}"
+        try:
+            private_cache.set(marker, "must-survive", timeout=30)
+            public_cache.set(marker, "public-value", timeout=30)
+            self.assertEqual(private_cache.get(marker), "must-survive")
+            self.assertEqual(public_cache.get(marker), "public-value")
+            self.assertTrue(public_cache.clear())
+            self.assertIsNone(public_cache.get(marker))
+            self.assertEqual(private_cache.get(marker), "must-survive")
+        finally:
+            private_cache.delete(marker)
+            public_cache.delete(marker)
+            private_cache.close()
+            public_cache.close()
+
+
 class CeleryIntegrationTests(SimpleTestCase):
     def test_django_celery_worker_round_trip_uses_real_redis_broker_and_backend(self):
         broker_client = _redis_client(self, settings.CELERY_BROKER_URL)
