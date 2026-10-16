@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 type DonationStatus = {
@@ -21,7 +21,7 @@ export function DonationConfirmation({reference}:{reference:string}) {
   const [status,setStatus]=useState<DonationStatus|null>(null);
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(true);
-  async function refresh(){
+  const refresh=useCallback(async()=>{
     try{
       const response=await fetch("/api/donations/"+encodeURIComponent(reference),{cache:"no-store"});
       if(!response.ok)throw new Error("Payment status is temporarily unavailable.");
@@ -30,12 +30,12 @@ export function DonationConfirmation({reference}:{reference:string}) {
       setStatus(data);setError("");
     }catch(cause){setError(cause instanceof Error?cause.message:"Could not load payment status.");}
     finally{setLoading(false);}
-  }
-  useEffect(()=>{
-    void refresh();
-    const interval=window.setInterval(()=>void refresh(),15000);
-    return ()=>window.clearInterval(interval);
   },[reference]);
+  useEffect(()=>{
+    const initial=window.setTimeout(()=>void refresh(),0);
+    const interval=window.setInterval(()=>void refresh(),15000);
+    return ()=>{window.clearTimeout(initial);window.clearInterval(interval);};
+  },[refresh]);
   return (
     <section className="mx-auto max-w-2xl rounded-[2rem] border border-[#dce4ef] bg-white p-8 shadow-sm" aria-live="polite">
       <h1 className="text-3xl font-semibold text-[#07152d]">Contribution status</h1>
