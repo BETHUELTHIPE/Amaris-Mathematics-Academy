@@ -1,10 +1,6 @@
 name: Production Marketing Media HTTP Smoke
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/production-marketing-media-http-smoke.yml'
   workflow_dispatch:
 
 permissions:
