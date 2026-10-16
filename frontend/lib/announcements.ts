@@ -7,12 +7,12 @@ export type AnnouncementMedia = {
 };
 
 export function safeCmsMediaUrl(value: string, cmsApiUrl?: string): string | null {
-  if (!cmsApiUrl || !value || /[\\\\\u0000-\u001f\u007f]/.test(value)) return null;
+  if (!cmsApiUrl || !value || /[\\\u0000-\u001f\u007f]/.test(value)) return null;
   try {
     const base = new URL(cmsApiUrl);
     const target = new URL(value, base);
     if (base.protocol !== "https:" || target.protocol !== "https:" || target.origin !== base.origin) return null;
-    if (!/^\\/api\\/v1\\/marketing-media\\/\\d+\\/$/.test(target.pathname)) return null;
+    if (!/^\/api\/v1\/marketing-media\/\d+\/$/.test(target.pathname)) return null;
     if (target.search || target.hash || target.username || target.password) return null;
     return target.href;
   } catch {
