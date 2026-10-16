@@ -3,6 +3,7 @@ import {
   Bell,
   BookOpen,
   CreditCard,
+  GitBranch,
   LayoutDashboard,
   UserRound,
 } from "lucide-react";
@@ -12,6 +13,7 @@ export type DashboardSection = "overview" | "orders" | "notifications";
 const items = [
   { key: "overview", label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { key: "courses", label: "My courses", href: "/dashboard#my-courses", icon: BookOpen },
+  { key: "workflows", label: "My workflows", href: "/dashboard#my-workflows", icon: GitBranch },
   { key: "orders", label: "Orders & payments", href: "/dashboard/orders", icon: CreditCard },
   { key: "notifications", label: "Notifications", href: "/dashboard/notifications", icon: Bell },
   { key: "profile", label: "Profile & security", href: "/reset-password", icon: UserRound },

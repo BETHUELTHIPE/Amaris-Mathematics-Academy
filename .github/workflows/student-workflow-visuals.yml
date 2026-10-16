@@ -1,0 +1,41 @@
+name: Student workflow visuals verification
+
+on:
+  pull_request:
+    branches:
+      - render-live-current-20260918
+    paths:
+      - "frontend/app/dashboard/page.tsx"
+      - "frontend/components/site/student-workflow-visuals.tsx"
+      - "frontend/components/site/student-workflow-refresh.tsx"
+      - "frontend/components/site/dashboard-navigation.tsx"
+      - "frontend/lib/student-workflow-states.ts"
+      - "frontend/tests/student-workflow-visuals.test.mjs"
+      - ".github/workflows/student-workflow-visuals.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  student-workflow-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci --include=dev
+      - name: Verify student workflow state model and privacy contract
+        run: node --test tests/student-workflow-visuals.test.mjs tests/student-responsive-contract.test.mjs
+      - name: Static typing
+        run: npm run typecheck
+      - name: Check edited frontend files with ESLint
+        run: npx eslint app/dashboard/page.tsx components/site/student-workflow-visuals.tsx components/site/student-workflow-refresh.tsx components/site/dashboard-navigation.tsx lib/student-workflow-states.ts
