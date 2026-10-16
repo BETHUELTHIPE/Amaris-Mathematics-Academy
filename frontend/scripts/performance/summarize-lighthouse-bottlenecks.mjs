@@ -5,7 +5,10 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const reportDir = process.argv[2] ?? ".lighthouseci/mobile";
-const files = (await readdir(reportDir)).filter((file) => /^(home|courses|contact)-[1-3](?:\.report)?\.json$/.test(file)).sort();
+const files = (await readdir(reportDir).catch((error) => {
+  if (error.code === "ENOENT") return [];
+  throw error;
+})).filter((file) => /^(home|courses|contact)-[1-3](?:\.report)?\.json$/.test(file)).sort();
 if (!files.length) {
   console.log("No retained Lighthouse JSON reports were found for diagnosis.");
   process.exit(0);
@@ -54,7 +57,14 @@ for (const [route, samples] of [...groups].sort(([a], [b]) => a.localeCompare(b)
   const audits = samples.map(({ report }) => report.audits ?? {});
   const lcp = median(audits.map((a) => a["largest-contentful-paint"]?.numericValue));
   const tbt = median(audits.map((a) => a["total-blocking-time"]?.numericValue));
-  const unused = median(audits.map((a) => a["unused-javascript"]?.details?.overallSavingsBytes ?? a["unused-javascript"]?.numericValue));
+  const unused = median(audits.map((a) => {
+    const details = a["unused-javascript"]?.details;
+    if (Number.isFinite(details?.overallSavingsBytes)) return details.overallSavingsBytes;
+    if (Array.isArray(details?.items)) return details.items.reduce(
+      (sum, item) => sum + (Number.isFinite(item.wastedBytes) ? item.wastedBytes : 0), 0
+    );
+    return null;
+  }));
   const performance = median(samples.map(({ report }) => report.categories?.performance?.score));
   lines.push(`| ${route} | ${performance === null ? "unavailable" : Math.round(performance * 100) + "/100"} | ${ms(lcp)} | ${ms(tbt)} | ${kib(unused)} |`);
 }
