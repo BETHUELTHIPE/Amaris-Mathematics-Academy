@@ -1,0 +1,77 @@
+name: Production Marketing Media HTTP Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-marketing-media-http-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-smoke:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify live backend and student site without credentials or data modification
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          backend = "https://amaris-production-web.onrender.com"
+          frontend = "https://amaris-mathematics-academy-live-students.onrender.com"
+          expected_backend_sha = "b7914616401ac081f108c6137a88537f1cce9b56"
+
+          def get(path, expected=200, base=backend):
+              for attempt in range(6):
+                  try:
+                      with urllib.request.urlopen(
+                          urllib.request.Request(base + path, headers={"User-Agent": "Amaris-release-smoke/1.0"}),
+                          timeout=22,
+                      ) as response:
+                          status, content = response.status, response.read(120000)
+                  except urllib.error.HTTPError as error:
+                      status, content = error.code, b""
+                  except Exception:
+                      status, content = 0, b""
+                  if status == expected:
+                      print("PASS HTTP", status, path, "backend" if base == backend else "frontend")
+                      return content
+                  if attempt < 5:
+                      time.sleep(8)
+              raise SystemExit(f"FAIL {base} {path}: HTTP {status} expected {expected}")
+
+          get("/health/")
+          ready = json.loads(get("/health/ready/"))
+          if ready.get("status") != "ready":
+              raise SystemExit("FAIL: backend database readiness not confirmed")
+          print("PASS production database ready")
+
+          version = json.loads(get("/health/version/"))
+          if version.get("git_sha") != expected_backend_sha:
+              raise SystemExit("FAIL: backend not running the expected marketing-media commit")
+          print("PASS backend Git SHA matches the released commit")
+
+          feed = json.loads(get("/api/v1/announcements/"))
+          if not isinstance(feed, (list, dict)):
+              raise SystemExit("FAIL: announcements endpoint did not return a JSON collection")
+          print("PASS published announcements JSON response")
+
+          get("/api/v1/marketing-media/999999999/", expected=404)
+          print("PASS nonexistent private media cannot be downloaded")
+
+          get("/", base=frontend)
+          html = get("/announcements", base=frontend).decode("utf-8", errors="replace")
+          if "announcements" not in html.lower():
+              raise SystemExit("FAIL: student-facing announcements page content not found")
+          print("PASS live student announcements HTML rendered")
+
+          print("PASS all public production marketing-media smoke checks")
+          PY
