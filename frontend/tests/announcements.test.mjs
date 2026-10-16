@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { announcementDeadline, filterAnnouncements, prepareAnnouncements, safeAnnouncementLink } from "../lib/announcements.ts";
+import { announcementDeadline, filterAnnouncements, prepareAnnouncements, safeAnnouncementLink, safeCmsMediaUrl } from "../lib/announcements.ts";
 
 const now = Date.parse("2026-10-15T10:00:00Z");
 const notice = (fields = {}) => ({ id: 1, title: "Class timetable", message: "Choose your Mathematics topic.", priority: 0, expires_at: null, link_label: "View classes", link_url: "/book-online-live-class", ...fields });
@@ -46,4 +46,27 @@ test("expiry display uses South African time independently of server timezone", 
   assert.match(result, /12:00/);
   assert.equal(announcementDeadline(null), null);
   assert.equal(announcementDeadline("invalid"), null);
+});
+
+test("marketing media URL must stay on the trusted CMS API origin", () => {
+  const base = "https://amaris-production-web.onrender.com/api/v1";
+  const good = "https://amaris-production-web.onrender.com/api/v1/marketing-media/12/";
+  assert.equal(safeCmsMediaUrl(good, base), good);
+  for (const value of [
+    "https://evil.example/api/v1/marketing-media/12/",
+    "//evil.example/api/v1/marketing-media/12/",
+    "http://amaris-production-web.onrender.com/api/v1/marketing-media/12/",
+    "https://amaris-production-web.onrender.com/api/v1/marketing-media/12/?X-Amz-Signature=secret",
+    "javascript:alert(1)",
+    "/api/v1/student/payments/12/",
+  ]) {
+    assert.equal(safeCmsMediaUrl(value, base), null, value);
+  }
+});
+
+test("validates optional image/video/PDF media metadata and retains legacy notice shape", () => {
+  const valid = { id: 4, title: "Matric briefing", kind: "video", order: 0, download_url: "https://example.com" };
+  const [result] = prepareAnnouncements([notice({ media: [valid, { ...valid, id: "bad" }] })], now);
+  assert.deepEqual(result.media, [valid]);
+  assert.equal("media" in prepareAnnouncements([notice()], now)[0], false);
 });
