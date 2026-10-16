@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ("reference", models.CharField(editable=False, max_length=44, unique=True)),
+                ("reference", models.CharField(editable=False, max_length=80, unique=True)),
                 ("donor_name", models.CharField(max_length=100)),
                 ("donor_email", models.EmailField(max_length=254)),
                 ("purpose", models.CharField(choices=[
