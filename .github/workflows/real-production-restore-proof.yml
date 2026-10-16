@@ -103,9 +103,18 @@ jobs:
           # this disposable network-disabled target so pg_restore can recreate it.
           docker exec amaris-isolated-restore psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -c 'DROP SCHEMA IF EXISTS public CASCADE;'
+          # Restore genuine public tables and row data first. Supabase Auth is a
+          # managed external schema not included in this app-scoped archive.
           docker exec amaris-isolated-restore pg_restore --exit-on-error --no-owner --no-acl \
-            -U postgres -d postgres /tmp/restore.dump
-          echo "PASS: real production public schema restored into network-isolated PostgreSQL"
+            --section=pre-data --section=data -U postgres -d postgres /tmp/restore.dump
+          # Satisfy the app's one cross-schema FK using synthetic auth IDs
+          # taken from already restored app rows, strictly inside the isolated
+          # target. This is NOT an auth-system backup.
+          docker exec amaris-isolated-restore psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY); INSERT INTO auth.users(id) SELECT id FROM public.student_profiles ON CONFLICT DO NOTHING;'
+          docker exec amaris-isolated-restore pg_restore --exit-on-error --no-owner --no-acl \
+            --section=post-data -U postgres -d postgres /tmp/restore.dump
+          echo "PASS: genuine production public application schema/data/constraints restored; Supabase Auth remains out of scope"
 
       - name: Compare public-schema source and restored application records
         shell: bash
