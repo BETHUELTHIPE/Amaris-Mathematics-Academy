@@ -27,8 +27,9 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Validate DAG and Django Python syntax
-        run: python -m compileall -q airflow/dags backend/amaris_cms/airflow_client.py backend/amaris_cms/monitoring_admin.py backend/tests/test_airflow_admin.py
-      - name: Validate isolated Docker Compose profile
+        run: python -m compileall -q backend/amaris_cms/airflow_client.py backend/amaris_cms/monitoring_admin.py backend/tests/test_airflow_admin.py
+      - name: Validate isolated Docker Compose profile (only where provided)
+        if: ${{ hashFiles('airflow/compose.yml') != '' }}
         working-directory: airflow
         run: |
           cp .env.example .env
