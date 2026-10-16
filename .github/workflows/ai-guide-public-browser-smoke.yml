@@ -94,3 +94,152 @@ jobs:
       - name: Record result
         if: always()
         run: echo "Checked live anonymous Chrome UI, no student records or payment used"
+
+
+  live-ai-response:
+    name: Live AI response (no fallback match)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Probe real production assistant in anonymous browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/amaris-ai-live-test
+          cd /tmp/amaris-ai-live-test
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright';
+          import assert from 'node:assert/strict';
+          const base = 'https://amaris-mathematics-academy-live-students.onrender.com';
+          const question = 'I finish work at 2 in the morning. Tell me in two short sentences how a newcomer can explore Amaris without promising any particular tutor time.';
+          const browser = await chromium.launch({headless:true, args:['--no-sandbox']});
+          const page = await browser.newPage({viewport:{width:390,height:844}});
+          try {
+            const landing = await page.goto(base+'/ai-guide',{waitUntil:'load',timeout:60000});
+            assert.equal(landing?.status(),200);
+            await page.waitForTimeout(4000); // allow hydration before interacting
+            await page.getByRole('button',{name:/Amaris Assistant/i}).first().click();
+            await page.getByRole('dialog',{name:/Amaris Assistant/i}).waitFor();
+            await page.getByRole('button',{name:/Chat assistant/i}).click();
+            await page.getByRole('textbox',{name:/Ask Amaris Assistant/i}).fill(question);
+            const resultPromise = page.waitForResponse(
+              r=>r.url().includes('/api/assistant/') && r.request().method()==='POST',
+              {timeout:60000}
+            );
+            await page.getByRole('button',{name:'Send question'}).click();
+            const response = await resultPromise;
+            const payload = await response.json().catch(()=>({}));
+            console.log('AI_FRONTEND_HTTP_STATUS='+response.status());
+            console.log('AI_REPLY_LENGTH='+(payload.answer||'').length);
+            if (response.status() !== 200) {
+              console.log('AI_ERROR_DETAIL='+String(payload.detail||'').slice(0,180));
+              throw new Error('Live AI answer unavailable (HTTP '+response.status()+')');
+            }
+            assert.equal(typeof payload.answer,'string');
+            assert(payload.answer.length>=35,'Live answer too short');
+            assert(!/temporarily unavailable/i.test(payload.answer),'Unavailability response');
+            assert(!/^(To register, visit|Live Zoom classes can|To choose a course)/i.test(payload.answer),'Canned fallback response');
+            const answerInUi=page.getByText(payload.answer,{exact:true});
+            await answerInUi.waitFor({timeout:20000});
+            console.log('AI_REPLY_PREVIEW='+payload.answer.replace(/\s+/g,' ').slice(0,350));
+            console.log('RESULT: LIVE_AI_RESPONSE_VERIFIED');
+          } catch(error) {
+            console.error('RESULT: LIVE_AI_RESPONSE_FAILED');
+            console.error(String(error));
+            process.exitCode=1;
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+  voice-audio-capture:
+    name: Actual speech audio (virtual speaker recording)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install graphical Chromium and virtual audio tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pulseaudio pulseaudio-utils speech-dispatcher speech-dispatcher-espeak-ng espeak-ng ffmpeg xvfb >/dev/null
+          mkdir -p /tmp/amaris-ai-voice-test
+          cd /tmp/amaris-ai-voice-test
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Capture what the live browser sends to its speaker
+        shell: bash
+        run: |
+          set -euo pipefail
+          pulseaudio --start --exit-idle-time=-1 || true
+          pactl info
+          pactl load-module module-null-sink sink_name=amaris_test_sink sink_properties=device.description=AmarisTestSink
+          pactl set-default-sink amaris_test_sink
+          pactl list short sinks
+          ffmpeg -hide_banner -loglevel error -nostdin -y -f pulse -i amaris_test_sink.monitor -t 20 -ar 16000 -ac 1 /tmp/amaris-ai-test-audio.wav &
+          FFMPEG_PID=$!
+          sleep 1
+          cd /tmp/amaris-ai-voice-test
+          xvfb-run -a node --input-type=module <<'NODE'
+          import {chromium} from 'playwright';
+          import assert from 'node:assert/strict';
+          const browser=await chromium.launch({headless:false,args:['--no-sandbox','--enable-speech-dispatcher','--autoplay-policy=no-user-gesture-required']});
+          const page=await browser.newPage({viewport:{width:1100,height:900}});
+          try {
+            const url='https://amaris-mathematics-academy-live-students.onrender.com/ai-guide';
+            const response=await page.goto(url,{waitUntil:'load',timeout:60000});
+            assert.equal(response?.status(),200);
+            await page.waitForTimeout(3000);
+            const voiceList=await page.evaluate(()=>({
+              available: typeof speechSynthesis !== 'undefined',
+              voices:typeof speechSynthesis !== 'undefined'?speechSynthesis.getVoices().map(x=>x.name):[],
+            }));
+            console.log('VOICE_AVAILABLE='+voiceList.available);
+            console.log('VOICE_NAMES='+JSON.stringify(voiceList.voices.slice(0,12)));
+            await page.getByRole('button',{name:'Listen',exact:true}).click();
+            await page.waitForTimeout(12000);
+            const status=await page.locator('[role="status"]').first().innerText();
+            console.log('VOICE_STATUS='+status);
+            console.log('VOICE_SYNTH_STATE='+JSON.stringify(await page.evaluate(()=>({
+              speaking:speechSynthesis.speaking,pending:speechSynthesis.pending,paused:speechSynthesis.paused
+            }))));
+          }catch(e){console.error('VOICE_BROWSER_ERROR='+String(e));process.exitCode=1}
+          finally{await browser.close()}
+          NODE
+          wait "$FFMPEG_PID" || true
+          python3 - <<'PY'
+          import wave, math, array, os
+          p='/tmp/amaris-ai-test-audio.wav'
+          if not os.path.exists(p):
+              print('RESULT: AUDIO_CAPTURE_MISSING')
+              raise SystemExit(1)
+          with wave.open(p,'rb') as f:
+              frames=f.readframes(f.getnframes())
+              x=array.array('h',frames)
+              sample_rate=f.getframerate()
+              if f.getnchannels()!=1:
+                  raise SystemExit('Unexpected audio channel count')
+          peak=max((abs(z) for z in x), default=0)/32768
+          rms=math.sqrt(sum(z*z for z in x)/len(x))/32768 if x else 0
+          print('AUDIO_SAMPLES='+str(len(x)))
+          print('AUDIO_SAMPLE_RATE='+str(sample_rate))
+          print('AUDIO_PEAK='+f'{peak:.6f}')
+          print('AUDIO_RMS='+f'{rms:.6f}')
+          if len(x)>sample_rate*5 and peak>0.02 and rms>0.002:
+              print('RESULT: REAL_AUDIO_OUTPUT_VERIFIED')
+          else:
+              print('RESULT: NO_NON_SILENT_BROWSER_AUDIO_CAPTURED')
+              raise SystemExit(1)
+          PY
