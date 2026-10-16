@@ -17,6 +17,7 @@ const requiredLinks = [
   ["/courses", "Courses"],
   ["/how-it-works", "How it works"],
   ["/pricing", "Pricing"],
+  ["/matric-upgrades", "Matric Upgrades"],
   ["/about", "About"],
   ["/announcements", "Announcements"],
   ["/request-a-video", "Request a topic video"],
