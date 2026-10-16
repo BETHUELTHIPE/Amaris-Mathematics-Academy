@@ -114,7 +114,7 @@ export function AiGuideTour() {
         <button type="button" onClick={() => { stop(); setMessage("Voice stopped."); }} disabled={!speaking} className="inline-flex min-h-12 items-center gap-2 rounded-full border border-[#c9d5e5] px-5 py-2 text-sm font-semibold text-[#0b2a5b] hover:bg-[#edf3ff] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"><Square className="size-3" aria-hidden="true" /> Stop voice</button>
       </div>
       <p role="status" aria-live="polite" className="mt-4 text-sm text-[#60708a]">{message}</p>
-      <p className="mt-3 text-xs leading-5 text-[#60708a]">Voice playback uses your browser's speech feature. This step-by-step explanation is prepared information, not a live AI answer.</p>
+      <p className="mt-3 text-xs leading-5 text-[#60708a]">Voice playback uses the speech feature in your browser. This step-by-step explanation is prepared information, not a live AI answer.</p>
     </section>
   );
 }
