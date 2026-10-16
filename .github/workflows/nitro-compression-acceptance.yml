@@ -41,6 +41,7 @@ jobs:
           test -n "$javascript_file"
           test -s "$javascript_file.br"
           test -s "$javascript_file.gz"
+          wc -c "$javascript_file" "$javascript_file.br" "$javascript_file.gz"
           echo "PASS Nitro built Brotli and gzip representations for JavaScript"
           PORT=18181 HOST=127.0.0.1 NODE_ENV=production node .output/server/index.mjs > /tmp/nitro-acceptance.log 2>&1 &
           pid=$!
