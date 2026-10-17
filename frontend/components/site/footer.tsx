@@ -1,11 +1,32 @@
 import { Clock3, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
 
+// The public frontend and Django API may be deployed on different origins.
+function getDjangoAdminUrl(): string {
+  for (const configuredUrl of [process.env.DJANGO_ADMIN_URL, process.env.CMS_API_URL]) {
+    if (!configuredUrl) continue;
+    try {
+      const origin = new URL(configuredUrl);
+      const localDevelopment =
+        process.env.NODE_ENV !== "production" &&
+        origin.protocol === "http:" &&
+        (origin.hostname === "localhost" || origin.hostname === "127.0.0.1");
+      if ((origin.protocol === "https:" || localDevelopment) && !origin.username && !origin.password) {
+        return new URL("/admin/", origin).toString();
+      }
+    } catch {
+      // An invalid optional environment variable must not break the public footer.
+    }
+  }
+  return "https://amaris-production-web.onrender.com/admin/";
+}
+
 export async function Footer() {
   const [academyBrand, links] = await Promise.all([
     getManagedBrand(),
     getManagedNavigation("footer"),
   ]);
+  const djangoAdminUrl = getDjangoAdminUrl();
   return (
     <footer className="border-t border-white/10 bg-[#061126] text-white">
       <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-[1.35fr_.7fr_1.15fr] lg:px-8">
@@ -35,7 +56,7 @@ export async function Footer() {
           </div>
         </div>
       </div>
-      <div className="border-t border-white/10 px-5 py-5 text-xs text-white/65"><div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 sm:flex-row"><span>© {new Date().getFullYear()} Amaris Mathematics Academy. Mathematics, taught with clarity.</span><span className="flex gap-5"><a href="/terms" className="hover:text-white">Student terms</a><a href="/privacy" className="hover:text-white">Privacy</a></span></div></div>
+      <div className="border-t border-white/10 px-5 py-5 text-xs text-white/65"><div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 sm:flex-row"><span>© {new Date().getFullYear()} Amaris Mathematics Academy. Mathematics, taught with clarity.</span><nav aria-label="Footer utility links" className="flex flex-wrap justify-center gap-x-5 gap-y-2"><a href="/terms" className="hover:text-white">Student terms</a><a href="/privacy" className="hover:text-white">Privacy</a><a href={djangoAdminUrl} target="_blank" rel="noopener noreferrer" aria-label="Django Admin (opens in a new tab)" className="hover:text-white focus-visible:underline">Django Admin</a></nav></div></div>
     </footer>
   );
 }
