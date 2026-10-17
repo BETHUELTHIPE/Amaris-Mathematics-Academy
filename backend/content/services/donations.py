@@ -49,7 +49,9 @@ def donations_available() -> bool:
         if mode == "live" and os.getenv("DONATIONS_LIVE_ENABLED", "false").lower() != "true":
             return False
         merchant_id, merchant_key, passphrase = _payfast_credentials()
-        return bool(merchant_id and merchant_key and passphrase)
+        # PayFast permits passphrase-free once-off payments for its documented sandbox merchant.
+        # Retain the stricter passphrase requirement for live donation activation.
+        return bool(merchant_id and merchant_key and (passphrase or mode == "sandbox"))
     except PaymentSecurityError:
         return False
 
