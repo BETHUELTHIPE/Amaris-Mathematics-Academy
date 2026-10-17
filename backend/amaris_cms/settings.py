@@ -297,14 +297,21 @@ CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
 }
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
 CELERY_TASK_TIME_LIMIT = 30 * 60
+# Beat is a single scheduler per environment. Persist its schedule on the
+# celery_beat volume so restarts do not discard the last-run timestamps.
+CELERY_BEAT_MAX_LOOP_INTERVAL = 30
+CELERY_BEAT_SYNC_EVERY = 1
 CELERY_BEAT_SCHEDULE = {
     "publish-scheduled-content": {
         "task": "content.tasks.publish_scheduled_content",
         "schedule": 60.0,
+        # Drop stale periodic messages after an outage: the next tick catches up.
+        "options": {"expires": 60},
     },
     "reconcile-verified-payments": {
         "task": "content.tasks.reconcile_payments",
         "schedule": 300.0,
+        "options": {"expires": 300},
     },
 }
 
