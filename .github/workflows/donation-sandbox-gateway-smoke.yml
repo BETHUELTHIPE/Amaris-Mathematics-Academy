@@ -1,0 +1,97 @@
+name: PayFast Sandbox Donation Gateway Smoke
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/donation-sandbox-gateway-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox:
+    name: Signed Django checkout to real PayFast sandbox
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DJANGO_DEBUG: "true"
+      DJANGO_SECRET_KEY: "temporary-test-environment-only"
+      DATABASE_URL: "sqlite:////tmp/amaris-donation-test.sqlite3"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      DATABASE_SSL_REQUIRED: "false"
+      PAYFAST_MODE: "sandbox"
+      PAYFAST_ENV: "sandbox"
+      DONATIONS_ENABLED: "true"
+      DONATIONS_LIVE_ENABLED: "false"
+      PUBLIC_SITE_URL: "https://example.invalid"
+      PUBLIC_API_URL: "https://example.invalid"
+      PAYFAST_NOTIFY_URL: "https://example.invalid/itn"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install Django and Chromium
+        run: |
+          python -m pip install -r backend/requirements.txt >/dev/null
+          mkdir -p /tmp/amaris-sandbox
+          cd /tmp/amaris-sandbox
+          npm init -y >/dev/null
+          npm install --no-save playwright@1.56.1 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Create real signed checkout using application code
+        run: |
+          cd backend
+          python manage.py migrate --noinput >/dev/null
+          python manage.py shell -c '
+          import json, os
+          from decimal import Decimal
+          from content.services.donations import create_donation_checkout
+          key="test-"+os.environ["GITHUB_RUN_ID"]+"-"+os.environ["GITHUB_RUN_ATTEMPT"]
+          checkout=create_donation_checkout(name="Sandbox Donor",email="sandbox@example.invalid",amount=Decimal("20.00"),purpose="general",idempotency_key=key)
+          with open("/tmp/amaris-sandbox/checkout.json","w") as f:
+              json.dump({"url":checkout.gateway_url,"reference":checkout.reference,"fields":checkout.fields},f)
+          print("DJANGO_SIGNED_DONATION_CHECKOUT_CREATED")
+          '
+      - name: Verify genuine PayFast sandbox accepts hosted checkout
+        shell: bash
+        run: |
+          cd /tmp/amaris-sandbox
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import { chromium } from 'playwright';
+          const checkout=JSON.parse(fs.readFileSync('checkout.json','utf8'));
+          assert.equal(checkout.url,'https://sandbox.payfast.co.za/eng/process');
+          assert.equal(checkout.fields.amount,'20.00');
+          const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+          const page=await browser.newPage();
+          try {
+            const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;');
+            const fields=Object.entries(checkout.fields).map(([key,value])=>'<input type="hidden" name="'+esc(key)+'" value="'+esc(value)+'">').join('');
+            await page.setContent('<form action="'+checkout.url+'" method="post">'+fields+'<button id="pay">Test sandbox gateway</button></form>');
+            await page.locator('#pay').click();
+            await page.waitForURL(url=>url.hostname==='sandbox.payfast.co.za',{timeout:45000});
+            await page.waitForLoadState('domcontentloaded',{timeout:45000}).catch(()=>{});
+            await page.waitForTimeout(2000);
+            const visible=(await page.locator('body').innerText()).slice(0,1100);
+            console.log('SANDBOX_HOST_REACHED=YES');
+            console.log('SANDBOX_PAGE_TITLE='+JSON.stringify(await page.title()));
+            console.log('SANDBOX_PAGE_TEXT='+JSON.stringify(visible));
+            assert(!/invalid signature|merchant details are invalid/i.test(visible),'PayFast rejected checkout signature or merchant');
+            console.log('RESULT=GATEWAY_SANDBOX_CHECKOUT_REACHED');
+          }finally{await browser.close();}
+          NODE
+      - name: Confirm no simulated payment was marked paid
+        run: |
+          cd backend
+          python manage.py shell -c '
+          from content.donation_models import DonationContribution
+          d=DonationContribution.objects.get()
+          assert d.status=="pending", "No provider notification arrived; donor record must stay pending"
+          print("SAFE_PENDING_UNTIL_GENUINE_ITN=PASS")
+          '
