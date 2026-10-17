@@ -1,4 +1,4 @@
-import { Clock3, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
+import { Clock3, Heart, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
 
 // The public frontend and Django API may be deployed on different origins.
@@ -44,6 +44,7 @@ export async function Footer() {
             <a href="/ai-guide" className="inline-flex min-h-10 items-center font-semibold text-[#ffcc66] transition hover:text-white focus-visible:underline">Amaris AI Guide — listen or chat</a>
             <a href="/support-our-project" className="inline-flex min-h-10 items-center font-semibold text-[#ffcc66] transition hover:text-white focus-visible:underline">Support Our Project</a>
             <a href="/documents">Documents & invoices</a>
+            {!links.some(({ url }) => url === "/sponsors") && <a href="/sponsors" className="inline-flex min-h-11 items-center gap-2 font-semibold text-[#ffcc66] transition hover:text-white"><Heart aria-hidden="true" className="size-4" />Sponsor the project</a>}
           </div>
         </div>
         <div>
