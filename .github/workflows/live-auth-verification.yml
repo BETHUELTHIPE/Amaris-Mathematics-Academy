@@ -1,12 +1,15 @@
 name: Live Student Auth Verification
 
 on:
+  pull_request:
+    branches: [render-live-current-20260918]
   push:
     branches: [render-live-current-20260918]
     paths:
       - "frontend/app/auth/**"
       - "frontend/app/login/**"
       - "frontend/app/register/**"
+      - "frontend/app/complete-profile/**"
       - "frontend/app/verify-email/**"
       - "frontend/app/forgot-password/**"
       - "frontend/app/reset-password/**"
@@ -43,4 +46,4 @@ jobs:
       - name: TypeScript checks
         run: npm run typecheck
       - name: Student authentication unit tests
-        run: node --test tests/auth-identity.test.mjs tests/auth-session-actions.test.mjs tests/google-oauth.test.mjs tests/social-oauth.test.mjs tests/registration-actions.test.mjs tests/recovery-safety.test.mjs
+        run: node --test tests/auth-identity.test.mjs tests/auth-session-actions.test.mjs tests/google-oauth.test.mjs tests/google-registration.test.mjs tests/social-oauth.test.mjs tests/registration-actions.test.mjs tests/recovery-safety.test.mjs

@@ -13,6 +13,7 @@ export type StudentIdentity = {
   lastName: string;
   displayName: string;
   emailVerified: boolean;
+  profileComplete: boolean;
 };
 
 function getSyntheticE2EStudent(): StudentIdentity | null {
@@ -24,6 +25,7 @@ function getSyntheticE2EStudent(): StudentIdentity | null {
     lastName: "Student",
     displayName: "Responsive Student",
     emailVerified: true,
+    profileComplete: true,
   };
 }
 
@@ -44,7 +46,25 @@ export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null
     return null;
   }
 
-  return mapClaims(data.claims, Boolean(userData.user.email_confirmed_at));
+  const { data: profile, error: profileError } = await supabase
+    .from("student_profiles")
+    .select("first_name,last_name,mobile,province,institution,academic_level")
+    .eq("id", userData.user.id)
+    .maybeSingle();
+
+  const linkedProviders = userData.user.app_metadata.providers;
+  const usesGoogle =
+    userData.user.app_metadata.provider === "google" ||
+    (Array.isArray(linkedProviders) && linkedProviders.includes("google"));
+  const profileComplete =
+    !usesGoogle ||
+    (!profileError && profile !== null && isStudentProfileComplete(profile));
+
+  return mapClaims(
+    data.claims,
+    Boolean(userData.user.email_confirmed_at),
+    profileComplete,
+  );
 });
 
 export async function requireVerifiedStudent(
@@ -56,6 +76,11 @@ export async function requireVerifiedStudent(
   }
   if (!student.emailVerified) {
     redirect(`/verify-email?email=${encodeURIComponent(student.email)}`);
+  }
+  if (!student.profileComplete) {
+    redirect(
+      `/complete-profile?next=${encodeURIComponent(safeRelativePath(returnTo))}`,
+    );
   }
   return student;
 }
@@ -80,6 +105,7 @@ export function safeRelativePath(value: string | null | undefined): string {
       "/forgot-password",
       "/reset-password",
       "/verify-email",
+      "/complete-profile",
       "/session-expired",
     ].includes(url.pathname) ||
     url.pathname.startsWith("/auth/")
@@ -90,7 +116,11 @@ export function safeRelativePath(value: string | null | undefined): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function mapClaims(claims: JwtPayload, emailVerified: boolean): StudentIdentity {
+function mapClaims(
+  claims: JwtPayload,
+  emailVerified: boolean,
+  profileComplete: boolean,
+): StudentIdentity {
   const metadata = claims.user_metadata ?? {};
   const fullName = cleanName(metadata.full_name) || cleanName(metadata.name);
   const [fullFirst = "", ...fullRest] = fullName.split(/\s+/).filter(Boolean);
@@ -110,7 +140,29 @@ function mapClaims(claims: JwtPayload, emailVerified: boolean): StudentIdentity 
     lastName,
     displayName: [firstName, lastName].filter(Boolean).join(" "),
     emailVerified,
+    profileComplete,
   };
+}
+
+export function isStudentProfileComplete(profile: {
+  first_name: string;
+  last_name: string;
+  mobile: string;
+  province: string;
+  institution: string;
+  academic_level: string;
+}): boolean {
+  return [
+    profile.first_name,
+    profile.last_name,
+    profile.mobile,
+    profile.province,
+    profile.institution,
+    profile.academic_level,
+  ].every((value) => {
+    const normalized = value.trim().toLowerCase();
+    return normalized.length >= 2 && normalized !== "not provided";
+  });
 }
 
 function cleanName(value: unknown): string {

@@ -4,14 +4,17 @@ import { googleAuthAction } from "@/app/auth/actions";
 export function GoogleAuthButton({
   label,
   next = "/dashboard",
+  flow = "login",
 }: {
   label: string;
   next?: string;
+  flow?: "login" | "register";
 }) {
   return (
     <div className="grid gap-3">
       <form action={googleAuthAction}>
         <input type="hidden" name="next" value={next} />
+        <input type="hidden" name="flow" value={flow} />
         <button
           type="submit"
           className="flex min-h-12 w-full items-center justify-center gap-3 rounded-full border border-[#cbd6e5] bg-white px-6 py-3 font-bold text-[#263852] shadow-sm transition hover:border-[#aebed3] hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1f5bbd] focus-visible:ring-offset-2"
