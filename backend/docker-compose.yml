@@ -142,8 +142,12 @@ services:
     restart: unless-stopped
     init: true
     env_file: .env
-    environment: {SERVICE_ROLE: celery-beat}
-    command: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
+    environment:
+      SERVICE_ROLE: celery-beat
+      # The dedicated payment_reconciler below owns reconciliation in Compose.
+      CELERY_BEAT_PAYMENT_RECONCILIATION_ENABLED: "false"
+    command: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/app/beat/celerybeat-schedule
+    volumes: [celery_beat_state:/app/beat]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -167,7 +171,7 @@ services:
     init: true
     env_file: .env
     environment: {SERVICE_ROLE: payment-reconciler}
-    command: python manage.py reconcile_payments --loop --interval=${PAYMENT_RECONCILIATION_INTERVAL_SECONDS:-900}
+    command: python manage.py reconcile_payments --loop --interval=${PAYMENT_RECONCILIATION_INTERVAL_SECONDS:-300}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -427,6 +431,7 @@ secrets:
 volumes:
   postgres_data:
   redis_data:
+  celery_beat_state:
   static_data:
   media_data:
   flower_data:
