@@ -12,6 +12,10 @@ app.conf.task_routes = {
     "content.tasks.reconcile_payments": {"queue": "critical"},
     "content.tasks.publish_scheduled_content": {"queue": "default"},
     "content.tasks.deliver_notification_outbox": {"queue": "notifications"},
+    "content.tasks.deliver_transactional_email": {"queue": "notifications"},
+    "content.tasks.deliver_live_class_confirmation": {"queue": "notifications"},
+    "content.tasks.deliver_live_class_reminder": {"queue": "notifications"},
+    "content.tasks.expire_live_class_holds": {"queue": "default"},
 }
 app.autodiscover_tasks()
 
