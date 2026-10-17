@@ -3,9 +3,9 @@ import secrets
 from pathlib import Path
 
 import dj_database_url
+from dotenv import load_dotenv
 
 from amaris_cms.beat_schedule import build_beat_schedule
-from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
