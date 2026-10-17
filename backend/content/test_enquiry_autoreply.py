@@ -53,6 +53,26 @@ class EnquiryAutoReplyTests(TestCase):
         self.assertIn("resp_test_123", enquiry.admin_notes)
         send.assert_called_once_with(fail_silently=False)
 
+    @patch("content.services.enquiry_autoreply.EmailMessage.send")
+    @patch("content.services.enquiry_autoreply._call_openai")
+    def test_partnership_enquiry_is_saved_for_human_review_without_student_autoreply(self, openai, send):
+        serializer = ContactEnquirySerializer(
+            data={
+                "name": "Potential Partner",
+                "email": "partner@example.test",
+                "phone": "",
+                "subject": "Project support — investment",
+                "message": "Organisation: Example Capital\\nPlease arrange an investment partnership discussion.",
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        enquiry = serializer.save()
+
+        enquiry.refresh_from_db()
+        self.assertEqual(enquiry.status, ContactEnquiry.Status.NEW)
+        openai.assert_not_called()
+        send.assert_not_called()
+
     @override_settings(PUBLIC_SITE_URL="https://academy.example.test")
     def test_website_context_includes_registration_verification_and_purchase_workflow(self):
         SiteSettings.objects.create(
