@@ -117,9 +117,7 @@ class LiveClassBookingTests(TestCase):
     def test_availability_ignores_expired_holds_without_writing_on_get(self):
         checkout = self.checkout()
         booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
-        LiveClassBooking.objects.filter(pk=booking.pk).update(
-            hold_expires_at=timezone.now() - timedelta(seconds=1)
-        )
+        LiveClassBooking.objects.filter(pk=booking.pk).update(hold_expires_at=timezone.now() - timedelta(seconds=1))
 
         with CaptureQueriesContext(connection) as queries:
             response = self.client.get(reverse("live-class-slots"), secure=True)
@@ -127,10 +125,7 @@ class LiveClassBookingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual([slot["id"] for slot in response.json()], [str(self.slot.pk)])
         self.assertFalse(
-            any(
-                query["sql"].lstrip().upper().startswith(("UPDATE ", "INSERT ", "DELETE "))
-                for query in queries
-            ),
+            any(query["sql"].lstrip().upper().startswith(("UPDATE ", "INSERT ", "DELETE ")) for query in queries),
             "Anonymous availability requests must not modify the booking table.",
         )
         booking.refresh_from_db()
@@ -174,11 +169,7 @@ class LiveClassBookingTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 3)
-        slot_queries = [
-            query["sql"]
-            for query in queries
-            if 'FROM "content_tutoravailabilityslot"' in query["sql"]
-        ]
+        slot_queries = [query["sql"] for query in queries if 'FROM "content_tutoravailabilityslot"' in query["sql"]]
         self.assertEqual(len(slot_queries), 1, "Available slots and tutor names must use one database query.")
 
     def test_checkout_is_server_priced_at_r250_and_holds_slot(self):
