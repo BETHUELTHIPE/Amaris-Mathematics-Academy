@@ -182,7 +182,7 @@ jobs:
         run: |
           set -euo pipefail
           cd backend
-          for attempt in $(seq 1 32); do
+          for attempt in $(seq 1 15); do
             state="$(python manage.py shell -c '
           import json
           from content.models import Payment
@@ -193,14 +193,10 @@ jobs:
           print("PROVIDER_ITN_PAID="+str(x.status=="paid" and bool(x.gateway_verified_at) and bool(x.provider_reference) and e.exists()))
           ' 2>/dev/null | tail -1)"
             if [[ "$state" == "PROVIDER_ITN_PAID=True" ]];then break;fi
-            if [[ "$attempt" -eq 32 ]];then
+            if [[ "$attempt" -eq 15 ]];then
               echo "AUTHENTIC_ITN_NOT_VERIFIED"
               echo "Safe persisted callback disposition (no merchant data or payload):"
-              python manage.py shell -c '
-              from content.payment_models import PaymentWebhookEvent
-              for event in PaymentWebhookEvent.objects.order_by("-created_at")[:3]:
-                  print("ITN_EVENT_RESULT="+str(event.state)+":"+str(event.last_error_code)+":attempts="+str(event.attempts))
-              ' 2>/dev/null || true
+              python manage.py shell -c 'from content.payment_models import PaymentWebhookEvent; print("ITN_EVENT_RESULTS="+str(list(PaymentWebhookEvent.objects.values_list("state","last_error_code","attempts")[:3])))' 2>/dev/null || true
               echo "Callback request codes only (no secret fields):"
               grep -E 'POST /api/v1/payfast/itn/' /tmp/amaris-itn-server.log | sed -E 's/\?.* HTTP/ HTTP/' | tail -8 || true
               exit 1
