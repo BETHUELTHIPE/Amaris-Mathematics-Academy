@@ -348,6 +348,7 @@ def expire_live_class_holds(_self) -> int:
         hold_expires_at__lte=timezone.now(),
     ).update(status=LiveClassBooking.Status.EXPIRED)
 
+
 @shared_task(bind=True, ignore_result=False, name="content.tasks.runtime_worker_probe")
 def runtime_worker_probe(self, nonce: str) -> dict[str, str]:
     """Side-effect-free broker/worker/result-backend probe for staging operations.
