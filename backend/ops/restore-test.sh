@@ -9,6 +9,8 @@ started_at=$(date +%s)
 status=0
 
 mkdir -p "$metrics_dir"
+# The success flag must belong to this attempt, not a previous run.
+rm -f "$metrics_dir/restore-test-success"
 
 cleanup() {
     finished_at=$(date +%s)
@@ -36,6 +38,11 @@ trap cleanup EXIT INT TERM
 : "${RESTORE_TEST_POSTGRES_USER:?RESTORE_TEST_POSTGRES_USER is required}"
 : "${RESTORE_TEST_POSTGRES_PASSWORD:?RESTORE_TEST_POSTGRES_PASSWORD is required}"
 
+case "$RESTORE_TEST_POSTGRES_DB" in
+    *restore*) ;;
+    *) echo "Refusing a destructive restore to an unmarked database name." >&2; exit 1 ;;
+esac
+
 if [ "$RESTORE_TEST_POSTGRES_HOST" = "${POSTGRES_HOST:-db}" ]; then
     echo "Refusing to run a restore test against the production database host." >&2
     exit 1
@@ -44,10 +51,20 @@ fi
 export RESTIC_PASSWORD_FILE
 export PGPASSWORD=$RESTORE_TEST_POSTGRES_PASSWORD
 
-restic restore latest --tag automated --target "$restore_dir"
+case "${BACKUP_ENVIRONMENT:-}" in
+    "") restic restore latest --tag automated --target "$restore_dir" ;;
+    staging|production|ci)
+        restic restore latest --tag "automated,amaris,$BACKUP_ENVIRONMENT" --target "$restore_dir" ;;
+    *) echo "Invalid BACKUP_ENVIRONMENT" >&2; exit 1 ;;
+esac
 dump_file=$(find "$restore_dir" -type f -name database.dump -print -quit)
 [ -n "$dump_file" ] || { echo "The latest backup has no database dump." >&2; exit 1; }
 pg_restore --list "$dump_file" >/dev/null
+if [ "${REQUIRE_MEDIA_BACKUP:-false}" = "true" ]; then
+    media_file=$(find "$restore_dir" -type f -name media.tar -print -quit)
+    [ -n "$media_file" ] || { echo "Backup is missing required media archive." >&2; exit 1; }
+    tar -tf "$media_file" >/dev/null
+fi
 
 dropdb --if-exists \
     --host="$RESTORE_TEST_POSTGRES_HOST" \
