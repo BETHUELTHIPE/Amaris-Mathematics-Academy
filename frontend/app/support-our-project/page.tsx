@@ -7,13 +7,12 @@ import {
   HandHeart,
   HeartHandshake,
   Laptop,
-  Mail,
   ShieldCheck,
   Users,
 } from "lucide-react";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
-import { getManagedBrand } from "@/lib/cms";
+import { PartnershipEnquiryForm } from "./partnership-enquiry-form";
 
 export const metadata: Metadata = {
   title: "Support Our Project",
@@ -49,7 +48,6 @@ const waysToHelp = [
 ];
 
 export default async function SupportOurProjectPage() {
-  const academyBrand = await getManagedBrand();
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] text-[#07152d]">
@@ -61,17 +59,17 @@ export default async function SupportOurProjectPage() {
             <HandHeart className="size-5" aria-hidden="true" /> Support Our Project
           </p>
           <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-tight tracking-[-.04em] sm:text-6xl">
-            Help more learners keep moving forward.
+            Invest in a future where more learners can succeed.
           </h1>
           <p className="mt-6 max-w-3xl text-lg leading-8 text-white/75">
             Amaris Mathematics Academy is building flexible Mathematics learning for South Africans at school, in TVET programmes and at university. Your partnership can help us reach learners who need clear explanations and opportunities to continue their education.
           </p>
           <div className="mt-9 flex flex-wrap gap-4">
             <Link
-              href="/contact"
+              href="#partnership-enquiry"
               className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#ffcc66] px-6 py-3 font-semibold text-[#07152d] transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
             >
-              Discuss how to help <ArrowRight className="size-5" aria-hidden="true" />
+              Discuss an investment or partnership <ArrowRight className="size-5" aria-hidden="true" />
             </Link>
             <Link
               href="/about"
@@ -137,35 +135,23 @@ export default async function SupportOurProjectPage() {
           <div className="mt-8 flex items-start gap-3 rounded-2xl border border-[#dce4ef] bg-[#f5f7fb] p-5">
             <ShieldCheck className="mt-0.5 size-6 shrink-0 text-[#1f5bbd]" aria-hidden="true" />
             <p className="text-sm leading-7 text-[#526781]">
-              <strong className="text-[#07152d]">Payment safety:</strong> This page does not collect donations or card details. Do not send banking information, passwords or payment details in an enquiry. Any future payment method will be confirmed through an official Amaris channel.
+              <strong className="text-[#07152d]">Payment safety:</strong> This enquiry form does not collect donations or card details. Do not send banking information, passwords or payment details in an enquiry. Any future payment method will be confirmed through an official Amaris channel.
             </p>
           </div>
         </div>
       </section>
 
-      <section className="px-5 py-16 lg:px-8 lg:py-20">
-        <div className="mx-auto flex max-w-7xl flex-col justify-between gap-8 rounded-[2rem] bg-[#0b2a5b] p-8 text-white md:flex-row md:items-center sm:p-12">
-          <div className="max-w-2xl">
-            <p className="text-sm font-semibold uppercase tracking-[.16em] text-[#ffcc66]">Get involved</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Let&apos;s talk about what we can build together.</h2>
-            <p className="mt-4 text-base leading-8 text-white/70">
-              Send our team a short message about how you would like to support the Amaris education project.
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-3">
-            <Link
-              href="/contact"
-              className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#ffcc66] px-6 py-3 font-semibold text-[#07152d] transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
-            >
-              Contact the team <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-            <a
-              href={academyBrand.emailHref}
-              className="inline-flex min-h-12 items-center gap-2 rounded-full border border-white/45 px-6 py-3 font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
-            >
-              <Mail className="size-4" aria-hidden="true" /> Email us
-            </a>
-          </div>
+      <section id="partnership-enquiry" className="scroll-mt-24 px-5 py-16 lg:px-8 lg:py-20" aria-labelledby="partnership-heading">
+        <div className="mx-auto max-w-5xl rounded-[2rem] border border-[#dce4ef] bg-white p-6 shadow-lg sm:p-12">
+          <p className="text-sm font-bold uppercase tracking-[.16em] text-[#1f5bbd]">For investors and partners</p>
+          <h2 id="partnership-heading" className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Explore an opportunity with Amaris</h2>
+          <p className="mt-4 max-w-3xl text-base leading-8 text-[#526781]">
+            This form is for potential investors, donors, sponsors, businesses and strategic partners—not for student registration or course enquiries. Introduce your organisation and proposal, and our team will discuss possible next steps. Submitting this form does not create a financial commitment.
+          </p>
+          <PartnershipEnquiryForm />
+          <p className="mt-6 text-sm text-[#526781]">
+            Are you a student needing course or account support? Please use the <Link href="/contact" className="font-semibold text-[#1f5bbd] underline">student contact page</Link>.
+          </p>
         </div>
       </section>
       <Footer />
