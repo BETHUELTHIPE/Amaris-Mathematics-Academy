@@ -27,7 +27,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DJANGO_DEBUG: "true"
+      DJANGO_DEBUG: "false"
       DJANGO_SECRET_KEY: "synthetic-payfast-itn-acceptance-only"
       DJANGO_ALLOWED_HOSTS: ".trycloudflare.com,localhost,127.0.0.1"
       DATABASE_URL: "postgresql://amaris_itn@127.0.0.1:5432/amaris_itn"
@@ -86,10 +86,10 @@ jobs:
           python manage.py runserver 127.0.0.1:8000 --noreload > /tmp/amaris-itn-server.log 2>&1 &
           echo $! > /tmp/amaris-itn-server.pid
           for i in $(seq 1 45); do
-            if curl -fsS http://127.0.0.1:8000/health/ready/ >/dev/null;then break;fi
+            if curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/health/ready/ >/dev/null;then break;fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:8000/health/ready/ >/dev/null
+          curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/health/ready/ >/dev/null
           curl -fLsS --retry 3 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared
           chmod +x /tmp/cloudflared
           /tmp/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000 > /tmp/amaris-cloudflared.log 2>&1 &
@@ -108,8 +108,30 @@ jobs:
           else:raise SystemExit('HTTPS_CALLBACK_TUNNEL=UNAVAILABLE')
           PY
           origin="$(cat /tmp/amaris-itn-host)"
-          curl -fLsS --max-time 15 "$origin/health/ready/" >/dev/null
-          echo "EXTERNAL_ISOLATED_DJANGO_HEALTH=PASS"
+          # Quick Tunnel names take time to publish through public DNS.
+          # Never post PayFast payments to a hostname that cannot be resolved.
+          python - <<'PY'
+          import pathlib, socket, time, urllib.parse
+          value=pathlib.Path('/tmp/amaris-itn-host').read_text()
+          host=urllib.parse.urlparse(value).hostname
+          for i in range(55):
+              try:
+                  socket.getaddrinfo(host,443)
+                  print('HTTPS_CALLBACK_PUBLIC_DNS=PASS')
+                  break
+              except OSError:
+                  time.sleep(2)
+          else:
+              raise SystemExit('HTTPS_CALLBACK_PUBLIC_DNS=UNAVAILABLE')
+          PY
+          for attempt in $(seq 1 12); do
+            if curl -fLsS --max-time 12 "$origin/health/ready/" >/dev/null;then
+              echo "EXTERNAL_ISOLATED_DJANGO_HEALTH=PASS"
+              break
+            fi
+            if [ "$attempt" -eq 12 ];then echo "EXTERNAL_ISOLATED_DJANGO_HEALTH=FAILED";exit 1;fi
+            sleep 4
+          done
       - name: Generate real signed course checkout
         shell: bash
         run: |
