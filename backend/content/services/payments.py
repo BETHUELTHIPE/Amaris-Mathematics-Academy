@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from functools import partial
 from typing import Protocol
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
 
 from django.db import transaction
@@ -116,6 +116,28 @@ def generate_payfast_signature(fields: Mapping[str, str], passphrase: str = "") 
     return hashlib.md5(_signature_parameter_string(fields, passphrase).encode("utf-8")).hexdigest()
 
 
+def _itn_parameter_string(fields: Mapping[str, str], passphrase: str = "") -> str:
+    """PayFast ITN canonical form includes posted empty values.
+
+    PayFast's checkout form excludes empty fields, but its ITN verification
+    algorithm iterates the complete POST payload in original order and stops
+    at the signature field. Do not alphabetize, omit empty values or include
+    the signature itself.
+    """
+    pairs = []
+    for key, value in fields.items():
+        if key == "signature":
+            break
+        pairs.append(f"{key}={quote_plus(str(value))}")
+    if passphrase:
+        pairs.append(f"passphrase={quote_plus(passphrase.strip())}")
+    return "&".join(pairs)
+
+
+def generate_payfast_itn_signature(fields: Mapping[str, str], passphrase: str = "") -> str:
+    return hashlib.md5(_itn_parameter_string(fields, passphrase).encode("utf-8")).hexdigest()
+
+
 def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: str) -> CheckoutSession:
     """Create a server-priced, signed PayFast checkout without granting access."""
 
@@ -194,13 +216,13 @@ class HttpPayFastVerificationGateway:
         supplied_signature = str(payload.get("signature", "")).strip().lower()
         if not supplied_signature:
             return False
-        expected_signature = generate_payfast_signature(payload, passphrase)
+        expected_signature = generate_payfast_itn_signature(payload, passphrase)
         if not hmac.compare_digest(supplied_signature, expected_signature):
             return False
 
-        encoded = urlencode(
-            [(str(key), str(value)) for key, value in payload.items() if key != "signature" and str(value) != ""]
-        ).encode("utf-8")
+        # PayFast server-side validation uses the exact posted ITN variables
+        # in their original order, including blank values (without the salt).
+        encoded = _itn_parameter_string(payload).encode("utf-8")
         validate_url = PAYFAST_SANDBOX_VALIDATE_URL if _payfast_mode() == "sandbox" else PAYFAST_LIVE_VALIDATE_URL
         request = Request(
             validate_url,
