@@ -1,0 +1,123 @@
+name: Three Booking Payment Services - Real PayFast Sandbox
+
+on:
+  pull_request:
+    branches: [production-release-20260923]
+    paths:
+      - .github/workflows/all-booking-payfast-sandbox-wallet.yml
+      - backend/scripts/sandbox_booking_checkout_matrix.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-gateway-matrix:
+    name: PayFast sandbox real-wallet course, classes and video requests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DJANGO_DEBUG: "true"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      DJANGO_SECRET_KEY: "isolated-github-sandbox-test-only"
+      DATABASE_URL: "sqlite:////tmp/amaris-payfast-three-services.sqlite3"
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      SUPABASE_STORAGE_ENABLED: "false"
+      PAYFAST_MODE: "sandbox"
+      PAYFAST_ENV: "sandbox"
+      PAYFAST_MERCHANT_ID: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_ID }}
+      PAYFAST_MERCHANT_KEY: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_KEY }}
+      PAYFAST_PASSPHRASE: ${{ secrets.PAYFAST_SANDBOX_PASSPHRASE }}
+      PUBLIC_SITE_URL: https://example.invalid
+      PUBLIC_API_URL: https://example.invalid
+      PAYFAST_NOTIFY_URL: https://example.invalid/api/v1/payfast/itn/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Confirm matching sandbox secrets are configured
+        run: |
+          test "$PAYFAST_MODE" = "sandbox"
+          test -n "$PAYFAST_MERCHANT_ID"
+          test -n "$PAYFAST_MERCHANT_KEY"
+          echo "PAYFAST_SANDBOX_TEST_CONFIG=READY"
+      - name: Install isolated Django and Chromium
+        run: |
+          python -m pip install -r backend/requirements.txt >/dev/null
+          mkdir -p /tmp/amaris-checkout-browser
+          cd /tmp/amaris-checkout-browser
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-save playwright@1.56.1 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Seed real signed checkouts from all three Amaris service modules
+        run: |
+          cd backend
+          python manage.py migrate --noinput >/dev/null
+          python manage.py shell -c 'exec(open("scripts/sandbox_booking_checkout_matrix.py").read())'
+      - name: Test six PayFast hosted checkouts and complete three sandbox wallet payments
+        run: |
+          cd /tmp/amaris-checkout-browser
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {chromium} from 'playwright';
+          import assert from 'node:assert/strict';
+          const checkouts=JSON.parse(fs.readFileSync('/tmp/amaris-all-payfast-bookings.json','utf8'));
+          const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+          const failures=[];
+          let walletCompleted=0;
+          for(const checkout of checkouts){
+            const page=await browser.newPage();
+            const esc=value=>String(value).replaceAll('&','&amp;').replaceAll('"','&quot;');
+            const hidden=Object.entries(checkout.fields).map(([k,v])=>'<input type="hidden" name="'+esc(k)+'" value="'+esc(v)+'">').join('');
+            try{
+              assert.equal(checkout.url,'https://sandbox.payfast.co.za/eng/process');
+              await page.setContent('<form action="'+checkout.url+'" method="post">'+hidden+'<button id="checkout">PayFast sandbox</button></form>');
+              await page.locator('#checkout').click();
+              await page.waitForURL(url=>url.hostname==='sandbox.payfast.co.za',{timeout:45000});
+              await page.waitForLoadState('domcontentloaded',{timeout:40000}).catch(()=>{});
+              await page.waitForTimeout(900);
+              const body=await page.locator('body').innerText();
+              const rejected=/Error: 400|Invalid merchant|signature:|Invalid signature|could not process your transaction/i.test(body);
+              const accepted=/Complete Payment/.test(body)&&body.replaceAll(',','').includes('R '+checkout.amount);
+              console.log('SERVICE_GATEWAY='+JSON.stringify({service:checkout.kind,amount:checkout.amount,accepted:accepted&&!rejected,rejected}));
+              assert(accepted&&!rejected,'Sandbox checkout rejected for '+checkout.kind+': '+body.slice(0,300));
+              const completeWallet=['course_950','live_class_1h','video_chapter_topic'].includes(checkout.kind);
+              if(completeWallet){
+                await page.getByText('Complete Payment',{exact:true}).first().click({timeout:15000});
+                await page.getByText('Your payment was successful!',{exact:false}).waitFor({timeout:65000});
+                console.log('SANDBOX_WALLET_SUCCESS='+checkout.kind);
+                walletCompleted++;
+              }
+            }catch(error){
+              failures.push({service:checkout.kind,message:String(error).slice(0,330)});
+              console.log('SERVICE_GATEWAY_FAILURE='+JSON.stringify(failures[failures.length-1]));
+            }finally{
+              await page.close();
+            }
+          }
+          await browser.close();
+          console.log('SANDBOX_GATEWAY_ACCEPTED_COUNT='+String(checkouts.length-failures.length));
+          console.log('SANDBOX_WALLET_COMPLETED_COUNT='+walletCompleted);
+          assert.deepEqual(failures,[],'Provider checkout failure detected');
+          assert.equal(checkouts.length,6);
+          assert.equal(walletCompleted,3,'Did not observe wallet completion for all three service types');
+          console.log('RESULT=ALL_THREE_BOOKING_PAYMENT_SERVICES_SANDBOX_WALLET_PASSED');
+          NODE
+      - name: Verify no untrusted browser success granted service fulfilment
+        run: |
+          cd backend
+          python manage.py shell -c '
+          from content.models import Payment,LiveClassBooking,VideoRequest,Enrollment
+          assert Payment.objects.count()==1 and Payment.objects.get().status=="pending"
+          assert LiveClassBooking.objects.count()==3 and not LiveClassBooking.objects.exclude(status="pending_payment").exists()
+          assert VideoRequest.objects.count()==2 and not VideoRequest.objects.exclude(status="pending_payment").exists()
+          assert Enrollment.objects.count()==0
+          print("NO_PROVIDER_ITN_NO_FULFILMENT=PASS")
+          '
