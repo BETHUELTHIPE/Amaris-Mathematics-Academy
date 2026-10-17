@@ -422,11 +422,59 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Promote exact main commit to Render staging branch
+      # A GITHUB_TOKEN push does not reliably trigger external Render deployment.
+      # Fail closed if the staging database isolation and deploy hook have not
+      # been verified. Never rewrite staging history or deploy production here.
+      - name: Validate staging isolation and exact Render deploy hook
+        shell: bash
+        env:
+          STAGING_DB_ISOLATION_VERIFIED: ${{ vars.STAGING_DB_ISOLATION_VERIFIED }}
+          STAGING_RENDER_DEPLOY_HOOK_URL: ${{ secrets.STAGING_RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ "$STAGING_DB_ISOLATION_VERIFIED" != "true" ]; then
+            echo "::error::Confirm the Render staging service uses an isolated nonproduction database before promotion."
+            exit 1
+          fi
+          if [ -z "$STAGING_RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::Protected STAGING_RENDER_DEPLOY_HOOK_URL is required to deploy the exact staging commit."
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+          url = urlsplit(os.environ["STAGING_RENDER_DEPLOY_HOOK_URL"])
+          if (
+              url.scheme != "https"
+              or url.hostname != "api.render.com"
+              or url.path != "/deploy/srv-dam2iivcgkoc7383tq50"
+              or not url.query
+              or url.username is not None
+              or url.password is not None
+              or url.fragment
+          ):
+              raise SystemExit("Invalid or wrong-service staging deploy hook (expected the known staging backend only).")
+          PY
+
+      - name: Fast-forward staging to the tested commit without rewriting history
         shell: bash
         run: |
           set -euo pipefail
-          git push origin "${GITHUB_SHA}:refs/heads/staging" --force
+          git fetch origin staging
+          if ! git merge-base --is-ancestor origin/staging "$GITHUB_SHA"; then
+            echo "::error::Staging diverged from main. Reconcile through a reviewed PR; force push is forbidden."
+            exit 1
+          fi
+          git push origin "${GITHUB_SHA}:refs/heads/staging"
+
+      - name: Trigger the selected Render staging backend deployment
+        shell: bash
+        env:
+          STAGING_RENDER_DEPLOY_HOOK_URL: ${{ secrets.STAGING_RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          # Credentials remain masked in GitHub secrets; do not log the hook URL.
+          curl --fail --silent --show-error --max-time 30 "$STAGING_RENDER_DEPLOY_HOOK_URL" > /dev/null
 
       - name: Wait for exact Render staging release
         shell: bash
