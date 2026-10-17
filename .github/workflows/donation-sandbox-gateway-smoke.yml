@@ -22,8 +22,10 @@ jobs:
       DATABASE_SSL_REQUIRED: "false"
       PAYFAST_MODE: "sandbox"
       PAYFAST_ENV: "sandbox"
-      # PayFast documentation: default sandbox merchant 10000100 has no passphrase.
-      PAYFAST_PASSPHRASE: ""
+      # Configure these as GitHub repository secrets; never use live merchant credentials.
+      PAYFAST_MERCHANT_ID: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_ID }}
+      PAYFAST_MERCHANT_KEY: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_KEY }}
+      PAYFAST_PASSPHRASE: ${{ secrets.PAYFAST_SANDBOX_PASSPHRASE }}
       DONATIONS_ENABLED: "true"
       DONATIONS_LIVE_ENABLED: "false"
       PUBLIC_SITE_URL: "https://example.invalid"
@@ -37,6 +39,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - name: Verify PayFast sandbox-only credentials are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${PAYFAST_MERCHANT_ID:-}" ] || [ -z "${PAYFAST_MERCHANT_KEY:-}" ]; then
+            echo "::error::Missing PAYFAST_SANDBOX_MERCHANT_ID or PAYFAST_SANDBOX_MERCHANT_KEY repository secrets"
+            exit 1
+          fi
+          echo "PAYFAST_SANDBOX_CREDENTIALS_PRESENT=YES"
       - name: Install Django and Chromium
         run: |
           python -m pip install -r backend/requirements.txt >/dev/null
