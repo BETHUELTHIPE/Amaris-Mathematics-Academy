@@ -12,7 +12,7 @@ const partnershipSchema = z.object({
   role: z.string().trim().min(2, "Enter your role.").max(80),
   phone: z.string().trim().max(30),
   interest: z.enum(["investment", "sponsorship", "strategic-partnership", "technology-partnership", "other"], { message: "Select a partnership interest." }),
-  message: z.string().trim().min(30, "Tell us more about your proposal (at least 30 characters).").max(3000),
+  message: z.string().trim().min(30, "Tell us more about your proposal (at least 30 characters).").max(1500),
   consent: z.literal("on", { message: "Consent is required to contact you." }),
   website: z.string().max(0).optional(),
 });
