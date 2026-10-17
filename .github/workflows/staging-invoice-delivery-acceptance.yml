@@ -53,6 +53,18 @@ jobs:
               assert expected in source, expected
           print("STAGING_RECEIPT_SCOPE_GUARDS=PASS")
           PY
+          python - <<'PY'
+          from pathlib import Path
+          import runpy
+          fn = runpy.run_path(str(Path("backend/scripts/staging_invoice_acceptance.py")))
+          try:
+              fn["check_environment"]()
+          except RuntimeError as exc:
+              assert "STAGING_RECEIPT_ACCEPTANCE_ENABLED" in str(exc)
+              print("NO_SECRETS_FAIL_CLOSED=PASS")
+          else:
+              raise AssertionError("Staging acceptance incorrectly ran without guarded secrets.")
+          PY
 
   staging-real-receipt:
     name: Real staging SMTP / Gmail / Supabase / student invoice
