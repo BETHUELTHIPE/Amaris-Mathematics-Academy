@@ -20,6 +20,9 @@ export async function Footer() {
           <p className="text-sm font-semibold text-[#ffcc66]">Explore</p>
           <div className="mt-4 grid gap-3 text-sm text-white/65">
             {links.map(({ label, url, open_in_new_tab }) => <a key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined}>{label}</a>)}
+            {!links.some(({ url }) => url === "/support-our-project") && (
+              <a href="/support-our-project" className="inline-flex min-h-10 items-center font-semibold text-[#ffcc66] transition hover:text-white focus-visible:underline">Support Our Project</a>
+            )}
             <a href="/documents">Documents & invoices</a>
           </div>
         </div>
