@@ -7,7 +7,7 @@ on:
       - backend/scripts/staging_invoice_acceptance.py
       - .github/workflows/staging-invoice-delivery-acceptance.yml
   push:
-    branches: [staging]
+    branches: [staging, feature/staging-smtp-supabase-invoice-gate-20261017]
     paths:
       - backend/scripts/staging_invoice_acceptance.py
       - .github/workflows/staging-invoice-delivery-acceptance.yml
@@ -23,7 +23,7 @@ concurrency:
 jobs:
   no-secrets-preflight:
     name: Syntax and scope guard check (no secrets/email)
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/feature/staging-smtp-supabase-invoice-gate-20261017'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
