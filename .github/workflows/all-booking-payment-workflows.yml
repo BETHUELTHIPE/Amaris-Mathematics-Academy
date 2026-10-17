@@ -93,6 +93,9 @@ jobs:
       - name: Install locked live frontend
         working-directory: live-web/frontend
         run: npm ci --ignore-scripts
+      - name: Build live frontend server for payment route contract imports
+        working-directory: live-web/frontend
+        run: npm run build
       - name: Check booking and video client contracts
         working-directory: live-web/frontend
         run: |
