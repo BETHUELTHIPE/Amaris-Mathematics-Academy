@@ -133,8 +133,15 @@ jobs:
               }catch(error){
                 console.log('SANDBOX_WALLET_CLICK_EXCEPTION='+String(error).slice(0,250));
               }
-              await page.waitForTimeout(4500);
-              const after=(await page.locator('body').innerText().catch(()=>'' )).slice(0,1100);
+              // Sandbox can take time after wallet confirmation, especially with deliberately
+              // unreachable example.invalid return/ITN targets in this isolated smoke test.
+              let after='';
+              for(let n=0;n<15;n++){
+                await page.waitForTimeout(2500);
+                after=(await page.locator('body').innerText().catch(()=>'')).slice(0,1100);
+                if(n%4===0)console.log('SANDBOX_WALLET_POLL_'+n+'='+JSON.stringify(after.slice(0,210)));
+                if(navigation.some(x=>x.host==='example.invalid') || /payment (was |has been )?(successful|completed)|thank you for your payment|payment complete|payment successful/i.test(after))break;
+              }
               console.log('SANDBOX_WALLET_AFTER_CLICK_TEXT='+JSON.stringify(after));
               console.log('SANDBOX_WALLET_NAVIGATION='+JSON.stringify(navigation));
               const redirectHit=navigation.some(x=>x.host==='example.invalid');
