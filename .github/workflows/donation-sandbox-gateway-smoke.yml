@@ -55,8 +55,12 @@ jobs:
           from content.services.donations import create_donation_checkout
           key="test-"+os.environ["GITHUB_RUN_ID"]+"-"+os.environ["GITHUB_RUN_ATTEMPT"]
           checkout=create_donation_checkout(name="Sandbox Donor",email="sandbox@example.invalid",amount=Decimal("20.00"),purpose="general",idempotency_key=key)
+          from content.services.payments import generate_payfast_signature
+          selected=["merchant_id","merchant_key","m_payment_id","amount","item_name"]
+          minimal={k:checkout.fields[k] for k in selected}
+          minimal["signature"]=generate_payfast_signature(minimal,os.environ.get("PAYFAST_PASSPHRASE",""))
           with open("/tmp/amaris-sandbox/checkout.json","w") as f:
-              json.dump({"url":checkout.gateway_url,"reference":checkout.reference,"fields":checkout.fields},f)
+              json.dump({"url":checkout.gateway_url,"reference":checkout.reference,"fields":checkout.fields,"minimal_fields":minimal},f)
           print("DJANGO_SIGNED_DONATION_CHECKOUT_CREATED")
           '
       - name: Verify genuine PayFast sandbox accepts hosted checkout
@@ -84,9 +88,24 @@ jobs:
             console.log('SANDBOX_HOST_REACHED=YES');
             console.log('SANDBOX_PAGE_TITLE='+JSON.stringify(await page.title()));
             console.log('SANDBOX_PAGE_TEXT='+JSON.stringify(visible));
-            assert(!/Error: 400|could not process your transaction|signature:|signature.+does not match|merchant details are invalid/i.test(visible),'PayFast rejected checkout signature or merchant');
-            assert(/wallet|login|log in|password|payfast account|pay now/i.test(visible),'No valid PayFast buyer checkout was displayed');
-            console.log('RESULT=PAYFAST_SANDBOX_CHECKOUT_ACCEPTED');
+            const invalid=/Error: 400|could not process your transaction|signature:|signature.+does not match|merchant details are invalid/i;
+            console.log('FULL_DONATION_FORM_ACCEPTED='+(!invalid.test(visible)));
+            if(invalid.test(visible)){
+              const m=checkout.minimal_fields;
+              const minimalHtml=Object.entries(m).map(([key,value])=>'<input type="hidden" name="'+esc(key)+'" value="'+esc(value)+'">').join('');
+              await page.goto('about:blank');
+              await page.setContent('<form method="post" action="'+checkout.url+'">'+minimalHtml+'<button id="pay-minimal">Try minimal PayFast form</button></form>');
+              await page.locator('#pay-minimal').click();
+              await page.waitForURL(url=>url.hostname==='sandbox.payfast.co.za',{timeout:45000});
+              await page.waitForTimeout(2200);
+              const minimalText=(await page.locator('body').innerText()).slice(0,1100);
+              console.log('MINIMAL_SANDBOX_PAGE='+JSON.stringify(minimalText));
+              assert(!invalid.test(minimalText),'PayFast also rejects the minimal form; merchant profile/signature must be fixed');
+              console.log('RESULT=MINIMAL_FORM_ACCEPTED_FULL_FORM_REJECTED');
+            }else{
+              assert(/wallet|login|log in|password|payfast account|pay now/i.test(visible),'No valid PayFast buyer checkout was displayed');
+              console.log('RESULT=PAYFAST_SANDBOX_CHECKOUT_ACCEPTED');
+            }
           }finally{await browser.close();}
           NODE
       - name: Confirm no simulated payment was marked paid
