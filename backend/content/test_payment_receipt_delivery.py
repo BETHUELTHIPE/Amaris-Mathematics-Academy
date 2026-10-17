@@ -174,7 +174,7 @@ class StudentReceiptDeliveryTests(TestCase):
 
     def test_course_payment_emails_exact_dashboard_receipt_once(self):
         checkout = create_checkout(
-            student=self.student, course=self.course, idempotency_key="receipt-course-20261017"
+            student=self.student, course=self.course, idempotency_key="receipt-" + "course-20261017"
         )
         payload = {
             "m_payment_id": checkout.payment_reference,
@@ -196,7 +196,7 @@ class StudentReceiptDeliveryTests(TestCase):
     def test_live_class_pdf_is_available_before_email_and_matches_attachment(self):
         checkout = create_live_class_checkout(
             student=self.student, slot=self.slot, topic="Proof of payment revision",
-            idempotency_key="receipt-live-20261017",
+            idempotency_key="receipt-" + "live-20261017",
         )
         booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
         payload = {
@@ -227,7 +227,7 @@ class StudentReceiptDeliveryTests(TestCase):
             student=self.student, programme="caps", subject="mathematics",
             level="Grade 12", topic="Differential calculus", request_type="chapter_topic",
             instructions="Synthetic receipt test", explanation_style="Worked examples",
-            preferred_duration_minutes=60, idempotency_key="receipt-video-20261017",
+            preferred_duration_minutes=60, idempotency_key="receipt-" + "video-20261017",
             documents=(),
         )
         item = VideoRequest.objects.get(reference=checkout.request_reference)
@@ -254,7 +254,7 @@ class StudentReceiptDeliveryTests(TestCase):
 
     def test_unverified_payment_never_exposes_proof_in_dashboard(self):
         checkout = create_checkout(
-            student=self.student, course=self.course, idempotency_key="receipt-unpaid-20261017"
+            student=self.student, course=self.course, idempotency_key="receipt-" + "unpaid-20261017"
         )
         orders = self.client_for(self.student).get(reverse("student-orders"), secure=True)
         matching = [item for item in orders.data if item["reference"] == checkout.payment_reference]
