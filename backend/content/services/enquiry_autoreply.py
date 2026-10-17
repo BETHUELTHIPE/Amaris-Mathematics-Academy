@@ -333,6 +333,10 @@ def _append_admin_note(enquiry: ContactEnquiry, note: str, *, mark_in_progress: 
 
 
 def auto_reply_to_enquiry(enquiry: ContactEnquiry) -> AutoReplyResult:
+    # Investor proposals require human review; never send student-course guidance in response.
+    if enquiry.subject.casefold().startswith("project support — "):
+        return AutoReplyResult(False, "partnership-human-review")
+
     if not getattr(settings, "AI_ENQUIRY_AUTOREPLY_ENABLED", True):
         return AutoReplyResult(False, "disabled")
 
