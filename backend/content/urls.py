@@ -3,6 +3,11 @@ from rest_framework.routers import DefaultRouter
 
 from .live_class_views import LiveClassBookingStatusView, LiveClassCheckoutView, LiveClassSlotView
 from .payfast_views import PayFastITNView
+from .staging_payment_views import (
+    StagingCourseInvoiceView,
+    StagingLiveClassInvoiceView,
+    StagingStudentOrdersView,
+)
 from .student_views import (
     AcceptancePaymentCompleteView,
     AcceptanceSeedView,
@@ -50,6 +55,17 @@ urlpatterns = [
         "student/acceptance/payments/<str:reference>/complete/",
         AcceptancePaymentCompleteView.as_view(),
         name="student-acceptance-payment-complete",
+    ),
+    path("student/orders/", StagingStudentOrdersView.as_view(), name="student-orders"),
+    path(
+        "student/orders/<str:reference>/invoice/",
+        StagingCourseInvoiceView.as_view(),
+        name="student-course-invoice",
+    ),
+    path(
+        "student/live-classes/bookings/<str:reference>/invoice/",
+        StagingLiveClassInvoiceView.as_view(),
+        name="live-class-invoice-download",
     ),
     path("student/courses/", StudentCoursesView.as_view(), name="student-courses"),
     path("student/lessons/<slug:course_slug>/<slug:lesson_slug>/", StudentLessonView.as_view(), name="student-lesson"),
