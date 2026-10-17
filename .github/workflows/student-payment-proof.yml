@@ -1,0 +1,69 @@
+name: Student Payment Proof Delivery
+
+on:
+  pull_request:
+    branches: [production-release-20260923]
+    paths:
+      - backend/content/test_payment_receipt_delivery.py
+      - backend/content/live_class_views.py
+      - backend/content/student_views.py
+      - backend/content/video_request_views.py
+      - .github/workflows/student-payment-proof.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  receipts:
+    name: Verified payment → email PDF → student dashboard PDF
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_receipt_ci
+          POSTGRES_USER: amaris_receipt_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U amaris_receipt_ci -d amaris_receipt_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://amaris_receipt_ci@127.0.0.1:5432/amaris_receipt_ci
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      PAYFAST_MODE: sandbox
+      PAYFAST_ENV: sandbox
+      EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
+      SUPABASE_STORAGE_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Set ephemeral Django secret; deny real PayFast credentials
+        run: |
+          secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$secret"
+          echo "DJANGO_SECRET_KEY=$secret" >> "$GITHUB_ENV"
+          test -z "$(printenv PAYFAST_MERCHANT_ID || true)"
+          test -z "$(printenv PAYFAST_MERCHANT_KEY || true)"
+      - name: Install locked development dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Check Django configuration and migration drift
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+      - name: Test email-PDF, private archive, dashboard and ownership
+        run: |
+          python manage.py test --verbosity=2 --noinput             content.test_payment_receipt_delivery             content.test_payments             content.test_live_classes             content.test_video_requests             content.test_invoice_archive             content.test_student_api

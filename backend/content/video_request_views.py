@@ -123,7 +123,7 @@ def _status_payload(request: VideoRequest) -> dict:
         "estimated_ready_from": eta_from,
         "estimated_ready_to": eta_to,
         "invoice_number": request.invoice_number,
-        "invoice_ready": bool(request.invoice_number and request.confirmation_sent_at),
+        "invoice_ready": bool(request.invoice_number and request.gateway_verified_at),
         "document_count": request.documents.count(),
         "video": video,
     }
