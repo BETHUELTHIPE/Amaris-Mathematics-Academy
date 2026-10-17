@@ -168,6 +168,7 @@ class PayFastPaymentAuthorityTests(TestCase):
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    STAGING_RECEIPTS_ALLOW_LOCAL_TEST_STORAGE=True,
         DEFAULT_FROM_EMAIL="Amaris <noreply@example.test>",
     )
     def test_verified_payment_notification_is_delivered_once_from_outbox(self):

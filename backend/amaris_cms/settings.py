@@ -265,6 +265,12 @@ else:
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 
+# Staging receipts must never fall back to the public local media directory.
+# Enable only after a SEPARATE Supabase staging project and private bucket are verified.
+STAGING_RECEIPTS_ENABLED = env_bool("STAGING_RECEIPTS_ENABLED", False)
+STAGING_SUPABASE_PROJECT_REF = os.getenv("STAGING_SUPABASE_PROJECT_REF", "")
+STAGING_RECEIPTS_ALLOW_LOCAL_TEST_STORAGE = False
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
