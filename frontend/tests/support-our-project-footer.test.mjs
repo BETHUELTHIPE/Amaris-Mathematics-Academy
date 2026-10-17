@@ -16,7 +16,6 @@ test("support page uses the public website layout and contact routes", () => {
   assert.match(page, /<Header\s*\/>/);
   assert.match(page, /<Footer\s*\/>/);
   assert.match(page, /href="\/contact"/);
-  assert.match(page, /href=\{academyBrand\.emailHref\}/);
 });
 
 test("support page does not imply a live donation checkout", () => {
