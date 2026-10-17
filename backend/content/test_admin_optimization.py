@@ -66,10 +66,7 @@ class AdminPerformanceTests(TestCase):
 
         changelist = self.changelist(Lesson)
         with self.assertNumQueries(1):
-            labels = [
-                (lesson.module.title, lesson.module.course.title)
-                for lesson in changelist.result_list
-            ]
+            labels = [(lesson.module.title, lesson.module.course.title) for lesson in changelist.result_list]
 
         self.assertEqual(len(labels), 12)
         self.assertTrue(all(title == course.title for _, title in labels))
@@ -86,9 +83,7 @@ class AdminPerformanceTests(TestCase):
 
         changelist = self.changelist(ContactEnquiry)
         with self.assertNumQueries(1):
-            usernames = [
-                enquiry.assigned_to.username for enquiry in changelist.result_list
-            ]
+            usernames = [enquiry.assigned_to.username for enquiry in changelist.result_list]
 
         self.assertEqual(usernames, [self.superuser.username] * 12)
 
@@ -99,9 +94,7 @@ class AdminPerformanceTests(TestCase):
     def test_site_settings_add_permission_respects_django_permissions(self):
         settings_admin = admin.site._registry[SiteSettings]
         request = RequestFactory().get("/admin/content/sitesettings/add/")
-        request.user = get_user_model().objects.create_user(
-            username="limited-staff", is_staff=True
-        )
+        request.user = get_user_model().objects.create_user(username="limited-staff", is_staff=True)
         self.assertFalse(settings_admin.has_add_permission(request))
 
         request.user = self.superuser
