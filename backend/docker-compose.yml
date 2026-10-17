@@ -166,7 +166,11 @@ services:
     restart: unless-stopped
     init: true
     env_file: .env
-    environment: {SERVICE_ROLE: celery-beat}
+    # The separate payment_reconciler process owns reconciliation in Compose;
+    # standalone Beat keeps the job enabled by default for Render deployments.
+    environment:
+      SERVICE_ROLE: celery-beat
+      CELERY_BEAT_RECONCILIATION_ENABLED: "false"
     command: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
     depends_on:
       migrate:
