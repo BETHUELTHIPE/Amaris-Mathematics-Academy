@@ -298,5 +298,9 @@ def process_live_class_notification(
                 "updated_at",
             )
         )
+        if booking.status == LiveClassBooking.Status.CONFIRMED:
+            from content.services.tutor_finance import record_live_class_sale
+
+            record_live_class_sale(booking)
 
     return NotificationResult(True, booking.status)

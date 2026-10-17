@@ -452,6 +452,25 @@ class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
 
 @admin.register(LiveClassBooking)
 class LiveClassBookingAdmin(TimeStampedAdmin):
+    actions = ("confirm_completed_class",)
+
+    @admin.action(description="Mark verified class complete after checking Zoom attendance")
+    def confirm_completed_class(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(request, "Only superusers may confirm attendance.", messages.ERROR)
+            return
+        count = 0
+        for booking in queryset.select_related("slot"):
+            if (
+                booking.status == LiveClassBooking.Status.CONFIRMED
+                and booking.gateway_verified_at
+                and booking.slot.ends_at <= timezone.now()
+            ):
+                booking.status = LiveClassBooking.Status.COMPLETED
+                booking.save(update_fields=("status", "updated_at"))
+                count += 1
+        self.message_user(request, f"Confirmed {count} completed, paid sessions.", messages.SUCCESS)
+
     list_display = (
         "reference",
         "student",
