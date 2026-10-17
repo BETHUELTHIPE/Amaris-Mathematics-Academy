@@ -59,8 +59,9 @@ export default async function OrdersPage() {
     {orders.length > 0 && <section className="mt-6 min-w-0 rounded-3xl border border-[#dce4ef] bg-white p-5 sm:p-8">
       <div className="flex items-center gap-3">
         <ReceiptText aria-hidden="true" className="size-5 text-[#1f5bbd]" />
-        <h2 className="text-xl font-semibold">Order history</h2>
+        <h2 className="text-xl font-semibold">Order history & payment receipts</h2>
       </div>
+      <p className="mt-2 text-sm leading-6 text-[#60708a]">Download your verified paid invoice as a payment receipt. It is also sent to your registered email after payment confirmation.</p>
       <div className="mt-5 grid gap-4">
         {orders.map((order) => {
           const invoiceHref = invoiceLink(order);
@@ -82,7 +83,7 @@ export default async function OrdersPage() {
             </div>
             <div className="mt-4 flex flex-col gap-2 border-t border-[#e7edf5] pt-4 sm:flex-row sm:flex-wrap">
               <Link href={order.href} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-[#bfd0e8] px-4 text-sm font-bold text-[#194f95] sm:w-fit">View details <ArrowRight aria-hidden="true" className="size-4" /></Link>
-              {invoiceHref && <Link href={invoiceHref} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-4 text-sm font-bold text-white sm:w-fit">Download invoice <Download aria-hidden="true" className="size-4" /></Link>}
+              {invoiceHref && <Link href={invoiceHref} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-4 text-sm font-bold text-white sm:w-fit">Download payment receipt (PDF) <Download aria-hidden="true" className="size-4" /></Link>}
               {order.invoice_number && <span className="flex min-h-11 min-w-0 items-center text-xs text-[#60708a] sm:ml-auto">Invoice <span className="ml-1 break-all font-mono">{order.invoice_number}</span></span>}
             </div>
           </article>;
