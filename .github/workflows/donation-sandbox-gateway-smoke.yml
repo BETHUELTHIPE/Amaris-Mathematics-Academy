@@ -22,6 +22,8 @@ jobs:
       DATABASE_SSL_REQUIRED: "false"
       PAYFAST_MODE: "sandbox"
       PAYFAST_ENV: "sandbox"
+      # PayFast documentation: default sandbox merchant 10000100 has no passphrase.
+      PAYFAST_PASSPHRASE: ""
       DONATIONS_ENABLED: "true"
       DONATIONS_LIVE_ENABLED: "false"
       PUBLIC_SITE_URL: "https://example.invalid"
@@ -82,8 +84,9 @@ jobs:
             console.log('SANDBOX_HOST_REACHED=YES');
             console.log('SANDBOX_PAGE_TITLE='+JSON.stringify(await page.title()));
             console.log('SANDBOX_PAGE_TEXT='+JSON.stringify(visible));
-            assert(!/invalid signature|merchant details are invalid/i.test(visible),'PayFast rejected checkout signature or merchant');
-            console.log('RESULT=GATEWAY_SANDBOX_CHECKOUT_REACHED');
+            assert(!/Error: 400|could not process your transaction|signature:|signature.+does not match|merchant details are invalid/i.test(visible),'PayFast rejected checkout signature or merchant');
+            assert(/wallet|login|log in|password|payfast account|pay now/i.test(visible),'No valid PayFast buyer checkout was displayed');
+            console.log('RESULT=PAYFAST_SANDBOX_CHECKOUT_ACCEPTED');
           }finally{await browser.close();}
           NODE
       - name: Confirm no simulated payment was marked paid
