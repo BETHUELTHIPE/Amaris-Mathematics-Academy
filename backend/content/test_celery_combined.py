@@ -22,9 +22,7 @@ class CombinedCeleryReleaseTests(SimpleTestCase):
         compose = build_beat_schedule(include_reconciliation=False)
         self.assertIn("reconcile-verified-payments", standalone)
         self.assertNotIn("reconcile-verified-payments", compose)
-        self.assertEqual(
-            set(standalone) - set(compose), {"reconcile-verified-payments"}
-        )
+        self.assertEqual(set(standalone) - set(compose), {"reconcile-verified-payments"})
 
     def test_essential_student_notification_jobs_survive_watchdog_override(self):
         jobs = build_beat_schedule(include_reconciliation=False)
