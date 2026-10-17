@@ -30,7 +30,7 @@ RUN pip install --upgrade pip \
 COPY . ./
 RUN groupadd --system amaris \
     && useradd --system --gid amaris --home-dir /app amaris \
-    && mkdir -p /app/staticfiles /app/media \
+    && mkdir -p /app/staticfiles /app/media /app/beat \
     && chmod +x /app/entrypoint.sh /app/ops/*.sh \
     && chown -R amaris:amaris /app
 
