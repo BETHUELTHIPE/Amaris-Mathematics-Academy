@@ -40,9 +40,7 @@ class PublicCourseQueryEfficiencyTests(TestCase):
                 featured=(index == 0),
                 status=Course.Status.PUBLISHED,
             )
-            module = CourseModule.objects.create(
-                course=course, title="Algebra", order=1, is_published=True
-            )
+            module = CourseModule.objects.create(course=course, title="Algebra", order=1, is_published=True)
             for lesson_index in (1, 2):
                 Lesson.objects.create(
                     module=module,
@@ -105,9 +103,7 @@ class PublicCourseQueryEfficiencyTests(TestCase):
             is_published=True,
             publish_at=timezone.now() + timedelta(days=2),
         )
-        response = self.client.get(
-            reverse("courses-detail", kwargs={"slug": course.slug}), secure=True
-        )
+        response = self.client.get(reverse("courses-detail", kwargs={"slug": course.slug}), secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["lesson_count"], 2)
         self.assertEqual(len(response.json()["modules"][0]["lessons"]), 2)
@@ -115,9 +111,7 @@ class PublicCourseQueryEfficiencyTests(TestCase):
     def test_course_without_lessons_reports_zero_not_null(self):
         course, module = self.courses[0]
         Lesson.objects.filter(module=module).delete()
-        response = self.client.get(
-            reverse("courses-detail", kwargs={"slug": course.slug}), secure=True
-        )
+        response = self.client.get(reverse("courses-detail", kwargs={"slug": course.slug}), secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["lesson_count"], 0)
         self.assertEqual(response.json()["modules"][0]["lessons"], [])
