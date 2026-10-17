@@ -85,7 +85,7 @@ jobs:
               await page.waitForTimeout(900);
               const body=await page.locator('body').innerText();
               const rejected=/Error: 400|Invalid merchant|signature:|Invalid signature|could not process your transaction/i.test(body);
-              const accepted=/Complete Payment/.test(body)&&body.includes('R '+checkout.amount);
+              const accepted=/Complete Payment/.test(body)&&body.replaceAll(',','').includes('R '+checkout.amount);
               console.log('SERVICE_GATEWAY='+JSON.stringify({service:checkout.kind,amount:checkout.amount,accepted:accepted&&!rejected,rejected}));
               assert(accepted&&!rejected,'Sandbox checkout rejected for '+checkout.kind+': '+body.slice(0,300));
               const completeWallet=['course_950','live_class_1h','video_chapter_topic'].includes(checkout.kind);
