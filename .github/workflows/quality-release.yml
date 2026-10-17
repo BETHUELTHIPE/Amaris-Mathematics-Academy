@@ -107,6 +107,15 @@ jobs:
         run: python manage.py test content.tests.PublicContentApiTests content.test_integrations
       - name: Celery queue and notification batch contracts
         run: python manage.py test content.test_celery_optimization content.test_celery_combined content.test_celery_runtime
+      - name: Real Celery Redis broker and worker smoke (CI only)
+        run: |
+          set -euo pipefail
+          # Disposable single worker proves real broker-to-result execution; the
+          # staging command must also be run against its own deployed workers.
+          celery -A amaris_cms worker --pool=solo --concurrency=1 --queues=critical,default,notifications --hostname=ci-probe@%h --loglevel=WARNING >/tmp/amaris-ci-celery-smoke.log 2>&1 &
+          worker_pid=$!
+          trap 'kill -TERM "$worker_pid" 2>/dev/null || true; wait "$worker_pid" 2>/dev/null || true' EXIT
+          python manage.py verify_celery_runtime --timeout 30
       - name: Load/capacity harness contract (no traffic)
         run: |
           python -m unittest load_tests.test_contract
