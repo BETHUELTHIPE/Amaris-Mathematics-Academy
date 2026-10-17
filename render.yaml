@@ -13,7 +13,8 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
     startCommand: GUNICORN_BIND=0.0.0.0:$PORT gunicorn amaris_cms.asgi:application --config gunicorn.conf.py
-    autoDeployTrigger: off
+    # Only deploy this backend after the production branch's CI checks pass.
+    autoDeployTrigger: checksPass
     healthCheckPath: /health/ready/
     preDeployCommand: python manage.py migrate --noinput
     envVars:
