@@ -33,7 +33,7 @@ def build_beat_schedule(*, include_reconciliation: bool = True) -> dict[str, dic
         "expire-live-class-holds": {
             "task": "content.tasks.expire_live_class_holds",
             "schedule": 300.0,
-            "options": {"queue": "default", "expires": 270},
+            "options": {"queue": "critical", "expires": 270},
         },
     }
     if include_reconciliation:

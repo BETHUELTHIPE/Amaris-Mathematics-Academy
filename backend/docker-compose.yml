@@ -119,7 +119,7 @@ services:
     init: true
     env_file: .env
     environment: {SERVICE_ROLE: celery-worker}
-    command: celery -A amaris_cms worker --loglevel=INFO --queues=critical,default --concurrency=${CELERY_WORKER_CONCURRENCY:-2} --events
+    command: celery -A amaris_cms worker --loglevel=INFO --queues=critical,default --hostname=core@%h --concurrency=${CELERY_WORKER_CONCURRENCY:-2} --events
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -127,7 +127,7 @@ services:
         condition: service_healthy
     networks: [backend_network, monitoring_network]
     healthcheck:
-      test: ["CMD-SHELL", "celery -A amaris_cms inspect ping --timeout=5 | grep -q pong"]
+      test: ["CMD-SHELL", "celery -A amaris_cms inspect ping --destination=core@$(hostname) --timeout=5 | grep -q pong"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -151,7 +151,7 @@ services:
         condition: service_healthy
     networks: [backend_network, monitoring_network]
     healthcheck:
-      test: ["CMD-SHELL", "celery -A amaris_cms inspect ping --timeout=5 | grep -q pong"]
+      test: ["CMD-SHELL", "celery -A amaris_cms inspect ping --destination=notifications@$(hostname) --timeout=5 | grep -q pong"]
       interval: 30s
       timeout: 10s
       retries: 3

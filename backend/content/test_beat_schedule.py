@@ -46,6 +46,7 @@ class CeleryBeatScheduleTests(TestCase):
         ):
             self.assertEqual(schedule[name]["options"]["queue"], "notifications")
         self.assertEqual(schedule["reconcile-verified-payments"]["options"]["queue"], "critical")
+        self.assertEqual(schedule["expire-live-class-holds"]["options"]["queue"], "critical")
 
     def test_direct_task_dispatch_uses_the_same_worker_queues(self):
         routes = app.conf.task_routes

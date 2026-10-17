@@ -105,6 +105,8 @@ jobs:
         run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests
       - name: Integration tests
         run: python manage.py test content.tests.PublicContentApiTests content.test_integrations
+      - name: Celery queue and notification batch contracts
+        run: python manage.py test content.test_celery_optimization content.test_celery_combined
       - name: Load/capacity harness contract (no traffic)
         run: |
           python -m unittest load_tests.test_contract
