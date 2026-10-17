@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from django.core import mail
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
+from django.core.files.storage import storages
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -132,6 +134,74 @@ class VideoRequestWorkflowTests(TestCase):
         self.assertEqual(stored.original_name, "calculus-paper.pdf")
         self.assertTrue(stored.storage_path.startswith(f"{self.student.supabase_user_id}/video-requests/"))
         self.assertTrue(Path(self.storage_directory.name, stored.storage_path).exists())
+
+    @override_settings(
+        SUPABASE_S3_STUDENT_BUCKET="Amaris Mathematics Academy",
+        SUPABASE_S3_ENDPOINT_URL="https://example.supabase.co/storage/v1/s3",
+    )
+    def test_resumable_document_is_registered_only_after_private_storage_verification(self):
+        checkout = self.create_checkout(key="video-large-doc-001")
+        item = VideoRequest.objects.get(reference=checkout.request_reference)
+        path = f"{self.student.supabase_user_id}/video-requests/{item.pk}/documents/" f"{uuid.uuid4()}.pdf"
+        body = b"%PDF-1.4\nSynthetic private file\n%%EOF\n"
+        self.assertEqual(storages["student_private"].save(path, ContentFile(body)), path)
+        payload = {
+            "storage_path": path,
+            "original_name": "paper.pdf",
+            "content_type": "application/pdf",
+            "size_bytes": len(body),
+        }
+        url = reverse("video-request-document-register", args=[item.reference])
+        registered = self.authenticated_client().post(url, payload, format="json", secure=True)
+        self.assertEqual(registered.status_code, 201)
+        self.assertEqual(item.documents.count(), 1)
+        self.assertEqual(item.documents.get().storage_path, path)
+        self.assertEqual(
+            self.authenticated_client().post(url, payload, format="json", secure=True).status_code,
+            201,
+        )
+        self.assertEqual(item.documents.count(), 1)
+        denied = self.authenticated_client(self.other_student).post(url, payload, format="json", secure=True)
+        self.assertNotEqual(denied.status_code, 201)
+        self.assertEqual(item.documents.count(), 1)
+
+    @override_settings(
+        SUPABASE_S3_STUDENT_BUCKET="Amaris Mathematics Academy",
+        SUPABASE_S3_ENDPOINT_URL="https://example.supabase.co/storage/v1/s3",
+    )
+    def test_resumable_document_rejects_spoofed_paths_types_and_sizes(self):
+        item = VideoRequest.objects.get(reference=self.create_checkout(key="video-large-bad-001").request_reference)
+        path = f"{self.student.supabase_user_id}/video-requests/{item.pk}/documents/" f"{uuid.uuid4()}.pdf"
+        self.assertEqual(storages["student_private"].save(path, ContentFile(b"NOT A PDF")), path)
+        url = reverse("video-request-document-register", args=[item.reference])
+        metadata = {
+            "storage_path": path,
+            "original_name": "notes.pdf",
+            "content_type": "application/pdf",
+            "size_bytes": 9,
+        }
+        bad_magic = self.authenticated_client().post(url, metadata, format="json", secure=True)
+        self.assertEqual(bad_magic.status_code, 400)
+        wrong_owner = self.authenticated_client().post(
+            url,
+            {
+                **metadata,
+                "storage_path": metadata["storage_path"].replace(
+                    str(self.student.supabase_user_id), str(self.other_student.supabase_user_id)
+                ),
+            },
+            format="json",
+            secure=True,
+        )
+        self.assertEqual(wrong_owner.status_code, 400)
+        oversized = self.authenticated_client().post(
+            url,
+            {**metadata, "size_bytes": 1024 * 1024 * 1024 + 1},
+            format="json",
+            secure=True,
+        )
+        self.assertEqual(oversized.status_code, 400)
+        self.assertFalse(item.documents.exists())
 
     def test_exam_and_complete_content_prices_are_server_owned(self):
         exam = self.create_checkout(key="video-exam-001", request_type="previous_exam")
