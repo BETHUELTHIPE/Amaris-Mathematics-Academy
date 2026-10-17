@@ -105,6 +105,8 @@ jobs:
         run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests
       - name: Integration tests
         run: python manage.py test content.tests.PublicContentApiTests content.test_integrations
+      - name: Celery queue and notification batch contracts
+        run: python manage.py test content.test_celery_optimization content.test_celery_combined
       - name: Load/capacity harness contract (no traffic)
         run: |
           python -m unittest load_tests.test_contract
@@ -113,6 +115,8 @@ jobs:
         run: python manage.py test content.tests.AdminRegistrationTests content.tests.PermissionTests
       - name: Payment tests
         run: python manage.py test content.tests.PaymentReconciliationTests content.test_payments
+      - name: Celery Beat scheduler contract
+        run: python manage.py test content.test_beat_schedule
       - name: Full Django regression suite
         run: python manage.py test
       - name: Production-acceptance gate contract

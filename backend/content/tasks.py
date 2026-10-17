@@ -3,6 +3,7 @@ from html import escape
 
 from celery import shared_task
 from django.apps import apps
+from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, send_mail
 from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
@@ -11,6 +12,12 @@ from django.utils import timezone
 from content.models import LiveClassBooking, SiteSettings
 from content.payment_models import NotificationOutbox
 from content.services.reconciliation import reconcile_verified_payments
+
+
+def _notification_batch_size() -> int:
+    """Limit messages per tick to prevent a runaway worker during large backlogs."""
+
+    return max(1, min(25, settings.CELERY_NOTIFICATION_BATCH_SIZE))
 
 
 @shared_task(
@@ -65,16 +72,7 @@ def reconcile_payments(_self) -> None:
     reconcile_verified_payments()
 
 
-@shared_task(
-    bind=True,
-    ignore_result=True,
-    autoretry_for=(OSError,),
-    retry_backoff=True,
-    retry_backoff_max=300,
-    retry_jitter=True,
-    retry_kwargs={"max_retries": 6},
-)
-def deliver_transactional_email(_self) -> int:
+def _deliver_one_transactional_email() -> int:
     """Deliver one queued payment email.
 
     The row remains queued if SMTP raises so Celery retry is safe. The
@@ -119,6 +117,26 @@ def deliver_transactional_email(_self) -> int:
         outbox.status = NotificationOutbox.Status.SENT
         outbox.save(update_fields=["status", "updated_at"])
         return 1
+
+
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    autoretry_for=(OSError,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 6},
+)
+def deliver_transactional_email(_self) -> int:
+    """Drain a bounded batch, with an independent transaction per message."""
+
+    delivered = 0
+    for _ in range(_notification_batch_size()):
+        if not _deliver_one_transactional_email():
+            break
+        delivered += 1
+    return delivered
 
 
 def _live_class_brand() -> tuple[str, str, str]:
@@ -202,16 +220,7 @@ def _send_live_class_message(
         raise OSError("Transactional email backend did not accept the live-class message.")
 
 
-@shared_task(
-    bind=True,
-    ignore_result=True,
-    autoretry_for=(OSError, OperationalError, InterfaceError),
-    retry_backoff=True,
-    retry_backoff_max=300,
-    retry_jitter=True,
-    retry_kwargs={"max_retries": 6},
-)
-def deliver_live_class_confirmation(_self) -> int:
+def _deliver_one_live_class_confirmation() -> int:
     with transaction.atomic():
         booking = (
             LiveClassBooking.objects.select_for_update(skip_locked=True)
@@ -257,7 +266,18 @@ def deliver_live_class_confirmation(_self) -> int:
     retry_jitter=True,
     retry_kwargs={"max_retries": 6},
 )
-def deliver_live_class_reminder(_self) -> int:
+def deliver_live_class_confirmation(_self) -> int:
+    """Drain a bounded batch, with an independent transaction per message."""
+
+    delivered = 0
+    for _ in range(_notification_batch_size()):
+        if not _deliver_one_live_class_confirmation():
+            break
+        delivered += 1
+    return delivered
+
+
+def _deliver_one_live_class_reminder() -> int:
     now = timezone.now()
     with transaction.atomic():
         booking = (
@@ -291,6 +311,26 @@ def deliver_live_class_reminder(_self) -> int:
         booking.reminder_sent_at = timezone.now()
         booking.save(update_fields=("reminder_sent_at", "updated_at"))
         return 1
+
+
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    autoretry_for=(OSError, OperationalError, InterfaceError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 6},
+)
+def deliver_live_class_reminder(_self) -> int:
+    """Drain a bounded batch, with an independent transaction per message."""
+
+    delivered = 0
+    for _ in range(_notification_batch_size()):
+        if not _deliver_one_live_class_reminder():
+            break
+        delivered += 1
+    return delivered
 
 
 @shared_task(
