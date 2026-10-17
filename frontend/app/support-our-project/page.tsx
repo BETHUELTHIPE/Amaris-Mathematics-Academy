@@ -7,13 +7,11 @@ import {
   HandHeart,
   HeartHandshake,
   Laptop,
-  Mail,
   ShieldCheck,
   Users,
 } from "lucide-react";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
-import { getManagedBrand } from "@/lib/cms";
 import { PartnershipEnquiryForm } from "./partnership-enquiry-form";
 
 export const metadata: Metadata = {
@@ -50,7 +48,6 @@ const waysToHelp = [
 ];
 
 export default async function SupportOurProjectPage() {
-  const academyBrand = await getManagedBrand();
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] text-[#07152d]">
