@@ -31,7 +31,7 @@ delivery with general content jobs.
 
 ## Verification
 
-Run `python manage.py test tests.test_beat_schedule` from `backend/`, plus the
+Run `python manage.py test content.test_beat_schedule` from `backend/`, plus the
 existing payment, booking and notification suites. Verify a real staging
 instance with Redis, Beat and both worker types before production promotion.
 Watch broker queue depths and age, missed reminder windows, task errors,
