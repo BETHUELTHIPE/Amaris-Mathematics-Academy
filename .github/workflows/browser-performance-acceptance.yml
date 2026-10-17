@@ -7,9 +7,11 @@ on:
       - 'frontend/app/page.tsx'
       - 'frontend/app/courses/page.tsx'
       - 'frontend/app/globals.css'
+      - 'frontend/components/site/header.tsx'
       - 'frontend/components/site/header-navigation.tsx'
       - 'frontend/e2e/public_browser_performance.py'
       - 'frontend/scripts/performance/summarize-lighthouse-bottlenecks.mjs'
+      - 'frontend/scripts/performance/run-lighthouse.sh'
       - '.github/workflows/browser-performance-acceptance.yml'
   workflow_dispatch:
 
