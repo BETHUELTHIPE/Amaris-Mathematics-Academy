@@ -69,4 +69,4 @@ jobs:
           python manage.py check
           python manage.py makemigrations --check --dry-run
       - name: Verify student-owned receipts and fail-closed storage
-        run: python manage.py test --noinput --verbosity=2 content.test_staging_invoice_delivery
+        run: python manage.py test --noinput --verbosity=2 content.test_staging_invoice_delivery content.test_payments content.test_live_classes
