@@ -116,6 +116,33 @@ jobs:
             }else{
               assert(/wallet|login|log in|password|payfast account|pay now/i.test(visible),'No valid PayFast buyer checkout was displayed');
               console.log('RESULT=PAYFAST_SANDBOX_CHECKOUT_ACCEPTED');
+              // This is sandbox-only: the gateway contains a large dummy wallet balance.
+              // This diagnostic has no public ITN receiver and must never mark a donation paid locally.
+              const complete=page.getByText('Complete Payment',{exact:true});
+              console.log('SANDBOX_WALLET_COMPLETE_PAYMENT_ACTION='+String(await complete.count()));
+              assert((await complete.count())>0,'PayFast sandbox wallet completion action is unavailable');
+              const navigation=[];
+              page.on('request',req=>{
+                if(req.isNavigationRequest()){
+                  const u=new URL(req.url());
+                  navigation.push({host:u.hostname,path:u.pathname});
+                }
+              });
+              try{
+                await complete.first().click({timeout:15000});
+              }catch(error){
+                console.log('SANDBOX_WALLET_CLICK_EXCEPTION='+String(error).slice(0,250));
+              }
+              await page.waitForTimeout(4500);
+              const after=(await page.locator('body').innerText().catch(()=>'' )).slice(0,1100);
+              console.log('SANDBOX_WALLET_AFTER_CLICK_TEXT='+JSON.stringify(after));
+              console.log('SANDBOX_WALLET_NAVIGATION='+JSON.stringify(navigation));
+              const redirectHit=navigation.some(x=>x.host==='example.invalid');
+              const successText=/payment (was |has been )?(successful|completed)|thank you for your payment|payment complete|payment successful/i.test(after);
+              console.log('SANDBOX_WALLET_REDIRECT_ATTEMPT='+redirectHit);
+              console.log('SANDBOX_WALLET_SUCCESS_TEXT='+successText);
+              assert(redirectHit||successText,'Could not confirm sandbox wallet completed the transaction');
+              console.log('RESULT=PAYFAST_SANDBOX_WALLET_COMPLETION_OBSERVED');
             }
           }finally{await browser.close();}
           NODE
