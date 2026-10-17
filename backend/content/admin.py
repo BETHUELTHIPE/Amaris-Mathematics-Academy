@@ -34,6 +34,8 @@ admin.site.index_title = "Content and learning operations"
 class TimeStampedAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
     list_per_page = 30
+    # Avoid a second full-table COUNT on filtered admin changelists.
+    show_full_result_count = False
     save_on_top = True
 
 
@@ -66,7 +68,7 @@ class SiteSettingsAdmin(TimeStampedAdmin):
     )
 
     def has_add_permission(self, request):
-        return not SiteSettings.objects.exists()
+        return super().has_add_permission(request) and not SiteSettings.objects.exists()
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -110,6 +112,7 @@ class PageAdmin(PublishableAdmin):
 
 @admin.register(PageSection)
 class PageSectionAdmin(PublishableAdmin):
+    list_select_related = ("page",)
     list_display = ("heading", "page", "section_key", "order", "is_published", "updated_at")
     list_filter = PublishableAdmin.list_filter + ("page",)
     list_editable = ("order", "is_published")
@@ -140,6 +143,7 @@ class CourseResourceInline(admin.TabularInline):
 
 @admin.register(Course)
 class CourseAdmin(PublishableAdmin):
+    list_select_related = ("category",)
     list_display = (
         "title",
         "category",
@@ -189,6 +193,7 @@ class LessonInline(admin.TabularInline):
 
 @admin.register(CourseModule)
 class CourseModuleAdmin(TimeStampedAdmin):
+    list_select_related = ("course",)
     list_display = ("title", "course", "order", "is_published", "updated_at")
     list_filter = ("is_published", "course")
     list_editable = ("order", "is_published")
@@ -199,6 +204,7 @@ class CourseModuleAdmin(TimeStampedAdmin):
 
 @admin.register(Lesson)
 class LessonAdmin(PublishableAdmin):
+    list_select_related = ("module__course",)
     list_display = ("title", "module", "order", "duration_minutes", "is_free_preview", "is_published")
     list_filter = PublishableAdmin.list_filter + ("is_free_preview", "module__course")
     list_editable = ("order", "is_free_preview", "is_published")
@@ -226,6 +232,7 @@ class VideoAssetAdmin(PublishableAdmin):
 
 @admin.register(ResourceAsset)
 class ResourceAssetAdmin(PublishableAdmin):
+    list_select_related = ("course", "lesson__module__course")
     list_display = ("title", "resource_type", "course", "lesson", "student_download_allowed", "is_published")
     list_filter = PublishableAdmin.list_filter + ("resource_type", "student_download_allowed", "course")
     search_fields = ("title", "description", "course__title", "lesson__title")
@@ -291,6 +298,7 @@ class AnnouncementAdmin(SuperuserMarketingAdmin, PublishableAdmin):
 
 @admin.register(AnnouncementMedia)
 class AnnouncementMediaAdmin(SuperuserMarketingAdmin, TimeStampedAdmin):
+    list_select_related = ("announcement",)
     list_display = ("title", "announcement", "kind", "order", "created_at")
     list_filter = ("kind",)
     search_fields = ("title", "announcement__title")
@@ -299,6 +307,7 @@ class AnnouncementMediaAdmin(SuperuserMarketingAdmin, TimeStampedAdmin):
 
 @admin.register(ContactEnquiry)
 class ContactEnquiryAdmin(TimeStampedAdmin):
+    list_select_related = ("assigned_to",)
     list_display = ("subject", "name", "email", "status", "assigned_to", "created_at")
     list_filter = ("status", "created_at", "assigned_to")
     list_editable = ("status", "assigned_to")
@@ -346,6 +355,7 @@ class StudentRecordAdmin(TimeStampedAdmin):
 
 @admin.register(Enrollment)
 class EnrollmentAdmin(TimeStampedAdmin):
+    list_select_related = ("student", "course")
     list_display = ("student", "course", "status", "progress_percent", "enrolled_at")
     list_filter = ("status", "course", "enrolled_at")
     search_fields = ("student__email", "student__first_name", "student__last_name", "course__title")
@@ -355,6 +365,7 @@ class EnrollmentAdmin(TimeStampedAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(TimeStampedAdmin):
+    list_select_related = ("student", "course")
     list_display = (
         "reference",
         "student",
@@ -429,6 +440,7 @@ class PaymentReconciliationRunAdmin(TimeStampedAdmin):
 
 @admin.register(TutorAvailabilitySlot)
 class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
+    list_select_related = ("tutor",)
     list_display = (
         "tutor",
         "programme",
@@ -452,6 +464,7 @@ class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
 
 @admin.register(LiveClassBooking)
 class LiveClassBookingAdmin(TimeStampedAdmin):
+    list_select_related = ("student", "slot__tutor")
     list_display = (
         "reference",
         "student",
