@@ -45,7 +45,7 @@ export function PartnershipEnquiryForm() {
       </div>
       <div>
         <label htmlFor="partner-message" className={labelClass}>Tell us about your proposal and what you would like to discuss *</label>
-        <textarea id="partner-message" name="message" rows={6} minLength={30} maxLength={3000} required className={fieldClass} aria-invalid={Boolean(state.errors?.message)} aria-describedby="partner-message-help" placeholder="Introduce your organisation, proposed investment or collaboration, expected outcomes and preferred next steps." />
+        <textarea id="partner-message" name="message" rows={6} minLength={30} maxLength={1500} required className={fieldClass} aria-invalid={Boolean(state.errors?.message)} aria-describedby="partner-message-help" placeholder="Introduce your organisation, proposed investment or collaboration, expected outcomes and preferred next steps." />
         <p id="partner-message-help" className="mt-1 text-sm text-[#526781]">Please do not submit banking credentials, passwords, or confidential financial documents here.</p>
         {state.errors?.message && <p className="mt-1 text-sm text-red-700">{state.errors.message}</p>}
       </div>
