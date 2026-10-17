@@ -205,6 +205,8 @@ jobs:
           done
           echo "AUTHENTIC_PAYFAST_SERVER_VALIDATED_ITN=PASS"
           python manage.py shell -c '
+          from django.conf import settings
+          settings.EMAIL_FILE_PATH="/tmp/amaris-staging-mail"
           from content.tasks import deliver_transactional_email
           n=deliver_transactional_email.run()
           assert n==1, f"Expected exactly one verified paid receipt email; got {n}"
