@@ -3,6 +3,7 @@
 All gateway callbacks are synthetic, test DB and local storage are isolated;
 no real PayFast wallet, SMTP email, Supabase or production data is touched.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -24,7 +25,6 @@ from content.models import (
     Course,
     CourseCategory,
     LiveClassBooking,
-    Payment,
     StudentRecord,
     TutorAvailabilitySlot,
     VideoRequest,
@@ -85,8 +85,10 @@ class StudentReceiptDeliveryTests(TestCase):
             last_name="Student",
         )
         self.tutor = get_user_model().objects.create_user(
-            username="receipt.test.tutor", email="tutor@example.test",
-            first_name="Tutor", last_name="Receipt",
+            username="receipt.test.tutor",
+            email="tutor@example.test",
+            first_name="Tutor",
+            last_name="Receipt",
         )
         self.start = (timezone.now() + timedelta(days=3)).replace(second=0, microsecond=0)
         self.slot = TutorAvailabilitySlot.objects.create(
@@ -114,9 +116,11 @@ class StudentReceiptDeliveryTests(TestCase):
 
     def client_for(self, student):
         client = APIClient()
-        client.force_authenticate(user=SupabaseStudentPrincipal(
-            student=student, supabase_user_id=str(student.supabase_user_id), email=student.email
-        ))
+        client.force_authenticate(
+            user=SupabaseStudentPrincipal(
+                student=student, supabase_user_id=str(student.supabase_user_id), email=student.email
+            )
+        )
         return client
 
     def assert_dashboard_and_pdf(self, kind, reference, invoice_number, expected_amount):
@@ -144,9 +148,7 @@ class StudentReceiptDeliveryTests(TestCase):
         pdf = b"".join(response.streaming_content)
         self.assertTrue(pdf.startswith(b"%PDF-"))
         self.assertGreater(len(pdf), 1000)
-        self.assertFalse(storages["default"].exists(
-            student_invoice_key(self.student.supabase_user_id, invoice_number)
-        ))
+        self.assertFalse(storages["default"].exists(student_invoice_key(self.student.supabase_user_id, invoice_number)))
         return pdf
 
     def assert_mail_and_private_file(self, invoice_number, delivered_pdf):
@@ -188,14 +190,18 @@ class StudentReceiptDeliveryTests(TestCase):
         self.assertTrue(result.accepted)
         invoice = Invoice.objects.get(payment__reference=checkout.payment_reference)
         self.assertEqual(deliver_transactional_email.run(), 1)
-        downloaded = self.assert_dashboard_and_pdf("course", checkout.payment_reference, invoice.invoice_number, "950.00")
+        downloaded = self.assert_dashboard_and_pdf(
+            "course", checkout.payment_reference, invoice.invoice_number, "950.00"
+        )
         self.assert_mail_and_private_file(invoice.invoice_number, downloaded)
         self.assertEqual(deliver_transactional_email.run(), 0)
         self.assertEqual(len(mail.outbox), 1)
 
     def test_live_class_pdf_is_available_before_email_and_matches_attachment(self):
         checkout = create_live_class_checkout(
-            student=self.student, slot=self.slot, topic="Proof of payment revision",
+            student=self.student,
+            slot=self.slot,
+            topic="Proof of payment revision",
             idempotency_key="receipt-" + "live-20261017",
         )
         booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
@@ -224,10 +230,16 @@ class StudentReceiptDeliveryTests(TestCase):
 
     def test_video_request_pdf_is_available_before_email_and_matches_attachment(self):
         checkout = create_video_request_checkout(
-            student=self.student, programme="caps", subject="mathematics",
-            level="Grade 12", topic="Differential calculus", request_type="chapter_topic",
-            instructions="Synthetic receipt test", explanation_style="Worked examples",
-            preferred_duration_minutes=60, idempotency_key="receipt-" + "video-20261017",
+            student=self.student,
+            programme="caps",
+            subject="mathematics",
+            level="Grade 12",
+            topic="Differential calculus",
+            request_type="chapter_topic",
+            instructions="Synthetic receipt test",
+            explanation_style="Worked examples",
+            preferred_duration_minutes=60,
+            idempotency_key="receipt-" + "video-20261017",
             documents=(),
         )
         item = VideoRequest.objects.get(reference=checkout.request_reference)
@@ -262,9 +274,9 @@ class StudentReceiptDeliveryTests(TestCase):
         self.assertFalse(matching[0]["invoice_ready"])
         self.assertIsNone(matching[0]["invoice_number"])
         self.assertEqual(
-            self.client_for(self.student).get(
-                reverse("student-course-invoice", args=[checkout.payment_reference]), secure=True
-            ).status_code,
+            self.client_for(self.student)
+            .get(reverse("student-course-invoice", args=[checkout.payment_reference]), secure=True)
+            .status_code,
             404,
         )
         self.assertEqual(deliver_transactional_email.run(), 0)
