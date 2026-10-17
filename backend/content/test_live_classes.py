@@ -576,7 +576,8 @@ class LiveClassBookingTests(TestCase):
                 )
             )
             url = reverse("live-class-invoice-download", args=[booking.reference])
-            self.assertEqual(owner.get(url, secure=True).status_code, 404)
+            # Payment verification makes the private PDF available even before email delivery.
+            self.assertEqual(owner.get(url, secure=True).status_code, 200)
             self.assertEqual(deliver_live_class_confirmation.run(), 1)
             booking.refresh_from_db()
 
