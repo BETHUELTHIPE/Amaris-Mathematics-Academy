@@ -1,0 +1,72 @@
+name: Staging Private Receipt Integration
+
+on:
+  pull_request:
+    branches: [staging]
+    paths:
+      - backend/content/staging_payment_views.py
+      - backend/content/services/staging_payment_receipts.py
+      - backend/content/test_staging_invoice_delivery.py
+      - backend/content/tasks.py
+      - backend/content/urls.py
+      - backend/amaris_cms/settings.py
+      - backend/requirements.txt
+      - .github/workflows/staging-private-receipts.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-staging-receipt-test:
+    name: Isolated staging PDF and email test — no external credentials
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_receipt_staging_ci
+          POSTGRES_USER: amaris_receipt_staging_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: [ "5432:5432" ]
+        options: >-
+          --health-cmd "pg_isready -U amaris_receipt_staging_ci -d amaris_receipt_staging_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      DATABASE_URL: "postgresql://amaris_receipt_staging_ci@127.0.0.1:5432/amaris_receipt_staging_ci"
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      STAGING_RECEIPTS_ENABLED: "false"
+      PAYFAST_MODE: sandbox
+      PAYFAST_ENV: sandbox
+      EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Ephemeral test secret and forbid live endpoints
+        run: |
+          secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$secret"
+          echo "DJANGO_SECRET_KEY=$secret" >> "$GITHUB_ENV"
+          test -z "${STAGING_SUPABASE_PROJECT_REF:-}"
+          test "${STAGING_RECEIPTS_ENABLED}" = "false"
+      - name: Install app requirements
+        run: python -m pip install -r requirements.txt
+      - name: Verify Django route imports and migration drift
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+      - name: Verify student-owned receipts and fail-closed storage
+        run: python manage.py test --noinput --verbosity=2 content.test_staging_invoice_delivery
