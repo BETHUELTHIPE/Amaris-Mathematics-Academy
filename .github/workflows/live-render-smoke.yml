@@ -3,6 +3,8 @@ name: Live Render Browser Smoke
 on:
   push:
     branches: [render-live-current-20260918]
+  pull_request:
+    branches: [render-live-current-20260918]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +13,7 @@ permissions:
 jobs:
   browser-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       BASE_URL: https://amaris-mathematics-academy-live-students.onrender.com
     steps:
@@ -28,6 +30,7 @@ jobs:
           python - <<'PY'
           import os
           import sys
+          import time
           from playwright.sync_api import sync_playwright
 
           base = os.environ["BASE_URL"].rstrip("/")
@@ -35,6 +38,36 @@ jobs:
 
           with sync_playwright() as p:
               browser = p.chromium.launch()
+
+              # Render can serve a temporary 503 while a new release is building.
+              # Wait for two consecutive healthy probes, but NEVER accept a 503
+              # or application-loading screen as a passing browser smoke.
+              consecutive_healthy = 0
+              for attempt in range(1, 37):
+                  probe = browser.new_page()
+                  try:
+                      response = probe.goto(
+                          f"{base}/", wait_until="domcontentloaded", timeout=20_000
+                      )
+                      status = response.status if response else 0
+                      title = probe.title()
+                  except Exception:
+                      status, title = 0, ""
+                  finally:
+                      probe.close()
+                  print(f"Render readiness attempt={attempt} HTTP={status}", flush=True)
+                  if status == 200 and "Application loading" not in title:
+                      consecutive_healthy += 1
+                      if consecutive_healthy == 2:
+                          break
+                  else:
+                      consecutive_healthy = 0
+                  time.sleep(15)
+              else:
+                  print("LIVE SMOKE FAILED: Render did not become ready.", flush=True)
+                  browser.close()
+                  sys.exit(1)
+
               for path in ["/", "/contact"]:
                   page = browser.new_page()
                   page_errors = []
