@@ -308,12 +308,16 @@ CELERY_BEAT_SCHEDULE = {
         # Drop stale periodic messages after an outage: the next tick catches up.
         "options": {"expires": 60},
     },
-    "reconcile-verified-payments": {
+}
+
+# Some deployments run the standalone payment_reconciler process instead.
+# Never dispatch the same periodic reconciliation from both schedulers.
+if env_bool("CELERY_BEAT_PAYMENT_RECONCILIATION_ENABLED", True):
+    CELERY_BEAT_SCHEDULE["reconcile-verified-payments"] = {
         "task": "content.tasks.reconcile_payments",
         "schedule": 300.0,
         "options": {"expires": 300},
-    },
-}
+    }
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = not DEBUG
