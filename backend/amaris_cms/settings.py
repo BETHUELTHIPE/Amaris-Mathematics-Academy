@@ -3,6 +3,8 @@ import secrets
 from pathlib import Path
 
 import dj_database_url
+
+from amaris_cms.beat_schedule import build_beat_schedule
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -364,8 +366,6 @@ OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SEC
 
 # Docker Compose uses a dedicated payment watchdog. Disable its duplicate
 # Beat tick only in that deployment; Render/standalone Beat retains reconciliation.
-from amaris_cms.beat_schedule import build_beat_schedule  # noqa: E402
-
 CELERY_BEAT_RECONCILIATION_ENABLED = env_bool("CELERY_BEAT_RECONCILIATION_ENABLED", True)
 CELERY_BEAT_MAX_LOOP_INTERVAL = 30
 CELERY_BEAT_SCHEDULE = build_beat_schedule(
