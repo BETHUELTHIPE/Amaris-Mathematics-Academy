@@ -161,13 +161,23 @@ def archive_invoice_pdf(
                 return archived.read()
         except Exception as exc:
             raise OSError("Student invoice archive is unavailable.") from exc
-    document = render_invoice_pdf(invoice)
     invoice_number, _, _ = _invoice_details(invoice)
     key = student_invoice_key(invoice.student.supabase_user_id, invoice_number)
+    private_storage = storage or storages["student_private"]
     try:
-        saved = storages["student_private"].save(key, ContentFile(document))
+        # A dashboard download may archive the document before the email worker
+        # runs. Reuse exactly the same stored PDF for both channels, rather than
+        # overwriting it or creating a suffixed duplicate in object storage.
+        if private_storage.exists(key):
+            with private_storage.open(key, "rb") as existing:
+                document = existing.read()
+            if not document.startswith(b"%PDF-"):
+                raise OSError("Student invoice archive is invalid.")
+            return document
+        document = render_invoice_pdf(invoice)
+        saved = private_storage.save(key, ContentFile(document))
+        if saved != key:
+            raise OSError("Student invoice archive did not use the expected object key.")
+        return document
     except Exception as exc:
         raise OSError("Student invoice archive is unavailable.") from exc
-    if saved != key:
-        raise OSError("Student invoice archive did not use the expected object key.")
-    return document
