@@ -20,7 +20,8 @@
     "check:performance": "node scripts/performance/check-budgets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "dev:trigger": "trigger dev"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -48,7 +49,8 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "3.6.0",
     "vaul": "^1.1.2",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@trigger.dev/sdk": "latest"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.64.0",
@@ -71,7 +73,8 @@
     "typescript": "5.9.3",
     "vinext": "1.0.0-beta.9",
     "vite": "8.3.0",
-    "braces": "file:vendor/braces-patched"
+    "braces": "file:vendor/braces-patched",
+    "@trigger.dev/build": "latest"
   },
   "type": "module",
   "overrides": {
