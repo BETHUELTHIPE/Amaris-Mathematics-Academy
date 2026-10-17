@@ -38,9 +38,7 @@ class Command(BaseCommand):
                 )
                 payload = result.get(timeout=timeout, propagate=True)
                 if payload != {"nonce": nonce, "queue": queue}:
-                    raise CommandError(
-                        f"{queue}: unexpected worker response or wrong queue routing."
-                    )
+                    raise CommandError(f"{queue}: unexpected worker response or wrong queue routing.")
                 result.forget()
             except CommandError:
                 raise
