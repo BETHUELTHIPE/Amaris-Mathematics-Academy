@@ -1,0 +1,203 @@
+name: Authentic PayFast ITN and Receipt Acceptance
+
+on:
+  pull_request:
+    paths: [.github/workflows/authentic-payfast-itn-acceptance.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authentic-sandbox-itn:
+    name: Genuine provider ITN on isolated HTTPS Django backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: amaris_itn
+          POSTGRES_DB: amaris_itn
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U amaris_itn -d amaris_itn"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_DEBUG: "true"
+      DJANGO_SECRET_KEY: "synthetic-payfast-itn-acceptance-only"
+      DJANGO_ALLOWED_HOSTS: ".trycloudflare.com,localhost,127.0.0.1"
+      DATABASE_URL: "postgresql://amaris_itn@127.0.0.1:5432/amaris_itn"
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      SUPABASE_STORAGE_ENABLED: "false"
+      SUPABASE_S3_REQUIRED: "false"
+      PAYFAST_MODE: "sandbox"
+      PAYFAST_ENV: "sandbox"
+      PAYFAST_MERCHANT_ID: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_ID }}
+      PAYFAST_MERCHANT_KEY: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_KEY }}
+      PAYFAST_PASSPHRASE: ${{ secrets.PAYFAST_SANDBOX_PASSPHRASE }}
+      CELERY_TASK_ALWAYS_EAGER: "true"
+      CELERY_TASK_EAGER_PROPAGATES: "true"
+      EMAIL_BACKEND: "django.core.mail.backends.filebased.EmailBackend"
+      EMAIL_FILE_PATH: "/tmp/amaris-staging-mail"
+      DEFAULT_FROM_EMAIL: "Amaris Sandbox <test@example.invalid>"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Fail closed unless this is isolated sandbox-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PAYFAST_MODE" = sandbox
+          test "$PAYFAST_ENV" = sandbox
+          test "$SUPABASE_DATABASE_REQUIRED" = false
+          test "$DATABASE_URL" = "postgresql://amaris_itn@127.0.0.1:5432/amaris_itn"
+          test -n "$PAYFAST_MERCHANT_ID"
+          test -n "$PAYFAST_MERCHANT_KEY"
+          echo "ISOLATION_GATE=PASS"
+      - name: Install isolated Django and browser
+        run: |
+          python -m pip install -r backend/requirements.txt >/dev/null
+          mkdir -p /tmp/amaris-staging-mail /tmp/itn-playwright
+          cd /tmp/itn-playwright
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts playwright@1.56.1 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Start isolated Django and public HTTPS callback
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          python manage.py migrate --noinput >/dev/null
+          python manage.py check
+          python manage.py runserver 127.0.0.1:8000 --noreload > /tmp/amaris-itn-server.log 2>&1 &
+          echo $! > /tmp/amaris-itn-server.pid
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:8000/health/ready/ >/dev/null;then break;fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8000/health/ready/ >/dev/null
+          curl -fLsS --retry 3 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared
+          chmod +x /tmp/cloudflared
+          /tmp/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000 > /tmp/amaris-cloudflared.log 2>&1 &
+          echo $! > /tmp/amaris-cloudflared.pid
+          python - <<'PY'
+          import pathlib, re, time
+          log=pathlib.Path('/tmp/amaris-cloudflared.log')
+          for attempt in range(45):
+              value=log.read_text(errors='replace') if log.exists() else ''
+              result=re.search(r'https://[a-z0-9-]+\.trycloudflare\.com',value)
+              if result:
+                  pathlib.Path('/tmp/amaris-itn-host').write_text(result.group(0))
+                  print('HTTPS_CALLBACK_TUNNEL=READY')
+                  break
+              time.sleep(1)
+          else:raise SystemExit('HTTPS_CALLBACK_TUNNEL=UNAVAILABLE')
+          PY
+          origin="$(cat /tmp/amaris-itn-host)"
+          curl -fLsS --max-time 15 "$origin/health/ready/" >/dev/null
+          echo "EXTERNAL_ISOLATED_DJANGO_HEALTH=PASS"
+      - name: Generate real signed course checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin="$(cat /tmp/amaris-itn-host)"
+          export PAYFAST_NOTIFY_URL="$origin/api/v1/payfast/itn/"
+          export PUBLIC_SITE_URL="$origin"
+          export PUBLIC_API_URL="$origin"
+          cd backend
+          python manage.py shell -c '
+          import json,os,uuid
+          from decimal import Decimal
+          from content.models import StudentRecord, Course, CourseCategory
+          from content.services.payments import create_checkout
+          s=StudentRecord.objects.create(supabase_user_id=uuid.uuid4(),email="isolated-buyer@example.invalid",first_name="Isolated",last_name="Sandbox")
+          cat=CourseCategory.objects.create(name="PayFast ITN Acceptance",slug="itn-acceptance")
+          c=Course.objects.create(category=cat,title="Isolated ITN Acceptance Mathematics",slug="isolated-itn-acceptance",short_description="Provider callback only",description="Never use actual user data",curriculum="Mathematics",academic_level="Grade 12",price=Decimal("20.00"),status=Course.Status.PUBLISHED)
+          checkout=create_checkout(student=s,course=c,idempotency_key="itn-"+os.environ["GITHUB_RUN_ID"]+"-"+os.environ["GITHUB_RUN_ATTEMPT"])
+          with open("/tmp/amaris-itn-checkout.json","w") as out:json.dump({"gateway_url":checkout.gateway_url,"reference":checkout.payment_reference,"fields":checkout.fields},out)
+          print("SIGNED_R20_CHECKOUT=CREATED")
+          '
+      - name: Finish test wallet payment and verify provider success
+        shell: bash
+        run: |
+          cd /tmp/itn-playwright
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import {chromium} from 'playwright';
+          const checkout=JSON.parse(fs.readFileSync('/tmp/amaris-itn-checkout.json','utf8'));
+          assert.equal(checkout.gateway_url,'https://sandbox.payfast.co.za/eng/process');
+          const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+          const page=await browser.newPage();
+          try{
+            const esc=x=>String(x).replaceAll('&','&amp;').replaceAll('"','&quot;');
+            const hidden=Object.entries(checkout.fields).map(([k,v])=>'<input type="hidden" name="'+esc(k)+'" value="'+esc(v)+'">').join('');
+            await page.setContent('<form method="post" action="'+checkout.gateway_url+'">'+hidden+'<button id="pay">Pay test wallet</button></form>');
+            await page.locator('#pay').click();
+            await page.waitForURL(u=>u.hostname==='sandbox.payfast.co.za',{timeout:45000});
+            await page.getByText('Complete Payment',{exact:true}).waitFor({timeout:40000});
+            await page.getByText('Complete Payment',{exact:true}).click();
+            await page.getByText('Your payment was successful!',{exact:false}).waitFor({timeout:70000});
+            console.log('AUTHENTIC_PAYFAST_SANDBOX_WALLET_SUCCESS=YES');
+          }finally{await browser.close();}
+          NODE
+      - name: Confirm actual PayFast ITN verified by server, then dispatch email to local test mailbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          for attempt in $(seq 1 32); do
+            state="$(python manage.py shell -c '
+          import json
+          from content.models import Payment
+          from content.payment_models import PaymentWebhookEvent
+          ref=json.load(open("/tmp/amaris-itn-checkout.json"))["reference"]
+          x=Payment.objects.get(reference=ref)
+          e=PaymentWebhookEvent.objects.filter(local_reference=ref,state="processed")
+          print("PROVIDER_ITN_PAID="+str(x.status=="paid" and bool(x.gateway_verified_at) and bool(x.provider_reference) and e.exists()))
+          ' 2>/dev/null | tail -1)"
+            if [[ "$state" == "PROVIDER_ITN_PAID=True" ]];then break;fi
+            if [[ "$attempt" -eq 32 ]];then
+              echo "AUTHENTIC_ITN_NOT_VERIFIED"
+              echo "Callback request codes only (no secret fields):"
+              grep -E 'POST /api/v1/payfast/itn/' /tmp/amaris-itn-server.log | sed -E 's/\?.* HTTP/ HTTP/' | tail -8 || true
+              exit 1
+            fi
+            sleep 3
+          done
+          echo "AUTHENTIC_PAYFAST_SERVER_VALIDATED_ITN=PASS"
+          python manage.py shell -c '
+          from content.tasks import deliver_transactional_email
+          n=deliver_transactional_email.run()
+          assert n==1, f"Expected exactly one verified paid receipt email; got {n}"
+          print("DJANGO_RECEIPT_EMAIL_DISPATCH=PASS")
+          '
+          python - <<'PY'
+          from pathlib import Path
+          messages=list(Path('/tmp/amaris-staging-mail').glob('*'))
+          assert len(messages)==1,f'Expected one receipt email; got {len(messages)}'
+          email=messages[0].read_text(errors='replace')
+          assert 'application/pdf' in email and 'isolated-buyer@example.invalid' in email
+          print('ATTACHED_PDF_IN_EMAIL_GENERATED=PASS')
+          PY
+      - name: Stop isolated services
+        if: always()
+        shell: bash
+        run: |
+          for file in /tmp/amaris-itn-server.pid /tmp/amaris-cloudflared.pid; do
+            if [ -f "$file" ];then kill "$(cat "$file")" 2>/dev/null || true;fi
+          done
