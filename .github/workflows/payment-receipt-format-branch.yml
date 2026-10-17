@@ -1,0 +1,34 @@
+name: Payment Receipt Formatting (Isolated Branch Only)
+
+on:
+  push:
+    branches: [test/payment-receipts-dashboard-20261017]
+    paths: [.github/workflows/payment-receipt-format-branch.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Format only changed receipt code
+        run: |
+          python -m pip install black==26.5.1 ruff==0.16.6
+          black backend/content/test_payment_receipt_delivery.py backend/content/student_views.py backend/content/live_class_views.py backend/content/video_request_views.py backend/content/services/invoices.py backend/content/test_live_classes.py
+          ruff check --fix backend/content/test_payment_receipt_delivery.py backend/content/student_views.py backend/content/live_class_views.py backend/content/video_request_views.py backend/content/services/invoices.py backend/content/test_live_classes.py
+      - name: Commit exact formatter output to isolated test branch
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add backend/content
+            git commit -m "style: format receipt tests and backend fixes"
+            git push origin HEAD:refs/heads/test/payment-receipts-dashboard-20261017
+          fi
