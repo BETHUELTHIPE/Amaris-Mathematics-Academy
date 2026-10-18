@@ -3,15 +3,6 @@
 import { useRef, useState } from "react";
 import { Check, Copy, ExternalLink, Share2 } from "lucide-react";
 
-// Always share the public project page, never the visitor's URL query,
-// a staging preview, a login token, or a payment/session reference.
-export const PUBLIC_SUPPORT_URL =
-  "https://amaris-mathematics-academy-live-students.onrender.com/support-our-project";
-
-const SHARE_TITLE = "Support Our Project | Amaris Mathematics Academy";
-const SHARE_MESSAGE =
-  "Help Amaris Mathematics Academy reach more South African learners. Explore ways to sponsor a learner or support the education project.";
-
 export function ShareSupportProject() {
   const [status, setStatus] = useState<"idle" | "copied" | "manual">("idle");
   const urlInput = useRef<HTMLInputElement>(null);
@@ -36,8 +27,8 @@ export function ShareSupportProject() {
     if (typeof navigator.share === "function") {
       try {
         await navigator.share({
-          title: SHARE_TITLE,
-          text: SHARE_MESSAGE,
+          title: SUPPORT_SHARE_TITLE,
+          text: SUPPORT_SHARE_MESSAGE,
           url: PUBLIC_SUPPORT_URL,
         });
         setStatus("idle");
@@ -48,9 +39,6 @@ export function ShareSupportProject() {
     }
     await copyLink();
   }
-
-  const whatsappShareUrl =
-    "https://wa.me/?text=" + encodeURIComponent(SHARE_MESSAGE + " " + PUBLIC_SUPPORT_URL);
 
   return (
     <div className="mt-7 rounded-2xl border border-[#dce4ef] bg-white p-5 shadow-sm sm:p-7">
@@ -85,7 +73,7 @@ export function ShareSupportProject() {
             <Share2 className="size-4" aria-hidden="true" /> Share project
           </button>
           <a
-            href={whatsappShareUrl}
+            href={SUPPORT_WHATSAPP_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-[#b9c8dd] px-4 py-2 text-sm font-semibold text-[#173d72] transition hover:bg-[#eaf1fb] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"
