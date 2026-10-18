@@ -7,7 +7,10 @@ from django.urls import reverse
 from content.models import WebVitalSample
 
 
-@override_settings(WEB_VITALS_INGEST_TOKEN="x" * 48)
+@override_settings(
+    WEB_VITALS_INGEST_TOKEN="x" * 48,
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+)
 class AnonymousWebVitalsTests(TestCase):
     def send(self, data=None, token="x" * 48):
         return self.client.post(
