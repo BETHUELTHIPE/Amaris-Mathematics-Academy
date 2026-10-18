@@ -8,6 +8,7 @@ on:
       - 'frontend/app/courses/page.tsx'
       - 'frontend/app/globals.css'
       - 'frontend/components/site/header.tsx'
+      - 'frontend/components/site/course-browser.tsx'
       - 'frontend/components/site/header-navigation.tsx'
       - 'frontend/components/site/share-website-button.tsx'
       - 'frontend/public/share-website-enhance.js'
