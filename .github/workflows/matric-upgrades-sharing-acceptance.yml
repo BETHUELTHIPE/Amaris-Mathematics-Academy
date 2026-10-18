@@ -1,0 +1,59 @@
+name: Matric Upgrades Sharing Acceptance
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/app/matric-upgrades/**'
+      - 'frontend/components/site/share-matric-upgrades.tsx'
+      - 'frontend/lib/matric-upgrades-sharing.ts'
+      - 'frontend/tests/matric-upgrades-share.test.mjs'
+      - 'frontend/e2e/matric_upgrades_share.py'
+      - '.github/workflows/matric-upgrades-sharing-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-matric-share-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  share-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Verify TypeScript, lint and frontend contracts
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+      - name: Install browser harness
+        run: pip install -r frontend/e2e/requirements.txt
+      - name: Build production-equivalent Nitro Node runtime
+        working-directory: frontend
+        run: |
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Check mobile share, clipboard, WhatsApp, canonical and fallback
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: python -u frontend/e2e/matric_upgrades_share.py

@@ -1,5 +1,6 @@
 import { Clock3, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
+import { ShareWebsiteButton } from "@/components/site/share-website-button";
 
 // The public frontend and Django API may be deployed on different origins.
 function getDjangoAdminUrl(): string {
@@ -41,7 +42,10 @@ export async function Footer() {
           <p className="text-sm font-semibold text-[#ffcc66]">Explore</p>
           <div className="mt-4 grid gap-3 text-sm text-white/65">
             {links.map(({ label, url, open_in_new_tab }) => <a key={url} href={url} className="inline-flex min-h-6 items-center" target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined}>{label}</a>)}
+            <a href="/ai-guide" className="inline-flex min-h-10 items-center font-semibold text-[#ffcc66] transition hover:text-white focus-visible:underline">Amaris AI Guide — listen or chat</a>
+            <a href="/support-our-project" className="inline-flex min-h-10 items-center font-semibold text-[#ffcc66] transition hover:text-white focus-visible:underline">Support Our Project</a>
             <a href="/documents">Documents & invoices</a>
+            <div className="pt-2"><ShareWebsiteButton /></div>
           </div>
         </div>
         <div>
