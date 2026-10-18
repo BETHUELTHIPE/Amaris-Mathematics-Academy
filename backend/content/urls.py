@@ -35,6 +35,7 @@ from .video_request_views import (
     VideoRequestStatusView,
     VideoRequestVideoDownloadView,
 )
+from .web_vitals_views import ingest_web_vital, web_vitals_report
 from .views import (
     AmarisAssistantView,
     AnnouncementViewSet,
@@ -63,6 +64,8 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("web-vitals/ingest/", ingest_web_vital, name="web-vitals-ingest"),
+    path("web-vitals/report/", web_vitals_report, name="web-vitals-report"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(
         "tutor-applications/acknowledgement/",
