@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'backend/content/**'
+      - 'backend/amaris_cms/database_guard.py'
+      - 'backend/manage.py'
       - 'frontend/app/announcements/**'
       - 'frontend/components/site/announcement-youtube.tsx'
       - 'frontend/lib/announcement-youtube.ts'
@@ -52,9 +54,9 @@ jobs:
           python manage.py collectstatic --noinput
           python manage.py check
           python manage.py makemigrations --check --dry-run
-          python manage.py test content.test_announcement_youtube content.test_announcement_media --noinput
-          black --check content/admin.py content/models.py content/serializers.py content/youtube.py content/test_announcement_youtube.py
-          ruff check content/admin.py content/models.py content/serializers.py content/youtube.py content/test_announcement_youtube.py
+          python manage.py test content.test_announcement_youtube content.test_announcement_media content.test_database_guard --noinput
+          black --check content/admin.py content/models.py content/serializers.py content/youtube.py content/test_announcement_youtube.py content/test_database_guard.py amaris_cms/database_guard.py manage.py
+          ruff check content/admin.py content/models.py content/serializers.py content/youtube.py content/test_announcement_youtube.py content/test_database_guard.py amaris_cms/database_guard.py manage.py
           mypy
   frontend:
     runs-on: ubuntu-latest
