@@ -33,9 +33,6 @@ async function FeaturedCourses() {
 export default function Home() {
   return (
     <main className="home-shell min-h-screen bg-[#f5f7fb] text-[#0a1b36]">
-      {/* A mobile-specific preload avoids downloading the original desktop image as well. */}
-      <link rel="preload" as="image" href="/amaris-math-hero-mobile.webp" media="(max-width: 639px)" fetchPriority="high" />
-      <link rel="preload" as="image" href="/amaris-math-hero.webp" media="(min-width: 640px)" fetchPriority="high" />
       <Header />
       <section className="relative isolate overflow-hidden bg-[#07152d] text-white">
         {/* Direct delivery avoids the Vinext image optimizer path while keeping the LCP image discoverable in the initial HTML. */}
