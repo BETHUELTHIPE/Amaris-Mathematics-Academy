@@ -33,8 +33,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 .graph-paper { background-image:linear-gradient(rgba(255,255,255,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.12) 1px,transparent 1px); background-size:42px 42px; mask-image:linear-gradient(90deg,black,transparent 72%); }
 .eyebrow { color:#1f5bbd; font-size:.78rem; font-weight:800; letter-spacing:.18em; text-transform:uppercase; }
 .section-title { color:#0a1b36; font-size:clamp(2.3rem,5vw,4.4rem); font-weight:650; letter-spacing:-.05em; line-height:1.02; }
-/* Reserve offscreen space without shifting narrow mobile layout. */
-@media (min-width: 768px) {
+/* Apply offscreen containment only at desktop widths; tablet layouts differ too much from the estimated placeholder heights. */
+@media (min-width: 1024px) {
   .home-deferred-featured { content-visibility:auto; contain-intrinsic-size:auto 900px; }
   .home-deferred-steps { content-visibility:auto; contain-intrinsic-size:auto 650px; }
   .home-deferred-cta { content-visibility:auto; contain-intrinsic-size:auto 360px; }
