@@ -4,6 +4,8 @@ on:
   push:
     branches: [security/owasp-test-suite, main]
     paths:
+      - "backend/requirements.txt"
+      - "backend/requirements-dev.txt"
       - "backend/content/models.py"
       - "backend/content/admin.py"
       - "backend/content/private_media_storage.py"
@@ -13,6 +15,8 @@ on:
       - ".github/workflows/private-course-media.yml"
   pull_request:
     paths:
+      - "backend/requirements.txt"
+      - "backend/requirements-dev.txt"
       - "backend/content/models.py"
       - "backend/content/admin.py"
       - "backend/content/private_media_storage.py"
