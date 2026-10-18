@@ -9,10 +9,16 @@ import os
 import urllib.request
 
 import boto3
+import psycopg
 from botocore.config import Config
+from psycopg.rows import dict_row
 
 from verify_render_finance_preflight import NoRedirect, api_get, service_env
 from verify_supplied_staging_connection import ENDPOINT, STAGE, first
+from verify_staging_database_isolation import (
+    is_dedicated_supabase_staging_dsn,
+    validate_dedicated_supabase_facts,
+)
 
 BUCKETS = ("amaris-staging-admin", "amaris-staging-students")
 
@@ -22,6 +28,14 @@ def prepare():
     if service.get("ownerId") != "tea-csppi8l6l47c73dk9c90" or service.get("branch") != "staging":
         raise RuntimeError("Unexpected staging service identity")
     values = service_env(STAGE)
+    dsn = values.get("STAGING_DATABASE_URL", "")
+    if not is_dedicated_supabase_staging_dsn(dsn):
+        raise RuntimeError("Database is not the dedicated staging project")
+    with psycopg.connect(dsn, sslmode="require", connect_timeout=12, row_factory=dict_row) as conn:
+        conn.execute("SET TRANSACTION READ ONLY")
+        facts = conn.execute("SELECT current_database() AS database_name, current_user AS database_role, current_schema() AS schema_name").fetchone()
+        if not validate_dedicated_supabase_facts(facts):
+            raise RuntimeError("Unexpected staging database identity")
     access = first(values, "SUPABASE_S3_ACCESS_KEY_ID", "SUPABASE_STORAGE_S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID")
     secret = first(values, "SUPABASE_S3_SECRET_ACCESS_KEY", "SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY")
     if not access or not secret:
@@ -33,7 +47,8 @@ def prepare():
     for bucket in BUCKETS:
         client.head_bucket(Bucket=bucket)
     updates = {"AWS_ACCESS_KEY_ID": access, "AWS_SECRET_ACCESS_KEY": secret,
-        "SUPABASE_S3_ACCESS_KEY_ID": access, "SUPABASE_S3_SECRET_ACCESS_KEY": secret}
+        "SUPABASE_S3_ACCESS_KEY_ID": access, "SUPABASE_S3_SECRET_ACCESS_KEY": secret,
+        "DATABASE_URL": dsn, "DATABASE_SSL_REQUIRED": "true"}
     changed = 0
     for key, value in updates.items():
         if values.get(key) == value:
