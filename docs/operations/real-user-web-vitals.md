@@ -49,11 +49,20 @@ monitoring server is required.
 
 ## Reading your p75
 
-Login to Django Admin as a superuser, then open:
-`https://amaris-production-web.onrender.com/api/v1/web-vitals/report/?days=28`
+Log in to **production Django Admin** as a superuser and open
+**Content → Web Vital Samples**. The top of this page presents a read-only
+performance summary table, selectable for **7, 28, or 90 days**. This table
+uses an authenticated same-origin report request. Each row includes the
+metric, coarse page and device classes, sample count, p75, and assessment.
+If a particular group has fewer than 20 valid events, it displays
+**Insufficient data** rather than a number or passing status. While there
+are no samples it explains that real browser traffic is still needed.
 
-Change `days` to 7, 28 or 90. Inspect sample sizes, routes/devices and p75:
-LCP <=2,500 ms, INP <=200 ms, CLS <=0.10 are the good thresholds.
+The JSON source remains available to authenticated superusers at
+`https://amaris-production-web.onrender.com/api/v1/web-vitals/report/?days=28`.
+LCP <=2,500 ms, INP <=200 ms, and CLS <=0.10 are the good thresholds.
+The table is available **only once both RUM PRs deploy**; until then it is
+present in the draft backend branch only.
 
 **Important:** Reports are based on sampled browser events, not unique
 students or real-user Chrome UX Report p75. INP may be absent for pages with
