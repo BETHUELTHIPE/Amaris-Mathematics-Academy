@@ -9,7 +9,6 @@ from .models import (
     LIVE_CLASS_MAX_HOURS,
     Announcement,
     AnnouncementMedia,
-    WebVitalSample,
     ContactEnquiry,
     Course,
     CourseCategory,
@@ -31,6 +30,7 @@ from .models import (
     VideoAsset,
     VideoRequest,
     VideoRequestDocument,
+    WebVitalSample,
 )
 
 admin.site.site_header = "Amaris Mathematics Academy"
