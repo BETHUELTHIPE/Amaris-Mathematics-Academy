@@ -118,34 +118,36 @@ class WebVitalsReportTests(TestCase):
             self.client.get(reverse("web-vitals-report"), {"days": "invalid"}, secure=True).status_code, 400
         )
 
-
     def test_p75_boundary_is_independent_per_metric_page_and_device(self):
         # An otherwise healthy group must not lend its sample count to a
         # different device, metric or page category.
         for number in range(19):
             WebVitalSample.objects.create(
                 event_hash=f"{1000 + number:064x}",
-                metric_name="LCP", value=1000,
-                page_group="courses", device="mobile",
+                metric_name="LCP",
+                value=1000,
+                page_group="courses",
+                device="mobile",
             )
             WebVitalSample.objects.create(
                 event_hash=f"{2000 + number:064x}",
-                metric_name="CLS", value=0.04,
-                page_group="home", device="mobile",
+                metric_name="CLS",
+                value=0.04,
+                page_group="home",
+                device="mobile",
             )
         for number in range(20):
             WebVitalSample.objects.create(
                 event_hash=f"{3000 + number:064x}",
-                metric_name="INP", value=180,
-                page_group="home", device="desktop",
+                metric_name="INP",
+                value=180,
+                page_group="home",
+                device="desktop",
             )
         self.client.force_login(self.superuser)
         response = self.client.get(reverse("web-vitals-report"), secure=True)
         self.assertEqual(response.status_code, 200)
-        groups = {
-            (item["metric"], item["page"], item["device"]): item
-            for item in response.json()["groups"]
-        }
+        groups = {(item["metric"], item["page"], item["device"]): item for item in response.json()["groups"]}
         self.assertEqual(len(groups), 4)
         self.assertEqual(groups[("LCP", "home", "mobile")]["samples"], 20)
         self.assertIsNotNone(groups[("LCP", "home", "mobile")]["p75"])
