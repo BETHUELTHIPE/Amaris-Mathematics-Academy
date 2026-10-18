@@ -44,7 +44,14 @@ jobs:
           required=["DATABASE_URL","EMAIL_HOST","EMAIL_HOST_USER","EMAIL_HOST_PASSWORD","DEFAULT_FROM_EMAIL","SUPABASE_S3_ENDPOINT_URL","SUPABASE_S3_ACCESS_KEY_ID","SUPABASE_S3_SECRET_ACCESS_KEY","SUPABASE_S3_STUDENT_BUCKET","CELERY_BROKER_URL"]
           for label in required:
               print(label+"="+("PRESENT" if env.get(label) else "MISSING"))
-          print("EMAIL_BACKEND="+("CONFIGURED" if env.get("EMAIL_BACKEND") else "DEFAULT_DJANGO"))
+          for label in ["GMAIL_USER","GMAIL_EMAIL","GMAIL_APP_PASSWORD","EMAIL_PORT","EMAIL_USE_TLS","EMAIL_USE_SSL"]:
+              print(label+"="+("PRESENT" if env.get(label) else "MISSING"))
+          backend=str(env.get("EMAIL_BACKEND") or "django.core.mail.backends.smtp.EmailBackend")
+          print("SMTP_BACKEND="+str(backend=="django.core.mail.backends.smtp.EmailBackend"))
+          smtp_user=env.get("EMAIL_HOST_USER") or env.get("GMAIL_USER") or env.get("GMAIL_EMAIL")
+          smtp_password=env.get("EMAIL_HOST_PASSWORD") or env.get("GMAIL_APP_PASSWORD")
+          print("SMTP_AUTH_CONFIGURED="+str(bool(smtp_user and smtp_password)))
+          print("VALID_FROM_EMAIL_CONFIGURED="+str(bool(env.get("DEFAULT_FROM_EMAIL") and "example.invalid" not in env.get("DEFAULT_FROM_EMAIL",""))))
           print("PAYFAST_SANDBOX="+str((env.get("PAYFAST_MODE") or env.get("PAYFAST_ENV") or "sandbox").lower()=="sandbox"))
           print("Only key presence is reported; credentials are not printed or stored.")
           PY
