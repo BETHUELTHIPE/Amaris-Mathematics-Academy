@@ -1,8 +1,9 @@
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
+import { AnnouncementYouTube } from "@/components/site/announcement-youtube";
 
 type Media = { id: number; title: string; kind: "image" | "video" | "pdf"; download_url: string };
-type Announcement = { id: number; title: string; message: string; link_url: string; link_label: string; media: Media[] };
+type Announcement = { id: number; title: string; message: string; link_url: string; link_label: string; youtube_url?: string; media: Media[] };
 const cms = process.env.CMS_API_URL?.replace(/\/$/, "");
 
 async function publishedAnnouncements(): Promise<Announcement[]> {
@@ -33,6 +34,7 @@ export default async function AnnouncementsPage() {
       {announcements.map(a => <article key={a.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-9">
         <h2 className="text-2xl font-bold">{a.title}</h2>
         <p className="mt-4 whitespace-pre-line leading-7 text-slate-600">{a.message}</p>
+        <AnnouncementYouTube url={a.youtube_url} title={a.title} />
         <div className="mt-6 grid gap-5 md:grid-cols-2">
           {(a.media ?? []).map(m => {
             const url = new URL(m.download_url, cms ?? "https://invalid.example").toString();

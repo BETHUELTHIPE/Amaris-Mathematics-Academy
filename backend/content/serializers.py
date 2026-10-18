@@ -255,7 +255,7 @@ class AnnouncementSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Announcement
-        fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at", "media")
+        fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at", "media", "youtube_url")
 
 
 class AmarisAssistantRequestSerializer(serializers.Serializer):
