@@ -65,7 +65,11 @@ jobs:
       - name: Install backend test dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Format check
-        run: black --check content/models.py content/admin.py content/private_media_storage.py tests/security/test_private_video_assets.py
+        run: |
+          black --check content/models.py content/admin.py content/private_media_storage.py tests/security/test_private_video_assets.py || {
+            black --diff content/models.py content/admin.py content/private_media_storage.py tests/security/test_private_video_assets.py
+            exit 1
+          }
       - name: Ruff lint
         run: ruff check content/models.py content/admin.py content/private_media_storage.py tests/security/test_private_video_assets.py
       - name: Django system checks
