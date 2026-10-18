@@ -1,0 +1,43 @@
+name: Real User Core Web Vitals Acceptance
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - "frontend/app/layout.tsx"
+      - "frontend/app/api/web-vitals/**"
+      - "frontend/components/site/web-vitals-monitor.tsx"
+      - "frontend/lib/web-vitals.ts"
+      - "frontend/tests/web-vitals.test.mjs"
+      - ".github/workflows/real-user-web-vitals-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-web-vitals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Check private telemetry types and lint
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+      - name: Run route privacy tests and existing frontend contract suite
+        working-directory: frontend
+        run: |
+          node --test tests/web-vitals.test.mjs
+          npm test
