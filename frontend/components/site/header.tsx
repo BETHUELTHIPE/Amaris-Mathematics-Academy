@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- header uses intentional full-page anchors to avoid public-route Link hydration */
 import { Mail, MapPin, Phone } from "lucide-react";
 import { AuthControls } from "@/components/site/auth-controls";
+import { ShareWebsiteButton } from "@/components/site/share-website-button";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
 
 export async function Header() {
@@ -16,7 +17,10 @@ export async function Header() {
             <a href={academyBrand.phoneHref} className="flex shrink-0 items-center gap-2 transition hover:text-white"><Phone className="size-3.5 text-[#ffcc66]" />{academyBrand.phoneDisplay}</a>
             <a href={academyBrand.emailHref} className="flex min-w-0 items-center gap-2 transition hover:text-white"><Mail className="size-3.5 shrink-0 text-[#ffcc66]" /><span className="hidden truncate sm:inline">{academyBrand.email}</span><span className="sm:hidden">Email us</span></a>
           </div>
-          <a href={academyBrand.addressHref} target="_blank" rel="noreferrer" className="hidden items-center gap-2 transition hover:text-white md:flex"><MapPin className="size-3.5 text-[#ffcc66]" />{academyBrand.addressShort}</a>
+          <div className="flex shrink-0 items-center gap-3">
+            <a href={academyBrand.addressHref} target="_blank" rel="noreferrer" className="hidden items-center gap-2 transition hover:text-white lg:flex"><MapPin className="size-3.5 text-[#ffcc66]" />{academyBrand.addressShort}</a>
+            <ShareWebsiteButton compact />
+          </div>
         </div>
       </div>
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-6 px-5 lg:px-8">
