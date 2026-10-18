@@ -11,6 +11,7 @@ on:
       - 'frontend/components/site/course-browser.tsx'
       - 'frontend/components/site/header-navigation.tsx'
       - 'frontend/components/site/share-website-button.tsx'
+      - 'frontend/components/site/enquiry-form.tsx'
       - 'frontend/components/site/course-browser.tsx'
       - 'frontend/public/course-browser-enhance.js'
       - 'frontend/public/share-website-enhance.js'
