@@ -320,7 +320,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STORAGES["student_data"] = STORAGES["student_private"]
 STORAGES["student_documents"] = STORAGES["student_private"]
 
-# Production telemetry is off until an independent 32+ character shared secret is configured.\nWEB_VITALS_INGEST_TOKEN = os.getenv("WEB_VITALS_INGEST_TOKEN", "")\n\nREST_FRAMEWORK = {
+# Production telemetry is off until an independent 32+ character shared secret is configured.
+WEB_VITALS_INGEST_TOKEN = os.getenv("WEB_VITALS_INGEST_TOKEN", "")
+
+REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
