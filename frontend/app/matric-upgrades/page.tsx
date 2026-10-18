@@ -2,10 +2,19 @@ import type { Metadata } from "next";
 import { ArrowDown, ArrowRight, BadgeCheck, BookOpen, BriefcaseBusiness, Check, Clock3, GraduationCap, Laptop, MapPin, Moon, ShieldCheck, Sun, Users } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
+import { ShareMatricUpgrades } from "@/components/site/share-matric-upgrades";
+import { PUBLIC_MATRIC_UPGRADES_URL } from "@/lib/matric-upgrades-sharing";
 
 export const metadata: Metadata = {
   title: "Matric Upgrades & Rewrite Tuition for Adults",
   description: "Your next chapter starts with a stronger matric. Explore online tuition for adults, shift workers and returning learners. Secure your exam centre before attending Amaris classes.",
+  alternates: { canonical: PUBLIC_MATRIC_UPGRADES_URL },
+  openGraph: {
+    type: "website",
+    url: PUBLIC_MATRIC_UPGRADES_URL,
+    title: "Matric Upgrades for Working Adults | Amaris Mathematics Academy",
+    description: "Flexible matric rewrite tuition for working adults and shift workers. Secure your exam centre before attending Amaris classes.",
+  },
 };
 
 const focus = "focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#1f5bbd]";
@@ -74,6 +83,19 @@ export default function MatricUpgradesPage() {
             <a href="https://www.education.gov.za/Curriculum/SeniorCertificate/SCRegistration.aspx" target="_blank" rel="noopener noreferrer" className={`mt-5 inline-flex min-h-11 items-center gap-2 text-sm font-bold text-[#184b9e] underline underline-offset-4 ${focus}`}>Official Senior Certificate guidance <span className="sr-only">(opens in a new tab)</span><ArrowRight aria-hidden="true" className="size-4 shrink-0" /></a>
             <a href="https://www.gov.za/services/services-residents/education-and-training/basic-education/register-rewrite-matric-subjects" target="_blank" rel="noopener noreferrer" className={`mt-3 inline-flex min-h-11 items-center gap-2 text-sm font-bold text-[#184b9e] underline underline-offset-4 ${focus}`}>Official matric rewrite guidance <span className="sr-only">(opens in a new tab)</span><ArrowRight aria-hidden="true" className="size-4 shrink-0" /></a>
           </aside>
+        </div>
+      </section>
+
+      <section id="share-matric-upgrades" className="border-b border-[#dce4ef] bg-[#eaf1fb]" aria-labelledby="share-matric-heading">
+        <div className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-16">
+          <p className="text-xs font-bold uppercase tracking-[.16em] text-[#1f5bbd]">Pass the opportunity forward</p>
+          <h2 id="share-matric-heading" className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
+            Know someone who wants to upgrade their matric?
+          </h2>
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-[#526781]">
+            Share this page with a friend, colleague or family member. They can explore flexible online tuition and learn why securing an exam centre comes first.
+          </p>
+          <ShareMatricUpgrades />
         </div>
       </section>
 
