@@ -47,12 +47,17 @@ class StagingDatabaseIsolationTests(unittest.TestCase):
         pooled = "postgresql://postgres.atyhhjwwxgzeurnwayay:synthetic@aws-1-eu-west-1.pooler.supabase.com:5432/postgres"
         for url in (direct, pooled):
             self.assertTrue(is_dedicated_supabase_staging_dsn(url))
+            self.assertTrue(is_dedicated_supabase_staging_dsn(url + "?sslmode=require"))
             for bad in (
                 url.replace("atyhhjwwxgzeurnwayay", "epkcuseloinygkakxxdu"),
                 url.replace("supabase.co", "supabase.co.evil.test"),
                 url.replace(":5432/", ":6543/"),
                 url.replace(":synthetic", ""),
                 url.replace("/postgres", "/wrong"),
+                url + "?host=db.epkcuseloinygkakxxdu.supabase.co",
+                url + "?hostaddr=127.0.0.1",
+                url + "?user=postgres.epkcuseloinygkakxxdu",
+                url + "?sslmode=disable",
             ):
                 with self.subTest(url=bad):
                     self.assertFalse(is_dedicated_supabase_staging_dsn(bad))

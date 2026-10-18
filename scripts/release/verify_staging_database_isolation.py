@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 import psycopg
 from psycopg.rows import dict_row
@@ -25,6 +25,14 @@ def is_dedicated_supabase_staging_dsn(dsn: str) -> bool:
     """Accept only the user's separate staging project, never production."""
     try:
         parsed = urlsplit(dsn)
+        parameters = parse_qsl(parsed.query, keep_blank_values=True)
+        # libpq URI parameters can override the visible host/user/database.
+        # Accept only optional TLS mode; never allow hidden routing overrides.
+        if parsed.fragment or any(
+            key != "sslmode" or value not in ("require", "verify-ca", "verify-full")
+            for key, value in parameters
+        ):
+            return False
         host = (parsed.hostname or "").lower()
         user = unquote(parsed.username or "")
         direct = host == f"db.{SUPABASE_STAGE_REF}.supabase.co" and user == "postgres"
@@ -178,8 +186,9 @@ def main() -> int:
 
     try:
         if is_dedicated_supabase_staging_dsn(dsn):
+            sslmode = dict(parse_qsl(urlsplit(dsn).query)).get("sslmode", "require")
             with psycopg.connect(
-                dsn, connect_timeout=12, sslmode="require", row_factory=dict_row
+                dsn, connect_timeout=12, sslmode=sslmode, row_factory=dict_row
             ) as conn:
                 conn.execute("SET TRANSACTION READ ONLY")
                 facts = conn.execute(
