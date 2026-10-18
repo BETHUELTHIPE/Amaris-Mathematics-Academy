@@ -1,0 +1,67 @@
+name: Protected Render RUM Token Parity Preflight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rum-render-token-parity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rum-render-token-parity-read-only
+  cancel-in-progress: false
+
+jobs:
+  secret-parity:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 8
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Compare existing backend/frontend Render secrets privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hmac
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          api = os.environ.get("RENDER_API_KEY", "")
+          if not api:
+              raise SystemExit("BLOCK: protected GitHub RENDER_API_KEY is unavailable")
+          services = {
+              "backend": "srv-dapn6b3tqb8s73d3r7n0",
+              "frontend": "srv-damn6d2d0e5s73d02j5g",
+          }
+          tokens = {}
+          for label, service_id in services.items():
+              request = urllib.request.Request(
+                  f"https://api.render.com/v1/services/{service_id}/env-vars/WEB_VITALS_INGEST_TOKEN",
+                  headers={"Authorization": "Bearer " + api, "Accept": "application/json"},
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      data = json.load(response)
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      raise SystemExit(f"BLOCK: {label} WEB_VITALS_INGEST_TOKEN is not configured")
+                  raise SystemExit(f"BLOCK: unable to inspect {label} token through Render API (HTTP {exc.code})")
+              except Exception as exc:
+                  raise SystemExit(f"BLOCK: {label} Render configuration request failed ({type(exc).__name__})")
+              value = data.get("value")
+              if not isinstance(value, str) or len(value) < 32:
+                  raise SystemExit(f"BLOCK: {label} token is missing, masked or shorter than 32 characters")
+              tokens[label] = value
+              print(f"PASS: {label} has a protected token of at least 32 characters (value hidden)")
+          if not hmac.compare_digest(tokens["backend"], tokens["frontend"]):
+              raise SystemExit("BLOCK: backend and frontend RUM tokens differ")
+          print("PASS: production Render backend and frontend RUM tokens match exactly")
+          PY
