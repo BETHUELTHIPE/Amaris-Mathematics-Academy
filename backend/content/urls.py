@@ -35,7 +35,6 @@ from .video_request_views import (
     VideoRequestStatusView,
     VideoRequestVideoDownloadView,
 )
-from .web_vitals_views import ingest_web_vital, web_vitals_report
 from .views import (
     AmarisAssistantView,
     AnnouncementViewSet,
@@ -51,6 +50,7 @@ from .views import (
     TestimonialViewSet,
     public_marketing_media,
 )
+from .web_vitals_views import ingest_web_vital, web_vitals_report
 
 router = DefaultRouter()
 router.register("navigation", NavigationViewSet, basename="navigation")
