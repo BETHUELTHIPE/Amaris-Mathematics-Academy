@@ -263,13 +263,17 @@ class VideoAsset(PublishableModel):
                 raise ValidationError("Add a private YouTube video ID or URL.")
             if self.youtube_url:
                 parsed = urlparse(self.youtube_url)
-                if parsed.hostname not in {
-                    "youtu.be",
-                    "www.youtu.be",
-                    "youtube.com",
-                    "www.youtube.com",
-                    "m.youtube.com",
-                } or parsed.scheme != "https":
+                if (
+                    parsed.hostname
+                    not in {
+                        "youtu.be",
+                        "www.youtu.be",
+                        "youtube.com",
+                        "www.youtube.com",
+                        "m.youtube.com",
+                    }
+                    or parsed.scheme != "https"
+                ):
                     raise ValidationError({"youtube_url": "Use an HTTPS YouTube video URL."})
                 if not self.youtube_video_id:
                     if parsed.hostname in {"youtu.be", "www.youtu.be"}:
@@ -291,9 +295,7 @@ class VideoAsset(PublishableModel):
                     raise ValidationError({"vimeo_url": "Use an HTTPS Vimeo video URL."})
                 if not self.vimeo_video_id:
                     segments = parsed.path.strip("/").split("/")
-                    self.vimeo_video_id = next(
-                        (segment for segment in segments if segment.isdecimal()), ""
-                    )
+                    self.vimeo_video_id = next((segment for segment in segments if segment.isdecimal()), "")
             if not re.fullmatch(r"[0-9]{1,30}", self.vimeo_video_id):
                 raise ValidationError({"vimeo_video_id": "Enter the numeric Vimeo video ID."})
         elif self.provider == self.Provider.S3:
