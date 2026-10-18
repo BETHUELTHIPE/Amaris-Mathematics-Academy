@@ -10,7 +10,7 @@ try {
   console.log("No Lighthouse reports yet: the earlier build or browser gate stopped first.");
   process.exit(0);
 }
-const names = reportFiles.filter((name) => /^(home|courses|contact)-[123](?:\\.report)?\\.json$/.test(name)).sort();
+const names = reportFiles.filter((name) => /^(home|courses|contact)-[123](?:\.report)?\.json$/.test(name)).sort();
 if (!names.length) {
   console.log("No mobile Lighthouse JSON reports found; diagnosis unavailable.");
   process.exit(0);
