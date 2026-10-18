@@ -27,6 +27,7 @@ from content.services.live_classes import (
     process_live_class_notification,
 )
 from content.tasks import (
+    _deliver_one_live_class_confirmation,
     deliver_live_class_confirmation,
     deliver_live_class_reminder,
     expire_live_class_holds,
@@ -536,6 +537,36 @@ class LiveClassBookingTests(TestCase):
         self.assertTrue(message.attachments[0][1].startswith(b"%PDF"))
 
         self.assertEqual(deliver_live_class_confirmation.run(), 0)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_smtp_rejection_does_not_mark_paid_booking_confirmation_delivered(self):
+        checkout = self.checkout()
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        result = process_live_class_notification(
+            self.callback(booking), gateway=MockPayFastGateway(True)
+        )
+        self.assertTrue(result.accepted)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, LiveClassBooking.Status.CONFIRMED)
+        self.assertIsNotNone(booking.invoice_number)
+
+        # Genuine provider refusal should keep the message pending, never "sent".
+        with mock.patch("content.tasks.EmailMultiAlternatives.send", return_value=0):
+            with self.assertRaisesRegex(OSError, "did not accept"):
+                _deliver_one_live_class_confirmation()
+        booking.refresh_from_db()
+        self.assertIsNone(booking.confirmation_sent_at)
+        self.assertEqual(len(mail.outbox), 0)
+
+        # After transport recovers, Django sends one actual email object with a PDF.
+        self.assertTrue(_deliver_one_live_class_confirmation())
+        booking.refresh_from_db()
+        self.assertIsNotNone(booking.confirmation_sent_at)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.student.email])
+        self.assertEqual(mail.outbox[0].attachments[0][2], "application/pdf")
+        self.assertTrue(mail.outbox[0].attachments[0][1].startswith(b"%PDF"))
+        self.assertFalse(_deliver_one_live_class_confirmation())
         self.assertEqual(len(mail.outbox), 1)
 
     def test_invoice_archive_and_download_are_student_owned(self):
