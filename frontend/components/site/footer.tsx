@@ -1,5 +1,6 @@
 import { Clock3, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
+import { ShareWebsiteButton } from "@/components/site/share-website-button";
 
 // The public frontend and Django API may be deployed on different origins.
 function getDjangoAdminUrl(): string {
@@ -44,6 +45,7 @@ export async function Footer() {
             <a href="/ai-guide" className="inline-flex min-h-10 items-center font-semibold text-[#ffcc66] transition hover:text-white focus-visible:underline">Amaris AI Guide — listen or chat</a>
             <a href="/support-our-project" className="inline-flex min-h-10 items-center font-semibold text-[#ffcc66] transition hover:text-white focus-visible:underline">Support Our Project</a>
             <a href="/documents">Documents & invoices</a>
+            <div className="pt-2"><ShareWebsiteButton /></div>
           </div>
         </div>
         <div>
