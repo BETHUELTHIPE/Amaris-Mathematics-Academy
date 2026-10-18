@@ -100,6 +100,15 @@ def measure(browser, path, width, height, mobile):
         if interaction_ms > 3000:
             raise AssertionError(f"Search response took too long: {interaction_ms}ms")
         search.fill("")
+        # Search/filter controls are progressively enhanced, with no React island.
+        caps = page.get_by_role("button", name="CAPS", exact=True)
+        caps.click()
+        assert caps.get_attribute("aria-pressed") == "true", "CAPS filter not selected"
+        visible_cards = page.locator("[data-course-card]:visible")
+        for card in visible_cards.all():
+            assert "CAPS" in (card.get_attribute("data-course-curriculum") or ""), "CAPS filter leaked another programme"
+        page.get_by_role("button", name="All", exact=True).click()
+        assert page.get_by_role("button", name="All", exact=True).get_attribute("aria-pressed") == "true"
 
     if mobile and path == "/":
         page.evaluate("window.scrollTo(0, 0)")
