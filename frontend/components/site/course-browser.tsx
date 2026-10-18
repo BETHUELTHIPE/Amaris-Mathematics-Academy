@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { ArrowUpRight, BookOpen, Clock3, Search } from "lucide-react";
 import { formatRand, type Course } from "@/lib/courses";
 
@@ -30,7 +29,7 @@ export function CourseBrowser({ courses }: { courses: Course[] }) {
               <h2 className="mt-6 text-2xl font-semibold leading-tight tracking-[-0.025em] text-[#0a1b36]">{course.title}</h2>
               <p className="mt-3 text-sm leading-6 text-[#60708a]">{course.description}</p>
               <div className="mt-5 flex gap-4 text-xs font-medium text-[#60708a]"><span className="flex items-center gap-1.5"><BookOpen className="size-4" />{course.lessons} lessons</span><span className="flex items-center gap-1.5"><Clock3 className="size-4" />{course.hours} hours</span></div>
-              <div className="mt-auto flex items-end justify-between gap-4 pt-7"><div><span className="text-xs text-[#60708a]">Once-off access</span><p className="text-2xl font-bold text-[#0a1b36]">{formatRand(course.price)}</p></div><Link href={`/courses/${course.slug}`} className="grid size-11 place-items-center rounded-full bg-[#0b2a5b] text-white transition group-hover:bg-[#2767d8]" aria-label={`View ${course.title}`}><ArrowUpRight className="size-5" /></Link></div>
+              <div className="mt-auto flex items-end justify-between gap-4 pt-7"><div><span className="text-xs text-[#60708a]">Once-off access</span><p className="text-2xl font-bold text-[#0a1b36]">{formatRand(course.price)}</p></div><a href={`/courses/${course.slug}`} className="grid size-11 place-items-center rounded-full bg-[#0b2a5b] text-white transition group-hover:bg-[#2767d8]" aria-label={`View ${course.title}`}><ArrowUpRight className="size-5" /></a></div>
             </div>
           </article>
         ))}
