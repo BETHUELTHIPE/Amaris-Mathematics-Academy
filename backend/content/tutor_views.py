@@ -11,6 +11,7 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Exists, OuterRef
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
@@ -188,8 +189,9 @@ class TutorEarningsView(TutorOnlyAPIView):
         )
 
 
-def _slot_data(slot):
-    reserved = slot.bookings.filter(status__in=RESERVED_STATUSES).exists()
+def _slot_data(slot, *, reserved=None):
+    if reserved is None:
+        reserved = slot.bookings.filter(status__in=RESERVED_STATUSES).exists()
     return {
         "id": slot.pk,
         "programme": slot.programme,
@@ -253,7 +255,11 @@ class TutorDashboardView(TutorOnlyAPIView):
         now = timezone.now()
         slots = (
             TutorAvailabilitySlot.objects.filter(tutor=request.user)
-            .prefetch_related("bookings")
+            .annotate(
+                has_reservation=Exists(
+                    LiveClassBooking.objects.filter(slot_id=OuterRef("pk"), status__in=RESERVED_STATUSES)
+                )
+            )
             .order_by("-starts_at")[:120]
         )
         bookings = (
@@ -295,7 +301,7 @@ class TutorDashboardView(TutorOnlyAPIView):
                 },
                 "rate_per_hour": f"{LIVE_CLASS_PRICE:.2f}",
                 "max_hours": LIVE_CLASS_MAX_HOURS,
-                "slots": [_slot_data(s) for s in slots],
+                "slots": [_slot_data(s, reserved=s.has_reservation) for s in slots],
                 "bookings": items,
                 "summary": {
                     "upcoming_slots": TutorAvailabilitySlot.objects.filter(
