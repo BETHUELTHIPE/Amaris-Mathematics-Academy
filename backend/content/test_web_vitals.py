@@ -24,6 +24,7 @@ class AnonymousWebVitalsTests(TestCase):
             ),
             content_type="application/json",
             HTTP_X_AMARIS_RUM_TOKEN=token,
+            secure=True,
         )
 
     def test_authenticated_internal_sample_is_anonymous_and_idempotent(self):
@@ -84,7 +85,7 @@ class WebVitalsReportTests(TestCase):
 
     def test_report_is_superuser_only(self):
         uri = reverse("web-vitals-report")
-        self.assertEqual(self.client.get(uri).status_code, 403)
+        self.assertEqual(self.client.get(uri, secure=True).status_code, 403)
         self.client.force_login(self.staff)
         self.assertEqual(self.client.get(uri).status_code, 403)
         self.client.force_login(self.superuser)
@@ -107,7 +108,7 @@ class WebVitalsReportTests(TestCase):
             device="mobile",
         )
         self.client.force_login(self.superuser)
-        item = self.client.get(reverse("web-vitals-report")).json()["groups"][0]
+        item = self.client.get(reverse("web-vitals-report"), secure=True).json()["groups"][0]
         self.assertIsNone(item["p75"])
         self.assertEqual(item["status"], "insufficient_data")
-        self.assertEqual(self.client.get(reverse("web-vitals-report"), {"days": "invalid"}).status_code, 400)
+        self.assertEqual(self.client.get(reverse("web-vitals-report"), {"days": "invalid"}, secure=True).status_code, 400)
