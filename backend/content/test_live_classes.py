@@ -607,20 +607,52 @@ class LiveClassBookingTests(TestCase):
                 )
             )
             url = reverse("live-class-invoice-download", args=[booking.reference])
-            self.assertEqual(owner.get(url, secure=True).status_code, 404)
-            self.assertEqual(deliver_live_class_confirmation.run(), 1)
-            booking.refresh_from_db()
+            self.assertIsNone(booking.confirmation_sent_at)
+            self.assertEqual(len(mail.outbox), 0)
+            self.assertEqual(other.get(url, secure=True).status_code, 404)
+            status_url = reverse("live-class-booking-status", args=[booking.reference])
+            status_response = owner.get(status_url, secure=True)
+            self.assertTrue(status_response.data["invoice_ready"])
 
+            # Private proof is downloadable immediately after verified payment.
+            before_email = owner.get(url, secure=True)
+            self.assertEqual(before_email.status_code, 200)
+            receipt = b"".join(before_email.streaming_content)
+            self.assertTrue(receipt.startswith(b"%PDF"))
             key = Path("invoices") / str(self.student.supabase_user_id) / f"{booking.invoice_number}.pdf"
             archived = Path(directory, "student", key).read_bytes()
-            self.assertTrue(archived.startswith(b"%PDF"))
+            self.assertEqual(receipt, archived)
             self.assertFalse(Path(directory, "admin", key).exists())
+            self.assertEqual(len(mail.outbox), 0)
+
+            self.assertEqual(deliver_live_class_confirmation.run(), 1)
+            booking.refresh_from_db()
+            self.assertIsNotNone(booking.confirmation_sent_at)
             self.assertEqual(archived, mail.outbox[-1].attachments[0][1])
             self.assertEqual(other.get(url, secure=True).status_code, 404)
             response = owner.get(url, secure=True)
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response["Cache-Control"], "private, no-store")
             self.assertEqual(b"".join(response.streaming_content), archived)
+            self.assertEqual(Path(directory, "student", key).read_bytes(), archived)
+
+    def test_unpaid_live_class_has_no_invoice_or_private_download(self):
+        checkout = self.checkout(key="liveclass-unpaid-download-001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        owner = APIClient()
+        owner.force_authenticate(
+            user=SupabaseStudentPrincipal(
+                student=self.student,
+                supabase_user_id=str(self.student.supabase_user_id),
+                email=self.student.email,
+            )
+        )
+        download = reverse("live-class-invoice-download", args=[booking.reference])
+        response = owner.get(download, secure=True)
+        self.assertEqual(response.status_code, 404)
+        status_url = reverse("live-class-booking-status", args=[booking.reference])
+        self.assertFalse(owner.get(status_url, secure=True).data["invoice_ready"])
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_reminder_is_sent_once_inside_thirty_minute_window(self):
         checkout = self.checkout()
