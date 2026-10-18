@@ -13,12 +13,21 @@ import {
 } from "lucide-react";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
+import { ShareSupportProject } from "@/components/site/share-support-project";
+import { PUBLIC_SUPPORT_URL } from "@/lib/support-sharing";
 import { getManagedBrand } from "@/lib/cms";
 
 export const metadata: Metadata = {
   title: "Support Our Project",
   description:
     "Help Amaris Mathematics Academy widen access to clear, flexible mathematics learning. Explore learner sponsorships, education partnerships and ways to contribute.",
+  alternates: { canonical: PUBLIC_SUPPORT_URL },
+  openGraph: {
+    title: "Support Our Project | Amaris Mathematics Academy",
+    description: "Share our education project with sponsors, mentors and partners helping South African learners.",
+    url: PUBLIC_SUPPORT_URL,
+    type: "website",
+  },
 };
 
 const waysToHelp = [
@@ -80,6 +89,20 @@ export default async function SupportOurProjectPage() {
               Learn about Amaris
             </Link>
           </div>
+        </div>
+      </section>
+
+      <section className="bg-[#eaf1fb] px-5 py-12 lg:px-8" aria-labelledby="share-our-project">
+        <div className="mx-auto max-w-7xl">
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#1f5bbd]">Help spread the word</p>
+          <h2 id="share-our-project" className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
+            Share this project with someone who could help.
+          </h2>
+          <p className="mt-3 max-w-3xl text-base leading-7 text-[#526781]">
+            A shared link can connect Amaris with a potential sponsor, employer, education partner or mentor.
+            You can copy the public page link, use your device&apos;s share menu, or send it on WhatsApp.
+          </p>
+          <ShareSupportProject />
         </div>
       </section>
 
