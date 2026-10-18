@@ -1,10 +1,15 @@
+import re
 import uuid
 from urllib.parse import parse_qs, urlparse
+
+from django.conf import settings
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
+
+from .private_media_storage import private_video_storage
 
 
 class TimeStampedModel(models.Model):
@@ -225,13 +230,23 @@ class VideoAsset(PublishableModel):
     class Provider(models.TextChoices):
         YOUTUBE = "youtube", "Private YouTube"
         S3 = "s3", "Private S3 upload"
+        VIMEO = "vimeo", "Private Vimeo"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=180)
     provider = models.CharField(max_length=12, choices=Provider.choices, default=Provider.YOUTUBE)
     youtube_video_id = models.CharField(max_length=32, blank=True)
     youtube_url = models.URLField(blank=True)
+    vimeo_video_id = models.CharField(max_length=30, blank=True)
+    vimeo_url = models.URLField(blank=True)
+    # Legacy CMS-hosted S3 files are kept in place to avoid breaking old lessons.
     source_file = models.FileField(upload_to="videos/%Y/%m/", blank=True)
+    # New uploads go to a dedicated AWS bucket, never the public CMS bucket.
+    aws_file = models.FileField(
+        storage=private_video_storage,
+        upload_to="private-videos/%Y/%m/",
+        blank=True,
+    )
     thumbnail = models.ImageField(upload_to="videos/thumbnails/", blank=True)
     captions_file = models.FileField(upload_to="videos/captions/", blank=True)
     duration_seconds = models.PositiveIntegerField(default=0)
@@ -246,16 +261,48 @@ class VideoAsset(PublishableModel):
         if self.provider == self.Provider.YOUTUBE:
             if not self.youtube_video_id and not self.youtube_url:
                 raise ValidationError("Add a private YouTube video ID or URL.")
-            if self.youtube_url and not self.youtube_video_id:
+            if self.youtube_url:
                 parsed = urlparse(self.youtube_url)
-                if parsed.hostname in {"youtu.be", "www.youtu.be"}:
-                    self.youtube_video_id = parsed.path.strip("/")
-                elif parsed.hostname in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
-                    self.youtube_video_id = parse_qs(parsed.query).get("v", [""])[0]
+                if parsed.hostname not in {
+                    "youtu.be",
+                    "www.youtu.be",
+                    "youtube.com",
+                    "www.youtube.com",
+                    "m.youtube.com",
+                } or parsed.scheme != "https":
+                    raise ValidationError({"youtube_url": "Use an HTTPS YouTube video URL."})
+                if not self.youtube_video_id:
+                    if parsed.hostname in {"youtu.be", "www.youtu.be"}:
+                        self.youtube_video_id = parsed.path.strip("/")
+                    else:
+                        self.youtube_video_id = parse_qs(parsed.query).get("v", [""])[0]
             if not self.youtube_video_id:
-                raise ValidationError("The YouTube URL does not contain a valid video ID.")
-        elif not self.source_file:
-            raise ValidationError("Upload a private video file for S3-hosted videos.")
+                raise ValidationError({"youtube_video_id": "Enter a valid YouTube video ID."})
+        elif self.provider == self.Provider.VIMEO:
+            if not self.vimeo_video_id and not self.vimeo_url:
+                raise ValidationError("Add a private Vimeo video ID or URL.")
+            if self.vimeo_url:
+                parsed = urlparse(self.vimeo_url)
+                if parsed.scheme != "https" or parsed.hostname not in {
+                    "vimeo.com",
+                    "www.vimeo.com",
+                    "player.vimeo.com",
+                }:
+                    raise ValidationError({"vimeo_url": "Use an HTTPS Vimeo video URL."})
+                if not self.vimeo_video_id:
+                    segments = parsed.path.strip("/").split("/")
+                    self.vimeo_video_id = next(
+                        (segment for segment in segments if segment.isdecimal()), ""
+                    )
+            if not re.fullmatch(r"[0-9]{1,30}", self.vimeo_video_id):
+                raise ValidationError({"vimeo_video_id": "Enter the numeric Vimeo video ID."})
+        elif self.provider == self.Provider.S3:
+            if not self.source_file and not self.aws_file:
+                raise ValidationError("Upload the video into private AWS S3 or select a legacy CMS file.")
+            if self.aws_file and not settings.PRIVATE_VIDEO_S3_BUCKET_NAME and not settings.DEBUG:
+                raise ValidationError(
+                    {"aws_file": "Configure PRIVATE_VIDEO_S3_BUCKET_NAME before uploading in production."}
+                )
 
     def __str__(self) -> str:
         return self.title
