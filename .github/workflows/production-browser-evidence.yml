@@ -1,0 +1,50 @@
+name: Production browser performance evidence
+on:
+  push:
+    branches: [ops/staging-known-good-af8709c-20261019]
+    paths: [.github/workflows/production-browser-evidence.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  production-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+      - name: Measure actual production mobile and desktop pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global lighthouse@12
+          url=https://amaris-mathematics-academy-live-students.onrender.com/
+          for mode in mobile desktop; do
+            if [ "$mode" = desktop ]; then
+              lighthouse "$url" --preset=desktop --only-categories=performance --output=json --output-path="/tmp/amaris-$mode.json" --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" --quiet
+            else
+              lighthouse "$url" --only-categories=performance --output=json --output-path="/tmp/amaris-$mode.json" --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" --quiet
+            fi
+          done
+      - name: Display lab metrics, distinct from field Web Vitals
+        run: |
+          python - <<'PY'
+          import json
+          for mode in ("mobile", "desktop"):
+              with open(f"/tmp/amaris-{mode}.json", encoding="utf-8") as fh:
+                  data = json.load(fh)
+              print(mode, data["finalUrl"], data["fetchTime"])
+              print("Performance score", data["categories"]["performance"]["score"])
+              for key in ("largest-contentful-paint", "cumulative-layout-shift", "total-blocking-time", "first-contentful-paint"):
+                  print(key, data["audits"][key].get("displayValue", "not available"))
+          print("Lab only. INP and p75 field values are not measured here.")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live-production-browser-lighthouse
+          path: /tmp/amaris-*.json
+          retention-days: 7
