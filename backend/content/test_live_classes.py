@@ -573,6 +573,7 @@ class LiveClassBookingTests(TestCase):
         checkout = self.checkout()
         booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
         process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+        booking.refresh_from_db()
 
         with (
             TemporaryDirectory() as directory,
