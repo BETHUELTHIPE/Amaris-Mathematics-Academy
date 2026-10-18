@@ -1,0 +1,50 @@
+name: Diagnose Django staging mail pipeline
+on:
+  push:
+    branches: [ops/staging-known-good-af8709c-20261019]
+    paths: [.github/workflows/staging-django-mail-diagnostics.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  staging-mail-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Verify staging-only SMTP and storage settings without revealing values
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          import urllib.error
+          key=os.getenv("RENDER_API_KEY","")
+          if not key:
+              print("RENDER_ACCESS=NOT_CONFIGURED")
+              raise SystemExit(0)
+          base="https://api.render.com/v1/services/srv-dam2iivcgkoc7383tq50"
+          h={"Authorization":"Bearer "+key,"Accept":"application/json"}
+          def get(url):
+              with urllib.request.urlopen(urllib.request.Request(url,headers=h),timeout=20) as r:
+                  return json.load(r)
+          svc=get(base)
+          if svc.get("ownerId")!="tea-csppi8l6l47c73dk9c90" or svc.get("id")!="srv-dam2iivcgkoc7383tq50" or svc.get("repo")!="https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy":
+              raise SystemExit("Unexpected Render service, refusing to inspect")
+          records=get(base+"/env-vars?limit=100")
+          if isinstance(records,dict):
+              records=records.get("envVars",records.get("data",[]))
+          env={}
+          for item in records:
+              entry=item.get("envVar",item)
+              if isinstance(entry,dict) and isinstance(entry.get("key"),str):
+                  env[entry["key"]]=entry.get("value")
+          required=["DATABASE_URL","EMAIL_HOST","EMAIL_HOST_USER","EMAIL_HOST_PASSWORD","DEFAULT_FROM_EMAIL","SUPABASE_S3_ENDPOINT_URL","SUPABASE_S3_ACCESS_KEY_ID","SUPABASE_S3_SECRET_ACCESS_KEY","SUPABASE_S3_STUDENT_BUCKET","CELERY_BROKER_URL"]
+          for label in required:
+              print(label+"="+("PRESENT" if env.get(label) else "MISSING"))
+          print("EMAIL_BACKEND="+("CONFIGURED" if env.get("EMAIL_BACKEND") else "DEFAULT_DJANGO"))
+          print("PAYFAST_SANDBOX="+str((env.get("PAYFAST_MODE") or env.get("PAYFAST_ENV") or "sandbox").lower()=="sandbox"))
+          print("Only key presence is reported; credentials are not printed or stored.")
+          PY
