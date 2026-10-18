@@ -89,6 +89,19 @@ def measure(browser, path, width, height, mobile):
         raise AssertionError(f"CLS above 0.10 in Chrome lab {path} {width}: {after['cls']}")
     if not after["lcpMs"] or after["lcpMs"] > 6000:
         raise AssertionError(f"missing or slow lab LCP {path} {width}: {after['lcpMs']}")
+    if path == "/":
+        hero = page.locator("main.home-shell picture img").first
+        hero.wait_for(timeout=8000)
+        expected = "/amaris-math-hero-mobile.webp" if width < 640 else "/amaris-math-hero.webp"
+        actual = hero.evaluate("(el) => new URL(el.currentSrc).pathname")
+        assert actual == expected, f"Incorrect responsive hero at {width}px: {actual}"
+        assert hero.evaluate("(el) => el.complete && el.naturalWidth > 0"), "Hero failed to decode"
+        unwanted = "/amaris-math-hero.webp" if width < 640 else "/amaris-math-hero-mobile.webp"
+        downloaded = page.evaluate("""() => performance.getEntriesByType('resource')
+            .map(entry => new URL(entry.name).pathname)""")
+        assert unwanted not in downloaded, f"Downloaded both hero sizes at {width}px: {downloaded}"
+        print(f"PASS responsive hero width={width} requested={actual}", flush=True)
+
     interaction_ms = None
     if path == "/courses" and width in (320, 1440):
         search = page.get_by_role("searchbox", name="Search mathematics courses")
