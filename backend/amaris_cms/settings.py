@@ -149,6 +149,19 @@ MEDIA_ROOT = BASE_DIR / "media"
 # production moves to the explicit dual-bucket names.
 CMS_STORAGE_BUCKET_NAME = os.getenv("CMS_STORAGE_BUCKET_NAME", os.getenv("AWS_STORAGE_BUCKET_NAME", ""))
 STUDENT_DATA_BUCKET_NAME = os.getenv("STUDENT_DATA_BUCKET_NAME", "")
+# A dedicated AWS S3 bucket, independent of the Supabase-compatible CMS buckets.
+# When unconfigured, unit tests and local development use a private local directory.
+PRIVATE_VIDEO_S3_BUCKET_NAME = os.getenv("PRIVATE_VIDEO_S3_BUCKET_NAME", "").strip()
+PRIVATE_VIDEO_S3_REGION = os.getenv("PRIVATE_VIDEO_S3_REGION", "us-east-1").strip()
+PRIVATE_VIDEO_S3_ACCESS_KEY_ID = os.getenv("PRIVATE_VIDEO_S3_ACCESS_KEY_ID", "").strip()
+PRIVATE_VIDEO_S3_SECRET_ACCESS_KEY = os.getenv("PRIVATE_VIDEO_S3_SECRET_ACCESS_KEY", "").strip()
+if bool(PRIVATE_VIDEO_S3_ACCESS_KEY_ID) != bool(PRIVATE_VIDEO_S3_SECRET_ACCESS_KEY):
+    raise RuntimeError("Both private video S3 credentials must be configured together.")
+if PRIVATE_VIDEO_S3_BUCKET_NAME and PRIVATE_VIDEO_S3_BUCKET_NAME in {
+    CMS_STORAGE_BUCKET_NAME,
+    STUDENT_DATA_BUCKET_NAME,
+}:
+    raise RuntimeError("The private video bucket must be separate from CMS and student storage.")
 SUPABASE_S3_ENDPOINT_URL = os.getenv("SUPABASE_S3_ENDPOINT_URL", "").rstrip("/")
 SUPABASE_S3_REGION = os.getenv("SUPABASE_S3_REGION", os.getenv("AWS_S3_REGION_NAME", "us-east-1"))
 SUPABASE_S3_ADDRESSING_STYLE = os.getenv("SUPABASE_S3_ADDRESSING_STYLE", "path").strip().lower()
@@ -179,6 +192,25 @@ def _s3_storage(bucket_name: str) -> dict:
     }
 
 
+def _private_video_s3_storage() -> dict:
+    """AWS S3 storage: private ACL policy, short-lived signed URLs, no public CDN."""
+    options = {
+        "bucket_name": PRIVATE_VIDEO_S3_BUCKET_NAME,
+        "region_name": PRIVATE_VIDEO_S3_REGION,
+        "default_acl": None,
+        "querystring_auth": True,
+        "querystring_expire": 300,
+        "file_overwrite": False,
+        "custom_domain": None,
+        "object_parameters": {"CacheControl": "private, no-store"},
+    }
+    # Prefer an IAM role in production. Dedicated keys are optional when needed.
+    if PRIVATE_VIDEO_S3_ACCESS_KEY_ID:
+        options["access_key"] = PRIVATE_VIDEO_S3_ACCESS_KEY_ID
+        options["secret_key"] = PRIVATE_VIDEO_S3_SECRET_ACCESS_KEY
+    return {"BACKEND": "storages.backends.s3.S3Storage", "OPTIONS": options}
+
+
 def _local_storage(subdirectory: str) -> dict:
     return {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -204,6 +236,12 @@ STORAGES = {
     "cms": _s3_storage(CMS_STORAGE_BUCKET_NAME) if CMS_STORAGE_BUCKET_NAME else _local_storage("cms"),
     # Student-facing code must explicitly use storages["student_data"].
     "student_data": student_storage,
+    # Never use the CMS/Supabase S3 endpoint for a dedicated AWS video bucket.
+    "private_video": (
+        _private_video_s3_storage()
+        if PRIVATE_VIDEO_S3_BUCKET_NAME
+        else _local_storage("private-videos")
+    ),
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
