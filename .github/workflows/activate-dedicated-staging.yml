@@ -1,0 +1,33 @@
+name: Activate tested backend in dedicated staging
+on:
+  push:
+    branches: [ops/backend-release-verification-20261018]
+    paths:
+      - .github/workflows/activate-dedicated-staging.yml
+      - scripts/release/activate_dedicated_staging.py
+  workflow_dispatch:
+permissions:
+  contents: read
+  checks: read
+concurrency:
+  group: dedicated-staging-activation
+  cancel-in-progress: false
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - run: pip install -r backend/requirements.txt
+      - run: python -m unittest discover -s scripts/release -p test_activate_dedicated_staging.py
+      - name: Activate exact tested backend SHA on isolated staging only
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          # Publishable client key; never a service-role or secret key.
+          STAGING_PUBLISHABLE_KEY: sb_publishable_juFmUOoFDQL7eV9T8Bl5jQ_z0NTSfPJ
+        run: python scripts/release/activate_dedicated_staging.py
