@@ -10,8 +10,11 @@ monitoring server is required.
 - 20% sampling per browser page load. The frontend sends only metric name,
   measured value, short per-navigation metric ID, a coarse allowlisted page
   category and mobile/tablet/desktop class.
-- The browser never sends full paths, query parameters, lesson IDs, URLs,
-  email addresses, student identifiers, cookies, IPs or User-Agent text.
+- The telemetry JSON never contains full paths, query parameters, lesson IDs,
+  URLs, email addresses, student identifiers, cookies, IPs or User-Agent text.
+  As with any web request, transport metadata may include an IP address and
+  same-origin cookies; the receiving proxy ignores them and never forwards
+  them to Django or stores them in the telemetry table.
 - Next.js `/api/web-vitals` is a same-origin proxy. It forwards no cookies and
   calls Django `/api/v1/web-vitals/ingest/` with a **server-only shared token**.
 - Django uses an HMAC of the metric event ID for retry idempotency. Only the
