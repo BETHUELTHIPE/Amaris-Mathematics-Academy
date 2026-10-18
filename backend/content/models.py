@@ -7,6 +7,8 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
+from .youtube import normalise_youtube_url
+
 
 class TimeStampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -366,6 +368,15 @@ class FAQ(PublishableModel):
 
 
 class Announcement(PublishableModel):
+    youtube_url = models.URLField(
+        "YouTube video or playlist",
+        blank=True,
+        max_length=2048,
+        help_text=(
+            "Paste a YouTube watch, share, Shorts, playlist or Studio link. "
+            "Use public or unlisted content with embedding enabled."
+        ),
+    )
     title = models.CharField(max_length=180)
     message = models.TextField()
     link_label = models.CharField(max_length=80, blank=True)
@@ -382,6 +393,13 @@ class Announcement(PublishableModel):
                 name="announcement_live_idx",
             )
         ]
+
+    def clean(self):
+        super().clean()
+        try:
+            self.youtube_url = normalise_youtube_url(self.youtube_url)
+        except ValidationError as error:
+            raise ValidationError({"youtube_url": error.messages}) from error
 
     def __str__(self) -> str:
         return self.title
