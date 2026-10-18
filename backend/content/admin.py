@@ -1,5 +1,7 @@
 from django.apps import apps
 from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.utils import timezone
 
 from .models import (
@@ -207,19 +209,74 @@ class LessonAdmin(PublishableAdmin):
 
 @admin.register(VideoAsset)
 class VideoAssetAdmin(PublishableAdmin):
+    """Only a Django superuser can manage private learning videos."""
+
     list_display = ("title", "provider", "duration_seconds", "allow_preview", "is_published", "updated_at")
     list_filter = PublishableAdmin.list_filter + ("provider", "allow_preview")
     list_editable = ("allow_preview", "is_published")
-    search_fields = ("title", "youtube_video_id", "youtube_url", "transcript")
+    search_fields = (
+        "title",
+        "youtube_video_id",
+        "youtube_url",
+        "vimeo_video_id",
+        "vimeo_url",
+        "transcript",
+    )
     readonly_fields = ("id", "created_at", "updated_at")
     fieldsets = (
         ("Video", {"fields": ("id", "title", "provider", "duration_seconds", "thumbnail")}),
-        ("Private YouTube", {"fields": ("youtube_video_id", "youtube_url")}),
-        ("Private S3 upload", {"fields": ("source_file", "captions_file")}),
+        ("Private YouTube (link only)", {"fields": ("youtube_video_id", "youtube_url")}),
+        ("Private Vimeo (link only)", {"fields": ("vimeo_video_id", "vimeo_url")}),
+        ("Dedicated private AWS S3 upload", {"fields": ("aws_file",)}),
+        ("Legacy CMS video file", {"fields": ("source_file", "captions_file")}),
         ("Learning content", {"fields": ("transcript", "allow_preview")}),
         ("Publishing", {"fields": ("is_published", "publish_at")}),
         ("Audit", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
     )
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return self.has_module_permission(request)
+
+    def has_add_permission(self, request):
+        return self.has_module_permission(request)
+
+    def has_change_permission(self, request, obj=None):
+        return self.has_module_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return self.has_module_permission(request)
+
+    @admin.action(description="Validate and publish selected private videos")
+    def publish_selected(self, request, queryset):
+        validated = []
+        for asset in queryset:
+            asset.is_published = True
+            asset.publish_at = timezone.now()
+            try:
+                asset.full_clean()
+            except ValidationError:
+                self.message_user(
+                    request,
+                    "Publishing stopped: a selected video has invalid provider settings.",
+                    messages.ERROR,
+                )
+                return
+            validated.append(asset)
+        with transaction.atomic():
+            for asset in validated:
+                asset.save(
+                    update_fields=[
+                        "is_published",
+                        "publish_at",
+                        "youtube_video_id",
+                        "vimeo_video_id",
+                        "updated_at",
+                    ]
+                )
+        self.message_user(request, f"Published {len(validated)} video(s).", messages.SUCCESS)
 
 
 @admin.register(ResourceAsset)
