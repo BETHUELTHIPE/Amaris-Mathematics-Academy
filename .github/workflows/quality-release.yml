@@ -130,6 +130,8 @@ jobs:
         run: python manage.py test tests.api.test_drf_endpoints
       - name: Authorization and RBAC tests
         run: python manage.py test tests.authorization.test_rbac_admin tests.authorization.test_superadmin_user_management content.tests.AdminRegistrationTests content.tests.PermissionTests
+      - name: Private video provider and admin tests
+        run: python manage.py test tests.security.test_private_video_assets
       - name: Payment tests
         run: python manage.py test content.tests.PaymentReconciliationTests
       - name: Full Django regression suite
