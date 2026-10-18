@@ -74,7 +74,7 @@ def main():
                 page.get_by_text("Support Our Project link copied.", exact=False).wait_for()
                 copied = page.evaluate("navigator.clipboard.readText()")
                 assert copied == PUBLIC
-                whatsapp = page.get_by_role("link", name="WhatsApp")
+                whatsapp = page.locator('a[href^="https://wa.me/?text="]')
                 assert "wa.me/?text=" in whatsapp.get_attribute("href")
                 assert "support-our-project" in whatsapp.get_attribute("href")
                 print("PASS mobile native share, clipboard, WhatsApp and canonical link", flush=True)
