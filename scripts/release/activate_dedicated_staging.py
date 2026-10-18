@@ -88,6 +88,9 @@ def main():
     wait_checks(SHA, {"Python quality and Django checks", "PayFast sandbox and idempotency tests",
         "Repository secret scan", "Dependency vulnerability gates", "Responsive browser E2E",
         "Frontend, accessibility, Lighthouse, and SBOM"})
+    # The old staging branch has a different migration history. Prevent its
+    # next push from replacing the pinned candidate while acceptance is open.
+    render(f"services/{STAGE}", "PATCH", {"autoDeployTrigger": "off"})
     prepare()
     values = service_env(STAGE)
     desired = settings_for(values, os.environ["STAGING_PUBLISHABLE_KEY"])
