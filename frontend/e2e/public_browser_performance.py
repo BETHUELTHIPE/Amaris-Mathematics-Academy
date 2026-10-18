@@ -142,7 +142,7 @@ def measure(browser, path, width, height, mobile):
         fallback_input = share.locator("[data-share-url]")
         fallback_input.wait_for(timeout=8000, state="visible")
         assert fallback_input.input_value() == ORIGIN + "/", "Share includes a private path"
-        assert fallback_input.evaluate("(element) => document.activeElement === element"), "Clipboard fallback lost keyboard focus"
+        page.wait_for_function("() => document.activeElement === document.querySelector('[data-share-website] [data-share-url]')", timeout=3000)
 
     record = {"page": path, "width": width, "mobile": mobile,
               "cls": round(after["cls"], 4), "lcpMs": round(after["lcpMs"]),
