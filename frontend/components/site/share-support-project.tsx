@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Check, Copy, ExternalLink, Share2 } from "lucide-react";
+import { PUBLIC_SUPPORT_URL, SUPPORT_SHARE_MESSAGE, SUPPORT_SHARE_TITLE, SUPPORT_WHATSAPP_URL } from "@/lib/support-sharing";
 
 export function ShareSupportProject() {
   const [status, setStatus] = useState<"idle" | "copied" | "manual">("idle");
