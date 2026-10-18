@@ -1,10 +1,6 @@
 name: Verify Staging Database Identity
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/verify-staging-database.yml'
   workflow_dispatch:
 
 permissions:
