@@ -94,5 +94,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          code=$(curl --silent --show-error --max-time 30 -o /tmp/anonymous-checkout-body -w '%{http_code}'             -H 'Content-Type: application/json' -X POST             -d '{"slot_id":1,"topic":"CI anonymous probe","idempotency_key":"stagingci_20261019"}'             https://amaris-mathematics-academy-staging.onrender.com/api/v1/live-classes/checkout/)
+          code=$(curl --silent --show-error --max-time 30 -o /tmp/anonymous-checkout-body -w '%{http_code}'             -H 'Content-Type: application/json' -X POST             -d '{"slot_id":1,"topic":"CI anonymous probe","idempotency_key":"stagingci_20261019"}'             https://amaris-mathematics-academy-staging.onrender.com/api/v1/student/live-classes/checkout/)
           case "$code" in 401|403) echo "Anonymous checkout blocked";; *) echo "Unexpected response $code"; exit 1;; esac
