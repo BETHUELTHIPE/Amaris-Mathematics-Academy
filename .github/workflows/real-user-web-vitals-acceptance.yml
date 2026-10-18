@@ -31,6 +31,8 @@ jobs:
       - name: Install locked dependencies
         working-directory: frontend
         run: npm ci --include=dev
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
       - name: Check private telemetry types and lint
         working-directory: frontend
         run: |
@@ -41,3 +43,17 @@ jobs:
         run: |
           node --test tests/web-vitals.test.mjs
           npm test
+
+      - name: Enforce existing strict mobile Lighthouse release gate
+        working-directory: frontend
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: npm run test:lighthouse:mobile
+      - name: Retain Lighthouse diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rum-mobile-lighthouse
+          path: frontend/.lighthouseci/mobile/
+          retention-days: 7
+          if-no-files-found: warn
