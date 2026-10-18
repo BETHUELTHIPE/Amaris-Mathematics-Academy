@@ -888,7 +888,11 @@ class WebVitalSample(models.Model):
     idempotent updates when the web-vitals callback reports a revised value.
     """
 
-    METRICS = (("LCP", "Largest Contentful Paint"), ("INP", "Interaction to Next Paint"), ("CLS", "Cumulative Layout Shift"))
+    METRICS = (
+        ("LCP", "Largest Contentful Paint"),
+        ("INP", "Interaction to Next Paint"),
+        ("CLS", "Cumulative Layout Shift"),
+    )
     event_hash = models.CharField(max_length=64, unique=True, editable=False)
     metric_name = models.CharField(max_length=3, choices=METRICS)
     value = models.FloatField()

@@ -24,8 +24,7 @@ from .models import WebVitalSample
 
 METRICS = {"LCP": 60000.0, "INP": 60000.0, "CLS": 10.0}
 PAGES = frozenset(
-    ("home", "courses", "course-detail", "announcements", "contact",
-     "booking", "student", "tutor", "auth", "other")
+    ("home", "courses", "course-detail", "announcements", "contact", "booking", "student", "tutor", "auth", "other")
 )
 DEVICES = frozenset(("mobile", "tablet", "desktop"))
 EVENT_ID = re.compile(r"^[A-Za-z0-9_.:-]{6,128}$")
@@ -78,9 +77,12 @@ def ingest_web_vital(request):
         return HttpResponse(status=400)
 
     # Best-effort burst control on trusted internal delivery. Never store IPs.
-    burst_key = "rum:burst:" + hmac.new(
-        settings.SECRET_KEY.encode(), request.META.get("REMOTE_ADDR", "").encode(), hashlib.sha256
-    ).hexdigest()[:24]
+    burst_key = (
+        "rum:burst:"
+        + hmac.new(
+            settings.SECRET_KEY.encode(), request.META.get("REMOTE_ADDR", "").encode(), hashlib.sha256
+        ).hexdigest()[:24]
+    )
     if cache.add(burst_key, 1, timeout=60):
         attempts = 1
     else:
@@ -91,9 +93,7 @@ def ingest_web_vital(request):
     if attempts > 90:
         return HttpResponse(status=429)
 
-    digest = hmac.new(
-        settings.SECRET_KEY.encode(), f"{metric}|{event_id}".encode(), hashlib.sha256
-    ).hexdigest()
+    digest = hmac.new(settings.SECRET_KEY.encode(), f"{metric}|{event_id}".encode(), hashlib.sha256).hexdigest()
     WebVitalSample.objects.update_or_create(
         event_hash=digest,
         defaults={"metric_name": metric, "value": value, "page_group": page, "device": device},
@@ -147,9 +147,9 @@ def web_vitals_report(request):
         from collections import defaultdict
 
         by_dimension = defaultdict(list)
-        for metric, page, device, value in WebVitalSample.objects.filter(
-            observed_at__gte=since
-        ).values_list("metric_name", "page_group", "device", "value"):
+        for metric, page, device, value in WebVitalSample.objects.filter(observed_at__gte=since).values_list(
+            "metric_name", "page_group", "device", "value"
+        ):
             by_dimension[(metric, page, device)].append(value)
         rows = [
             (metric, page, device, len(values), _python_percentile(values))
@@ -173,9 +173,7 @@ def web_vitals_report(request):
                     "status": (
                         "insufficient_data"
                         if count < 20
-                        else "good"
-                        if p75 <= {"LCP": 2500, "INP": 200, "CLS": 0.10}[metric]
-                        else "needs_improvement"
+                        else "good" if p75 <= {"LCP": 2500, "INP": 200, "CLS": 0.10}[metric] else "needs_improvement"
                     ),
                 }
                 for metric, page, device, count, p75 in rows

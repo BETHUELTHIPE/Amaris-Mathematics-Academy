@@ -34,7 +34,12 @@ class AnonymousWebVitalsTests(TestCase):
         self.assertEqual(obj.page_group, "courses")
         self.assertNotEqual(obj.event_hash, "v4-example-metric-id")
 
-        self.assertEqual(self.send({"name": "LCP", "value": 2600.0, "id": "v4-example-metric-id", "page": "courses", "device": "mobile"}).status_code, 204)
+        self.assertEqual(
+            self.send(
+                {"name": "LCP", "value": 2600.0, "id": "v4-example-metric-id", "page": "courses", "device": "mobile"}
+            ).status_code,
+            204,
+        )
         self.assertEqual(WebVitalSample.objects.count(), 1)
         self.assertEqual(WebVitalSample.objects.get().value, 2600.0)
 
@@ -70,8 +75,11 @@ class WebVitalsReportTests(TestCase):
         self.staff = User.objects.create_user("rum_staff", "staff@example.test", "only-for-tests", is_staff=True)
         for number in range(1, 21):
             WebVitalSample.objects.create(
-                event_hash=f"{number:064x}", metric_name="LCP", value=float(number),
-                page_group="home", device="mobile",
+                event_hash=f"{number:064x}",
+                metric_name="LCP",
+                value=float(number),
+                page_group="home",
+                device="mobile",
             )
 
     def test_report_is_superuser_only(self):
@@ -92,8 +100,11 @@ class WebVitalsReportTests(TestCase):
     def test_small_groups_are_not_reported_as_reliable_p75(self):
         WebVitalSample.objects.all().delete()
         WebVitalSample.objects.create(
-            event_hash="a" * 64, metric_name="CLS", value=0.23,
-            page_group="home", device="mobile",
+            event_hash="a" * 64,
+            metric_name="CLS",
+            value=0.23,
+            page_group="home",
+            device="mobile",
         )
         self.client.force_login(self.superuser)
         item = self.client.get(reverse("web-vitals-report")).json()["groups"][0]
