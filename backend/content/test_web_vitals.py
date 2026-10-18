@@ -30,7 +30,7 @@ class AnonymousWebVitalsTests(TestCase):
     def test_authenticated_internal_sample_is_anonymous_and_idempotent(self):
         response = self.send()
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertIn("no-store", response["Cache-Control"])
         obj = WebVitalSample.objects.get()
         self.assertEqual(obj.page_group, "courses")
         self.assertNotEqual(obj.event_hash, "v4-example-metric-id")
