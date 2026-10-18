@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.core.files.storage import storages
+from io import BytesIO
 from django.db.models import Exists, OuterRef, Q
 from django.http import FileResponse
 from django.utils import timezone
@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
 from .models import LiveClassBooking, TutorAvailabilitySlot
-from .services.invoices import student_invoice_key
+from .services.invoices import archive_invoice_pdf
 from .services.live_classes import create_live_class_checkout, price_for_live_class_slot
 from .services.payments import PaymentSecurityError
 
@@ -231,7 +231,11 @@ class LiveClassBookingStatusView(LiveClassStudentAPIView):
                 "amount": booking.amount,
                 "currency": booking.currency,
                 "invoice_number": booking.invoice_number,
-                "invoice_ready": bool(booking.confirmation_sent_at),
+                "invoice_ready": bool(
+                    booking.status == LiveClassBooking.Status.CONFIRMED
+                    and booking.gateway_verified_at
+                    and booking.invoice_number
+                ),
                 "zoom_join_url": (
                     booking.slot.zoom_join_url if booking.status == LiveClassBooking.Status.CONFIRMED else ""
                 ),
@@ -252,13 +256,15 @@ class LiveClassInvoiceDownloadView(LiveClassStudentAPIView):
             reference=reference,
             student=request.user.student,
             status=LiveClassBooking.Status.CONFIRMED,
-            confirmation_sent_at__isnull=False,
+            gateway_verified_at__isnull=False,
         ).first()
         if booking is None or not booking.invoice_number:
             return Response({"detail": "Invoice not found."}, status=status.HTTP_404_NOT_FOUND)
-        key = student_invoice_key(booking.student.supabase_user_id, booking.invoice_number)
         try:
-            document = storages["student_private"].open(key, "rb")
+            # A verified paid invoice is available to its owner even if SMTP or
+            # Celery is delayed. The archived PDF remains private and immutable
+            # across later email delivery and repeated student downloads.
+            document = BytesIO(archive_invoice_pdf(booking))
         except (OSError, ValueError):
             return Response(
                 {"detail": "Invoice is temporarily unavailable."},
