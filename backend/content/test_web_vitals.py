@@ -87,9 +87,9 @@ class WebVitalsReportTests(TestCase):
         uri = reverse("web-vitals-report")
         self.assertEqual(self.client.get(uri, secure=True).status_code, 403)
         self.client.force_login(self.staff)
-        self.assertEqual(self.client.get(uri).status_code, 403)
+        self.assertEqual(self.client.get(uri, secure=True).status_code, 403)
         self.client.force_login(self.superuser)
-        reply = self.client.get(uri)
+        reply = self.client.get(uri, secure=True)
         self.assertEqual(reply.status_code, 200)
         self.assertIn("no-store", reply["Cache-Control"])
         group = reply.json()["groups"][0]
