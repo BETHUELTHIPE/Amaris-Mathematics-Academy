@@ -1,0 +1,84 @@
+name: Announcement YouTube publishing
+on:
+  pull_request:
+    paths:
+      - 'backend/content/**'
+      - 'frontend/app/announcements/**'
+      - 'frontend/components/site/announcement-youtube.tsx'
+      - 'frontend/lib/announcement-youtube.ts'
+      - 'frontend/lib/announcements.ts'
+      - 'frontend/tests/announcement-youtube.test.mjs'
+      - '.github/workflows/announcement-youtube.yml'
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: youtube_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DJANGO_DEBUG: 'true'
+      DJANGO_ALLOWED_HOSTS: testserver,localhost,127.0.0.1
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/youtube_test
+      SUPABASE_DATABASE_REQUIRED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect backend implementation
+        id: scope
+        run: |
+          if test -f backend/content/test_announcement_youtube.py; then
+            echo 'backend=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.scope.outputs.backend == 'true'
+        with:
+          python-version: '3.13'
+      - name: Install backend requirements
+        if: steps.scope.outputs.backend == 'true'
+        run: pip install -r backend/requirements-dev.txt
+      - name: Validate permissions, input security and PostgreSQL migrations
+        if: steps.scope.outputs.backend == 'true'
+        working-directory: backend
+        run: |
+          python manage.py collectstatic --noinput
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+          python manage.py test content.test_announcement_youtube content.test_announcement_media --noinput
+          black --check content/admin.py content/models.py content/serializers.py content/youtube.py content/test_announcement_youtube.py
+          ruff check content/admin.py content/models.py content/serializers.py content/youtube.py content/test_announcement_youtube.py
+          mypy
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect frontend implementation
+        id: scope
+        run: |
+          if test -f frontend/tests/announcement-youtube.test.mjs; then
+            echo 'frontend=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.scope.outputs.frontend == 'true'
+        with:
+          node-version: '24'
+      - name: Install frontend requirements
+        if: steps.scope.outputs.frontend == 'true'
+        working-directory: frontend
+        run: npm ci --include=dev --no-audit --no-fund
+      - name: Verify YouTube URL handling and frontend types
+        if: steps.scope.outputs.frontend == 'true'
+        working-directory: frontend
+        run: |
+          node --test tests/announcement-youtube.test.mjs
+          npm run typecheck
+          npx eslint lib/announcement-youtube.ts components/site/announcement-youtube.tsx app/announcements/page.tsx
