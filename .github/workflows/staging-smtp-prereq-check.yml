@@ -1,0 +1,44 @@
+name: Read-only staging SMTP acceptance prerequisite check
+on:
+  push:
+    branches: [ops/staging-smtp-prereq-check-20261019]
+    paths: [.github/workflows/staging-smtp-prereq-check.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check-secret-presence:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 4
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      STAGING_SMTP_HOST: ${{ secrets.STAGING_SMTP_HOST }}
+      STAGING_SMTP_PORT: ${{ secrets.STAGING_SMTP_PORT }}
+      STAGING_SMTP_USERNAME: ${{ secrets.STAGING_SMTP_USERNAME }}
+      STAGING_SMTP_PASSWORD: ${{ secrets.STAGING_SMTP_PASSWORD }}
+      STAGING_SMTP_FROM_EMAIL: ${{ secrets.STAGING_SMTP_FROM_EMAIL }}
+      STAGING_GMAIL_IMAP_APP_PASSWORD: ${{ secrets.STAGING_GMAIL_IMAP_APP_PASSWORD }}
+      STAGING_TEST_STUDENT_PASSWORD: ${{ secrets.STAGING_TEST_STUDENT_PASSWORD }}
+      STAGING_VERIFIED_PAYMENT_REFERENCE: ${{ secrets.STAGING_VERIFIED_PAYMENT_REFERENCE }}
+      STAGING_RECEIPT_ACCEPTANCE_ENABLED: ${{ secrets.STAGING_RECEIPT_ACCEPTANCE_ENABLED }}
+      STAGING_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+      STAGING_SUPABASE_PROJECT_REF: ${{ secrets.STAGING_SUPABASE_PROJECT_REF }}
+      STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+      STAGING_SUPABASE_S3_ENDPOINT_URL: ${{ secrets.STAGING_SUPABASE_S3_ENDPOINT_URL }}
+      STAGING_SUPABASE_S3_ACCESS_KEY_ID: ${{ secrets.STAGING_SUPABASE_S3_ACCESS_KEY_ID }}
+      STAGING_SUPABASE_S3_SECRET_ACCESS_KEY: ${{ secrets.STAGING_SUPABASE_S3_SECRET_ACCESS_KEY }}
+      STAGING_SUPABASE_S3_STUDENT_BUCKET: ${{ secrets.STAGING_SUPABASE_S3_STUDENT_BUCKET }}
+      STAGING_DJANGO_SECRET_KEY: ${{ secrets.STAGING_DJANGO_SECRET_KEY }}
+    steps:
+      - name: Report key presence only without exposing values
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          names=["RENDER_API_KEY","STAGING_SMTP_HOST","STAGING_SMTP_PORT","STAGING_SMTP_USERNAME","STAGING_SMTP_PASSWORD","STAGING_SMTP_FROM_EMAIL","STAGING_GMAIL_IMAP_APP_PASSWORD","STAGING_TEST_STUDENT_PASSWORD","STAGING_VERIFIED_PAYMENT_REFERENCE","STAGING_RECEIPT_ACCEPTANCE_ENABLED","STAGING_SUPABASE_URL","STAGING_SUPABASE_PROJECT_REF","STAGING_SUPABASE_PUBLISHABLE_KEY","STAGING_SUPABASE_S3_ENDPOINT_URL","STAGING_SUPABASE_S3_ACCESS_KEY_ID","STAGING_SUPABASE_S3_SECRET_ACCESS_KEY","STAGING_SUPABASE_S3_STUDENT_BUCKET","STAGING_DJANGO_SECRET_KEY"]
+          for name in names:
+              val=os.environ.get(name, "")
+              print(name + "=" + ("CONFIGURED" if val else "NOT_CONFIGURED"))
+          print("No credential values or account tokens printed.")
+          PY
