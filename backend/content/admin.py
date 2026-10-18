@@ -774,6 +774,8 @@ class VideoRequestAdmin(TimeStampedAdmin):
 class WebVitalSampleAdmin(admin.ModelAdmin):
     """Anonymous RUM data: superusers can read but not edit individual samples."""
 
+    change_list_template = "admin/content/webvitalsample/change_list.html"
+
     list_display = ("metric_name", "page_group", "device", "value", "observed_at")
     list_filter = ("metric_name", "page_group", "device")
     readonly_fields = ("event_hash", "metric_name", "value", "page_group", "device", "observed_at")
