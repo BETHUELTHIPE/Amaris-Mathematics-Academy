@@ -33,6 +33,16 @@ for(const name of names) {
   console.log(`\n### ${name}: score ${Math.round((report.categories?.performance?.score||0)*100)} / 100`);
   console.log(`FCP=${ms(v("first-contentful-paint"))} LCP=${ms(v("largest-contentful-paint"))} TBT=${ms(v("total-blocking-time"))} SI=${ms(v("speed-index"))} CLS=${v("cumulative-layout-shift")?.toFixed(4) ?? "-"}`);
   console.log(`Script execution (bootup-time)=${ms(v("bootup-time"))} Main-thread work=${ms(v("mainthread-work-breakdown"))}`);
+  const lcpElements = a["largest-contentful-paint-element"]?.details?.items ?? [];
+  if (lcpElements.length) {
+    console.log("lcp-element", JSON.stringify(lcpElements.slice(0, 2).map(item => ({
+      node: item.node?.snippet ?? null,
+      url: item.url ?? null,
+    }))));
+  }
+  const lcpBreakdown = a["lcp-discovery-insight"]?.details?.items ?? a["lcp-breakdown-insight"]?.details?.items ?? [];
+  if (lcpBreakdown.length) console.log("lcp-breakdown",JSON.stringify(lcpBreakdown).slice(0,1200));
+
   for (const [id, key] of [["bootup-time","total"],["mainthread-work-breakdown","duration"],
                             ["long-tasks","duration"],["unused-javascript","wastedBytes"]]) {
     const items=topItems(report,id,key,7);
