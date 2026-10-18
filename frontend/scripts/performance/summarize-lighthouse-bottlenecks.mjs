@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const folder = process.argv[2] || ".lighthouseci/mobile";
-const names = (await readdir(folder)).filter((name) => /^(home|courses|contact)-[123]\.json$/.test(name)).sort();
+const names = (await readdir(folder)).filter((name) => /^(home|courses|contact)-[123](?:\.report)?\.json$/.test(name)).sort();
 if (!names.length) {
   console.log("No mobile Lighthouse JSON reports found; diagnosis unavailable.");
   process.exit(0);
