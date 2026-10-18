@@ -10,7 +10,7 @@ export async function Header() {
     getManagedNavigation("header"),
   ]);
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07152d]/95 text-white backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07152d]/95 text-white sm:backdrop-blur-xl">
       <div className="border-b border-white/10 bg-[#041026]">
         <div className="mx-auto flex h-9 max-w-7xl items-center justify-between gap-4 px-5 text-xs text-white/70 lg:px-8">
           <div className="flex min-w-0 items-center gap-4 sm:gap-6">

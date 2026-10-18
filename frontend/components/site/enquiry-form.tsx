@@ -8,7 +8,7 @@ import { initialEnquiryState } from "@/app/contact/state";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Button } from "@/components/ui/button";
+
 import { academyBrand } from "@/lib/brand";
 import { ClearSafeFormDraft, SafeFormDraft } from "@/components/site/safe-form-draft";
 
@@ -18,7 +18,7 @@ function FieldError({ message }: { message?: string }) {
 
 function SubmitButton() {
   const { pending } = useFormStatus();
-  return <Button type="submit" disabled={pending} className="h-12 rounded-full bg-[#0b2a5b] px-7 text-base font-bold text-white hover:bg-[#133b76]">{pending ? <><LoaderCircle className="size-4 animate-spin" />Sending enquiry…</> : <>Send enquiry <Send className="size-4" /></>}</Button>;
+  return <button type="submit" disabled={pending} className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-7 text-base font-bold text-white transition-colors hover:bg-[#133b76] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd] disabled:cursor-wait disabled:opacity-70">{pending ? <><LoaderCircle className="size-4 animate-spin" />Sending enquiry…</> : <>Send enquiry <Send className="size-4" /></>}</button>;
 }
 
 export function EnquiryForm() {

@@ -4,30 +4,37 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL("../" + path, import.meta.url), "utf8");
 const button = read("components/site/share-website-button.tsx");
+const enhancer = read("public/share-website-enhance.js");
 const header = read("components/site/header.tsx");
 const footer = read("components/site/footer.tsx");
 
-test("public header and footer both expose the share website button", () => {
+test("public header and footer expose the share website control without React hydration", () => {
   assert.match(header, /<ShareWebsiteButton compact\s*\/>/);
   assert.match(footer, /<ShareWebsiteButton\s*\/>/);
   assert.match(footer, /Support Our Project/);
+  assert.doesNotMatch(button, /"use client"|useState|useEffect|useRef/);
+  assert.match(button, /data-share-trigger/);
+  assert.match(button, /share-website-enhance\.js/);
+  assert.match(enhancer, /__amarisShareInstalled/);
 });
 
-test("mobile uses native Web Share and desktop copies a public homepage link", () => {
-  assert.match(button, /navigator\.share\(\{ title: SHARE_TITLE, text: SHARE_MESSAGE, url \}\)/);
-  assert.match(button, /navigator\.clipboard\.writeText\(url\)/);
-  assert.match(button, /new URL\("\/", window\.location\.origin\)\.toString\(\)/);
-  assert.doesNotMatch(button, /location\.href|location\.search|location\.hash|localStorage|sessionStorage/);
+test("enhancement shares or copies ONLY the public homepage URL", () => {
+  assert.match(enhancer, /navigator\.share\(\{ title: SHARE_TITLE, text: SHARE_MESSAGE, url \}\)/);
+  assert.match(enhancer, /navigator\.clipboard\.writeText\(url\)/);
+  assert.match(enhancer, /new URL\("\/", window\.location\.origin\)\.toString\(\)/);
+  assert.doesNotMatch(enhancer, /location\.href|location\.search|location\.hash|localStorage|sessionStorage/);
 });
 
-test("sharing respects cancellation, keyboard interaction, copy errors and accessibility", () => {
+test("native control retains keyboard, cancellation, manual copy, status and accessibility", () => {
   assert.match(button, /type="button"/);
-  assert.match(button, /aria-label=\{label\}/);
+  assert.match(button, /aria-label="Share website"/);
   assert.match(button, /role="status"/);
   assert.match(button, /aria-live="polite"/);
-  assert.match(button, /error\.name === "AbortError"/);
-  assert.match(button, /status === "manual"/);
   assert.match(button, /readOnly/);
-  assert.match(button, /onFocus=\{\(event\) => event\.currentTarget\.select\(\)\}/);
   assert.match(button, /focus-visible:/);
+  assert.match(enhancer, /"AbortError"/);
+  assert.match(enhancer, /input\.focus\(\)/);
+  assert.match(enhancer, /input\.select\(\)/);
+  assert.match(enhancer, /container\.hidden = false/);
+  assert.match(enhancer, /button\.disabled = true/);
 });
