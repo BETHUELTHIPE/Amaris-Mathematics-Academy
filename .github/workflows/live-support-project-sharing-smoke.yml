@@ -1,0 +1,49 @@
+name: Live Support Project Sharing Smoke
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/live-support-project-sharing-smoke.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-share-page:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Verify real production Support page and share controls
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import time
+          from urllib.request import Request, urlopen
+          url = "https://amaris-mathematics-academy-live-students.onrender.com/support-our-project"
+          html = ""
+          for attempt in range(6):
+              try:
+                  with urlopen(Request(url, headers={"User-Agent":"Amaris-support-share-release-smoke/1.0"}), timeout=35) as response:
+                      if response.status != 200:
+                          raise RuntimeError(f"support HTTP {response.status}")
+                      html = response.read(900_000).decode("utf-8", "replace")
+                  break
+              except Exception as exc:
+                  if attempt == 5:
+                      raise RuntimeError(f"live Support page check failed: {type(exc).__name__}") from exc
+                  time.sleep(8)
+          expected = [
+              "Share this project with someone who could help",
+              "Public Support Our Project link",
+              "Copy link",
+              "Share project",
+              "https://amaris-mathematics-academy-live-students.onrender.com/support-our-project",
+              "does not collect donations or card details",
+          ]
+          missing = [label for label in expected if label not in html]
+          if missing:
+              raise SystemExit("FAIL live page missing visible share or safety text: " + repr(missing))
+          print("PASS live Support Our Project HTTP 200")
+          print("PASS public support link, copy/share buttons and payment safety notice rendered")
+          PY
