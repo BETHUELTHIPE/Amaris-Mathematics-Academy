@@ -1,6 +1,5 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- public homepage CTAs intentionally use full-page anchors to avoid Link hydration and prefetch work */
 import { Suspense } from "react";
-import { preload } from "react-dom";
 import { ArrowRight, BookOpenCheck, Check, CirclePlay, GraduationCap, ShieldCheck } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
@@ -32,14 +31,19 @@ async function FeaturedCourses() {
 }
 
 export default function Home() {
-  preload("/amaris-math-hero.webp", { as: "image", fetchPriority: "high" });
   return (
     <main className="home-shell min-h-screen bg-[#f5f7fb] text-[#0a1b36]">
+      {/* A mobile-specific preload avoids downloading the original desktop image as well. */}
+      <link rel="preload" as="image" href="/amaris-math-hero-mobile.webp" media="(max-width: 639px)" fetchPriority="high" />
+      <link rel="preload" as="image" href="/amaris-math-hero.webp" media="(min-width: 640px)" fetchPriority="high" />
       <Header />
       <section className="relative isolate overflow-hidden bg-[#07152d] text-white">
         {/* Direct delivery avoids the Vinext image optimizer path while keeping the LCP image discoverable in the initial HTML. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
+        <picture className="absolute inset-0 block h-full w-full">
+          <source media="(max-width: 639px)" srcSet="/amaris-math-hero-mobile.webp" type="image/webp" />
+          <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="async" className="block h-full w-full object-cover object-[62%_center]" />
+        </picture>
         <div className="absolute inset-0 bg-[linear-gradient(90deg,#07152d_0%,rgba(7,21,45,.95)_34%,rgba(7,21,45,.66)_54%,rgba(7,21,45,.04)_100%)]" />
         <div className="graph-paper absolute inset-0 hidden opacity-15 sm:block" />
         <div className="relative mx-auto grid min-h-[600px] max-w-7xl items-center px-5 py-16 sm:min-h-[690px] sm:py-20 lg:px-8">
