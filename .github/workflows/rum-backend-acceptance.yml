@@ -1,0 +1,74 @@
+name: RUM Backend Acceptance
+
+on:
+  pull_request:
+    branches: [production-release-20260923]
+    paths:
+      - "backend/content/web_vitals_views.py"
+      - "backend/content/test_web_vitals.py"
+      - "backend/content/models.py"
+      - "backend/content/migrations/0015_web_vitals.py"
+      - "backend/content/urls.py"
+      - "backend/amaris_cms/settings.py"
+      - "backend/content/admin.py"
+      - ".github/workflows/rum-backend-acceptance.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-private-rum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_ci
+          POSTGRES_USER: amaris_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U amaris_ci -d amaris_ci"
+          --health-interval 10s
+          --health-retries 5
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-retries 5
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_SECRET_KEY: "testing-rum-only-not-production-keys"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_ci
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: "0"
+      DJANGO_CACHE_URL: redis://127.0.0.1:6379/0
+      DJANGO_PUBLIC_CACHE_URL: redis://127.0.0.1:6379/1
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+      - name: Check database migration graph
+        working-directory: backend
+        run: |
+          python manage.py check --fail-level ERROR
+          python manage.py makemigrations --check --dry-run
+          python manage.py migrate --noinput
+      - name: Exercise guarded sample writes, RLS, idempotency and p75 in PostgreSQL
+        working-directory: backend
+        run: python manage.py test content.test_web_vitals -v 2

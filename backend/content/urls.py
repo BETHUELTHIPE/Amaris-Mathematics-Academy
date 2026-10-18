@@ -50,6 +50,7 @@ from .views import (
     TestimonialViewSet,
     public_marketing_media,
 )
+from .web_vitals_views import ingest_web_vital, web_vitals_report
 
 router = DefaultRouter()
 router.register("navigation", NavigationViewSet, basename="navigation")
@@ -63,6 +64,8 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("web-vitals/ingest/", ingest_web_vital, name="web-vitals-ingest"),
+    path("web-vitals/report/", web_vitals_report, name="web-vitals-report"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(
         "tutor-applications/acknowledgement/",

@@ -1,0 +1,43 @@
+{% extends "admin/change_list.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script src="{% static 'content/web_vitals_admin.js' %}" defer></script>
+{% endblock %}
+
+{% block content %}
+  <section id="amaris-web-vitals-dashboard" class="module" aria-labelledby="amaris-rum-title"
+           data-report-url="{% url 'web-vitals-report' %}">
+    <h2 id="amaris-rum-title">Real-user website performance — p75</h2>
+    <p>Anonymous browser measurements grouped by metric, page category and device.
+       A percentile is only displayed when that individual group contains at least 20 valid samples.
+       Samples are events, not unique students.</p>
+    <p>
+      <label for="amaris-rum-period">Reporting period</label>
+      <select id="amaris-rum-period">
+        <option value="7">Last 7 days</option>
+        <option value="28" selected>Last 28 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </p>
+    <p id="amaris-rum-status" role="status" aria-live="polite">Loading private performance report…</p>
+    <div style="overflow-x:auto">
+      <table id="amaris-rum-table" hidden>
+        <caption>75th-percentile Core Web Vitals by metric, page and device</caption>
+        <thead>
+          <tr>
+            <th scope="col">Metric</th>
+            <th scope="col">Page</th>
+            <th scope="col">Device</th>
+            <th scope="col">Samples</th>
+            <th scope="col">p75</th>
+            <th scope="col">Assessment</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+  {{ block.super }}
+{% endblock %}
