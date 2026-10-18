@@ -1,0 +1,60 @@
+name: Verify Staging Database Identity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-staging-database.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  staging-database:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Inspect Render staging DB target without exposing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          from urllib.parse import urlsplit
+
+          key = os.environ.get("RENDER_API_KEY")
+          if not key:
+              raise SystemExit("BLOCK: protected Render API credential is unavailable")
+          service = "srv-dam2iivcgkoc7383tq50"
+          expected = "atyhhjwwxgzeurnwayay"
+          endpoint = f"https://api.render.com/v1/services/{service}/env-vars/DATABASE_URL"
+          req = urllib.request.Request(endpoint, headers={"Authorization": f"Bearer {key}", "Accept": "application/json"})
+          try:
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  obj = json.load(response)
+          except Exception as exc:
+              raise SystemExit(f"BLOCK: unable to read staging database environment variable ({type(exc).__name__})")
+          value = str(obj.get("value") or "")
+          if not value:
+              raise SystemExit("BLOCK: staging DATABASE_URL not configured")
+          url = urlsplit(value)
+          host = (url.hostname or "").lower()
+          user = url.username or ""
+          if url.scheme not in ("postgres", "postgresql"):
+              raise SystemExit("BLOCK: staging DATABASE_URL is not PostgreSQL")
+          if host == f"db.{expected}.supabase.co":
+              print("PASS: staging Render points to new Supabase staging project (direct connection)")
+          elif host.endswith(".pooler.supabase.com") and expected in user:
+              print("PASS: staging Render points to new Supabase staging project (pooler)")
+          elif host.endswith(".supabase.co") or host.endswith(".pooler.supabase.com"):
+              raise SystemExit("BLOCK: staging Render points to a different Supabase project")
+          elif host.endswith(".render.com"):
+              raise SystemExit("BLOCK: staging Render still points to old Render PostgreSQL, which is suspended")
+          else:
+              raise SystemExit("BLOCK: staging database host cannot be verified as new project")
+          print("PASS: database target identity checked without printing hostname, credentials or connection string")
+          PY
