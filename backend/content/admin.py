@@ -9,6 +9,7 @@ from .models import (
     LIVE_CLASS_MAX_HOURS,
     Announcement,
     AnnouncementMedia,
+    WebVitalSample,
     ContactEnquiry,
     Course,
     CourseCategory,
@@ -763,6 +764,32 @@ class VideoRequestAdmin(TimeStampedAdmin):
         super().save_model(request, obj, form, change)
 
     def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(WebVitalSample)
+class WebVitalSampleAdmin(admin.ModelAdmin):
+    """Anonymous RUM data: superusers can read but not edit individual samples."""
+
+    list_display = ("metric_name", "page_group", "device", "value", "observed_at")
+    list_filter = ("metric_name", "page_group", "device")
+    readonly_fields = ("event_hash", "metric_name", "value", "page_group", "device", "observed_at")
+    list_per_page = 50
+    ordering = ("-observed_at",)
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return self.has_module_permission(request)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
         return False
 
     def has_delete_permission(self, request, obj=None):
