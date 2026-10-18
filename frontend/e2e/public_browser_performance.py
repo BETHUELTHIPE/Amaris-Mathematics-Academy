@@ -91,7 +91,7 @@ def measure(browser, path, width, height, mobile):
         raise AssertionError(f"missing or slow lab LCP {path} {width}: {after['lcpMs']}")
     interaction_ms = None
     if path == "/courses" and width in (320, 1440):
-        search = page.get_by_role("textbox", name="Search mathematics courses")
+        search = page.get_by_role("searchbox", name="Search mathematics courses")
         search.wait_for(timeout=8000)
         t0 = time.perf_counter()
         search.fill("amaris-no-matching-course-xyz")
