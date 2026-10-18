@@ -156,6 +156,12 @@ class WebVitalsReportTests(TestCase):
             self.assertIsNone(groups[category]["p75"])
             self.assertEqual(groups[category]["status"], "insufficient_data")
 
+    @override_settings(
+        STORAGES={
+            "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+            "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+        }
+    )
     def test_admin_changelist_embeds_only_superuser_summary_and_static_script(self):
         self.client.force_login(self.superuser)
         response = self.client.get(reverse("admin:content_webvitalsample_changelist"), secure=True)
