@@ -32,6 +32,19 @@ jobs:
   private-video-contract:
     runs-on: ubuntu-latest
     services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: private_video_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d private_video_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
       redis:
         image: redis:8-alpine
         ports:
@@ -43,6 +56,9 @@ jobs:
           --health-retries 10
     env:
       DJANGO_DEBUG: "true"
+      DJANGO_ALLOWED_HOSTS: testserver,localhost,127.0.0.1
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/private_video_ci
+      DATABASE_SSL_REQUIRED: "false"
       DJANGO_CACHE_URL: redis://localhost:6379/0
       DJANGO_PUBLIC_CACHE_URL: redis://localhost:6379/1
       CELERY_BROKER_URL: redis://localhost:6379/2
@@ -80,5 +96,7 @@ jobs:
         run: python manage.py check
       - name: Migration drift
         run: python manage.py makemigrations --check --dry-run
+      - name: Apply additive migrations on isolated PostgreSQL 17
+        run: python manage.py migrate --noinput
       - name: Private media provider and authorization tests
-        run: python manage.py test tests.security.test_private_video_assets
+        run: python manage.py test tests.security.test_private_video_assets --noinput
