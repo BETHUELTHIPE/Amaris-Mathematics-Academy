@@ -52,9 +52,26 @@ jobs:
               print("PASS: staging Render points to new Supabase staging project (pooler)")
           elif host.endswith(".supabase.co") or host.endswith(".pooler.supabase.com"):
               raise SystemExit("BLOCK: staging Render points to a different Supabase project")
-          elif host.endswith(".render.com"):
+          elif host.startswith("dpg-") or host.endswith(".internal") or host.endswith(".render.com"):
               raise SystemExit("BLOCK: staging Render still points to old Render PostgreSQL, which is suspended")
           else:
               raise SystemExit("BLOCK: staging database host cannot be verified as new project")
+          try:
+              all_req = urllib.request.Request(
+                  f"https://api.render.com/v1/services/{service}/env-vars?limit=100",
+                  headers={"Authorization": f"Bearer {key}", "Accept": "application/json"}
+              )
+              with urllib.request.urlopen(all_req, timeout=20) as response:
+                  listed = json.load(response)
+              names = set()
+              for entry in listed if isinstance(listed, list) else []:
+                  item = entry.get("envVar", entry)
+                  name = item.get("key")
+                  if isinstance(name, str):
+                      names.add(name)
+              for name in ("Staging_database", "STAGING_DATABASE_URL", "DATABASE_URL", "SUPABASE_URL"):
+                  print(f"INFO environment variable {name}: {'present' if name in names else 'absent'}")
+          except Exception:
+              print("INFO environment variable name listing unavailable")
           print("PASS: database target identity checked without printing hostname, credentials or connection string")
           PY
