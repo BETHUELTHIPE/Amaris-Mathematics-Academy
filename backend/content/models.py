@@ -881,5 +881,31 @@ class PaymentReconciliationRun(TimeStampedModel):
         return f"{self.started_at:%Y-%m-%d %H:%M} — {self.status}"
 
 
+class WebVitalSample(models.Model):
+    """Anonymous operational performance event, not a student activity record.
+
+    The browser metric ID is never stored; the keyed digest supports
+    idempotent updates when the web-vitals callback reports a revised value.
+    """
+
+    METRICS = (("LCP", "Largest Contentful Paint"), ("INP", "Interaction to Next Paint"), ("CLS", "Cumulative Layout Shift"))
+    event_hash = models.CharField(max_length=64, unique=True, editable=False)
+    metric_name = models.CharField(max_length=3, choices=METRICS)
+    value = models.FloatField()
+    page_group = models.CharField(max_length=24)
+    device = models.CharField(max_length=8)
+    observed_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["metric_name", "observed_at"], name="rum_metric_observed_idx"),
+            models.Index(fields=["page_group", "observed_at"], name="rum_page_observed_idx"),
+        ]
+        ordering = ("-observed_at",)
+
+    def __str__(self):
+        return f"{self.metric_name} ({self.page_group}/{self.device})"
+
+
 # Django discovers the recruitment models through this application module.
 from .tutor_application_models import TutorApplication, TutorApplicationDocument  # noqa: E402,F401
