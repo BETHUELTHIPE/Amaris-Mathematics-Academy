@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
-import { ShareSupportProject, PUBLIC_SUPPORT_URL } from "@/components/site/share-support-project";
+import { ShareSupportProject } from "@/components/site/share-support-project";
+import { PUBLIC_SUPPORT_URL } from "@/lib/support-sharing";
 import { getManagedBrand } from "@/lib/cms";
 
 export const metadata: Metadata = {
