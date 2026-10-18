@@ -1,5 +1,7 @@
 from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.utils.html import format_html
 
 from .models import (
     FAQ,
@@ -25,6 +27,7 @@ from .models import (
     TutorAvailabilitySlot,
     VideoAsset,
 )
+from .youtube import normalise_youtube_url
 
 admin.site.site_header = "Amaris Mathematics Academy"
 admin.site.site_title = "Amaris Academy Admin"
@@ -265,7 +268,7 @@ class SuperuserMarketingAdmin:
     def has_view_permission(self, request, obj=None):
         return self._allowed(request)
 
-    def has_add_permission(self, request):
+    def has_add_permission(self, request, obj=None):
         return self._allowed(request)
 
     def has_change_permission(self, request, obj=None):
@@ -287,6 +290,24 @@ class AnnouncementAdmin(SuperuserMarketingAdmin, PublishableAdmin):
     list_editable = ("priority", "is_published")
     search_fields = ("title", "message")
     inlines = (AnnouncementMediaInline,)
+    readonly_fields = TimeStampedAdmin.readonly_fields + ("youtube_preview",)
+    fieldsets = (
+        ("Announcement", {"fields": ("title", "message")}),
+        ("YouTube", {"fields": ("youtube_url", "youtube_preview")}),
+        ("Call to action", {"fields": ("link_label", "link_url")}),
+        ("Publication", {"fields": ("priority", "is_published", "publish_at", "expires_at")}),
+        ("Audit", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+    )
+
+    @admin.display(description="Preview on YouTube")
+    def youtube_preview(self, obj):
+        try:
+            url = normalise_youtube_url(obj.youtube_url) if obj else ""
+        except ValidationError:
+            url = ""
+        if not url:
+            return "Save a valid YouTube link to preview it."
+        return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">Open video or playlist</a>', url)
 
 
 @admin.register(AnnouncementMedia)
