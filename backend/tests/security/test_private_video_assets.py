@@ -138,6 +138,7 @@ class PrivateVideoAssetTests(TestCase):
         self.assertNotIn("123456789", response.content.decode("utf-8"))
         self.assertNotIn("vimeo_url", response.content.decode("utf-8"))
 
+
 class PrivateVideoAdminHTTPTests(TestCase):
     """Exercise real Django Admin requests, not only permission hooks."""
 
