@@ -2,6 +2,7 @@
 
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
@@ -136,3 +137,143 @@ class PrivateVideoAssetTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("123456789", response.content.decode("utf-8"))
         self.assertNotIn("vimeo_url", response.content.decode("utf-8"))
+
+class PrivateVideoAdminHTTPTests(TestCase):
+    """Exercise real Django Admin requests, not only permission hooks."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_superuser(
+            "private-video-owner", "video-owner@example.test", "SyntheticPass123!"
+        )
+        self.staff = User.objects.create_user(
+            "private-video-staff",
+            "video-staff@example.test",
+            "SyntheticPass123!",
+            is_staff=True,
+        )
+        # Even explicit Django model permissions cannot grant private-video management.
+        self.staff.user_permissions.set(
+            Permission.objects.filter(
+                content_type__app_label="content", content_type__model="videoasset"
+            )
+        )
+        self.asset = VideoAsset.objects.create(
+            title="Original private lesson",
+            provider=VideoAsset.Provider.YOUTUBE,
+            youtube_video_id="M7lc1UVf-VE",
+        )
+
+    @staticmethod
+    def form_data(**changes):
+        return {
+            "title": "New private lesson",
+            "provider": "youtube",
+            "youtube_video_id": "M7lc1UVf-VE",
+            "youtube_url": "",
+            "vimeo_video_id": "",
+            "vimeo_url": "",
+            "duration_seconds": 60,
+            "transcript": "",
+            "_save": "Save",
+            **changes,
+        }
+
+    def test_superuser_can_create_update_publish_and_delete_private_video(self):
+        self.client.force_login(self.owner)
+        self.assertEqual(
+            self.client.get(reverse("admin:content_videoasset_add"), secure=True).status_code,
+            200,
+        )
+        added = self.client.post(
+            reverse("admin:content_videoasset_add"), self.form_data(), secure=True
+        )
+        self.assertEqual(added.status_code, 302)
+        asset = VideoAsset.objects.get(title="New private lesson")
+        updated = self.client.post(
+            reverse("admin:content_videoasset_change", args=[asset.pk]),
+            self.form_data(title="Updated private lesson"),
+            secure=True,
+        )
+        self.assertEqual(updated.status_code, 302)
+        asset.refresh_from_db()
+        self.assertEqual(asset.title, "Updated private lesson")
+        published = self.client.post(
+            reverse("admin:content_videoasset_changelist"),
+            {"action": "publish_selected", "_selected_action": [str(asset.pk)]},
+            secure=True,
+        )
+        self.assertEqual(published.status_code, 302)
+        asset.refresh_from_db()
+        self.assertTrue(asset.is_published)
+        deleted = self.client.post(
+            reverse("admin:content_videoasset_delete", args=[asset.pk]),
+            {"post": "yes"},
+            secure=True,
+        )
+        self.assertEqual(deleted.status_code, 302)
+        self.assertFalse(VideoAsset.objects.filter(pk=asset.pk).exists())
+
+    def test_staff_with_model_permissions_cannot_view_or_mutate_videos(self):
+        self.client.force_login(self.staff)
+        urls = (
+            reverse("admin:content_videoasset_changelist"),
+            reverse("admin:content_videoasset_add"),
+            reverse("admin:content_videoasset_change", args=[self.asset.pk]),
+            reverse("admin:content_videoasset_delete", args=[self.asset.pk]),
+        )
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url, secure=True).status_code, 403)
+        requests = (
+            (urls[1], self.form_data()),
+            (urls[2], self.form_data(title="Unauthorized update")),
+            (urls[3], {"post": "yes"}),
+            (
+                urls[0],
+                {"action": "publish_selected", "_selected_action": [str(self.asset.pk)]},
+            ),
+        )
+        for url, data in requests:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.post(url, data, secure=True).status_code, 403)
+        self.asset.refresh_from_db()
+        self.assertFalse(self.asset.is_published)
+        self.assertEqual(self.asset.title, "Original private lesson")
+        self.assertEqual(VideoAsset.objects.count(), 1)
+
+    def test_bulk_publish_rejects_invalid_asset_without_partial_changes(self):
+        invalid = VideoAsset.objects.create(
+            title="Unusable Vimeo lesson",
+            provider=VideoAsset.Provider.VIMEO,
+            vimeo_video_id="not-numeric",
+        )
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("admin:content_videoasset_changelist"),
+            {
+                "action": "publish_selected",
+                "_selected_action": [str(self.asset.pk), str(invalid.pk)],
+            },
+            secure=True,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.asset.refresh_from_db()
+        invalid.refresh_from_db()
+        self.assertFalse(self.asset.is_published)
+        self.assertFalse(invalid.is_published)
+
+    def test_admin_form_rejects_invalid_provider_reference(self):
+        self.client.force_login(self.owner)
+        result = self.client.post(
+            reverse("admin:content_videoasset_add"),
+            self.form_data(
+                title="Bad Vimeo lesson",
+                provider="vimeo",
+                youtube_video_id="",
+                vimeo_video_id="not-numeric",
+            ),
+            secure=True,
+        )
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(VideoAsset.objects.count(), 1)
