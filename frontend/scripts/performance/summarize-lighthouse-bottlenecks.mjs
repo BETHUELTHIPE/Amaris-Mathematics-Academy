@@ -2,7 +2,15 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const folder = process.argv[2] || ".lighthouseci/mobile";
-const names = (await readdir(folder)).filter((name) => /^(home|courses|contact)-[123](?:\.report)?\.json$/.test(name)).sort();
+let reportFiles = [];
+try {
+  reportFiles = await readdir(folder);
+} catch (error) {
+  if (error?.code !== "ENOENT") throw error;
+  console.log("No Lighthouse reports yet: the earlier build or browser gate stopped first.");
+  process.exit(0);
+}
+const names = reportFiles.filter((name) => /^(home|courses|contact)-[123](?:\\.report)?\\.json$/.test(name)).sort();
 if (!names.length) {
   console.log("No mobile Lighthouse JSON reports found; diagnosis unavailable.");
   process.exit(0);
