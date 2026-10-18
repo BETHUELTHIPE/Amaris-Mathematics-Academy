@@ -5,6 +5,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from urllib.request import urlopen
 
 from playwright.sync_api import sync_playwright
@@ -71,8 +72,9 @@ def main():
                 page.get_by_text("Matric Upgrades link copied.", exact=False).wait_for()
                 assert page.evaluate("navigator.clipboard.readText()") == PUBLIC
                 whatsapp = page.locator('a[href^="https://wa.me/?text="]')
-                assert "/matric-upgrades" in whatsapp.get_attribute("href")
-                assert "synthetic-ignored" not in whatsapp.get_attribute("href")
+                whatsapp_message = parse_qs(urlsplit(whatsapp.get_attribute("href")).query)["text"][0]
+                assert PUBLIC in whatsapp_message
+                assert "synthetic-ignored" not in whatsapp_message
                 assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 2")
                 print("PASS 390px native share, clipboard, WhatsApp, canonical and no private query leakage", flush=True)
                 mobile.close()
