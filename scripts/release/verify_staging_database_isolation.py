@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 import psycopg
 from psycopg.rows import dict_row
@@ -18,6 +18,78 @@ EXPECTED_SCHEMA = "amaris_staging"
 RENDER_STAGE_HOST = "dpg-dam2gj6k1f9s73e81tmg-a"
 RENDER_STAGE_DATABASE = "amaris_staging_postgres"
 RENDER_STAGE_ROLE = "amaris_staging_postgres_user"
+SUPABASE_STAGE_REF = "atyhhjwwxgzeurnwayay"
+
+
+def is_dedicated_supabase_staging_dsn(dsn: str) -> bool:
+    """Accept only the user's separate staging project, never production."""
+    try:
+        parsed = urlsplit(dsn)
+        parameters = parse_qsl(parsed.query, keep_blank_values=True)
+        # libpq URI parameters can override the visible host/user/database.
+        # Accept only optional TLS mode; never allow hidden routing overrides.
+        if parsed.fragment or any(
+            key != "sslmode" or value not in ("require", "verify-ca", "verify-full")
+            for key, value in parameters
+        ):
+            return False
+        host = (parsed.hostname or "").lower()
+        user = unquote(parsed.username or "")
+        direct = host == f"db.{SUPABASE_STAGE_REF}.supabase.co" and user == "postgres"
+        pooled = (
+            host.endswith(".pooler.supabase.com")
+            and user == f"postgres.{SUPABASE_STAGE_REF}"
+        )
+        return bool(
+            parsed.scheme in ("postgres", "postgresql")
+            and (direct or pooled)
+            and parsed.port in (None, 5432)
+            and parsed.password
+            and unquote(parsed.path).lstrip("/") == "postgres"
+        )
+    except ValueError:
+        return False
+
+
+def validate_dedicated_supabase_facts(facts):
+    return bool(
+        facts
+        and facts["database_name"] == "postgres"
+        and facts["database_role"] == "postgres"
+        and facts["schema_name"] == "public"
+    )
+
+
+def validate_dedicated_staging_bindings(values):
+    """The dedicated staging runtime must not authenticate or upload to production."""
+    auth = urlsplit(values.get("SUPABASE_URL", ""))
+    endpoint = next(
+        (
+            values.get(key, "")
+            for key in (
+                "SUPABASE_S3_ENDPOINT_URL",
+                "SUPABASE_STORAGE_S3_ENDPOINT",
+                "AWS_S3_ENDPOINT_URL",
+            )
+            if values.get(key, "")
+        ),
+        "",
+    )
+    storage = urlsplit(endpoint)
+    return bool(
+        auth.scheme == "https"
+        and auth.hostname == f"{SUPABASE_STAGE_REF}.supabase.co"
+        and not auth.username
+        and values.get("SUPABASE_PUBLISHABLE_KEY", "").strip()
+        and storage.scheme == "https"
+        and storage.hostname
+        in (
+            f"{SUPABASE_STAGE_REF}.storage.supabase.co",
+            f"{SUPABASE_STAGE_REF}.supabase.co",
+        )
+        and not storage.username
+        and storage.path.rstrip("/") == "/storage/v1/s3"
+    )
 
 
 def is_isolated_render_staging_dsn(dsn: str) -> bool:
@@ -113,12 +185,33 @@ def main() -> int:
         return 1
 
     try:
+        if is_dedicated_supabase_staging_dsn(dsn):
+            sslmode = dict(parse_qsl(urlsplit(dsn).query)).get("sslmode", "require")
+            with psycopg.connect(
+                dsn, connect_timeout=12, sslmode=sslmode, row_factory=dict_row
+            ) as conn:
+                conn.execute("SET TRANSACTION READ ONLY")
+                facts = conn.execute(
+                    "SELECT current_database() AS database_name, current_user AS database_role, "
+                    "current_schema() AS schema_name"
+                ).fetchone()
+            if not validate_dedicated_supabase_facts(facts):
+                print(
+                    "Staging release blocked: dedicated Supabase database identity mismatch.",
+                    file=sys.stderr,
+                )
+                return 1
+            print(
+                "PASS: actual connection uses the dedicated staging Supabase project and public schema."
+            )
+            return 0
         # READ ONLY: this check does not run migrations, export records, or create objects.
         with psycopg.connect(dsn, connect_timeout=12, row_factory=dict_row) as conn:
             conn.execute("SET TRANSACTION READ ONLY")
             if is_isolated_render_staging_dsn(dsn):
                 facts = conn.execute(
-                    "SELECT current_database() AS database_name, current_user AS database_role, current_schema() AS schema_name"
+                    "SELECT current_database() AS database_name, current_user AS database_role, "
+                    "current_schema() AS schema_name"
                 ).fetchone()
                 if not validate_render_facts(facts):
                     print(
