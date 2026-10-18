@@ -1,0 +1,74 @@
+name: Restore staging autodeploy to verified recovery branch
+on:
+  push:
+    branches: [ops/staging-known-good-af8709c-20261019]
+    paths: [.github/workflows/restore-staging-autodeploy.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safe-staging-source-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify recovered Django migration ancestry
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor af8709ce7549bff6760512aaa24bdbb718d17e34 HEAD
+          test -f backend/content/migrations/0014_announcement_media.py
+          test -f backend/content/migrations/0009_merge_invoice_booking.py
+          test ! -f backend/content/migrations/0008_announcement_media.py
+      - name: Verify currently running staging readiness
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-delay 7 --max-time 120 https://amaris-mathematics-academy-staging.onrender.com/health/ready/
+  guarded-render-update:
+    needs: safe-staging-source-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Update staging backend only, only if original configuration is unchanged
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          secret = os.environ.get("RENDER_API_KEY","")
+          if not secret:
+              raise SystemExit("No RENDER_API_KEY GitHub Actions secret is available; configuration was not changed.")
+          endpoint = "https://api.render.com/v1/services/srv-dam2iivcgkoc7383tq50"
+          expected_branch = "staging"
+          recovery_branch = "ops/staging-known-good-af8709c-20261019"
+          expected_owner = "tea-csppi8l6l47c73dk9c90"
+          expected_repo = "https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy"
+          headers = {"Authorization": "Bearer " + secret, "Accept": "application/json"}
+          def api(method, data=None):
+              request = urllib.request.Request(endpoint, headers=dict(headers), method=method)
+              if data is not None:
+                  request.add_header("Content-Type", "application/json")
+                  request.data = json.dumps(data).encode()
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.load(response)
+
+          before = api("GET")
+          if before["id"] != "srv-dam2iivcgkoc7383tq50" or before["ownerId"] != expected_owner or before.get("repo") != expected_repo:
+              raise SystemExit("Service/workspace/repo identity changed; refusing to update.")
+          current = before.get("branch")
+          trigger = before.get("autoDeployTrigger")
+          if current == recovery_branch and trigger == "checksPass":
+              print("Staging is already configured for CI-gated recovery branch.")
+              raise SystemExit(0)
+          if current != expected_branch or trigger != "off":
+              raise SystemExit(f"Staging config changed (branch={current}, autoDeployTrigger={trigger}); refusing update.")
+          api("PATCH", {"branch": recovery_branch, "autoDeployTrigger": "checksPass"})
+          after = api("GET")
+          if after.get("branch") != recovery_branch or after.get("autoDeployTrigger") != "checksPass":
+              raise SystemExit("Render did not confirm the requested staging setting.")
+          print("Staging backend linked to known-good recovery branch; autodeploy set to After CI Checks Pass.")
+          print("No production service or database changed. Render configuration updates do not themselves initiate a deploy.")
+          PY
