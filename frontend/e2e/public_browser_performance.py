@@ -117,6 +117,24 @@ def measure(browser, path, width, height, mobile):
         page.locator("main").click(position={"x": 8, "y": 8}, force=True)
         page.locator(".header-mobile-menu:not([open])").wait_for(timeout=8000)
 
+    if path == "/" and width == 320:
+        # Deterministic clipboard-denied fallback; keeps the real browser
+        # click, focus movement, and public-homepage-only URL contract.
+        page.evaluate("""() => {
+          Object.defineProperty(navigator, 'share', {configurable: true, value: undefined});
+          Object.defineProperty(navigator, 'clipboard', {
+            configurable: true, value: {writeText: async () => {
+              throw new DOMException('Denied', 'NotAllowedError');
+            }}
+          });
+        }""")
+        share = page.locator("[data-share-website]").first
+        share.locator("[data-share-trigger]").click()
+        fallback_input = share.locator("[data-share-url]")
+        fallback_input.wait_for(timeout=8000, state="visible")
+        assert fallback_input.input_value() == ORIGIN + "/", "Share includes a private path"
+        assert fallback_input.evaluate("(element) => document.activeElement === element"), "Clipboard fallback lost keyboard focus"
+
     record = {"page": path, "width": width, "mobile": mobile,
               "cls": round(after["cls"], 4), "lcpMs": round(after["lcpMs"]),
               "longTasks": after["longTasks"], "overflow": False,
