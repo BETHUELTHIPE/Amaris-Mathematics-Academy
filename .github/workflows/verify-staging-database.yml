@@ -51,14 +51,21 @@ jobs:
               )
               with urllib.request.urlopen(all_req, timeout=20) as response:
                   listed = json.load(response)
-              names = set()
+              env = {}
               for entry in listed if isinstance(listed, list) else []:
                   item = entry.get("envVar", entry)
                   name = item.get("key")
                   if isinstance(name, str):
-                      names.add(name)
+                      env[name] = item.get("value") or ""
               for name in ("Staging_database", "STAGING_DATABASE_URL", "DATABASE_URL", "SUPABASE_URL"):
-                  print(f"INFO environment variable {name}: {'present' if name in names else 'absent'}")
+                  print(f"INFO environment variable {name}: {'present' if name in env else 'absent'}")
+              auth_url = str(env.get("SUPABASE_URL", ""))
+              if expected in auth_url:
+                  print("PASS: Django staging Supabase URL matches staging project")
+              elif "epkcuseloinygkakxxdu" in auth_url:
+                  print("BLOCK: Django staging Supabase URL points to production project")
+              elif auth_url:
+                  print("BLOCK: Django staging Supabase URL project is unverified")
           except Exception:
               print("INFO environment variable name listing unavailable")
           if url.scheme not in ("postgres", "postgresql"):
