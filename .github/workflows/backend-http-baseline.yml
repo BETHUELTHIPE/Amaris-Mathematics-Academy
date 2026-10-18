@@ -1,0 +1,37 @@
+name: Backend public HTTP baseline (read only)
+
+on:
+  push:
+    branches: [ops/backend-release-verification-20261018]
+    paths:
+      - .github/workflows/backend-http-baseline.yml
+      - scripts/release/measure_backend_http.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Measure current public production backend (one client, GET only)
+        run: >-
+          python scripts/release/measure_backend_http.py
+          --base https://amaris-production-web.onrender.com
+          --sha eafb37db6cfb20a9bf84a0ec4698b5e6af10fae4
+          --label production-before-github-runner
+          --samples 12
+          --output backend-http-baseline.json
+      - name: Preserve individual samples in the log
+        if: always()
+        run: cat backend-http-baseline.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-public-http-baseline
+          path: backend-http-baseline.json
+          if-no-files-found: warn
+          retention-days: 30
