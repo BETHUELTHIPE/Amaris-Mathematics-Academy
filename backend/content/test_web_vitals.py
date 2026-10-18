@@ -111,4 +111,6 @@ class WebVitalsReportTests(TestCase):
         item = self.client.get(reverse("web-vitals-report"), secure=True).json()["groups"][0]
         self.assertIsNone(item["p75"])
         self.assertEqual(item["status"], "insufficient_data")
-        self.assertEqual(self.client.get(reverse("web-vitals-report"), {"days": "invalid"}, secure=True).status_code, 400)
+        self.assertEqual(
+            self.client.get(reverse("web-vitals-report"), {"days": "invalid"}, secure=True).status_code, 400
+        )
