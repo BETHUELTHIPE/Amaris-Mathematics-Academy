@@ -1,0 +1,256 @@
+{
+  "started_at": "2026-10-18T21:52:04.492779+00:00",
+  "label": "production-before-github-runner",
+  "sha_from_render": "eafb37db6cfb20a9bf84a0ec4698b5e6af10fae4",
+  "base": "https://amaris-production-web.onrender.com",
+  "scope": "Single-client public GET sample; warm cache; not a load/capacity test or a browser Web Vitals test.",
+  "routes": [
+    {
+      "path": "/health/ready/",
+      "samples": [
+        {
+          "status": 200,
+          "ttfb_ms": 899.43,
+          "total_ms": 899.51,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 1138.46,
+          "total_ms": 1138.55,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 864.98,
+          "total_ms": 865.06,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 1152.9,
+          "total_ms": 1152.98,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 867.93,
+          "total_ms": 868.01,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 1137,
+          "total_ms": 1137.08,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 983.95,
+          "total_ms": 984.03,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 874.84,
+          "total_ms": 874.97,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 871,
+          "total_ms": 871.08,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 875.95,
+          "total_ms": 876.06,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 877.07,
+          "total_ms": 877.15,
+          "download_bytes": 23
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 878.14,
+          "total_ms": 878.23,
+          "download_bytes": 23
+        }
+      ],
+      "requests": 12,
+      "successes": 12,
+      "failures": 0,
+      "p50_ttfb_ms": 877.605,
+      "p95_ttfb_ms": 1152.9
+    },
+    {
+      "path": "/api/v1/courses/",
+      "samples": [
+        {
+          "status": 200,
+          "ttfb_ms": 219.98,
+          "total_ms": 220.09,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 215.85,
+          "total_ms": 215.95,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 227.88,
+          "total_ms": 227.97,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 230.62,
+          "total_ms": 230.73,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 216.21,
+          "total_ms": 216.34,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 210.62,
+          "total_ms": 210.71,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 208.25,
+          "total_ms": 208.36,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 225.14,
+          "total_ms": 225.23,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 240.98,
+          "total_ms": 241.09,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 227.65,
+          "total_ms": 227.74,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 214.21,
+          "total_ms": 214.31,
+          "download_bytes": 51
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 217.88,
+          "total_ms": 217.97,
+          "download_bytes": 51
+        }
+      ],
+      "requests": 12,
+      "successes": 12,
+      "failures": 0,
+      "p50_ttfb_ms": 218.93,
+      "p95_ttfb_ms": 240.98
+    },
+    {
+      "path": "/api/v1/live-classes/slots/",
+      "samples": [
+        {
+          "status": 200,
+          "ttfb_ms": 910.45,
+          "total_ms": 910.54,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 968.08,
+          "total_ms": 968.18,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 1149.9,
+          "total_ms": 1150,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 924.34,
+          "total_ms": 924.45,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 947.79,
+          "total_ms": 947.89,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 920.68,
+          "total_ms": 920.79,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 889.85,
+          "total_ms": 889.95,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 893.24,
+          "total_ms": 893.34,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 883.89,
+          "total_ms": 884.01,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 939.11,
+          "total_ms": 939.21,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 888.19,
+          "total_ms": 888.29,
+          "download_bytes": 186
+        },
+        {
+          "status": 200,
+          "ttfb_ms": 876.5,
+          "total_ms": 876.61,
+          "download_bytes": 186
+        }
+      ],
+      "requests": 12,
+      "successes": 12,
+      "failures": 0,
+      "p50_ttfb_ms": 915.565,
+      "p95_ttfb_ms": 1149.9
+    }
+  ],
+  "finished_at": "2026-10-18T21:52:55.572183+00:00"
+}

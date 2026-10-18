@@ -3,13 +3,74 @@
 import unittest
 
 from verify_staging_database_isolation import (
+    is_dedicated_supabase_staging_dsn,
     is_isolated_render_staging_dsn,
+    validate_dedicated_staging_bindings,
+    validate_dedicated_supabase_facts,
     validate_facts,
     validate_render_facts,
 )
 
 
 class StagingDatabaseIsolationTests(unittest.TestCase):
+    def test_dedicated_staging_rejects_production_auth_storage_and_missing_auth_key(
+        self,
+    ):
+        safe = {
+            "SUPABASE_URL": "https://atyhhjwwxgzeurnwayay.supabase.co",
+            "SUPABASE_PUBLISHABLE_KEY": "synthetic-publishable-test-key",
+            "SUPABASE_S3_ENDPOINT_URL": "https://atyhhjwwxgzeurnwayay.storage.supabase.co/storage/v1/s3",
+        }
+        self.assertTrue(validate_dedicated_staging_bindings(safe))
+        for key in ("SUPABASE_URL", "SUPABASE_S3_ENDPOINT_URL"):
+            self.assertFalse(
+                validate_dedicated_staging_bindings(
+                    {
+                        **safe,
+                        key: safe[key].replace(
+                            "atyhhjwwxgzeurnwayay", "epkcuseloinygkakxxdu"
+                        ),
+                    }
+                )
+            )
+            self.assertFalse(
+                validate_dedicated_staging_bindings({**safe, key: "https://evil.test"})
+            )
+        self.assertFalse(
+            validate_dedicated_staging_bindings(
+                {**safe, "SUPABASE_PUBLISHABLE_KEY": ""}
+            )
+        )
+
+    def test_dedicated_supabase_staging_requires_exact_project_and_session_port(self):
+        direct = "postgresql://postgres:synthetic@db.atyhhjwwxgzeurnwayay.supabase.co:5432/postgres"
+        pooled = "postgresql://postgres.atyhhjwwxgzeurnwayay:synthetic@aws-1-eu-west-1.pooler.supabase.com:5432/postgres"
+        for url in (direct, pooled):
+            self.assertTrue(is_dedicated_supabase_staging_dsn(url))
+            for bad in (
+                url.replace("atyhhjwwxgzeurnwayay", "epkcuseloinygkakxxdu"),
+                url.replace("supabase.co", "supabase.co.evil.test"),
+                url.replace(":5432/", ":6543/"),
+                url.replace(":synthetic", ""),
+                url.replace("/postgres", "/wrong"),
+            ):
+                with self.subTest(url=bad):
+                    self.assertFalse(is_dedicated_supabase_staging_dsn(bad))
+
+    def test_dedicated_supabase_runtime_facts_reject_wrong_role_schema_and_database(
+        self,
+    ):
+        safe = {
+            "database_name": "postgres",
+            "database_role": "postgres",
+            "schema_name": "public",
+        }
+        self.assertTrue(validate_dedicated_supabase_facts(safe))
+        for key in safe:
+            self.assertFalse(
+                validate_dedicated_supabase_facts({**safe, key: "different"})
+            )
+
     def setUp(self):
         self.safe = {
             "current_user": "amaris_staging_app",
