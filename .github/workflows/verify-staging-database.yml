@@ -44,18 +44,6 @@ jobs:
           url = urlsplit(value)
           host = (url.hostname or "").lower()
           user = url.username or ""
-          if url.scheme not in ("postgres", "postgresql"):
-              raise SystemExit("BLOCK: staging DATABASE_URL is not PostgreSQL")
-          if host == f"db.{expected}.supabase.co":
-              print("PASS: staging Render points to new Supabase staging project (direct connection)")
-          elif host.endswith(".pooler.supabase.com") and expected in user:
-              print("PASS: staging Render points to new Supabase staging project (pooler)")
-          elif host.endswith(".supabase.co") or host.endswith(".pooler.supabase.com"):
-              raise SystemExit("BLOCK: staging Render points to a different Supabase project")
-          elif host.startswith("dpg-") or host.endswith(".internal") or host.endswith(".render.com"):
-              raise SystemExit("BLOCK: staging Render still points to old Render PostgreSQL, which is suspended")
-          else:
-              raise SystemExit("BLOCK: staging database host cannot be verified as new project")
           try:
               all_req = urllib.request.Request(
                   f"https://api.render.com/v1/services/{service}/env-vars?limit=100",
@@ -73,5 +61,17 @@ jobs:
                   print(f"INFO environment variable {name}: {'present' if name in names else 'absent'}")
           except Exception:
               print("INFO environment variable name listing unavailable")
+          if url.scheme not in ("postgres", "postgresql"):
+              raise SystemExit("BLOCK: staging DATABASE_URL is not PostgreSQL")
+          if host == f"db.{expected}.supabase.co":
+              print("PASS: staging Render points to new Supabase staging project (direct connection)")
+          elif host.endswith(".pooler.supabase.com") and expected in user:
+              print("PASS: staging Render points to new Supabase staging project (pooler)")
+          elif host.endswith(".supabase.co") or host.endswith(".pooler.supabase.com"):
+              raise SystemExit("BLOCK: staging Render points to a different Supabase project")
+          elif host.startswith("dpg-") or host.endswith(".internal") or host.endswith(".render.com"):
+              raise SystemExit("BLOCK: staging Render still points to old Render PostgreSQL, which is suspended")
+          else:
+              raise SystemExit("BLOCK: staging database host cannot be verified as new project")
           print("PASS: database target identity checked without printing hostname, credentials or connection string")
           PY
