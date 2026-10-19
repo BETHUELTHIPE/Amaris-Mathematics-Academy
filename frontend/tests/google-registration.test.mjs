@@ -68,10 +68,10 @@ test("student login and registration use Google, never GitHub, for social sign-i
   for (const page of [login, registration]) {
     assert.match(page, /GoogleAuthButton/);
     assert.doesNotMatch(page, /GitHubAuthButton|GithubAuthButton|githubAuthAction/i);
-    assert.doesNotMatch(page, /provider:\\s*["']github["']/i);
+    assert.doesNotMatch(page, /provider:\s*["']github["']/i);
     assert.doesNotMatch(page, /(?:Sign in|Continue|Register) with GitHub/i);
   }
-  assert.match(actions, /provider:\\s*"google"/);
-  assert.doesNotMatch(actions, /provider:\\s*"github"/);
+  assert.match(actions, /provider:\s*"google"/);
+  assert.doesNotMatch(actions, /provider:\s*"github"/);
   assert.doesNotMatch(button, /github\.com|githubAuthAction/i);
 });
