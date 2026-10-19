@@ -78,7 +78,7 @@ jobs:
               if valid:
                   print(f"PASS {provider}: Supabase initiated an HTTPS redirect to the expected provider with a structurally correct client ID")
               else:
-                  print(f"FAIL {provider}: status={status}; expected provider redirect and client ID shape not confirmed")
+                  print(f"FAIL {provider}: status={status} host={parsed.hostname or 'none'} client_id_present={bool(client_id)} google_style_client_id={client_id.endswith('.apps.googleusercontent.com')}")
                   failures.append(provider)
 
           if failures:
