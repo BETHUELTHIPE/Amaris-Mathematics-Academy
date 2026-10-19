@@ -1,0 +1,22 @@
+name: Live Google and Invoice Privacy Probe
+
+on:
+  push:
+    branches: [qa/live-student-payment-readonly-20261019]
+
+permissions:
+  contents: read
+
+jobs:
+  public-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Test actual live Render public Google entry and protected invoice endpoints
+        run: python -u scripts/release/live_google_payment_privacy_probe.py
