@@ -51,6 +51,11 @@ jobs:
           smtp_user=env.get("EMAIL_HOST_USER") or env.get("GMAIL_USER") or env.get("GMAIL_EMAIL")
           smtp_password=env.get("EMAIL_HOST_PASSWORD") or env.get("GMAIL_APP_PASSWORD")
           print("SMTP_AUTH_CONFIGURED="+str(bool(smtp_user and smtp_password)))
+          print("SMTP_HOST_CONFIGURED="+str(bool(env.get("EMAIL_HOST"))))
+          print("SMTP_PORT="+str(env.get("EMAIL_PORT","unset")) if str(env.get("EMAIL_PORT","")).isdigit() else "SMTP_PORT=INVALID")
+          print("SMTP_USE_TLS="+str(env.get("EMAIL_USE_TLS","unset")).lower())
+          print("SMTP_USE_SSL="+str(env.get("EMAIL_USE_SSL","unset")).lower())
+          print("SMTP_HOST_IS_GMAIL="+str(str(env.get("EMAIL_HOST","")).lower()=="smtp.gmail.com"))
           from urllib.parse import urlparse
           db=urlparse(env.get("DATABASE_URL",""))
           staging_ref="atyhhjwwxgzeurnwayay"
