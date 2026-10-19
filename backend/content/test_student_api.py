@@ -397,9 +397,24 @@ class StudentJourneyApiTests(APITestCase):
                 instructions="Private student instructions",
                 video_external_id="private/object.mp4",
             )
+        paid_booking = LiveClassBooking.objects.get(reference="LC-DASHBOARD-0")
+        paid_booking.status = LiveClassBooking.Status.CONFIRMED
+        paid_booking.invoice_number = "INV-SYNTH-DASHBOARD-0"
+        paid_booking.gateway_verified_at = timezone.now()
+        paid_booking.paid_at = timezone.now()
+        paid_booking.confirmation_sent_at = None
+        paid_booking.save(update_fields=[
+            "status", "invoice_number", "gateway_verified_at", "paid_at", "confirmation_sent_at",
+        ])
         self.authenticate()
         orders = self.client.get(reverse("student-orders"), secure=True)
         self.assertEqual({item["reference"] for item in orders.data}, {"LC-DASHBOARD-0", "VR-DASHBOARD-0"})
+        order = next(item for item in orders.data if item["reference"] == "LC-DASHBOARD-0")
+        self.assertTrue(order["invoice_ready"], "Verified paid invoice must not depend on SMTP success")
+        paid_booking.gateway_verified_at = None
+        paid_booking.save(update_fields=["gateway_verified_at"])
+        unpaid = self.client.get(reverse("student-orders"), secure=True)
+        self.assertFalse(next(item for item in unpaid.data if item["reference"] == "LC-DASHBOARD-0")["invoice_ready"])
         self.assertNotIn("private", str(orders.data).lower())
         notifications = self.client.get(reverse("student-notifications"), secure=True)
         self.assertEqual(len(notifications.data), 3)
