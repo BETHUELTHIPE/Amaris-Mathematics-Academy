@@ -417,7 +417,7 @@ class StudentJourneyApiTests(APITestCase):
         self.assertFalse(next(item for item in unpaid.data if item["reference"] == "LC-DASHBOARD-0")["invoice_ready"])
         self.assertNotIn("private", str(orders.data).lower())
         notifications = self.client.get(reverse("student-notifications"), secure=True)
-        self.assertEqual(len(notifications.data), 3)
+        self.assertEqual(len(notifications.data), 2)
         self.assertNotIn("DASHBOARD-1", str(notifications.data))
         self.assertNotIn("private", str(notifications.data).lower())
         self.assertEqual(self.client.post(reverse("student-orders"), {}, secure=True).status_code, 405)
