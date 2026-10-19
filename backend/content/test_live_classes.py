@@ -38,6 +38,7 @@ class MockPayFastGateway:
 
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    STAGING_RECEIPTS_ALLOW_LOCAL_TEST_STORAGE=True,
     DEFAULT_FROM_EMAIL="Amaris Mathematics Academy <noreply@example.test>",
 )
 class LiveClassBookingTests(TestCase):
