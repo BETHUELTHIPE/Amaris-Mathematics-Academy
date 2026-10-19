@@ -1,0 +1,33 @@
+name: Release Email Notification Contract Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/notifications/**'
+      - '.github/workflows/amaris-release-email-alerts.yml'
+      - '.github/workflows/release-email-alerts-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notification-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile notifier and run isolated PASS/FAIL tests
+        run: |
+          python -m compileall -q scripts/notifications
+          python -m unittest discover -s scripts/notifications -p 'test_*.py' -v
+      - name: Confirm SMTP test and Render poll can be dry-run without credentials
+        run: |
+          python scripts/notifications/release_alerts.py test --dry-run
+          echo "PASS notification code validated; no real email or deployment change"
