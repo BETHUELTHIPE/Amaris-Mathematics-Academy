@@ -1,0 +1,32 @@
+name: Live Google OAuth Entry and Protected Dashboard
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/e2e/live_google_oauth_entry.py'
+      - '.github/workflows/live-google-oauth-entry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  google-oauth-public-entry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Install isolated Playwright browser driver
+        run: python -m pip install -r frontend/e2e/requirements.txt
+      - name: Verify live Google OAuth initiation and anonymous dashboard access
+        env:
+          AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: python -u frontend/e2e/live_google_oauth_entry.py
