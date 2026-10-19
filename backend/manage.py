@@ -3,6 +3,11 @@ import os
 import sys
 
 
+def is_approved_staging_migration_branch(branch: str) -> bool:
+    """Only the original staging branch and the pinned recovered staging branch may migrate."""
+    return branch in {"staging", "ops/staging-known-good-af8709c-20261019"}
+
+
 def main() -> None:
     # Render staging runs "python manage.py migrate" on every startup. Refuse to
     # touch the database until the *service's own* connection proves isolation.
@@ -13,8 +18,8 @@ def main() -> None:
     ):
         from pathlib import Path
 
-        if os.getenv("RENDER_GIT_BRANCH") != "staging":
-            raise SystemExit("Staging migration blocked: Render is not on the staging branch.")
+        if not is_approved_staging_migration_branch(os.getenv("RENDER_GIT_BRANCH", "")):
+            raise SystemExit("Staging migration blocked: Render is not on an approved staging branch.")
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "release"))
         from verify_staging_database_isolation import (
             SUPABASE_STAGE_REF,
