@@ -51,6 +51,14 @@ jobs:
           smtp_user=env.get("EMAIL_HOST_USER") or env.get("GMAIL_USER") or env.get("GMAIL_EMAIL")
           smtp_password=env.get("EMAIL_HOST_PASSWORD") or env.get("GMAIL_APP_PASSWORD")
           print("SMTP_AUTH_CONFIGURED="+str(bool(smtp_user and smtp_password)))
+          from urllib.parse import urlparse
+          db=urlparse(env.get("DATABASE_URL",""))
+          staging_ref="atyhhjwwxgzeurnwayay"
+          db_is_staging=staging_ref in (db.username or "") or db.hostname=="db."+staging_ref+".supabase.co"
+          print("ACTIVE_DATABASE_IS_STAGING_SUPABASE="+str(db_is_staging))
+          endpoint=urlparse(env.get("SUPABASE_S3_ENDPOINT_URL",""))
+          print("S3_ENDPOINT_IS_STAGING_SUPABASE="+str(endpoint.hostname==staging_ref+".storage.supabase.co"))
+          print("PAYFAST_NOTIFY_TARGET_IS_STAGING="+str("amaris-mathematics-academy-staging.onrender.com" in (env.get("PAYFAST_NOTIFY_URL") or "")))
           print("VALID_FROM_EMAIL_CONFIGURED="+str(bool(env.get("DEFAULT_FROM_EMAIL") and "example.invalid" not in env.get("DEFAULT_FROM_EMAIL",""))))
           print("PAYFAST_SANDBOX="+str((env.get("PAYFAST_MODE") or env.get("PAYFAST_ENV") or "sandbox").lower()=="sandbox"))
           print("Only key presence is reported; credentials are not printed or stored.")
