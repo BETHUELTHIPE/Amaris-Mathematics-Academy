@@ -52,7 +52,7 @@ jobs:
           PY
           cd backend
           DATABASE_URL="$(cat "$RUNNER_TEMP/stage-db")" \
-          DATABASE_SSL_REQUIRED=true SUPABASE_DATABASE_REQUIRED=true \
+          DATABASE_SSL_REQUIRED=true SUPABASE_DATABASE_REQUIRED=true SUPABASE_PROJECT_REF=atyhhjwwxgzeurnwayay \
           DJANGO_DEBUG=false DJANGO_SECRET_KEY=disposable-runner-seed-only \
           python manage.py shell -c '
           from django.contrib.auth import get_user_model
