@@ -1,0 +1,116 @@
+name: Staging SMTP guarded candidate authentication diagnostic
+on:
+  push:
+    branches: [diagnostics/staging-smtp-handshake-20261019]
+    paths: [.github/workflows/staging-smtp-candidate-auth.yml]
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type TEST_GMAIL_LOGIN after replacing the staging Gmail app password"
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify-and-correct-staging:
+    if: github.ref == 'refs/heads/diagnostics/staging-smtp-handshake-20261019' && (github.event_name == 'push' || inputs.confirmation == 'TEST_GMAIL_LOGIN')
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Authenticate once without sending mail, then correct staging-only Render values if successful
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import email.utils
+          import json, os, smtplib, ssl, urllib.error, urllib.request
+          from urllib.parse import urlsplit, quote
+
+          service_id = "srv-dam2iivcgkoc7383tq50"
+          workspace_id = "tea-csppi8l6l47c73dk9c90"
+          expected_project = "atyhhjwwxgzeurnwayay"
+          render_key = os.environ.get("RENDER_API_KEY","")
+          if not render_key:
+              raise SystemExit("BLOCK: Render credential unavailable")
+          base = f"https://api.render.com/v1/services/{service_id}"
+          headers = {"Authorization": "Bearer " + render_key, "Accept": "application/json"}
+          def get(path):
+              request = urllib.request.Request(base + path, headers=headers)
+              with urllib.request.urlopen(request, timeout=20) as reply:
+                  return json.load(reply)
+          svc = get("")
+          if svc.get("id") != service_id or svc.get("ownerId") != workspace_id:
+              raise SystemExit("BLOCK: wrong Render service")
+          if svc.get("branch") != "ops/staging-known-good-af8709c-20261019":
+              raise SystemExit("BLOCK: unexpected staging release branch")
+          records = get("/env-vars?limit=100")
+          if isinstance(records,dict):
+              records = records.get("envVars",records.get("data",[]))
+          env={}
+          for row in records:
+              value = row.get("envVar",row)
+              if isinstance(value,dict) and isinstance(value.get("key"),str):
+                  env[value["key"]] = value.get("value") or ""
+
+          from_address = email.utils.parseaddr(env.get("DEFAULT_FROM_EMAIL",""))[1]
+          username = env.get("EMAIL_HOST_USER","")
+          password = env.get("EMAIL_HOST_PASSWORD","")
+          candidate_pass = password.replace(" ","")
+          host = (env.get("EMAIL_HOST") or "").lower()
+          port = env.get("EMAIL_PORT")
+          mode = (env.get("PAYFAST_MODE") or env.get("PAYFAST_ENV") or "sandbox").lower()
+          db = urlsplit(env.get("DATABASE_URL",""))
+          db_staging = expected_project in (db.username or "") or db.hostname == f"db.{expected_project}.supabase.co"
+          if not db_staging or env.get("SUPABASE_PROJECT_REF") != expected_project:
+              raise SystemExit("BLOCK: staging Supabase isolation is not verified")
+          if mode != "sandbox" or host != "smtp.gmail.com" or port != "587":
+              raise SystemExit("BLOCK: unexpected payment or SMTP transport configuration")
+          if env.get("EMAIL_USE_TLS","").lower()!="true" or env.get("EMAIL_USE_SSL","").lower()!="false":
+              raise SystemExit("BLOCK: expected STARTTLS on 587 only")
+          if (not from_address.lower().endswith("@gmail.com") or
+              any(c in from_address for c in "\r\n \t") or
+              not from_address.isascii() or
+              len(candidate_pass) != 16 or not candidate_pass.isalnum() or
+              not password or ("@" in username and username.lower()!=from_address.lower())):
+              raise SystemExit("BLOCK: candidate username/password cannot be safely derived")
+          print("PASS correct isolated staging service and expected Gmail/TLS settings")
+          print("PASS Gmail sender is a valid email; password normalizes to 16 alphanumeric characters")
+          print("SMTP_LOGIN=TESTING (one authentication attempt, no email)")
+          try:
+              with smtplib.SMTP("smtp.gmail.com",587,timeout=16) as smtp:
+                  smtp.ehlo()
+                  smtp.starttls(context=ssl.create_default_context())
+                  smtp.ehlo()
+                  smtp.login(from_address,candidate_pass)
+          except (smtplib.SMTPException,OSError,ssl.SSLError) as error:
+              print("SMTP_AUTHENTICATION=FAILED")
+              print("ERROR_CLASS="+type(error).__name__)
+              raise SystemExit("BLOCK: Gmail rejected/disconnected the candidate; Render was NOT changed")
+          print("SMTP_AUTHENTICATION=PASS (no email submitted)")
+          def set_env(key, value):
+              req = urllib.request.Request(
+                  base + "/env-vars/" + quote(key,safe=""),
+                  method="PUT",
+                  data=json.dumps({"value":value}).encode("utf-8"),
+                  headers={**headers, "Content-Type":"application/json"},
+              )
+              with urllib.request.urlopen(req,timeout=20) as reply:
+                  if reply.status != 200:
+                      raise RuntimeError("Render refused update")
+          # Never print/render secret values; use documented single-key API
+          # so every non-SMTP staging env var remains unchanged.
+          try:
+              set_env("EMAIL_HOST_USER",from_address)
+              set_env("EMAIL_HOST_PASSWORD",candidate_pass)
+          except Exception as error:
+              try:
+                  set_env("EMAIL_HOST_USER",username)
+                  set_env("EMAIL_HOST_PASSWORD",password)
+              except Exception:
+                  raise SystemExit("BLOCK: SMTP credential update partial; inspect Render staging immediately")
+              raise SystemExit("BLOCK: SMTP update reverted after provider/API error")
+          print("PASS Render staging SMTP username and password normalized without exposing values")
+          print("DEPLOY_REQUIRED=YES; use Render staging deploy after this run")
+          print("MAIL_SENT=NO; PRODUCTION_UNCHANGED=YES")
+          PY
