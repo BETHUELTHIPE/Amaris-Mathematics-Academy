@@ -1,0 +1,87 @@
+name: Supabase OAuth Provider Connection Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oauth-provider-connection-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-provider-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Verify configured GitHub/Google provider redirect without sign-in or secrets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          project = "epkcuseloinygkakxxdu"
+          site = "https://amaris-mathematics-academy-live-students.onrender.com"
+          endpoint = f"https://{project}.supabase.co/auth/v1/authorize"
+          redirect_to = f"{site}/auth/callback?next=/dashboard"
+          expected = {
+              "github": "github.com",
+              "google": "accounts.google.com",
+          }
+
+          class NoFollow(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          opener = urllib.request.build_opener(NoFollow())
+
+          failures = []
+          for provider, hostname in expected.items():
+              params = urllib.parse.urlencode({
+                  "provider": provider,
+                  "redirect_to": redirect_to,
+              })
+              req = urllib.request.Request(
+                  f"{endpoint}?{params}",
+                  headers={"User-Agent": "Amaris-OAuth-preflight/1.0"},
+              )
+              try:
+                  result = opener.open(req, timeout=20)
+                  status = result.status
+                  location = result.headers.get("Location", "")
+                  result.close()
+              except urllib.error.HTTPError as err:
+                  status = err.code
+                  location = err.headers.get("Location", "")
+                  err.close()
+              except Exception as err:
+                  print(f"FAIL {provider}: network connection ({type(err).__name__})")
+                  failures.append(provider)
+                  continue
+
+              parsed = urllib.parse.urlparse(location)
+              query = urllib.parse.parse_qs(parsed.query)
+              client_id = query.get("client_id", [""])[0]
+              valid = (
+                  status in (302, 303, 307, 308)
+                  and parsed.scheme == "https"
+                  and parsed.hostname == hostname
+                  and bool(client_id)
+                  and (
+                      (provider == "google" and client_id.endswith(".apps.googleusercontent.com"))
+                      or (provider == "github" and not client_id.endswith(".apps.googleusercontent.com"))
+                  )
+              )
+              if valid:
+                  print(f"PASS {provider}: Supabase initiated an HTTPS redirect to the expected provider with a structurally correct client ID")
+              else:
+                  print(f"FAIL {provider}: status={status}; expected provider redirect and client ID shape not confirmed")
+                  failures.append(provider)
+
+          if failures:
+              raise SystemExit("OAuth provider-connection preflight failed: " + ", ".join(failures))
+          print("PRECHECK ONLY: provider initiation passed; secrets, provider approval, callback and user sessions are NOT verified by these redirects.")
+          PY
