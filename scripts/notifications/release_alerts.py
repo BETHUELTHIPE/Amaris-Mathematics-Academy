@@ -234,7 +234,7 @@ def poll_render(state_path: Path, render_token: str, *, fetch=api_json,
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("lighthouse", "render"))
+    parser.add_argument("mode", choices=("lighthouse", "render", "test"))
     parser.add_argument("--event", type=Path)
     parser.add_argument("--state", type=Path, default=Path(".alerts/render-state.json"))
     parser.add_argument("--dry-run", action="store_true")
@@ -242,6 +242,11 @@ def main() -> None:
     if os.environ.get("GITHUB_REPOSITORY") not in (None, REPOSITORY):
         raise RuntimeError("Unexpected GitHub repository; refusing email notifications")
     if not args.dry_run and not required_configured():
+        return
+    if args.mode == "test":
+        send_notification("Amaris notifications TEST PASSED",
+                          "This confirms GitHub Actions can send protected Amaris deployment and Lighthouse emails.\n",
+                          dry_run=args.dry_run)
         return
     if args.mode == "lighthouse":
         if args.event is None:
