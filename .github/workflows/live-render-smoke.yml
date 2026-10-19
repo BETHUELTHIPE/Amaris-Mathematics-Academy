@@ -35,7 +35,7 @@ jobs:
 
           with sync_playwright() as p:
               browser = p.chromium.launch()
-              for path in ["/", "/contact"]:
+              for path in ["/", "/contact", "/login", "/register"]:
                   page = browser.new_page()
                   page_errors = []
                   console_errors = []
@@ -65,6 +65,23 @@ jobs:
                       print("CONSOLE_ERRORS:")
                       for item in console_errors[:20]:
                           print(f"  - {item}")
+
+                  if path in ("/login", "/register"):
+                      expected_google = "Sign in with Google" if path == "/login" else "Register with Google"
+                      google_button = page.get_by_role("button", name=expected_google, exact=True)
+                      count = google_button.count()
+                      if count != 1:
+                          failures.append(f"{path}: expected one student Google sign-in button; found {count}")
+                      else:
+                          print(f"PASS {path}: {expected_google} visible")
+                      # Never expose GitHub social sign-in on student authentication pages.
+                      social_options = page.locator("button, a").all_inner_texts()
+                      unexpected = [text for text in social_options if "github" in text.lower() and
+                                    any(action in text.lower() for action in ("sign in", "log in", "continue", "register"))]
+                      if unexpected:
+                          failures.append(f"{path}: unexpected GitHub login option")
+                      else:
+                          print(f"PASS {path}: no GitHub social sign-in offered")
 
                   if not response or status >= 500:
                       failures.append(f"{path}: HTTP {status}")
