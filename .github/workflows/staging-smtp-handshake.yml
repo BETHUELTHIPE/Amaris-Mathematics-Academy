@@ -1,0 +1,120 @@
+name: Staging SMTP transport handshake (no auth, no mail)
+on:
+  push:
+    branches: [diagnostics/staging-smtp-handshake-20261019]
+    paths: [.github/workflows/staging-smtp-handshake.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  protocol:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Inspect staging SMTP protocol without credentials in logs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import smtplib
+          import socket
+          import ssl
+          import urllib.request
+
+          key = os.environ.get("RENDER_API_KEY", "")
+          if not key:
+              raise SystemExit("BLOCK: RENDER_API_KEY not available")
+          base = "https://api.render.com/v1/services/srv-dam2iivcgkoc7383tq50"
+          headers = {"Authorization": "Bearer " + key, "Accept": "application/json"}
+
+          def fetch(url):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  return json.load(response)
+
+          service = fetch(base)
+          if (service.get("id") != "srv-dam2iivcgkoc7383tq50" or
+              service.get("ownerId") != "tea-csppi8l6l47c73dk9c90" or
+              service.get("repo") != "https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy"):
+              raise SystemExit("BLOCK: wrong Render service")
+          items = fetch(base + "/env-vars?limit=100")
+          if isinstance(items, dict):
+              items = items.get("envVars", items.get("data", []))
+          env = {}
+          for item in items:
+              row = item.get("envVar", item)
+              if isinstance(row, dict) and isinstance(row.get("key"), str):
+                  env[row["key"]] = row.get("value") or ""
+
+          def truth(k, default):
+              return (env.get(k, default) or "").lower() in ("1", "true", "yes", "on")
+
+          host = env.get("EMAIL_HOST", "")
+          port = int(env.get("EMAIL_PORT") or "0")
+          tls = truth("EMAIL_USE_TLS", "true")
+          secure = truth("EMAIL_USE_SSL", "false")
+          sender = bool(env.get("DEFAULT_FROM_EMAIL"))
+          auth = bool((env.get("EMAIL_HOST_USER") or env.get("GMAIL_USER") or env.get("GMAIL_EMAIL")) and
+                      (env.get("EMAIL_HOST_PASSWORD") or env.get("GMAIL_APP_PASSWORD")))
+          if not host or not 1 <= port <= 65535:
+              raise SystemExit("BLOCK: EMAIL_HOST/PORT missing")
+          print("RENDER_STAGING_SERVICE=VERIFIED")
+          print("EMAIL_FROM_CONFIGURED=" + str(sender))
+          print("SMTP_AUTH_VALUES_PRESENT=" + str(auth))
+          print("SMTP_TRANSPORT_PORT_CLASS=" + ("implicit-TLS-465" if port == 465 else "STARTTLS-587" if port == 587 else "other"))
+          print("EMAIL_USE_TLS=" + str(tls))
+          print("EMAIL_USE_SSL=" + str(secure))
+          if tls and secure:
+              raise SystemExit("BLOCK: both TLS and SSL are enabled")
+          if port == 465 and not secure:
+              raise SystemExit("BLOCK: port 465 requires EMAIL_USE_SSL=true and EMAIL_USE_TLS=false")
+          if port == 587 and secure:
+              raise SystemExit("BLOCK: port 587 requires EMAIL_USE_TLS=true and EMAIL_USE_SSL=false")
+          stage = "tcp"
+          try:
+              with socket.create_connection((host, port), timeout=10):
+                  pass
+              print("SMTP_TCP_CONNECT=PASS")
+              stage = "greeting"
+              if secure:
+                  client = smtplib.SMTP_SSL(host=host, port=port, timeout=12,
+                                            context=ssl.create_default_context())
+              else:
+                  client = smtplib.SMTP(host=host, port=port, timeout=12)
+              try:
+                  stage = "ehlo"
+                  code, _ = client.ehlo()
+                  if code != 250:
+                      raise RuntimeError("unexpected EHLO response")
+                  print("SMTP_EHLO=PASS")
+                  if tls:
+                      stage = "starttls"
+                      if not client.has_extn("starttls"):
+                          raise RuntimeError("server did not advertise STARTTLS")
+                      code, _ = client.starttls(context=ssl.create_default_context())
+                      if code != 220:
+                          raise RuntimeError("STARTTLS not accepted")
+                      print("SMTP_STARTTLS=PASS")
+                      stage = "post_tls_ehlo"
+                      code, _ = client.ehlo()
+                      if code != 250:
+                          raise RuntimeError("post TLS EHLO refused")
+                  elif secure:
+                      print("SMTP_IMPLICIT_TLS=PASS")
+                  stage = "auth_advertisement"
+                  print("SMTP_AUTH_ADVERTISED=" + str(client.has_extn("auth")))
+                  print("SMTP_HANDSHAKE=PASS (no credentials used, no email sent)")
+              finally:
+                  try:
+                      client.quit()
+                  except (smtplib.SMTPException, OSError):
+                      pass
+          except Exception as exc:
+              print("SMTP_HANDSHAKE=FAIL")
+              print("FAIL_STAGE=" + stage)
+              print("FAIL_CLASS=" + type(exc).__name__)
+              raise SystemExit(1)
+          PY
