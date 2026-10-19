@@ -61,6 +61,10 @@ jobs:
           staging_ref="atyhhjwwxgzeurnwayay"
           db_is_staging=staging_ref in (db.username or "") or db.hostname=="db."+staging_ref+".supabase.co"
           print("ACTIVE_DATABASE_IS_STAGING_SUPABASE="+str(db_is_staging))
+          print("SUPABASE_PROJECT_REF_IS_STAGING="+str(env.get("SUPABASE_PROJECT_REF")=="atyhhjwwxgzeurnwayay"))
+          print("SUPABASE_AUTH_URL_IS_STAGING="+str(urlparse(env.get("SUPABASE_URL","")).hostname=="atyhhjwwxgzeurnwayay.supabase.co"))
+          print("SUPABASE_PUBLISHABLE_KEY_PRESENT="+str(bool(env.get("SUPABASE_PUBLISHABLE_KEY"))))
+          print("DATABASE_SCHEMA_ALLOWED="+str((env.get("DATABASE_SCHEMA") or "").strip() in ("","public")))
           endpoint=urlparse(env.get("SUPABASE_S3_ENDPOINT_URL",""))
           print("S3_ENDPOINT_IS_STAGING_SUPABASE="+str(endpoint.hostname==staging_ref+".storage.supabase.co"))
           print("PAYFAST_NOTIFY_TARGET_IS_STAGING="+str("amaris-mathematics-academy-staging.onrender.com" in (env.get("PAYFAST_NOTIFY_URL") or "")))
