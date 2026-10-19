@@ -1,0 +1,67 @@
+name: Isolate Render staging student database and pin working frontend branch
+on:
+  push:
+    branches: [diagnostics/staging-smtp-handshake-20261019]
+    paths: [.github/workflows/repair-staging-students-isolation.yml]
+permissions:
+  contents: read
+jobs:
+  staging-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Pin previously deployed frontend and copy dedicated staging database URL
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.parse
+          key=os.environ.get("RENDER_API_KEY","")
+          if not key: raise SystemExit("BLOCK: Render API access unavailable")
+          stage="atyhhjwwxgzeurnwayay"
+          owner="tea-csppi8l6l47c73dk9c90"
+          base="https://api.render.com/v1/services/"
+          be="srv-dam2iivcgkoc7383tq50"
+          fe="srv-daqf69qd0e5s73ac62n0"
+          safe_branch="ops/staging-students-baseline-6da449a-20261019"
+          h={"Authorization":"Bearer "+key,"Accept":"application/json"}
+          def get(url):
+              with urllib.request.urlopen(urllib.request.Request(url,headers=h),timeout=20) as r: return json.load(r)
+          backend,frontend=get(base+be),get(base+fe)
+          if (backend.get("id")!=be or frontend.get("id")!=fe or
+              backend.get("ownerId")!=owner or frontend.get("ownerId")!=owner or
+              backend.get("branch")!="ops/staging-known-good-af8709c-20261019" or
+              frontend.get("branch")!="staging" or
+              backend.get("repo")!="https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy" or
+              frontend.get("repo")!=backend.get("repo")):
+              raise SystemExit("BLOCK: unexpected staging branch/service, nothing changed")
+          def env(service):
+              records=get(base+service+"/env-vars?limit=100")
+              if isinstance(records,dict): records=records.get("envVars",records.get("data",[]))
+              return {item.get("envVar",item).get("key"):item.get("envVar",item).get("value") or "" for item in records if isinstance(item.get("envVar",item),dict)}
+          b=env(be)
+          db=b.get("DATABASE_URL","")
+          parsed=urllib.parse.urlsplit(db)
+          expected=parsed.hostname==f"db.{stage}.supabase.co" or (
+              (parsed.hostname or "").endswith(".pooler.supabase.com") and stage in (parsed.username or "")
+          )
+          if not expected or parsed.path!="/postgres" or b.get("SUPABASE_PROJECT_REF")!=stage:
+              raise SystemExit("BLOCK: backend does not identify verified staging Supabase; nothing changed")
+          print("PASS separate staging PostgreSQL source verified without logging credentials")
+          payload=json.dumps({"branch":safe_branch,"autoDeployTrigger":"off"}).encode()
+          req=urllib.request.Request(base+fe,data=payload,method="PATCH",headers={**h,"Content-Type":"application/json"})
+          with urllib.request.urlopen(req,timeout=25) as resp:
+              updated=json.load(resp)
+          if updated.get("branch")!=safe_branch or updated.get("autoDeployTrigger")!="off":
+              raise SystemExit("BLOCK: service branch pin did not verify")
+          print("PASS pinned staging frontend branch to previously deployed known-good version; autodeploy disabled")
+          req=urllib.request.Request(base+fe+"/env-vars/DATABASE_URL",data=json.dumps({"value":db}).encode(),
+              method="PUT",headers={**h,"Content-Type":"application/json"})
+          with urllib.request.urlopen(req,timeout=25) as resp:
+              if resp.status not in (200,201): raise RuntimeError("Render rejected staging URL")
+          actual=env(fe).get("DATABASE_URL","")
+          if actual!=db: raise SystemExit("BLOCK: copied staging DB did not verify; inspect Render")
+          print("PASS staging student frontend DATABASE_URL now matches isolated staging backend")
+          print("PRODUCTION_SERVICES_CHANGED=NO")
+          PY
