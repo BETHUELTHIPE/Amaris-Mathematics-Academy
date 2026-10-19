@@ -178,7 +178,11 @@ class StudentOrdersView(StudentAPIView):
                     "created_at": booking.created_at,
                     "paid_at": booking.paid_at,
                     "invoice_number": booking.invoice_number,
-                    "invoice_ready": bool(booking.invoice_number and booking.confirmation_sent_at),
+                    "invoice_ready": bool(
+                        booking.invoice_number
+                        and booking.status == LiveClassBooking.Status.CONFIRMED
+                        and booking.gateway_verified_at
+                    ),
                     "href": f"/book-online-live-class/confirmation?reference={booking.reference}",
                 }
             )
