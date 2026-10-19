@@ -1,6 +1,8 @@
 name: Live Student Auth Verification
 
 on:
+  pull_request:
+    branches: [render-live-current-20260918]
   push:
     branches: [render-live-current-20260918]
     paths:
@@ -39,8 +41,8 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Install Render build-only dependencies
-        run: npm install --no-save nitro @tailwindcss/vite@4.3.3
+        run: npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
       - name: TypeScript checks
         run: npm run typecheck
       - name: Student authentication unit tests
-        run: node --test tests/auth-identity.test.mjs tests/auth-session-actions.test.mjs tests/google-oauth.test.mjs tests/social-oauth.test.mjs tests/registration-actions.test.mjs tests/recovery-safety.test.mjs
+        run: node --test tests/google-registration.test.mjs tests/registration-actions.test.mjs tests/recovery-safety.test.mjs

@@ -19,7 +19,7 @@ test("students can choose Google registration while email registration remains a
 });
 
 test("returning Google students can sign in and email login remains available", () => {
-  assert.match(login, /GoogleAuthButton label="Continue with Google"/);
+  assert.match(login, /GoogleAuthButton label="Sign in with Google"/);
   assert.match(login, /<form action=\{loginAction\}/);
 });
 
@@ -62,4 +62,16 @@ test("Google callback uses the current Render service origin unless SITE_URL ove
     if (originalRender === undefined) delete process.env.RENDER_EXTERNAL_URL;
     else process.env.RENDER_EXTERNAL_URL = originalRender;
   }
+});
+
+test("student login and registration use Google, never GitHub, for social sign-in", () => {
+  for (const page of [login, registration]) {
+    assert.match(page, /GoogleAuthButton/);
+    assert.doesNotMatch(page, /GitHubAuthButton|GithubAuthButton|githubAuthAction/i);
+    assert.doesNotMatch(page, /provider:\s*["']github["']/i);
+    assert.doesNotMatch(page, /(?:Sign in|Continue|Register) with GitHub/i);
+  }
+  assert.match(actions, /provider:\s*"google"/);
+  assert.doesNotMatch(actions, /provider:\s*"github"/);
+  assert.doesNotMatch(button, /github\.com|githubAuthAction/i);
 });
