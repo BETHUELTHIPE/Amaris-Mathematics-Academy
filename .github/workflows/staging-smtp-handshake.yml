@@ -1,4 +1,4 @@
-name: Staging SMTP transport handshake (no auth, no mail)
+name: Staging SMTP transport and login diagnostic (no mail)
 on:
   push:
     branches: [diagnostics/staging-smtp-handshake-20261019]
@@ -106,7 +106,15 @@ jobs:
                       print("SMTP_IMPLICIT_TLS=PASS")
                   stage = "auth_advertisement"
                   print("SMTP_AUTH_ADVERTISED=" + str(client.has_extn("auth")))
-                  print("SMTP_HANDSHAKE=PASS (no credentials used, no email sent)")
+                  user = env.get("EMAIL_HOST_USER") or env.get("GMAIL_USER") or env.get("GMAIL_EMAIL") or ""
+                  password = env.get("EMAIL_HOST_PASSWORD") or env.get("GMAIL_APP_PASSWORD") or ""
+                  if not user or not password:
+                      raise RuntimeError("configured SMTP credentials are missing")
+                  # One explicit SMTP login only. No MAIL FROM / RCPT TO / DATA.
+                  stage = "authentication"
+                  client.login(user, password)
+                  print("SMTP_LOGIN=PASS (no email submitted)")
+                  print("SMTP_HANDSHAKE_AND_LOGIN=PASS")
               finally:
                   try:
                       client.quit()
