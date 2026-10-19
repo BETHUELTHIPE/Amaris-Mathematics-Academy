@@ -1,0 +1,79 @@
+name: Protectively Install PayFast Sandbox in Isolated Render Staging
+on:
+  push:
+    branches: [diagnostics/staging-smtp-handshake-20261019]
+    paths: [.github/workflows/staging-payfast-sandbox-env.yml]
+permissions:
+  contents: read
+jobs:
+  staging-sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      SANDBOX_ID: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_ID }}
+      SANDBOX_KEY: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_KEY }}
+      SANDBOX_PASSPHRASE: ${{ secrets.PAYFAST_SANDBOX_PASSPHRASE }}
+    steps:
+      - name: Install only verified sandbox credentials in isolated staging backend
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.parse,urllib.request
+          expected_service="srv-dam2iivcgkoc7383tq50"
+          expected_owner="tea-csppi8l6l47c73dk9c90"
+          expected_branch="ops/staging-known-good-af8709c-20261019"
+          stage="atyhhjwwxgzeurnwayay"
+          if os.getenv("GITHUB_REF")!="refs/heads/diagnostics/staging-smtp-handshake-20261019":
+              raise SystemExit("BLOCK: wrong workflow branch")
+          key=os.environ.get("RENDER_API_KEY","")
+          credentials={
+            "PAYFAST_MERCHANT_ID":os.environ.get("SANDBOX_ID",""),
+            "PAYFAST_MERCHANT_KEY":os.environ.get("SANDBOX_KEY",""),
+            "PAYFAST_PASSPHRASE":os.environ.get("SANDBOX_PASSPHRASE",""),
+          }
+          if not key or any(not value or len(value)>200 for value in credentials.values()):
+              raise SystemExit("BLOCK: missing or invalid protected GitHub staging sandbox credential secrets")
+          base=f"https://api.render.com/v1/services/{expected_service}"
+          headers={"Authorization":"Bearer "+key,"Accept":"application/json"}
+          def request(method,url,payload=None):
+              raw=None if payload is None else json.dumps(payload).encode()
+              q=urllib.request.Request(url,data=raw,method=method,headers={**headers,"Content-Type":"application/json"})
+              with urllib.request.urlopen(q,timeout=25) as response:
+                  return json.load(response)
+          service=request("GET",base)
+          if (service.get("id")!=expected_service or service.get("ownerId")!=expected_owner or
+              service.get("branch")!=expected_branch or service.get("repo")!="https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy"):
+              raise SystemExit("BLOCK: staging branch or service changed; nothing written")
+          rows=request("GET",base+"/env-vars?limit=100")
+          if isinstance(rows,dict): rows=rows.get("envVars",rows.get("data",[]))
+          env={}
+          for row in rows:
+              item=row.get("envVar",row)
+              if isinstance(item,dict) and isinstance(item.get("key"),str):
+                  env[item["key"]]=item.get("value") or ""
+          parsed=urllib.parse.urlsplit(env.get("DATABASE_URL",""))
+          db_ok=(parsed.hostname==f"db.{stage}.supabase.co" or
+              ((parsed.hostname or "").endswith(".pooler.supabase.com") and stage in (parsed.username or "")))
+          if not db_ok or parsed.path!="/postgres" or env.get("SUPABASE_PROJECT_REF")!=stage:
+              raise SystemExit("BLOCK: staging database connection is not isolated")
+          if (env.get("PAYFAST_ENV") or env.get("PAYFAST_MODE") or "").lower()!="sandbox":
+              raise SystemExit("BLOCK: payment gateway is not in sandbox mode")
+          print("PASS: only the expected dedicated staging backend and sandbox mode verified")
+          intended={
+              **credentials,
+              "PAYFAST_MODE":"sandbox",
+              "PAYFAST_ENV":"sandbox",
+              "PUBLIC_SITE_URL":"https://amaris-mathematics-academy-staging-x4ax.onrender.com",
+              "PUBLIC_API_URL":"https://amaris-mathematics-academy-staging.onrender.com",
+              "PAYFAST_NOTIFY_URL":"https://amaris-mathematics-academy-staging.onrender.com/api/v1/payfast/itn/",
+              "PAYFAST_RETURN_URL":"https://amaris-mathematics-academy-staging-x4ax.onrender.com/payments/pending",
+              "PAYFAST_CANCEL_URL":"https://amaris-mathematics-academy-staging-x4ax.onrender.com/payments/cancelled",
+          }
+          # Update one key at a time through documented Render API; log key names only.
+          for name,value in intended.items():
+              request("PUT",base+"/env-vars/"+urllib.parse.quote(name,safe=""),{"value":value})
+          print("PASS: staging-only PayFast sandbox merchant credentials and notify/return URLs set")
+          print("NOTE: Real wallet checkout and provider-origin ITN remain separate unverified steps")
+          print("PRODUCTION_UNCHANGED=YES")
+          PY
