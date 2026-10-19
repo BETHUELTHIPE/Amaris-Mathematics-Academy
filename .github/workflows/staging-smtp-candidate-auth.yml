@@ -1,13 +1,16 @@
 name: Staging SMTP guarded candidate authentication
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/staging-smtp-candidate-auth.yml']
   workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type TEST_GMAIL_LOGIN after replacing the staging Gmail app password"
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
   verify-and-correct-staging:
+    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'TEST_GMAIL_LOGIN'
     runs-on: ubuntu-latest
     timeout-minutes: 6
     env:
@@ -66,7 +69,7 @@ jobs:
               any(c in from_address for c in "\r\n \t") or
               not from_address.isascii() or
               len(candidate_pass) != 16 or not candidate_pass.isalnum() or
-              not password or "@" in username):
+              not password or ("@" in username and username.lower()!=from_address.lower())):
               raise SystemExit("BLOCK: candidate username/password cannot be safely derived")
           print("PASS correct isolated staging service and expected Gmail/TLS settings")
           print("PASS Gmail sender is a valid email; password normalizes to 16 alphanumeric characters")
