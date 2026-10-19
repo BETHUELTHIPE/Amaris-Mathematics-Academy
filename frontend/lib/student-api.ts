@@ -23,6 +23,22 @@ export type StudentCourse = {
   resume: ResumeState;
 };
 
+export type StudentOrder = {
+  kind: "course" | "live_class" | "video_request";
+  reference: string;
+  title: string;
+  detail: string;
+  amount: string;
+  currency: string;
+  status: string;
+  status_label: string;
+  created_at: string;
+  paid_at: string | null;
+  invoice_number: string | null;
+  invoice_ready: boolean;
+  href: string;
+};
+
 export type CheckoutSession = {
   payment_reference: string;
   status: string;
@@ -197,5 +213,28 @@ export async function saveStudentProgress(input: {
       position_seconds: input.positionSeconds,
       ...(typeof input.progressPercent === "number" ? { progress_percent: input.progressPercent } : {}),
     }),
+  });
+}
+
+export async function getStudentOrders(): Promise<StudentOrder[]> {
+  if (__E2E_SYNTHETIC_STUDENT__) return [];
+  return studentFetch<StudentOrder[]>("/student/orders/");
+}
+
+export async function downloadStudentCourseInvoice(reference: string): Promise<Response> {
+  const token = await accessToken();
+  return fetch(`${cmsBaseUrl()}/student/orders/${encodeURIComponent(reference)}/invoice/`, {
+    headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8_000),
+  });
+}
+
+export async function downloadStudentLiveClassInvoice(reference: string): Promise<Response> {
+  const token = await accessToken();
+  return fetch(`${cmsBaseUrl()}/student/live-classes/bookings/${encodeURIComponent(reference)}/invoice/`, {
+    headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8_000),
   });
 }
