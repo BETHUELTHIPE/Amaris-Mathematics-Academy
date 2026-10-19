@@ -35,7 +35,7 @@ jobs:
           PY
   real-sandbox-invoice-receipt:
     name: Manual real PayFast sandbox → Django → Gmail
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/staging-booking-receipt-before-email-20261019'
+    if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/ops/staging-known-good-af8709c-20261019' || github.ref == 'refs/heads/fix/staging-booking-receipt-before-email-20261019')
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 18
