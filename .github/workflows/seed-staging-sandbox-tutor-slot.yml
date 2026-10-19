@@ -1,0 +1,85 @@
+name: Seed One Isolated Synthetic Staging Tutor Slot
+on:
+  push:
+    branches: [diagnostics/staging-smtp-handshake-20261019]
+    paths: [.github/workflows/seed-staging-sandbox-tutor-slot.yml]
+permissions:
+  contents: read
+jobs:
+  seed-one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 92c1ded2b27067c9d25c3f1a9f4dae94ec2b7c35
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install locked application dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Retrieve ONLY staging DB in ephemeral runner, then create one future slot
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.parse,urllib.request
+          k=os.getenv("RENDER_API_KEY","")
+          if not k: raise SystemExit("BLOCK: missing protected Render key")
+          uri="https://api.render.com/v1/services/srv-dam2iivcgkoc7383tq50"
+          h={"Authorization":"Bearer "+k,"Accept":"application/json"}
+          def fetch(url):
+              with urllib.request.urlopen(urllib.request.Request(url,headers=h),timeout=20) as r:return json.load(r)
+          app=fetch(uri)
+          if app.get("branch")!="ops/staging-known-good-af8709c-20261019" or app.get("ownerId")!="tea-csppi8l6l47c73dk9c90":
+              raise SystemExit("BLOCK: service identity changed")
+          rows=fetch(uri+"/env-vars?limit=100")
+          if isinstance(rows,dict):rows=rows.get("envVars",rows.get("data",[]))
+          data={v.get("envVar",v).get("key"):v.get("envVar",v).get("value") or "" for v in rows}
+          d=data.get("DATABASE_URL","")
+          u=urllib.parse.urlsplit(d)
+          p="atyhhjwwxgzeurnwayay"
+          ok=(u.hostname==f"db.{p}.supabase.co" or ((u.hostname or "").endswith(".pooler.supabase.com") and p in (u.username or ""))) and u.path=="/postgres"
+          if not ok or data.get("SUPABASE_PROJECT_REF")!=p: raise SystemExit("BLOCK: not staging")
+          filename=os.environ["RUNNER_TEMP"]+"/stage-db"
+          with open(filename,"w") as f:f.write(d)
+          os.chmod(filename,0o600)
+          print("PASS verified dedicated Supabase staging DB; no credential printed")
+          PY
+          cd backend
+          DATABASE_URL="$(cat "$RUNNER_TEMP/stage-db")" \
+          DATABASE_SSL_REQUIRED=true SUPABASE_DATABASE_REQUIRED=true \
+          DJANGO_DEBUG=false DJANGO_SECRET_KEY=disposable-runner-seed-only \
+          python manage.py shell -c '
+          from django.contrib.auth import get_user_model
+          from django.db import transaction
+          from django.utils import timezone
+          from datetime import datetime,timedelta
+          from zoneinfo import ZoneInfo
+          from content.models import TutorAvailabilitySlot
+          username="amaris-staging-payfast-sandbox-tutor-20261019"
+          start=datetime(2026,10,25,11,0,tzinfo=ZoneInfo("Africa/Johannesburg"))
+          with transaction.atomic():
+              User=get_user_model()
+              tutor=User.objects.filter(username=username).first()
+              if not tutor:
+                  tutor=User(username=username,first_name="Staging",last_name="Sandbox Tutor",email="staging-tutor@example.invalid",is_staff=False)
+                  tutor.set_unusable_password()
+                  tutor.full_clean()
+                  tutor.save()
+              slot=TutorAvailabilitySlot.objects.filter(tutor=tutor,starts_at=start).first()
+              if slot is None:
+                  slot=TutorAvailabilitySlot(tutor=tutor,programme="caps",subject="mathematics",level="Grade 12",
+                      starts_at=start,ends_at=start+timedelta(hours=1),zoom_join_url="https://zoom.us/j/12345678901",is_active=True)
+                  slot.full_clean()
+                  slot.save()
+              assert slot.is_active and slot.duration_hours==1 and slot.programme=="caps"
+          print("PASS one published staging-only CAPS Grade 12 maths slot at 2026-10-25 11:00 SAST; fake Zoom link, no actual class")
+          print("STAGING_TEST_TUTOR_SLOT_ID="+str(slot.pk))
+          print("STUDENT_CREATED=NO; PAYMENT_CREATED=NO; ITN_SIMULATED=NO")
+          '
+          shred -u "$RUNNER_TEMP/stage-db" || rm -f "$RUNNER_TEMP/stage-db"
