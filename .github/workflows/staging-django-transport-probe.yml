@@ -142,6 +142,30 @@ jobs:
                   to=[os.environ["EMAIL_DESTINATION"]],
               )
               msg.attach("Amaris_STAGING_NONPAYMENT_DIAGNOSTIC.pdf",attachment,"application/pdf")
+              # Transport phases distinguish network policy, greeting/TLS and
+              # authentication errors without ever printing login secrets.
+              import smtplib,socket,ssl
+              smtp_phase="TCP_CONNECT"
+              try:
+                  with socket.create_connection((host,port),timeout=12):
+                      print("SMTP_TCP_CONNECT=PASS")
+                  smtp_phase="SMTP_GREETING"
+                  smtp_cls=smtplib.SMTP_SSL if settings.EMAIL_USE_SSL else smtplib.SMTP
+                  with smtp_cls(host,port,timeout=18) as probe:
+                      probe.ehlo()
+                      print("SMTP_EHLO=PASS")
+                      if settings.EMAIL_USE_TLS:
+                          smtp_phase="SMTP_STARTTLS"
+                          probe.starttls(context=ssl.create_default_context())
+                          probe.ehlo()
+                          print("SMTP_STARTTLS=PASS")
+                      smtp_phase="SMTP_LOGIN"
+                      probe.login(user,passwd)
+                      print("SMTP_AUTHENTICATION=PASS")
+              except Exception as exc:
+                  print("SMTP_PHASE_FAILED="+smtp_phase)
+                  print("SMTP_PHASE_FAILURE_TYPE="+type(exc).__name__)
+                  raise
               if msg.send(fail_silently=False)!=1:
                   raise RuntimeError("External SMTP provider refused the test email.")
               print("STAGING_DJANGO_SMTP_PROVIDER_ACCEPTED=PASS")
