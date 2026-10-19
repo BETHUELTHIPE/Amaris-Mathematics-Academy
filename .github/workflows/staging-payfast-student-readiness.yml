@@ -1,0 +1,48 @@
+name: Staging PayFast Student Worker Readiness (read only)
+on:
+  push:
+    branches: [diagnostics/staging-smtp-handshake-20261019]
+    paths: [.github/workflows/staging-payfast-student-readiness.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Confirm auth, PayFast and private S3 staging prerequisites without logging secrets
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.parse
+          key=os.getenv("RENDER_API_KEY","")
+          if not key: raise SystemExit("BLOCK: Render API key unavailable")
+          base="https://api.render.com/v1/services/srv-dam2iivcgkoc7383tq50"
+          h={"Authorization":"Bearer "+key,"Accept":"application/json"}
+          def get(url):
+              with urllib.request.urlopen(urllib.request.Request(url,headers=h),timeout=20) as r:return json.load(r)
+          service=get(base)
+          if service.get("ownerId")!="tea-csppi8l6l47c73dk9c90" or service.get("branch")!="ops/staging-known-good-af8709c-20261019":
+              raise SystemExit("BLOCK: staging backend service changed")
+          items=get(base+"/env-vars?limit=100")
+          if isinstance(items,dict):items=items.get("envVars",items.get("data",[]))
+          env={row.get("envVar",row).get("key"):row.get("envVar",row).get("value") or "" for row in items}
+          db=urllib.parse.urlsplit(env.get("DATABASE_URL",""))
+          p="atyhhjwwxgzeurnwayay"
+          if not ((db.hostname==f"db.{p}.supabase.co" or ((db.hostname or "").endswith(".pooler.supabase.com") and p in (db.username or ""))) and env.get("SUPABASE_PROJECT_REF")==p):
+              raise SystemExit("BLOCK: dedicated staging database project mismatch")
+          print("STAGING_SUPABASE_ISOLATION=PASS")
+          present={
+              "STAGING_ADMIN_AUTH_CREDENTIAL_PRESENT":bool(env.get("SUPABASE_SERVICE_ROLE_KEY") or env.get("SUPABASE_SECRET_KEY")),
+              "STAGING_PUBLISHABLE_KEY_PRESENT":bool(env.get("SUPABASE_PUBLISHABLE_KEY") or env.get("SUPABASE_ANON_KEY")),
+              "SANDBOX_MERCHANT_ID_PRESENT":bool(env.get("PAYFAST_MERCHANT_ID") or env.get("PAYFAST_SANDBOX_MERCHANT_ID")),
+              "SANDBOX_MERCHANT_KEY_PRESENT":bool(env.get("PAYFAST_MERCHANT_KEY") or env.get("PAYFAST_SANDBOX_MERCHANT_KEY")),
+              "SANDBOX_PASSPHRASE_PRESENT":bool(env.get("PAYFAST_PASSPHRASE") or env.get("PAYFAST_SANDBOX_PASSPHRASE")),
+              "PRIVATE_STAGING_S3_KEYS_PRESENT":bool((env.get("SUPABASE_S3_ACCESS_KEY_ID") or env.get("AWS_ACCESS_KEY_ID")) and (env.get("SUPABASE_S3_SECRET_ACCESS_KEY") or env.get("AWS_SECRET_ACCESS_KEY"))),
+              "GMAIL_SMTP_CREDENTIAL_PRESENT":bool(env.get("EMAIL_HOST_USER") and env.get("EMAIL_HOST_PASSWORD")),
+          }
+          for k,v in present.items():print(k+"="+str(v))
+          print("PAYFAST_SANDBOX_ONLY="+str((env.get("PAYFAST_ENV") or env.get("PAYFAST_MODE") or "").lower()=="sandbox"))
+          print("READ_ONLY=YES; STUDENTS_CREATED=0; BOOKINGS_CREATED=0; PAYMENT_ATTEMPTED=NO")
+          PY
