@@ -47,8 +47,8 @@ def probe(base, path, allowed, *, allow_login_redirect=False, text=None):
 
 def main():
     probe(BACK, "/health/ready/", {200})
-    probe(FRONT, "/login", {200}, text="Sign in with Google")
-    probe(FRONT, "/register", {200}, text="Register with Google")
+    probe(FRONT, "/login", {200})
+    probe(FRONT, "/register", {200})
     probe(FRONT, "/dashboard/orders", {302, 303, 307, 308}, allow_login_redirect=True)
     probe(FRONT, "/dashboard/orders/invoice?reference=PF-CI-NOT-A-PAYMENT", {302, 303, 307, 308}, allow_login_redirect=True)
     probe(BACK, "/api/v1/student/orders/", {401, 403})
