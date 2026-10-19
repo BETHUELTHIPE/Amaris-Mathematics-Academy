@@ -1,0 +1,103 @@
+name: Amaris Deployment and Lighthouse Email Notifications
+
+on:
+  # Event-driven: every completed Lighthouse-capable GitHub workflow,
+  # including failed, cancelled, or skipped runs.
+  workflow_run:
+    workflows:
+      - Browser LCP CLS and Mobile Responsiveness
+      - Quality Gates and Release
+      - Nitro Production Compression Acceptance
+    types: [completed]
+
+  # Render success emails are not supported by the platform's native Email
+  # notifications. Poll the Render REST API with the existing protected token.
+  # GitHub schedules may be delayed; this is approximately every 15 minutes.
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+
+  workflow_dispatch:
+    inputs:
+      send_test_email:
+        description: "Send one real Gmail test email using protected secrets"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: amaris-email-notifications
+  cancel-in-progress: false
+
+jobs:
+  lighthouse-result-email:
+    name: Email completed Lighthouse result
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 7
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      AMARIS_NOTIFY_SMTP_USER: ${{ secrets.AMARIS_NOTIFY_SMTP_USER }}
+      AMARIS_NOTIFY_SMTP_APP_PASSWORD: ${{ secrets.AMARIS_NOTIFY_SMTP_APP_PASSWORD }}
+      AMARIS_NOTIFY_TO: ${{ secrets.AMARIS_NOTIFY_TO }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Email Lighthouse PASS, FAIL, CANCELLED or NOT RUN with logs
+        run: python scripts/notifications/release_alerts.py lighthouse --event "$GITHUB_EVENT_PATH"
+
+  render-deployment-email:
+    name: Email newly completed Render deployments
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      AMARIS_NOTIFY_SMTP_USER: ${{ secrets.AMARIS_NOTIFY_SMTP_USER }}
+      AMARIS_NOTIFY_SMTP_APP_PASSWORD: ${{ secrets.AMARIS_NOTIFY_SMTP_APP_PASSWORD }}
+      AMARIS_NOTIFY_TO: ${{ secrets.AMARIS_NOTIFY_TO }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Restore last notified deployment IDs (deduplicate emails)
+        uses: actions/cache@v4
+        with:
+          path: .alerts/render-state.json
+          key: amaris-render-alerts-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            amaris-render-alerts-
+      - name: Poll real Render deployments, notify only new terminal results
+        run: python scripts/notifications/release_alerts.py render --state .alerts/render-state.json
+
+  manual-test-email:
+    name: Verify protected Gmail delivery
+    if: github.event_name == 'workflow_dispatch' && inputs.send_test_email
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 7
+    env:
+      AMARIS_NOTIFY_SMTP_USER: ${{ secrets.AMARIS_NOTIFY_SMTP_USER }}
+      AMARIS_NOTIFY_SMTP_APP_PASSWORD: ${{ secrets.AMARIS_NOTIFY_SMTP_APP_PASSWORD }}
+      AMARIS_NOTIFY_TO: ${{ secrets.AMARIS_NOTIFY_TO }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Send one test notification to configured recipients
+        run: python scripts/notifications/release_alerts.py test
