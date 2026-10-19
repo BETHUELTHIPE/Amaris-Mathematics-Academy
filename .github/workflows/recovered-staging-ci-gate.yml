@@ -68,7 +68,7 @@ jobs:
           python manage.py check --deploy --fail-level ERROR
           python manage.py makemigrations --check --dry-run
           python manage.py migrate --noinput
-          python manage.py test content.test_live_classes content.test_booking_migration content.test_invoice_archive content.test_student_api content.test_payfast_security
+          python manage.py test content.test_live_classes content.test_booking_migration content.test_invoice_archive content.test_student_api content.test_payfast_security tests.test_staging_migration_guard
       - name: Report test scope accurately
         run: echo "Synthetic Django tests are not evidence of real Supabase sign-in or inbox delivery."
   staging-readiness:
