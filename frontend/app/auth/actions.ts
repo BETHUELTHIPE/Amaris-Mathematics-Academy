@@ -353,3 +353,30 @@ function safeAuthErrorCode(code: string | undefined): string {
 function redirectWithMessage(path: string, key: string, message: string): never {
   redirect(`${path}?${key}=${encodeURIComponent(message)}`);
 }
+
+
+export async function googleAuthAction(formData: FormData) {
+  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
+    },
+  });
+
+  if (error || !data.url) {
+    console.error("student_google_auth_failed", {
+      code: safeAuthErrorCode(error?.code),
+      status: error?.status,
+    });
+    redirectWithMessage(
+      "/login",
+      "error",
+      "Google registration is temporarily unavailable. Please use email registration or try again shortly.",
+    );
+  }
+
+  redirect(data.url);
+}
+
