@@ -1,0 +1,152 @@
+name: Staging Django SMTP and private S3 non-payment diagnostic
+on:
+  push:
+    branches: [ops/staging-known-good-af8709c-20261019]
+    paths: [.github/workflows/staging-django-transport-probe.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: amaris-staging-transport-one-off
+  cancel-in-progress: false
+jobs:
+  actual-transport-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      EMAIL_DESTINATION: bethuelmoukangwe8@gmail.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install exact Django email and S3 dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Probe actual SMTP sender and Supabase student bucket without exposing secrets
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib,io,json,os,urllib.request
+          from email.utils import parseaddr
+          from urllib.parse import urlparse
+          import boto3
+          from botocore.config import Config
+          from django.conf import settings
+          from django.core.mail import EmailMultiAlternatives
+          from reportlab.pdfgen import canvas
+
+          api_key=os.getenv("RENDER_API_KEY")
+          if not api_key:
+              raise SystemExit("BLOCKED: Render secret unavailable.")
+          base="https://api.render.com/v1/services/srv-dam2iivcgkoc7383tq50"
+          headers={"Authorization":"Bearer "+api_key,"Accept":"application/json"}
+          def fetch(url):
+              with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=25) as r:
+                  return json.load(r)
+          svc=fetch(base)
+          if (
+              svc.get("id")!="srv-dam2iivcgkoc7383tq50" or
+              svc.get("ownerId")!="tea-csppi8l6l47c73dk9c90" or
+              svc.get("repo")!="https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy"
+          ):
+              raise SystemExit("BLOCKED: unexpected Render service identity")
+          try:
+              response=fetch(base+"/env-vars?limit=100")
+              if isinstance(response,dict):
+                  response=response.get("envVars",response.get("data",[]))
+              env={}
+              for item in response:
+                  row=item.get("envVar",item)
+                  if isinstance(row,dict) and isinstance(row.get("key"),str):
+                      env[row["key"]]=row.get("value") or ""
+              def need(key):
+                  v=env.get(key,"")
+                  if not v:
+                      raise RuntimeError("Missing staging key: "+key)
+                  return v
+              db=urlparse(need("DATABASE_URL"))
+              ref="atyhhjwwxgzeurnwayay"
+              if not (ref in (db.username or "") or db.hostname=="db."+ref+".supabase.co"):
+                  raise RuntimeError("Wrong staging database target.")
+              if (env.get("PAYFAST_MODE") or env.get("PAYFAST_ENV") or "sandbox").lower()!="sandbox":
+                  raise RuntimeError("Staging PayFast is not in sandbox.")
+              if need("EMAIL_BACKEND")!="django.core.mail.backends.smtp.EmailBackend":
+                  raise RuntimeError("Django SMTP backend not selected.")
+              host=need("EMAIL_HOST")
+              port=int(need("EMAIL_PORT"))
+              user=env.get("EMAIL_HOST_USER") or env.get("GMAIL_USER") or env.get("GMAIL_EMAIL")
+              passwd=env.get("EMAIL_HOST_PASSWORD") or env.get("GMAIL_APP_PASSWORD")
+              if not user or not passwd:
+                  raise RuntimeError("SMTP login credentials unavailable.")
+              sender=need("DEFAULT_FROM_EMAIL")
+              if not parseaddr(sender)[1] or "example.invalid" in sender:
+                  raise RuntimeError("Invalid SMTP sender address.")
+              s3_host=need("SUPABASE_S3_ENDPOINT_URL")
+              if urlparse(s3_host).hostname!="atyhhjwwxgzeurnwayay.storage.supabase.co":
+                  raise RuntimeError("Wrong private staging S3 endpoint.")
+              bucket=need("SUPABASE_S3_STUDENT_BUCKET")
+              if bucket==need("SUPABASE_S3_ADMIN_BUCKET"):
+                  raise RuntimeError("Admin and student buckets must be separate.")
+              access=need("SUPABASE_S3_ACCESS_KEY_ID")
+              secret=need("SUPABASE_S3_SECRET_ACCESS_KEY")
+              client=boto3.client(
+                  "s3",
+                  endpoint_url=s3_host,
+                  region_name=env.get("SUPABASE_S3_REGION") or "us-east-1",
+                  aws_access_key_id=access,
+                  aws_secret_access_key=secret,
+                  config=Config(signature_version="s3v4",s3={"addressing_style":"path"}),
+              )
+              key="staging-diagnostics/nonpayment-"+os.environ["GITHUB_RUN_ID"]+".txt"
+              data=("Non-payment staging S3 read/write/delete probe: "+os.environ["GITHUB_RUN_ID"]).encode()
+              created=False
+              try:
+                  client.put_object(Bucket=bucket,Key=key,Body=data,ContentType="text/plain")
+                  created=True
+                  read=client.get_object(Bucket=bucket,Key=key)["Body"].read()
+                  if read!=data:
+                      raise RuntimeError("Staging Supabase student S3 roundtrip mismatch.")
+                  print("STAGING_PRIVATE_STUDENT_S3_WRITE_READ=PASS")
+              finally:
+                  if created:
+                      client.delete_object(Bucket=bucket,Key=key)
+                  print("STAGING_PRIVATE_STUDENT_S3_CLEANUP="+("ATTEMPTED" if created else "NOT_NEEDED"))
+              def env_bool(key,default=False):
+                  return (str(env.get(key,"true" if default else "false")).strip().lower() in ("true","1","yes","on"))
+              settings.configure(
+                  EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+                  EMAIL_HOST=host,
+                  EMAIL_PORT=port,
+                  EMAIL_HOST_USER=user,
+                  EMAIL_HOST_PASSWORD=passwd,
+                  EMAIL_USE_TLS=env_bool("EMAIL_USE_TLS",True),
+                  EMAIL_USE_SSL=env_bool("EMAIL_USE_SSL",False),
+                  EMAIL_TIMEOUT=15,
+                  DEFAULT_FROM_EMAIL=sender,
+              )
+              pdf_buf=io.BytesIO()
+              pdf=canvas.Canvas(pdf_buf,pagesize=(595,842))
+              pdf.drawString(50,790,"Amaris STAGING SMTP transport diagnostic (NOT an invoice)")
+              pdf.drawString(50,770,"No payment, booking or customer charge was created.")
+              pdf.save()
+              attachment=pdf_buf.getvalue()
+              run_id=os.environ["GITHUB_RUN_ID"]
+              msg=EmailMultiAlternatives(
+                  subject="Amaris STAGING Django SMTP transport test "+run_id,
+                  body=("SMTP-only staging diagnostic. NOT a receipt or a payment confirmation. "
+                      "Run reference: "+run_id),
+                  from_email=sender,
+                  to=[os.environ["EMAIL_DESTINATION"]],
+              )
+              msg.attach("Amaris_STAGING_NONPAYMENT_DIAGNOSTIC.pdf",attachment,"application/pdf")
+              if msg.send(fail_silently=False)!=1:
+                  raise RuntimeError("External SMTP provider refused the test email.")
+              print("STAGING_DJANGO_SMTP_PROVIDER_ACCEPTED=PASS")
+              print("DIAGNOSTIC_PDF_SHA256="+hashlib.sha256(attachment).hexdigest())
+          except Exception as exc:
+              print("STAGING_TRANSPORT_PROBE=BLOCKED; error="+type(exc).__name__)
+              raise SystemExit(1)
+          PY
