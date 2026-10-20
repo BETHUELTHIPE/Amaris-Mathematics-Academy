@@ -1,0 +1,121 @@
+# Proposal only: recurring-cost approval is required before applying.
+# Worker initially consumes an isolated verification queue, never production jobs.
+services:
+- type: pserv
+  name: amaris-monitoring-prometheus
+  runtime: docker
+  plan: 0.5c-512mb
+  region: frankfurt
+  repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+  branch: main
+  dockerContext: .
+  dockerfilePath: monitoring/render/prometheus/Dockerfile
+  autoDeployTrigger: 'off'
+  disk:
+    name: amaris-prometheus-data
+    mountPath: /prometheus-data
+    sizeGB: 1
+  envVars:
+  - key: AMARIS_DJANGO_TARGET
+    fromService:
+      type: web
+      name: amaris-production-web
+      property: hostport
+  - key: AMARIS_FLOWER_TARGET
+    fromService:
+      type: pserv
+      name: amaris-monitoring-flower
+      property: hostport
+  - key: RENDER_METRICS_TARGET
+    fromService:
+      type: pserv
+      name: amaris-monitoring-render-metrics
+      property: hostport
+  - key: MONITORING_PUBLIC_URL
+    value: https://amaris-production-web.onrender.com/admin/monitoring/prometheus/
+- type: pserv
+  name: amaris-monitoring-grafana
+  runtime: docker
+  plan: 0.5c-512mb
+  region: frankfurt
+  repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+  branch: main
+  dockerContext: .
+  dockerfilePath: monitoring/render/grafana/Dockerfile
+  autoDeployTrigger: 'off'
+  disk:
+    name: amaris-grafana-data
+    mountPath: /var/lib/grafana
+    sizeGB: 1
+  envVars:
+  - key: PROMETHEUS_HOSTPORT
+    fromService:
+      type: pserv
+      name: amaris-monitoring-prometheus
+      property: hostport
+  - key: GF_SERVER_HTTP_PORT
+    value: '10000'
+  - key: GF_SERVER_ROOT_URL
+    value: https://amaris-production-web.onrender.com/admin/monitoring/grafana/
+  - key: GF_SERVER_SERVE_FROM_SUB_PATH
+    value: 'true'
+  - key: GF_SECURITY_ADMIN_USER
+    value: admin
+  - key: GF_SECURITY_ADMIN_PASSWORD
+    generateValue: true
+  - key: GF_AUTH_ANONYMOUS_ENABLED
+    value: 'true'
+  - key: GF_AUTH_ANONYMOUS_ORG_ROLE
+    value: Viewer
+  - key: GF_USERS_ALLOW_SIGN_UP
+    value: 'false'
+  - key: GF_USERS_DEFAULT_THEME
+    value: dark
+  - key: GF_ANALYTICS_REPORTING_ENABLED
+    value: 'false'
+  - key: GF_ANALYTICS_CHECK_FOR_UPDATES
+    value: 'false'
+- type: worker
+  name: amaris-production-monitor-worker
+  runtime: docker
+  plan: 0.5c-512mb
+  region: frankfurt
+  repo: https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy
+  branch: production-release-20260923
+  dockerContext: backend
+  dockerfilePath: backend/Dockerfile
+  dockerCommand: celery -A amaris_cms worker --loglevel=INFO --queues=monitoring-verification
+    --concurrency=1 --events --hostname=monitor@%h
+  autoDeployTrigger: 'off'
+  maxShutdownDelaySeconds: 90
+  envVars:
+  - key: SERVICE_ROLE
+    value: celery-worker
+  - key: DJANGO_DEBUG
+    value: 'false'
+  - key: SUPABASE_DATABASE_REQUIRED
+    value: 'true'
+  - key: DATABASE_SSL_REQUIRED
+    value: 'true'
+  - key: DATABASE_SCHEMA
+    value: public
+  - key: DJANGO_SECRET_KEY
+    fromService:
+      type: web
+      name: amaris-production-web
+      envVarKey: DJANGO_SECRET_KEY
+  - key: DATABASE_URL
+    fromService:
+      type: web
+      name: amaris-production-web
+      envVarKey: DATABASE_URL
+  - key: CELERY_BROKER_URL
+    fromService:
+      type: keyvalue
+      name: amaris-production-broker
+      property: connectionString
+  - key: CELERY_RESULT_BACKEND
+    fromService:
+      type: keyvalue
+      name: amaris-production-broker
+      property: connectionString
