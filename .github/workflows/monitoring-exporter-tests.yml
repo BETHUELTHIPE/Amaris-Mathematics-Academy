@@ -1,0 +1,23 @@
+name: Render exporter partial refresh tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'monitoring/render/render-metrics-exporter/**'
+      - '.github/workflows/monitoring-exporter-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exporter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install exporter dependencies
+        run: pip install -r monitoring/render/render-metrics-exporter/requirements.txt
+      - name: Test provider rejection and partial refresh
+        run: python -m unittest discover -s monitoring/render/render-metrics-exporter -p 'test_exporter.py' -v
