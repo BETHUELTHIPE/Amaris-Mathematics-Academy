@@ -7,12 +7,15 @@ Passwords and access keys come exclusively from protected GitHub staging secrets
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import os
+import smtplib
+import ssl
 import sys
+from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError
 
 PROJECT = "atyhhjwwxgzeurnwayay"
 PRODUCTION = "epkcuseloinygkakxxdu"
@@ -126,15 +129,48 @@ def http_json(url: str, headers: dict, body: dict | None = None) -> dict:
         raise RuntimeError(f"BLOCK: staging Supabase Auth admin operation failed (HTTP {exc.code})") from None
 
 
+
+def smtp_auth_only(variables: dict) -> None:
+    """Verify exact staging Gmail STARTTLS credentials; NEVER send any message."""
+    if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+        raise RuntimeError("BLOCK: SMTP authentication probe requires manual dispatch")
+    if os.environ.get("STAGING_FIXTURE_ACTION") != "SMTP_AUTH_ONLY":
+        raise RuntimeError("BLOCK: select SMTP_AUTH_ONLY to test SMTP credentials")
+    password = need("STAGING_SMTP_PASSWORD")
+    if (
+        variables.get("EMAIL_HOST", "").lower() != "smtp.gmail.com"
+        or str(variables.get("EMAIL_PORT", "")) != "587"
+        or str(variables.get("EMAIL_USE_TLS", "")).lower() != "true"
+        or str(variables.get("EMAIL_USE_SSL", "")).lower() != "false"
+        or variables.get("EMAIL_HOST_USER", "").strip().lower() != EXPECTED_STUDENT
+        or variables.get("DEFAULT_FROM_EMAIL", "").strip().lower() != EXPECTED_STUDENT
+    ):
+        raise RuntimeError("BLOCK: Render staging Gmail STARTTLS settings do not match the approved account")
+    deployed_password = variables.get("EMAIL_HOST_PASSWORD", "")
+    if not deployed_password or not hmac.compare_digest(password, deployed_password):
+        raise RuntimeError("BLOCK: GitHub staging SMTP secret does not match Render staging EMAIL_HOST_PASSWORD")
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=18) as client:
+            client.ehlo()
+            client.starttls(context=ssl.create_default_context())
+            client.ehlo()
+            client.login(EXPECTED_STUDENT, password)
+    except Exception as exc:
+        # Never include provider exception text: some failures can echo credentials.
+        raise RuntimeError("BLOCK: Gmail STARTTLS authentication did not pass (" + type(exc).__name__ + ")") from None
+    print("PASS STAGING_GMAIL_STARTTLS_AUTHENTICATED=YES; NO_EMAIL_SENT=YES", flush=True)
+
+
 def execute(variables: dict) -> None:
+    if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+        raise RuntimeError("BLOCK: fixture creation requires a manual GitHub workflow dispatch")
+    if os.environ.get("STAGING_FIXTURE_ACTION") != "CREATE_STAGING_QA_USERS":
+        raise RuntimeError("BLOCK: select CREATE_STAGING_QA_USERS explicitly")
     if os.environ.get("STAGING_FIXTURE_BOOTSTRAP_CONFIRM") != "CREATE_STAGING_QA_USERS":
-        raise RuntimeError("BLOCK: fixture creation requires explicit protected opt-in")
-    service_key = (
-        os.environ.get("STAGING_SUPABASE_SERVICE_ROLE_KEY")
-        or variables.get("SUPABASE_SERVICE_ROLE_KEY")
-        or variables.get("SUPABASE_SECRET_KEY")
-        or ""
-    )
+        raise RuntimeError("BLOCK: fixture creation requires staging environment opt-in")
+    # Never fall back to a Render service's privileged key: only the dedicated
+    # GitHub staging environment secret is authorized to create Auth identities.
+    service_key = need("STAGING_SUPABASE_SERVICE_ROLE_KEY")
     publishable = (
         os.environ.get("STAGING_SUPABASE_PUBLISHABLE_KEY")
         or variables.get("SUPABASE_PUBLISHABLE_KEY")
@@ -226,8 +262,12 @@ def execute(variables: dict) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--execute", action="store_true")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--execute", action="store_true")
+    modes.add_argument("--smtp-auth-only", action="store_true")
     arguments = parser.parse_args()
     config = preflight()
     if arguments.execute:
         execute(config)
+    elif arguments.smtp_auth_only:
+        smtp_auth_only(config)
