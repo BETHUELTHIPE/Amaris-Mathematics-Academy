@@ -5,8 +5,10 @@ from types import SimpleNamespace
 
 from django.conf import settings
 from django.contrib import admin
+from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.finders import find
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 
 from content.models import (
     Announcement,
@@ -83,3 +85,29 @@ class AdminExperienceTests(SimpleTestCase):
         self.assertTrue(admin.site._registry[Announcement].has_view_permission(request))
         self.assertTrue(bank.has_view_permission(request))
         self.assertFalse(bank.has_delete_permission(request))
+
+
+class AdminDashboardRenderingTests(TestCase):
+    def test_superuser_dashboard_loads_local_assets_and_shortcuts(self):
+        user = get_user_model().objects.create_superuser(
+            username="amaris-admin-visual-test", email="admin-visual@example.invalid",
+            password="local-synthetic-only-not-a-live-password",
+        )
+        self.client.force_login(user)
+        response = self.client.get(reverse("admin:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "amaris-admin-shortcuts")
+        self.assertContains(response, "/static/content/admin/amaris-admin.css")
+        self.assertContains(response, "/static/content/admin/amaris-admin.js")
+        self.assertContains(response, reverse("admin:amaris_monitoring_home"))
+
+    def test_non_superuser_staff_does_not_see_sensitive_links(self):
+        user = get_user_model().objects.create_user(
+            username="amaris-admin-viewer-test", email="viewer@example.invalid",
+            password="local-synthetic-only-not-a-live-password", is_staff=True,
+        )
+        self.client.force_login(user)
+        response = self.client.get(reverse("admin:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, reverse("admin:amaris_monitoring_home"))
+        self.assertNotContains(response, reverse("admin:content_announcement_changelist"))
