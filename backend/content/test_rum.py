@@ -79,3 +79,29 @@ class WebVitalsCollectionTests(TestCase):
         User = get_user_model()
         self.assertEqual(User.objects.count(), 0)
         self.assertEqual(self.send([self.valid], **self.headers).status_code, 204)
+
+
+class WebVitalsAdminTests(TestCase):
+    def test_only_superuser_may_view_aggregates_or_p75_report(self):
+        User = get_user_model()
+        superuser = User.objects.create_superuser("rum_admin", "admin@example.test", "test-password")
+        staff = User.objects.create_user("rum_staff", "staff@example.test", "test-password", is_staff=True)
+        path = reverse("admin:content_webvitalbucket_report")
+        self.client.force_login(staff)
+        self.assertNotEqual(self.client.get(path).status_code, 200)
+        self.client.force_login(superuser)
+        response = self.client.get(path)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Anonymous real-user performance")
+
+    def test_admin_suppresses_small_cohorts(self):
+        User = get_user_model()
+        admin = User.objects.create_superuser("rum_admin", "admin@example.test", "test-password")
+        self.client.force_login(admin)
+        WebVitalBucket.objects.create(
+            day=timezone.now().date(), metric="INP", route="student",
+            network="3g", device="mobile", bucket=3, count=1,
+        )
+        response = self.client.get(reverse("admin:content_webvitalbucket_report"))
+        self.assertContains(response, "No group has at least 20 observations")
+        self.assertNotContains(response, "<td>student</td>")
