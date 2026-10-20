@@ -5,10 +5,13 @@ import { p75, parseVitalLine, summarize } from "../scripts/performance/summarize
 
 const read = (name) => readFile(new URL(name, import.meta.url), "utf8");
 
-test("dashboard Core Web Vitals reports no session identifiers and no private URLs", async () => {
+test("public and dashboard Web Vitals use coarse allowlisted routes without identifying visitors", async () => {
   const client = await read("../components/site/dashboard-real-user-vitals.tsx");
   assert.match(client, /useReportWebVitals\(reportDashboardVital\)/);
   assert.match(client, /\["LCP", "INP", "CLS"\]/);
+  for (const route of ["home", "courses", "announcements", "contact", "matric_upgrades", "booking"]) {
+    assert.ok(client.includes(`"${route}"`), `missing public route ${route}`);
+  }
   assert.match(client, /"student_overview"/);
   assert.match(client, /"tutor_dashboard"/);
   assert.match(client, /SAMPLE_RATE = 0\.25/);
@@ -27,7 +30,9 @@ test("telemetry ingestion allowlists only metric, coarse page and device", async
   assert.match(endpoint, /Object\.keys\(input\)\.sort\(\)\.join\(","\) !== "device,metric,page,value"/);
   assert.match(endpoint, /origin !== new URL\(request\.url\)\.origin/);
   assert.match(endpoint, /acceptedInMinute > 300/);
-  assert.match(endpoint, /JSON\.stringify\(\{ page, device, metric, value \}\)/);
+  assert.match(endpoint, /JSON\\.stringify\\(\\{ page, device, metric, value, release \\}\\)/);
+  assert.match(endpoint, /process\\.env\\.RENDER_GIT_COMMIT/);
+  assert.match(endpoint, /"home", "courses", "announcements"/);
   assert.doesNotMatch(endpoint, /request\.headers\.get\("cookie"\)|request\.headers\.get\("authorization"\)|user\.id|session\.user/);
 });
 
@@ -48,6 +53,10 @@ test("production tutor acceptance is protected, actually logs in, and does not m
 
 test("field aggregator computes per-route p75 without exposing raw users", () => {
   assert.equal(p75([25, 7, 19, 3]), 19);
+  const release = "e2025cb3b807";
+  const parse = parseVitalLine(`amaris_dashboard_vital {"page":"home","device":"mobile","metric":"LCP","value":1890,"release":"${release}"}`);
+  assert.deepEqual(parse, {page:"home",device:"mobile",metric:"LCP",value:1890,release});
+  assert.equal(parseVitalLine('amaris_dashboard_vital {"page":"/orders/123","device":"mobile","metric":"INP","value":30}'), null);
   assert.equal(p75([]), null);
   assert.equal(parseVitalLine('ignored log line containing account info'), null);
   assert.equal(parseVitalLine('amaris_dashboard_vital {"page":"tutor_dashboard","device":"desktop","metric":"INP","value":145}').value, 145);
@@ -56,6 +65,7 @@ test("field aggregator computes per-route p75 without exposing raw users", () =>
   const result = summarize(measurements);
   assert.equal(result.length, 1);
   assert.equal(result[0].count, 100);
+  assert.equal(result[0].key, "unknown / tutor_dashboard / mobile / CLS");
   assert.equal(result[0].p75, 0.04);
   assert.equal(result[0].acceptance, "TARGET MET");
   assert.equal(summarize(measurements.slice(0, 20))[0].acceptance, "INSUFFICIENT SAMPLE");
