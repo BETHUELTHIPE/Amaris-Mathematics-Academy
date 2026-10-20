@@ -60,7 +60,7 @@ export default async function DashboardPage() {
           {[
             [LayoutDashboard, "Overview", null],
             [BookOpen, "My courses", null],
-            [CreditCard, "Orders & payments", null],
+            [CreditCard, "Orders & payments", "/dashboard/orders"],
             [Bell, "Notifications", null],
             [UserRound, "Profile & security", "/reset-password"],
           ].map(([Icon, label, href], i) => {
