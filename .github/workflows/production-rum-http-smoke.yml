@@ -1,0 +1,26 @@
+name: Production RUM Privacy and Readiness Smoke
+
+on:
+  # One-time release acceptance trigger; removed after test run.
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-rum-http-smoke.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-rum:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify active RUM privacy guards without saving fake metrics
+        run: python -u scripts/release/rum_production_http_smoke.py
