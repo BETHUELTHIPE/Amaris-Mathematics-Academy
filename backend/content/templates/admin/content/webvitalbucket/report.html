@@ -6,6 +6,7 @@
   Groups with fewer than 20 observations are suppressed.</p>
   <p>Targets: LCP at most 2,500 ms; INP at most 200 ms; CLS at most 0.10.
   No INP is recorded for visits without an eligible interaction. Blank metrics do not mean zero.</p>
+  <h2>Last 28 days — p75 bucket bounds (UTC days)</h2>
   <table id="result_list" role="table">
     <thead><tr>
       <th>Metric</th><th>Page group</th><th>Device</th><th>Network</th>
@@ -20,6 +21,20 @@
         </tr>
       {% empty %}
         <tr><td colspan="6">No group has at least 20 observations yet. Monitoring is still collecting.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+<h2>Weekly p75 trend (non-overlapping 7-day windows)</h2>
+  <p>Each week is shown separately. A missing row means fewer than 20 observations in that group.</p>
+  <table role="table">
+    <thead><tr><th>Week ending (UTC)</th><th>Metric</th><th>Page group</th><th>Device</th><th>Network</th><th>Count</th><th>p75 upper bound</th></tr></thead>
+    <tbody>
+      {% for row in weekly %}
+        <tr><td>{{ row.week_ending }}</td><td>{{ row.metric }}</td><td>{{ row.route }}</td>
+        <td>{{ row.device }}</td><td>{{ row.network }}</td><td>{{ row.samples }}</td>
+        <td>{% if row.over_maximum %}Above measurement range{% else %}{{ row.p75_bound }}{% if row.metric != "CLS" %} ms{% endif %}{% endif %}</td></tr>
+      {% empty %}
+        <tr><td colspan="7">Not enough real-user samples for a weekly trend yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
