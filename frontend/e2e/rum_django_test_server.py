@@ -5,7 +5,7 @@ Only binds 127.0.0.1 and uses an isolated SQLite database. No production URLs.
 import os
 import ssl
 from pathlib import Path
-from wsgiref.simple_server import make_server
+from wsgiref.simple_server import WSGIRequestHandler, make_server
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "amaris_cms.settings")
 from django.core.wsgi import get_wsgi_application  # noqa: E402
@@ -32,7 +32,16 @@ def observed_app(environ, start_response):
     return app(environ, status_only)
 
 
-server = make_server("127.0.0.1", 8443, observed_app)
+class LocalTLSRequestHandler(WSGIRequestHandler):
+    """The wrapped TLS socket must be HTTPS in WSGI for Django's CSRF checks."""
+
+    def get_environ(self):
+        environ = super().get_environ()
+        environ["wsgi.url_scheme"] = "https"
+        return environ
+
+
+server = make_server("127.0.0.1", 8443, observed_app, handler_class=LocalTLSRequestHandler)
 tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 tls.load_cert_chain(os.environ["RUM_E2E_CERT"], os.environ["RUM_E2E_KEY"])
 server.socket = tls.wrap_socket(server.socket, server_side=True)
