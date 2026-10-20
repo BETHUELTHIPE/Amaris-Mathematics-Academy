@@ -39,6 +39,8 @@ def main():
         if reply.status != 200:
             raise RuntimeError("Django health HTTP status invalid")
 
+    import django
+    django.setup()
     from content.rum import summarize_p75
 
     with sync_playwright() as p:
