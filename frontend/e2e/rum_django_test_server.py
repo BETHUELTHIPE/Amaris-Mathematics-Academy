@@ -37,6 +37,9 @@ class LocalTLSRequestHandler(WSGIRequestHandler):
 
     def get_environ(self):
         environ = super().get_environ()
+        # wsgiref's ServerHandler calls guess_scheme() and otherwise resets
+        # wsgi.url_scheme to "http". HTTPS=on is the actual signal it uses.
+        environ["HTTPS"] = "on"
         environ["wsgi.url_scheme"] = "https"
         return environ
 
