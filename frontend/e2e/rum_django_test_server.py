@@ -24,6 +24,9 @@ def observed_app(environ, start_response):
         if environ.get("PATH_INFO") == "/api/v1/rum/" and status.startswith("204 "):
             with ack_path.open("a", encoding="ascii") as output:
                 output.write("204\n")
+        # CI-only: report status and path, never cookie, token or form body.
+        if environ.get("PATH_INFO") == "/admin/login/":
+            print(f"CI admin login {environ.get('REQUEST_METHOD')} HTTP {status.split()[0]}", flush=True)
         return start_response(status, headers, exc_info)
 
     return app(environ, status_only)
