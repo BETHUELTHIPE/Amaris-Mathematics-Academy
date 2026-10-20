@@ -49,9 +49,16 @@ def check_status(response, expected: set[int], label: str):
 def public_browser(browser):
     context = browser.new_context(ignore_https_errors=False)
     page = context.new_page()
-    page.goto(FRONTEND + "/login", wait_until="domcontentloaded", timeout=60000)
-    page.get_by_role("heading", name="Welcome back.").wait_for(timeout=15000)
-    print("PASS staging student login page rendered in Chromium", flush=True)
+    response = page.goto(FRONTEND + "/login", wait_until="domcontentloaded", timeout=60000)
+    check_status(response, {200}, "staging student login public page")
+    try:
+        page.locator('input[name="email"]').wait_for(timeout=25000)
+        page.locator('input[name="password"]').wait_for(timeout=25000)
+    except Exception as exc:
+        # Do not echo arbitrary page content, which might contain PII or tokens.
+        print("STAGING_FRONTEND_FORM_PRESENT=NO; final_host=" + str(urlparse(page.url).hostname), flush=True)
+        raise AssertionError("Staging student login form not rendered by live frontend") from exc
+    print("PASS staging student login form rendered in Chromium", flush=True)
 
     response = page.goto(BACKEND + "/health/ready/", wait_until="domcontentloaded", timeout=35000)
     check_status(response, {200}, "staging Django and database ready")
