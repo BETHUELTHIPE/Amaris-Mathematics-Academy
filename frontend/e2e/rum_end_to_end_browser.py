@@ -6,6 +6,7 @@ and Next's real web-vitals observer; no fake metric POSTs are submitted.
 """
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.request import urlopen
 
 from playwright.sync_api import sync_playwright
@@ -44,7 +45,9 @@ def main():
     django.setup()
     from content.rum import summarize_p75
 
-    with sync_playwright() as p:
+    # Playwright's sync API runs its own asyncio loop; ORM reads belong in a
+    # separate thread rather than disabling Django's async-safety checks.
+    with sync_playwright() as p, ThreadPoolExecutor(max_workers=1) as db_pool:
         browser = p.chromium.launch(
             headless=True, executable_path=os.environ["AMARIS_CHROME_PATH"],
             args=["--no-sandbox", "--disable-dev-shm-usage"],
@@ -75,11 +78,11 @@ def main():
             page.evaluate("window.dispatchEvent(new Event('pagehide'))")
             page.wait_for_timeout(330)
             page.close()
-            count, _ = observed_histograms()
+            count, _ = db_pool.submit(observed_histograms).result()
             if count >= COUNT_REQUIRED:
                 break
 
-        count, rows = observed_histograms()
+        count, rows = db_pool.submit(observed_histograms).result()
         if count < COUNT_REQUIRED:
             raise AssertionError(f"Real Chrome produced only {count} accepted LCP samples; expected >=20")
         if statuses.count(204) < COUNT_REQUIRED:
@@ -96,7 +99,7 @@ def main():
                     raise AssertionError("browser sent a non-allowlisted page group")
         if not rows or any(r["device"] != "mobile" for r in rows):
             raise AssertionError("mobile browser samples not reflected as mobile")
-        summary = summarize_p75(days=28, min_samples=20)
+        summary = db_pool.submit(summarize_p75, days=28, min_samples=20).result()
         verified = [r for r in summary if r["release"] == RELEASE and r["metric"] == "LCP"
                     and r["route"] == "home" and r["device"] == "mobile"]
         if len(verified) != 1 or verified[0]["samples"] < 20:
