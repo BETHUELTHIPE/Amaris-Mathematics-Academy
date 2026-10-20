@@ -90,7 +90,8 @@ class AdminExperienceTests(SimpleTestCase):
 class AdminDashboardRenderingTests(TestCase):
     def test_superuser_dashboard_loads_local_assets_and_shortcuts(self):
         user = get_user_model().objects.create_superuser(
-            username="amaris-admin-visual-test", email="admin-visual@example.invalid",
+            username="amaris-admin-visual-test",
+            email="admin-visual@example.invalid",
             password="local-synthetic-only-not-a-live-password",
         )
         self.client.force_login(user)
@@ -103,8 +104,10 @@ class AdminDashboardRenderingTests(TestCase):
 
     def test_non_superuser_staff_does_not_see_sensitive_links(self):
         user = get_user_model().objects.create_user(
-            username="amaris-admin-viewer-test", email="viewer@example.invalid",
-            password="local-synthetic-only-not-a-live-password", is_staff=True,
+            username="amaris-admin-viewer-test",
+            email="viewer@example.invalid",
+            password="local-synthetic-only-not-a-live-password",
+            is_staff=True,
         )
         self.client.force_login(user)
         response = self.client.get(reverse("admin:index"))
