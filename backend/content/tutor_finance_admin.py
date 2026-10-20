@@ -20,6 +20,7 @@ from .tutor_finance_models import (
 class FinanceSuperuserAdmin(admin.ModelAdmin):
     list_per_page = 30
     show_full_result_count = False
+
     def has_module_permission(self, request):
         return bool(request.user.is_active and request.user.is_superuser)
 
