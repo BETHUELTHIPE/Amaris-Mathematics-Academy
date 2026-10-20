@@ -137,11 +137,33 @@ def main():
         page.goto(BACK + "/admin/login/", wait_until="domcontentloaded", timeout=30000)
         page.locator('input[name="username"]').fill("rum_ci_admin")
         page.locator('input[name="password"]').fill(os.environ["RUM_E2E_ADMIN_PASSWORD"])
+        # Wait for the login redirect and Django session cookie before
+        # navigating away. Otherwise the report GET can race the login POST.
         page.locator('button[type="submit"], input[type="submit"]').first.click()
-        page.goto(BACK + "/admin/content/webvitalbucket/report/", wait_until="domcontentloaded", timeout=30000)
+        try:
+            page.wait_for_url("**/admin/", wait_until="domcontentloaded", timeout=15000)
+        except Exception as exc:
+            headings = page.locator("h1").all_inner_texts()[:2]
+            raise AssertionError(
+                f"isolated superuser login did not reach admin index: "
+                f"path={__import__('urllib.parse', fromlist=['urlsplit']).urlsplit(page.url).path} "
+                f"headings={headings}"
+            ) from exc
+        report = page.goto(
+            BACK + "/admin/content/webvitalbucket/report/",
+            wait_until="domcontentloaded", timeout=30000
+        )
+        if report is None or report.status != 200:
+            raise AssertionError(
+                f"isolated superuser report status was "
+                f"{report.status if report else 'no HTTP response'}"
+            )
+        page.get_by_role("heading", name="Anonymous real-user performance: last 28 days").wait_for(timeout=10000)
         html = page.locator("body").inner_text(timeout=10000)
-        if "Anonymous real-user performance" not in html or RELEASE not in html:
-            raise AssertionError("superuser dashboard did not display real aggregated browser cohort")
+        if RELEASE not in html:
+            raise AssertionError(
+                "authenticated report rendered but omitted the verified aggregated release cohort"
+            )
         print("PASS actual Django superuser dashboard rendered aggregated Chrome-derived p75", flush=True)
         admin.close()
 
