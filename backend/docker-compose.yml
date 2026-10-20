@@ -371,7 +371,8 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
-    networks: [monitoring_network]
+    # Django web is on backend_network and proxies dashboards after superuser auth.
+    networks: [backend_network, monitoring_network]
     healthcheck:
       test: ["CMD-SHELL", "wget --spider --quiet http://localhost:3000/api/health || exit 1"]
       interval: 30s
