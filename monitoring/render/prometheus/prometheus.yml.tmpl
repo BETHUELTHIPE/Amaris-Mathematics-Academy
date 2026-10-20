@@ -17,6 +17,12 @@ scrape_configs:
   - job_name: django
     metrics_path: /metrics
     scrape_timeout: 10s
+    follow_redirects: false
+    # The app's existing SECURE_PROXY_SSL_HEADER expects this on the trusted
+    # Render private network; keep its public HTTPS redirect enabled.
+    http_headers:
+      X-Forwarded-Proto:
+        values: [https]
     static_configs:
       - targets: ["__DJANGO_TARGET__"]
         labels:
