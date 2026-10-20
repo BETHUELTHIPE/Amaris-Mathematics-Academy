@@ -6,6 +6,7 @@ import { getManagedBrand } from "@/lib/cms";
 export const metadata: Metadata = { title: "Privacy Policy" };
 
 const sections = [
+  ["Anonymous browser performance", "When explicitly enabled, we sample about 20% of eligible page visits for LCP, INP and CLS to assess page speed and responsiveness. Only daily coarse histograms by page category, device class, network category and performance range are stored, with no names, account IDs, exact URLs, cookies, interaction targets, query strings or raw user events. We respect browser Do Not Track and Global Privacy Control signals. Daily aggregates older than 90 days are removed."],
   ["Information we collect", "We collect the registration details you provide, account security and verification information, enquiries, course enrolments, payment status and learning progress."],
   ["How we use it", "We use this information to create and secure your account, provide courses, verify payments, track progress, respond to support requests and improve the learning service."],
   ["Service providers", "Supabase provides authentication and profile storage. Payment and video providers process the information needed to deliver their services under their own privacy terms."],
