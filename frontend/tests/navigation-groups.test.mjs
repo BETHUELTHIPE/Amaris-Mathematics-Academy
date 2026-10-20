@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { groupNavigation } from "../lib/navigation.ts";
 
-const urls = ["/courses", "/how-it-works", "/pricing", "/matric-upgrades", "/about", "/announcements", "/request-a-video", "/book-online-live-class", "/tutor/apply", "/contact"];
+const urls = ["/courses", "/how-it-works", "/pricing", "/matric-upgrades", "/ai-software-developer", "/about", "/announcements", "/request-a-video", "/book-online-live-class", "/tutor/apply", "/contact"];
 const links = urls.map(url => ({ url, label: url, open_in_new_tab: false }));
 
 test("grouping preserves every managed destination exactly once and features matric", () => {
@@ -12,6 +12,7 @@ test("grouping preserves every managed destination exactly once and features mat
   for (const url of urls) assert.equal(result.filter(link => link.url === url).length, 1, url);
   assert.deepEqual(groups.map(group => group.label), ["Learn", "Resources", "Academy"]);
   assert.ok(groups[0].links.some(link => link.url === "/book-online-live-class"));
+  assert.ok(groups[0].links.some(link => link.url === "/ai-software-developer"));
   assert.ok(groups[2].links.some(link => link.url === "/tutor/login"));
 });
 
