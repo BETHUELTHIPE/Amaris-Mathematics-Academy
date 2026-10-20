@@ -1,0 +1,53 @@
+name: Align Staging Gmail Sender Safely
+on:
+  push:
+    branches: [diagnostics/staging-smtp-ssl-20261020]
+    paths: [.github/workflows/staging-gmail-sender-align.yml]
+permissions:
+  contents: read
+jobs:
+  align-staging-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Align FROM with configured Gmail login, preserving all secrets and production
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.parse
+          from email.utils import parseaddr
+          service_id="srv-dam2iivcgkoc7383tq50"
+          key=os.getenv("RENDER_API_KEY","")
+          if not key: raise SystemExit("BLOCK: private Render token missing")
+          base=f"https://api.render.com/v1/services/{service_id}"
+          headers={"Authorization":"Bearer "+key,"Accept":"application/json","Content-Type":"application/json"}
+          def call(url,method="GET",data=None):
+              req=urllib.request.Request(url,headers=headers,method=method,data=json.dumps(data).encode() if data is not None else None)
+              with urllib.request.urlopen(req,timeout=25) as response:
+                  return json.load(response)
+          svc=call(base)
+          if svc.get("id")!=service_id or svc.get("ownerId")!="tea-csppi8l6l47c73dk9c90" or svc.get("branch")!="ops/staging-known-good-af8709c-20261019":
+              raise SystemExit("BLOCK: unexpected Render staging service or branch")
+          raw=call(base+"/env-vars?limit=100")
+          if isinstance(raw,dict): raw=raw.get("envVars",raw.get("data",[]))
+          env={item.get("envVar",item).get("key"):item.get("envVar",item).get("value") or "" for item in raw}
+          db=urllib.parse.urlsplit(env.get("DATABASE_URL",""))
+          project="atyhhjwwxgzeurnwayay"
+          if not (db.hostname=="db."+project+".supabase.co" or project in (db.username or "")):
+              raise SystemExit("BLOCK: database is not staging")
+          if (env.get("PAYFAST_MODE") or env.get("PAYFAST_ENV") or "").lower()!="sandbox":
+              raise SystemExit("BLOCK: staging PayFast not sandbox")
+          user=(env.get("EMAIL_HOST_USER") or env.get("GMAIL_USER") or env.get("GMAIL_EMAIL") or "").strip().lower()
+          if user not in ("bethuelmoukangwe8@gmail.com","bethuelthipe@gmail.com"):
+              raise SystemExit("BLOCK: sender not one of user's authorized Gmail addresses")
+          if parseaddr(env.get("DEFAULT_FROM_EMAIL",""))[1].lower()==user:
+              print("PASS staging sender already matches Gmail login; nothing updated")
+          else:
+              response=call(base+"/env-vars/DEFAULT_FROM_EMAIL",method="PUT",data={"value":user})
+              if response.get("key")!="DEFAULT_FROM_EMAIL" or response.get("value")!=user:
+                  raise SystemExit("BLOCK: Render did not verify sender update")
+              print("PASS staging DEFAULT_FROM_EMAIL now equals existing Gmail login, without revealing address or password")
+          print("NOTE SMTP transport/auth still unverified; no message was sent, production untouched")
+          PY
