@@ -11,7 +11,7 @@ from content.models import WebVitalBucket
 from content.rum import bucket_for, summarize_p75
 
 
-@override_settings(RUM_INGEST_TOKEN="test-only-rum-token-not-production")
+@override_settings(RUM_INGEST_TOKEN="test-only-rum-token-not-production", SECURE_SSL_REDIRECT=False)
 class WebVitalsCollectionTests(TestCase):
     def setUp(self):
         self.url = reverse("anonymous-web-vitals")
@@ -83,6 +83,7 @@ class WebVitalsCollectionTests(TestCase):
         self.assertEqual(self.send([self.valid], **self.headers).status_code, 204)
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class WebVitalsAdminTests(TestCase):
     def test_only_superuser_may_view_aggregates_or_p75_report(self):
         User = get_user_model()
