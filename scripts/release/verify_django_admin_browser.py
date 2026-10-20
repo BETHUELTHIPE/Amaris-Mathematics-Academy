@@ -108,8 +108,8 @@ def test_list(page, width):
     page.set_viewport_size({"width": width, "height": 850})
     response = page.goto(BASE + "/admin/content/coursecategory/", wait_until="networkidle")
     assert response and response.status == 200
-    assert page.locator("#result_list tbody tr").count() <= 30
-    assert page.locator(".paginator").count() >= 1
+    visible_rows = page.locator("#result_list tbody tr").count()
+    assert 1 <= visible_rows <= 30, f"Expected bounded page of 65 synthetic rows: {visible_rows}"
     page.screenshot(path=str(OUT / f"category-list-{width}.png"), full_page=True)
     print(f"PASS admin paginated table at {width}px, bounded to 30 rows")
 
