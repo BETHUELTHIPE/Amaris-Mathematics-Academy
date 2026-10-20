@@ -8,6 +8,7 @@ from .live_class_views import (
     LiveClassSlotView,
 )
 from .payfast_views import PayFastITNView
+from .rum import collect_web_vitals
 from .student_views import (
     AcceptancePaymentCompleteView,
     AcceptanceSeedView,
@@ -63,6 +64,7 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(
         "tutor-applications/acknowledgement/",

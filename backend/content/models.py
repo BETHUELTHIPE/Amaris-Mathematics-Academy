@@ -881,5 +881,32 @@ class PaymentReconciliationRun(TimeStampedModel):
         return f"{self.started_at:%Y-%m-%d %H:%M} — {self.status}"
 
 
+class WebVitalBucket(models.Model):
+    """Coarse daily counts only; never store visitors, URLs, IPs or raw events."""
+
+    day = models.DateField()
+    release = models.CharField(max_length=12, default="unknown")
+    metric = models.CharField(max_length=3)
+    route = models.CharField(max_length=24)
+    device = models.CharField(max_length=8)
+    network = models.CharField(max_length=8)
+    bucket = models.PositiveSmallIntegerField()
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["day", "release", "metric", "route", "device", "network", "bucket"],
+                name="rum_daily_bucket_unique",
+            )
+        ]
+        indexes = [models.Index(fields=["-day", "metric"], name="rum_day_metric_idx")]
+        verbose_name = "Anonymous daily Web Vital bucket"
+        verbose_name_plural = "Anonymous daily Web Vital buckets"
+
+    def __str__(self) -> str:
+        return f"{self.day} {self.release} {self.metric} {self.route} {self.device}/{self.network}: {self.count}"
+
+
 # Django discovers the recruitment models through this application module.
 from .tutor_application_models import TutorApplication, TutorApplicationDocument  # noqa: E402,F401
