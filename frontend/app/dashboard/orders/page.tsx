@@ -145,6 +145,7 @@ function invoiceLink(order: StudentOrder): string | null {
 function formatMoney(amount: string, currency: string): string {
   const value = Number(amount);
   if (!Number.isFinite(value)) return `${currency} ${amount}`;
+  if (currency === "ZAR") return randFormatter.format(value);
   try {
     return new Intl.NumberFormat("en-ZA", { style: "currency", currency }).format(value);
   } catch {
@@ -152,8 +153,12 @@ function formatMoney(amount: string, currency: string): string {
   }
 }
 
+const southAfricaDate = new Intl.DateTimeFormat("en-ZA", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg",
+});
+const randFormatter = new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR" });
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.valueOf())) return "Date unavailable";
-  return new Intl.DateTimeFormat("en-ZA", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg" }).format(date);
+  return southAfricaDate.format(date);
 }
