@@ -1,0 +1,31 @@
+name: Staging RUM Frontend Checks
+on:
+  pull_request:
+    branches: [ops/staging-students-baseline-6da449a-20261019]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frontend-rum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Verify types and privacy tests
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          node --test tests/public-field-vitals.test.mjs
+      - name: Build Render-compatible Nitro frontend
+        working-directory: frontend
+        run: |
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
