@@ -107,7 +107,9 @@ def _probe(tool, endpoint, time_bucket):
         if status != 200:
             return "unavailable"
         if tool == "flower":
-            worker_status, workers_payload = _request(endpoint.rstrip("/") + "/admin/monitoring/flower/api/workers")
+            worker_status, workers_payload = _request(
+                endpoint.rstrip("/") + "/admin/monitoring/flower/api/workers?status=true"
+            )
             if worker_status != 200:
                 return "degraded"
             try:
@@ -116,7 +118,9 @@ def _probe(tool, endpoint, time_bucket):
                 return "degraded"
             # A responsive Flower UI does not prove any Celery worker is alive.
             # Never expose worker node names or task details on the status page.
-            if not isinstance(workers, dict) or not any(isinstance(value, dict) for value in workers.values()):
+            # Flower's status endpoint uses Celery heartbeat expiry. Its default
+            # worker-detail endpoint can retain cached entries for offline workers.
+            if not isinstance(workers, dict) or not any(value is True for value in workers.values()):
                 return "degraded"
         return "reachable"
     except (KeyError, ValueError, urllib_error.URLError, TimeoutError, OSError):

@@ -134,8 +134,8 @@ class RealMonitoringStatusTests(SimpleTestCase):
         def inspect_target(url):
             if url.endswith("/admin/monitoring/flower/"):
                 return (200, b"<html>flower</html>")
-            if url.endswith("/admin/monitoring/flower/api/workers"):
-                return (200, b'{"celery-worker-test": {"status": true}}')
+            if url.endswith("/admin/monitoring/flower/api/workers?status=true"):
+                return (200, b'{"celery-worker-test": true}')
             return (200, b"render_metrics_exporter_refresh_success 0\\n")
 
         request_probe.side_effect = inspect_target
@@ -157,13 +157,21 @@ class RealMonitoringStatusTests(SimpleTestCase):
         def inspect_target(url):
             if url.endswith("/admin/monitoring/flower/"):
                 return (200, b"<html>Flower</html>")
-            if url.endswith("/admin/monitoring/flower/api/workers"):
+            if url.endswith("/admin/monitoring/flower/api/workers?status=true"):
                 return (200, b"{}")
             raise AssertionError("Unexpected probe target")
 
         request_probe.side_effect = inspect_target
         items = {record["name"]: record for record in monitor_statuses()}
         self.assertEqual(items["flower"]["status"], "degraded")
+
+    @patch("amaris_cms.monitoring_status._request")
+    def test_cached_or_expired_flower_workers_never_report_live(self, request_probe):
+        for payload in (b'{"worker": false}', b'{"worker": {"status": true}}', b'{"worker": "true"}'):
+            with self.subTest(payload=payload):
+                _probe.cache_clear()
+                request_probe.side_effect = [(200, b"Flower"), (200, payload)]
+                self.assertEqual(_probe("flower", "http://flower:5555", 1), "degraded")
 
     @override_settings(MONITORING_FLOWER_BASIC_AUTH="synthetic:test-secret")
     @patch("amaris_cms.monitoring_status.urllib_request.build_opener")
