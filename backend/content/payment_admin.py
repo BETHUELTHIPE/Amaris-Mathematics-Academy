@@ -4,6 +4,7 @@ from .payment_models import Invoice, NotificationOutbox, PaymentWebhookEvent, Se
 
 
 class ImmutablePaymentArtifactAdmin(admin.ModelAdmin):
+    show_full_result_count = False
     list_per_page = 30
 
     def has_add_permission(self, request):
@@ -45,6 +46,7 @@ class PaymentWebhookEventAdmin(ImmutablePaymentArtifactAdmin):
 
 @admin.register(Invoice)
 class InvoiceAdmin(ImmutablePaymentArtifactAdmin):
+    list_select_related = ("student", "course")
     list_display = (
         "invoice_number",
         "student",
@@ -74,6 +76,7 @@ class InvoiceAdmin(ImmutablePaymentArtifactAdmin):
 
 @admin.register(ServiceTicket)
 class ServiceTicketAdmin(ImmutablePaymentArtifactAdmin):
+    list_select_related = ("payment", "enrollment")
     list_display = ("ticket_number", "payment", "enrollment", "status", "created_at")
     list_filter = ("status", "created_at")
     search_fields = ("ticket_number", "payment__reference", "enrollment__student__email")
@@ -82,6 +85,7 @@ class ServiceTicketAdmin(ImmutablePaymentArtifactAdmin):
 
 @admin.register(NotificationOutbox)
 class NotificationOutboxAdmin(ImmutablePaymentArtifactAdmin):
+    list_select_related = ("payment",)
     list_display = ("event_type", "payment", "destination", "status", "created_at")
     list_filter = ("status", "event_type", "created_at")
     search_fields = ("payment__reference", "destination")
