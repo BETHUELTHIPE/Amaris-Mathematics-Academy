@@ -33,7 +33,14 @@ class WebVitalsCollectionTests(TestCase):
         self.assertEqual(WebVitalBucket.objects.count(), 0)
 
     def test_invalid_release_is_rejected(self):
-        self.assertEqual(self.send([self.valid], HTTP_X_AMARIS_RUM_TOKEN="test-only-rum-token-not-production", HTTP_X_AMARIS_RUM_RELEASE="../private").status_code, 400)
+        self.assertEqual(
+            self.send(
+                [self.valid],
+                HTTP_X_AMARIS_RUM_TOKEN="test-only-rum-token-not-production",
+                HTTP_X_AMARIS_RUM_RELEASE="../private",
+            ).status_code,
+            400,
+        )
         self.assertEqual(WebVitalBucket.objects.count(), 0)
 
     def test_requires_server_only_secret(self):
