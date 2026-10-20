@@ -23,7 +23,7 @@ type Vital = Parameters<typeof useReportWebVitals>[0] extends (metric: infer M) 
    JavaScript library or user session tracking is required. */
 type RumRecord = {
   name: "LCP" | "INP" | "CLS";
-  route: "home" | "courses" | "contact" | "announcements" | "matric" | "booking" | "student";
+  route: "home" | "courses" | "contact" | "announcements" | "matric" | "booking" | "student" | "tutor";
   device: "mobile" | "tablet" | "desktop";
   network: "slow-2g" | "2g" | "3g" | "4g" | "unknown";
   value: number;
@@ -40,7 +40,8 @@ function publicRoute(path: string): RumRecord["route"] | null {
   if (path === "/announcements" || path.startsWith("/announcements/")) return "announcements";
   if (path === "/matric-upgrades" || path.startsWith("/matric-upgrades/")) return "matric";
   if (path === "/book-online-live-class") return "booking";
-  if (path === "/dashboard" || path === "/tutor/dashboard") return "student";
+  if (path === "/dashboard") return "student";
+  if (path === "/tutor/dashboard") return "tutor";
   return null;
 }
 
@@ -92,7 +93,10 @@ function reportDashboardVital(metric: Vital) {
   if (typeof window === "undefined") return;
   // Honor explicit browser privacy signals as a further safeguard.
   if (navigator.doNotTrack === "1" || (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true) return;
+  // Run exactly one telemetry pipeline per browser navigation. Once the
+  // persistent cohort is enabled the legacy 25% Render log path is disabled.
   recordPublicVital(metric);
+  if (process.env.NEXT_PUBLIC_ENABLE_WEB_VITALS === "true") return;
   if (included === undefined) included = Math.random() < SAMPLE_RATE;
   if (!included) return;
 
