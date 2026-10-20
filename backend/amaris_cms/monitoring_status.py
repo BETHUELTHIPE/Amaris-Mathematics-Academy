@@ -63,7 +63,10 @@ def is_private_monitoring_url(url):
 def _request(url):
     opener = urllib_request.build_opener(NoRedirect())
     headers = {"Accept-Encoding": "identity", "User-Agent": "Amaris-admin-health/1.0"}
-    if urllib_parse.urlsplit(url).path.startswith("/admin/monitoring/flower/") and settings.MONITORING_FLOWER_BASIC_AUTH:
+    if (
+        urllib_parse.urlsplit(url).path.startswith("/admin/monitoring/flower/")
+        and settings.MONITORING_FLOWER_BASIC_AUTH
+    ):
         token = base64.b64encode(settings.MONITORING_FLOWER_BASIC_AUTH.encode("utf-8")).decode("ascii")
         headers["Authorization"] = f"Basic {token}"
     req = urllib_request.Request(url, headers=headers)
