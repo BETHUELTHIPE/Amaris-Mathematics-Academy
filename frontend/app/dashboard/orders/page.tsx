@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowRight, Download, ReceiptText, ShoppingBag } from "lucide-react";
 import { StudentDashboardShell } from "@/components/site/student-dashboard-shell";
+import { paginatePrivateRows, PrivatePagination } from "@/components/site/private-pagination";
 import { requireVerifiedStudent } from "@/lib/auth";
 import { getStudentOrders, type StudentOrder } from "@/lib/student-api";
 
@@ -27,7 +28,7 @@ function OrdersSkeleton() {
   </div>;
 }
 
-async function OrdersContent() {
+async function OrdersContent({ page }: { page?: string }) {
   let orders: StudentOrder[] = [];
   let serviceAvailable = true;
   try {
@@ -35,6 +36,8 @@ async function OrdersContent() {
   } catch {
     serviceAvailable = false;
   }
+
+  const history = paginatePrivateRows(orders, page, 12);
 
   const paidOrders = orders.filter((order) => Boolean(order.paid_at)).length;
   const awaitingPayment = orders.filter((order) =>
@@ -65,13 +68,13 @@ async function OrdersContent() {
       <Link href="/courses" className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-5 py-3 font-bold text-white sm:w-fit">Browse courses <ArrowRight aria-hidden="true" className="size-4" /></Link>
     </section>}
 
-    {orders.length > 0 && <section className="mt-6 min-w-0 rounded-3xl border border-[#dce4ef] bg-white p-5 sm:p-8">
+    {orders.length > 0 && <section id="orders-history" className="mt-6 min-w-0 scroll-mt-28 rounded-3xl border border-[#dce4ef] bg-white p-5 sm:p-8">
       <div className="flex items-center gap-3">
         <ReceiptText aria-hidden="true" className="size-5 text-[#1f5bbd]" />
         <h2 className="text-xl font-semibold">Order history</h2>
       </div>
       <div className="mt-5 grid gap-4">
-        {orders.map((order) => {
+        {history.rows.map((order) => {
           const invoiceHref = invoiceLink(order);
           return <article key={`${order.kind}-${order.reference}`} className="min-w-0 rounded-2xl border border-[#dce4ef] p-4 sm:p-5">
             <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -97,19 +100,23 @@ async function OrdersContent() {
           </article>;
         })}
       </div>
+      <PrivatePagination basePath="/dashboard/orders" anchor="orders-history" queryKey="page" current={history.current} totalPages={history.totalPages} />
     </section>}
   </>;
 }
 
-export default async function OrdersPage() {
+export default async function OrdersPage({ searchParams }: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   await requireVerifiedStudent("/dashboard/orders");
+  const { page } = await searchParams;
   return <StudentDashboardShell
     active="orders"
     title="Orders & payments"
     description="Review your 100 most recent course, live class and requested video orders in one private account view."
   >
     <Suspense fallback={<OrdersSkeleton />}>
-      <OrdersContent />
+      <OrdersContent page={page} />
     </Suspense>
   </StudentDashboardShell>;
 }
