@@ -11,6 +11,8 @@ from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseNotFou
 from django.template.response import TemplateResponse
 from django.urls import path
 
+from .monitoring_status import is_private_monitoring_url, monitor_statuses
+
 PROXY_PREFIX = "/admin/monitoring/"
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
@@ -66,6 +68,7 @@ class AmarisAdminSite(AdminSite):
                 **self.each_context(request),
                 "title": "Monitoring and operations",
                 "monitoring_enabled": settings.MONITORING_CONSOLE_ENABLED,
+                "monitoring_services": monitor_statuses(),
             },
         )
 
@@ -79,6 +82,8 @@ class AmarisAdminSite(AdminSite):
         upstream = _upstreams().get(tool, "").rstrip("/")
         if not upstream:
             return HttpResponseNotFound()
+        if not is_private_monitoring_url(upstream):
+            return HttpResponse("Monitoring endpoint is not safely configured.", status=503)
 
         parts = subpath.split("/")
         if any(segment in {".", ".."} for segment in parts):
@@ -93,15 +98,22 @@ class AmarisAdminSite(AdminSite):
         if query:
             target += f"?{query}"
 
-        upstream_request = urllib_request.Request(
-            target,
-            headers={
-                "Accept-Encoding": "identity",
-                "X-Forwarded-Proto": "https",
-                "X-Forwarded-Host": request.get_host(),
-            },
-            method="GET",
-        )
+        headers = {
+            "Accept-Encoding": "identity",
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Host": request.get_host(),
+        }
+        # Docker Flower optionally retains internal HTTP basic authentication.
+        # Only a server-held secret is forwarded, never browser credentials.
+        if tool == "flower" and settings.MONITORING_FLOWER_BASIC_AUTH:
+            import base64
+
+            secret = base64.b64encode(
+                settings.MONITORING_FLOWER_BASIC_AUTH.encode("utf-8")
+            ).decode("ascii")
+            headers["Authorization"] = f"Basic {secret}"
+
+        upstream_request = urllib_request.Request(target, headers=headers, method="GET")
         opener = urllib_request.build_opener(_NoRedirect())
         try:
             response = opener.open(upstream_request, timeout=10)
