@@ -1,10 +1,6 @@
 name: Production RUM Privacy and Readiness Smoke
 
 on:
-  # One-time release acceptance trigger; removed after test run.
-  push:
-    branches: [main]
-    paths: ['.github/workflows/production-rum-http-smoke.yml']
   workflow_dispatch:
 
 permissions:
