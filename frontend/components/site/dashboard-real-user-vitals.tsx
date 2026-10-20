@@ -17,6 +17,8 @@ type Vital = Parameters<typeof useReportWebVitals>[0] extends (metric: infer M) 
 
 function reportDashboardVital(metric: Vital) {
   if (typeof window === "undefined") return;
+  // Honor explicit browser privacy signals as a further safeguard.
+  if (navigator.doNotTrack === "1" || (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true) return;
   if (included === undefined) included = Math.random() < SAMPLE_RATE;
   if (!included) return;
 
