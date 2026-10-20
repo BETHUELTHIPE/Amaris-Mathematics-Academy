@@ -1,0 +1,26 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <h1>Anonymous real-user performance: last 28 days</h1>
+  <p>These are approximate 75th-percentile upper bounds from anonymous daily histograms.
+  No user accounts, addresses, full URLs, events or IP addresses are stored.
+  Groups with fewer than 20 observations are suppressed.</p>
+  <p>Targets: LCP at most 2,500 ms; INP at most 200 ms; CLS at most 0.10.
+  No INP is recorded for visits without an eligible interaction. Blank metrics do not mean zero.</p>
+  <table id="result_list" role="table">
+    <thead><tr>
+      <th>Metric</th><th>Page group</th><th>Device</th><th>Network</th>
+      <th>Samples</th><th>p75 bucket upper bound</th>
+    </tr></thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>{{ row.metric }}</td><td>{{ row.route }}</td><td>{{ row.device }}</td>
+          <td>{{ row.network }}</td><td>{{ row.samples }}</td>
+          <td>{% if row.over_maximum %}Above measurement range{% else %}{{ row.p75_bound }}{% if row.metric != "CLS" %} ms{% endif %}{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6">No group has at least 20 observations yet. Monitoring is still collecting.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}
