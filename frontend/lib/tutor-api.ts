@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 
 import { env } from "cloudflare:workers";
 import { normalizeCmsApiBaseUrl } from "@/lib/cms-api-url";
@@ -51,11 +52,9 @@ export class TutorApiError extends Error {
   }
 }
 
-export async function tutorFetch<T>(
-  path: string,
-  method: "GET" | "POST" | "PATCH" = "GET",
-  data?: Record<string, unknown>,
-): Promise<T> {
+// Cache only the tutor's verified token within one React server request.
+// Django enforces tutor ownership on every subsequent no-store API request.
+const verifiedTutorToken = cache(async () => {
   const supabase = await createSupabaseServerClient();
   // getUser revalidates with Supabase Auth. Never accept an unverified, client-supplied role.
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -65,6 +64,15 @@ export async function tutorFetch<T>(
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
   if (sessionError || !token) throw new TutorApiError(401, "Your tutor session has expired.");
+  return token;
+});
+
+export async function tutorFetch<T>(
+  path: string,
+  method: "GET" | "POST" | "PATCH" = "GET",
+  data?: Record<string, unknown>,
+): Promise<T> {
+  const token = await verifiedTutorToken();
 
   const bindings = env as unknown as { CMS_API_URL?: string };
   const configured = bindings.CMS_API_URL || process.env.CMS_API_URL;
