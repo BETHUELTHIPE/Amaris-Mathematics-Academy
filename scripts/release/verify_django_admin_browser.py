@@ -32,7 +32,7 @@ def login(page, username, password):
         raise AssertionError("Django Jazzmin login fields missing")
     user_field.fill(username)
     password_field.fill(password)
-    page.locator('input[type="submit"]').first.click()
+    page.locator('button[type="submit"], input[type="submit"]').first.click()
     page.wait_for_url("**/admin/**", timeout=15000)
     assert "/admin/login/" not in page.url, "Synthetic account could not authenticate"
 
