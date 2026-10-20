@@ -8,13 +8,18 @@
     // Only show a non-blocking progress cue for actual admin save forms.
     const forms = document.querySelectorAll("form[id$='_form']");
     for (const form of forms) {
-      if (!form.querySelector(".submit-row") || form.dataset.amarisSaveFeedback === "ready") {
+      const saveButton = form.querySelector(
+        'input[name="_save"], button[name="_save"], input[type="submit"], button[type="submit"]'
+      );
+      if (!saveButton || form.dataset.amarisSaveFeedback === "ready") {
         continue;
       }
       form.dataset.amarisSaveFeedback = "ready";
       form.addEventListener("submit", function (event) {
         if (event.defaultPrevented || !form.checkValidity()) return;
-        const actions = form.querySelector(".submit-row");
+        // Jazzmin may use a custom form-group instead of Django's .submit-row.
+        // Place the cue beside the actual save control in either template.
+        const actions = form.querySelector(".submit-row") || saveButton.parentElement;
         if (!actions || actions.querySelector(".amaris-admin-submit-status")) return;
 
         const status = document.createElement("span");
