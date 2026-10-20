@@ -780,8 +780,8 @@ class WebVitalBucketAdmin(admin.ModelAdmin):
     """Superuser-only p75 trend view; never expose individual measurements."""
 
     change_list_template = "admin/content/webvitalbucket/change_list.html"
-    list_display = ("day", "metric", "route", "device", "network", "bucket", "count")
-    list_filter = ("metric", "device", "network", "day")
+    list_display = ("day", "release", "metric", "route", "device", "network", "bucket", "count")
+    list_filter = ("release", "metric", "device", "network", "day")
     ordering = ("-day", "route", "metric")
     list_per_page = 30
 
