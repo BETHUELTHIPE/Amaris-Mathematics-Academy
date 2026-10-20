@@ -1,0 +1,28 @@
+name: Staging Live RUM Browser and Histogram Acceptance
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/staging-rum-live-acceptance.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  staging-rum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Install real Chrome browser harness
+        run: python -m pip install playwright==1.62.0
+      - name: Verify staging routes, telemetry privacy and real Chrome beacon
+        env:
+          AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: python -u scripts/release/staging_rum_live_acceptance.py
