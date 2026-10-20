@@ -815,12 +815,13 @@ class WebVitalBucketAdmin(admin.ModelAdmin):
             from django.core.exceptions import PermissionDenied
 
             raise PermissionDenied()
-        from .rum import summarize_p75
+        from .rum import summarize_p75, summarize_weekly_p75
 
         context = {
             **self.admin_site.each_context(request),
             "title": "Real-user Web Vitals, trailing 28 days",
             "rows": summarize_p75(days=28, min_samples=20),
+            "weekly": summarize_weekly_p75(weeks=4, min_samples=20),
             "opts": self.model._meta,
         }
         return TemplateResponse(request, "admin/content/webvitalbucket/report.html", context)
