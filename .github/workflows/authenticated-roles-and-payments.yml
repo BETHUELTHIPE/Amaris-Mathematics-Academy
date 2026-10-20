@@ -88,6 +88,8 @@ jobs:
           content.test_tutor_finance
           content.test_tutor_applications
           --verbosity 2
+      - name: Build actual production staticfiles manifest for Django Admin
+        run: python manage.py collectstatic --noinput
       - name: Confirm superuser-only marketing and monitoring access
         run: >-
           python manage.py test
