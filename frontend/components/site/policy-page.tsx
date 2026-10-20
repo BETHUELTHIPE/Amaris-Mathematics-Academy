@@ -15,7 +15,7 @@ export function PolicyPage({ kind }: { kind: "payment" | "working" }) {
           <div className="min-w-0 flex-1 px-5 py-9 sm:px-10">
             <p className="eyebrow">Academy policies</p>
             <h1 className="mt-4 break-words text-3xl font-semibold tracking-tight text-[#07152d] sm:text-4xl">{policy.title}</h1>
-            <p className="mt-4 text-sm text-[#6a7890]">Effective {policy.effective}</p>
+            <p className="mt-4 text-sm text-[#4c5d73]">Effective {policy.effective}</p>
             <p className="mt-6 max-w-3xl text-base leading-8 text-[#4d5d76] sm:text-lg">{policy.intro}</p>
             <a href={`/policies/${kind}-policy.pdf`} download className="print-hidden mt-7 inline-flex min-h-12 items-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white">
               <Download aria-hidden="true" className="size-4" /> Download letterheaded PDF
