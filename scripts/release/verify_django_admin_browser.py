@@ -81,7 +81,7 @@ def test_form_save(page):
     assert page.goto(url, wait_until="networkidle").status == 200
     form = page.locator("form[id$='_form']")
     assert form.count() == 1
-    assert form.locator(".submit-row").count() == 1
+    assert form.locator(".submit-row").count() >= 1  # save_on_top may render two rows
     page.locator("#id_name").fill("Synthetic Admin Browser Course Category")
     page.locator("#id_slug").fill("synthetic-admin-browser-course-category")
     # Cancel navigation in this synthetic browser check only to inspect
