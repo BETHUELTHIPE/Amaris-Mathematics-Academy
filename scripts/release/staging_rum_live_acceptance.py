@@ -77,21 +77,60 @@ def browser_validation():
             headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"],
         )
         ctx = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
-        ctx.add_init_script("Math.random = () => 0")
+        # Enroll this single disposable test browser in the sampling cohort.
+        # Observe *actual fetch responses*, without replacing recorded metric
+        # values or creating an artificial Web Vital event.
+        ctx.add_init_script("""
+            Math.random = () => 0;
+            window.__amarisRumHttpStatuses = [];
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = (...args) => {
+              const url = typeof args[0] === "string" ? args[0] : args[0]?.url;
+              const result = originalFetch(...args);
+              if (url && url.includes("/api/field-vitals")) {
+                result.then(r => window.__amarisRumHttpStatuses.push(r.status),
+                            () => window.__amarisRumHttpStatuses.push(0));
+              }
+              return result;
+            };
+        """)
+        requests = []
+        ctx.on("request", lambda req: requests.append(req.post_data_json)
+               if "/api/field-vitals" in req.url and req.method == "POST" else None)
         page = ctx.new_page()
-        page.goto(FRONT + "/", wait_until="domcontentloaded", timeout=80000)
-        page.locator("h1").first.wait_for(timeout=30000)
-        page.wait_for_timeout(2500)
         try:
-            with page.expect_response(
-                lambda response: "/api/field-vitals" in response.url and response.request.method == "POST",
-                timeout=22000,
-            ) as response_info:
-                page.evaluate("window.dispatchEvent(new Event('pagehide'))")
-            response = response_info.value
-            if response.status != 204:
-                raise RuntimeError(f"Real Chrome Web Vital request returned HTTP {response.status}")
-            print("PASS real mobile Chrome -> staging Next -> Django: HTTP 204", flush=True)
+            page.goto(FRONT + "/", wait_until="domcontentloaded", timeout=80000)
+            page.locator("h1").first.wait_for(timeout=30000)
+            page.wait_for_timeout(2500)
+            page.evaluate("window.dispatchEvent(new Event('pagehide'))")
+            try:
+                page.wait_for_function(
+                    "() => window.__amarisRumHttpStatuses.length > 0",
+                    timeout=22000,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    "Real Chrome did not emit a Web Vitals fetch. Verify the "
+                    "staging frontend was rebuilt with NEXT_PUBLIC_ENABLE_WEB_VITALS=true "
+                    "and the browser sample is enabled."
+                ) from exc
+            statuses = page.evaluate("window.__amarisRumHttpStatuses")
+            if not statuses or any(value != 204 for value in statuses):
+                raise RuntimeError(f"Real Chrome RUM forwarder returned non-204 status(es): {statuses}")
+            if not requests:
+                raise RuntimeError("No genuine Chrome POST request was observed")
+            for data in requests:
+                if not isinstance(data, dict) or set(data) != {"records"}:
+                    raise RuntimeError("Browser payload included unexpected fields")
+                if any(
+                    not isinstance(record, dict)
+                    or set(record) != {"name", "value", "route", "device", "network"}
+                    or record["name"] not in ("LCP", "INP", "CLS")
+                    or record["route"] != "home"
+                    for record in data["records"]
+                ):
+                    raise RuntimeError("Browser payload included identifying or invalid fields")
+            print("PASS real mobile Chrome -> staging Next -> Django: HTTP 204, privacy-safe browser metrics", flush=True)
         finally:
             ctx.close()
             browser.close()
