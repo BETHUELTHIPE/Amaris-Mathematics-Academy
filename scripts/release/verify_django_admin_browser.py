@@ -17,8 +17,21 @@ OUT.mkdir(parents=True, exist_ok=True)
 def login(page, username, password):
     response = page.goto(BASE + "/admin/login/?next=/admin/", wait_until="domcontentloaded")
     assert response and response.status == 200, "Admin login not accessible"
-    page.locator("#id_username").fill(username)
-    page.locator("#id_password").fill(password)
+    user_field = page.locator('input[name="username"]').first
+    password_field = page.locator('input[name="password"]').first
+    if not user_field.count() or not password_field.count():
+        page.screenshot(path=str(OUT / "login-diagnostic.png"), full_page=True)
+        print("BLOCK synthetic login page:",
+              json.dumps({
+                  "path": page.url.split("?", 1)[0],
+                  "title": page.title(),
+                  "input_types": page.locator("input").evaluate_all(
+                      "(nodes) => nodes.map(x => [x.type, x.name, x.id])"),
+                  "h1": page.locator("h1").all_text_contents()[:3],
+              }), flush=True)
+        raise AssertionError("Django Jazzmin login fields missing")
+    user_field.fill(username)
+    password_field.fill(password)
     page.locator('input[type="submit"]').first.click()
     page.wait_for_url("**/admin/**", timeout=15000)
     assert "/admin/login/" not in page.url, "Synthetic account could not authenticate"
