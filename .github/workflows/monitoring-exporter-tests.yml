@@ -18,6 +18,8 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install exporter dependencies
-        run: pip install -r monitoring/render/render-metrics-exporter/requirements.txt
+        run: pip install -r monitoring/render/render-metrics-exporter/requirements.txt 'pip-audit>=2.7,<3'
+      - name: Audit exporter runtime dependencies
+        run: pip-audit -r monitoring/render/render-metrics-exporter/requirements.txt
       - name: Test provider rejection and partial refresh
         run: python -m unittest discover -s monitoring/render/render-metrics-exporter -p 'test_exporter.py' -v
