@@ -122,6 +122,13 @@ jobs:
         env:
           AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: python -u frontend/e2e/rum_end_to_end_browser.py
+      - name: Diagnose isolated Admin 403 without logging credentials
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f /tmp/rum-django.log ]; then
+            grep -E 'CI admin login|Forbidden|CSRF|PermissionDenied' /tmp/rum-django.log | tail -n 20 || true
+          fi
       - name: Inspect isolated aggregate counts without printing student data
         if: always()
         shell: bash
