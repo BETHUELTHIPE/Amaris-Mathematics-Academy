@@ -1,0 +1,40 @@
+name: Current Release Web Vitals Acceptance
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/app/api/field-vitals/**'
+      - 'frontend/components/site/dashboard-real-user-vitals.tsx'
+      - 'frontend/app/privacy/page.tsx'
+      - 'frontend/tests/public-field-vitals.test.mjs'
+      - '.github/workflows/current-release-rum-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  privacy-and-type-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: TypeScript and frontend lint
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+      - name: Verify real-user telemetry privacy and existing dashboard contract
+        working-directory: frontend
+        run: |
+          node --test tests/public-field-vitals.test.mjs tests/dashboard-real-user-vitals.test.mjs
