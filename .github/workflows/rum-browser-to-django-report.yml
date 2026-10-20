@@ -1,0 +1,139 @@
+name: Real Browser to Django RUM Report Acceptance
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/e2e/rum_*'
+      - 'frontend/app/api/field-vitals/**'
+      - 'frontend/components/site/dashboard-real-user-vitals.tsx'
+      - '.github/workflows/rum-browser-to-django-report.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-browser-histogram-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # This job runs only disposable local services. No Render, Supabase or
+      # production credentials/hosts are ever provided.
+      DATABASE_URL: sqlite:////tmp/amaris-rum-canary.sqlite3
+      DJANGO_DEBUG: 'true'
+      DJANGO_SECRET_KEY: isolated-rum-test-never-production
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      SUPABASE_DATABASE_REQUIRED: 'false'
+      RUM_PERSIST_ENABLED: 'true'
+      RUM_FORWARD_ENABLED: 'true'
+      RUM_INGEST_TOKEN: isolated-github-only-token-2026-abcdefghijklmno
+      RENDER_GIT_COMMIT: abcdef012345abcdef012345abcdef012345abcd
+      NEXT_PUBLIC_ENABLE_WEB_VITALS: 'true'
+      CMS_API_URL: https://127.0.0.1:8443/api/v1
+      SITE_URL: http://127.0.0.1:4100
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:4100
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: test-placeholder
+      NODE_EXTRA_CA_CERTS: /tmp/amaris-rum-cert.pem
+      RUM_E2E_CERT: /tmp/amaris-rum-cert.pem
+      RUM_E2E_KEY: /tmp/amaris-rum-key.pem
+      RUM_E2E_ADMIN_PASSWORD: disposable-ci-admin-password
+      PYTHONPATH: ${{ github.workspace }}/backend-canary/backend:${{ github.workspace }}/frontend
+
+    steps:
+      - name: Checkout candidate frontend
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout matching draft Django histogram backend
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: BETHUELTHIPE/Amaris-Mathematics-Academy
+          ref: feat/rum-backend-20261020
+          path: backend-canary
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Install Python Django and real Chromium browser driver
+        run: |
+          python -m pip install -r backend-canary/backend/requirements.txt playwright==1.62.0
+      - name: Generate disposable local TLS and apply migration only to SQLite
+        shell: bash
+        run: |
+          set -euo pipefail
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout "$RUM_E2E_KEY" -out "$RUM_E2E_CERT" \
+            -subj "/CN=localhost" \
+            -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' >/dev/null 2>&1
+          python backend-canary/backend/manage.py migrate --noinput
+          python backend-canary/backend/manage.py shell -c 'from django.contrib.auth import get_user_model; import os; get_user_model().objects.create_superuser("rum_ci_admin", "ci@example.invalid", os.environ["RUM_E2E_ADMIN_PASSWORD"])'
+          echo "PASS migrated only disposable SQLite and created synthetic admin"
+      - name: Launch real Django histogram API on localhost TLS
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u frontend/e2e/rum_django_test_server.py >/tmp/rum-django.log 2>&1 &
+          echo $! >/tmp/rum-django.pid
+          for i in $(seq 1 40); do
+            if curl --cacert "$RUM_E2E_CERT" -fsS https://127.0.0.1:8443/health/ >/dev/null; then
+              echo "PASS real Django backend ready over local TLS"
+              exit 0
+            fi
+            sleep 2
+          done
+          tail -n 80 /tmp/rum-django.log
+          exit 1
+      - name: Install frontend and pinned Render Nitro adapters
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_ENV=development npm ci --include=dev
+          NODE_ENV=development npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+      - name: Build real production-style Nitro client with opt-in enabled only in CI
+        working-directory: frontend
+        run: NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Launch first-party field-vitals API and browser pages
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST=127.0.0.1 PORT=4100 NODE_ENV=production node .output/server/index.mjs >/tmp/rum-nitro.log 2>&1 &
+          echo $! >/tmp/rum-nitro.pid
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:4100/ >/dev/null; then
+              echo "PASS actual Nitro browser site ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          tail -n 100 /tmp/rum-nitro.log
+          exit 1
+      - name: Prove Chrome Web Vitals through Nitro to Django and superuser report
+        env:
+          AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: python -u frontend/e2e/rum_end_to_end_browser.py
+      - name: Inspect isolated aggregate counts without printing student data
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/amaris-rum-canary.sqlite3 ]; then
+            python backend-canary/backend/manage.py shell -c 'from content.models import WebVitalBucket; print("Isolated RUM aggregate row count:", WebVitalBucket.objects.count())' || true
+          fi
+      - name: Stop test services and delete disposable database
+        if: always()
+        shell: bash
+        run: |
+          kill "$(cat /tmp/rum-nitro.pid)" 2>/dev/null || true
+          kill "$(cat /tmp/rum-django.pid)" 2>/dev/null || true
+          rm -f /tmp/amaris-rum-canary.sqlite3 /tmp/amaris-rum-cert.pem /tmp/amaris-rum-key.pem
+          echo "PASS isolated test storage and TLS removed"
