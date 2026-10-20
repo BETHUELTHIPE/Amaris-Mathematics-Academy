@@ -25,5 +25,6 @@ jobs:
         run: |
           python backend/manage.py check
           python backend/manage.py makemigrations --check --dry-run
+          python backend/manage.py collectstatic --noinput
           python backend/manage.py migrate --noinput
           python backend/manage.py test content.test_rum --noinput
