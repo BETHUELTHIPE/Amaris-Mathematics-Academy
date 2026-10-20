@@ -41,8 +41,8 @@ to Render's log retention; avoid suggesting indefinite historical coverage.
 
 ## Genuine authenticated tutor acceptance
 
-Run `.github/workflows/live-tutor-dashboard-acceptance.yml` using GitHub Actions
-on release branch `render-live-current-20260918` with protected environment
+Run `.github/workflows/verified-production-tutor-session.yml` using GitHub Actions
+on default branch `main` with protected environment
 `tutor-production-verification`. Create exactly these GitHub **environment
 secrets** using a dedicated, verified, Django-approved tutor **test account**:
 
