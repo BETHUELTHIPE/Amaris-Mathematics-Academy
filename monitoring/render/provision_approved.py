@@ -16,7 +16,7 @@ import yaml
 
 WORKSPACE = "tea-csppi8l6l47c73dk9c90"
 REPO = "https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy"
-MANIFEST_HASH = "a4bf72cc14cae4cf2b88f1b29098cbe44a7e0e4615a9fe478203b2567a48b139"
+MANIFEST_HASH = "772eae046912573e77b234681be4bbbd388ef05f2268f35ba80f76060ae3722e"
 NAMES = {
     "amaris-monitoring-prometheus": "pserv",
     "amaris-monitoring-grafana": "pserv",
@@ -38,7 +38,9 @@ BROKER_ID = "red-dapaglkja7ms73ajrkq0"
 def approved_manifest(path):
     raw = path.read_bytes()
     if hashlib.sha256(raw).hexdigest() != MANIFEST_HASH:
-        raise ValueError("Blueprint changed from approved PR #303; review required")
+        raise ValueError(
+            "Blueprint changed from the reviewed monitoring plan; review required"
+        )
     services = yaml.safe_load(raw)["services"]
     if {s["name"]: s["type"] for s in services} != NAMES or len(services) != 3:
         raise ValueError("Only the three approved services are allowed")
@@ -234,7 +236,7 @@ def provision(api, path):
 
     # These credentials stay inside the protected runner and Render. Never print them.
     copied = {}
-    for key in ("DJANGO_SECRET_KEY", "DATABASE_URL"):
+    for key in ("DJANGO_SECRET_KEY", "DATABASE_URL", "SUPABASE_PROJECT_REF"):
         value = api.request(
             "GET", f"/services/{SOURCES['amaris-production-web'][0]}/env-vars/{key}"
         ).get("value")

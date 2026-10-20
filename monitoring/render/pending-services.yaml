@@ -109,6 +109,11 @@ services:
       type: web
       name: amaris-production-web
       envVarKey: DATABASE_URL
+  - key: SUPABASE_PROJECT_REF
+    fromService:
+      type: web
+      name: amaris-production-web
+      envVarKey: SUPABASE_PROJECT_REF
   - key: CELERY_BROKER_URL
     fromService:
       type: keyvalue
