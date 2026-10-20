@@ -17,7 +17,11 @@
           {% if service.status == "reachable" %}
             <span style="color:#197544">Console reachable</span>
           {% elif service.status == "degraded" %}
-            <span style="color:#9a6700">Exporter degraded / last refresh failed</span>
+            {% if service.name == "flower" %}
+              <span style="color:#9a6700">Console reachable; no verified active Celery workers</span>
+            {% else %}
+              <span style="color:#9a6700">Metrics partial, stale or refresh failed</span>
+            {% endif %}
           {% elif service.status == "invalid_config" %}
             <span style="color:#b42318">Unsafe endpoint configuration</span>
           {% elif service.status == "unavailable" %}
@@ -26,7 +30,7 @@
             <span>Unconfigured</span>
           {% endif %}
         </p>
-        {% if service.status == "reachable" and service.name != "render" %}
+        {% if service.name != "render" and service.status == "reachable" or service.name == "flower" and service.status == "degraded" %}
           <p><a href="{% url 'admin:amaris_monitoring_console' tool=service.name %}"
               class="button">Open {{ service.title }} (read-only)</a></p>
         {% else %}
