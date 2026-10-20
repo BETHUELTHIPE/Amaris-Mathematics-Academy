@@ -143,7 +143,7 @@ def collect_web_vitals(request: HttpRequest) -> HttpResponse:
         return HttpResponse(status=503, headers={"Cache-Control": "no-store"})
     secret = getattr(settings, "RUM_INGEST_TOKEN", "")
     supplied = request.headers.get("X-Amaris-Rum-Token", "")
-    if not secret or not secrets.compare_digest(secret, supplied):
+    if len(secret) < 32 or not secrets.compare_digest(secret, supplied):
         return HttpResponse(status=403, headers={"Cache-Control": "no-store"})
     if request.content_type != "application/json" or len(request.body) > 1800:
         return HttpResponse(status=400, headers={"Cache-Control": "no-store"})
