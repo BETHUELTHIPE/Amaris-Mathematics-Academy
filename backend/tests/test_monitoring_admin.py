@@ -131,13 +131,12 @@ class RealMonitoringStatusTests(SimpleTestCase):
     )
     @patch("amaris_cms.monitoring_status._request")
     def test_each_monitor_reports_actual_status_not_invented_online(self, request_probe):
-        request_probe.side_effect = [
-            (200, b"<html>flower</html>"),
-            (
-                200,
-                b"# HELP render_metrics_exporter_refresh_success one\n" b"render_metrics_exporter_refresh_success 0\n",
-            ),
-        ]
+        def inspect_target(url):
+            if url.endswith("/admin/monitoring/flower/"):
+                return (200, b"<html>flower</html>")
+            return (200, b"render_metrics_exporter_refresh_success 0\n")
+
+        request_probe.side_effect = inspect_target
         items = {r["name"]: r for r in monitor_statuses()}
         self.assertEqual(items["grafana"]["status"], "unconfigured")
         self.assertEqual(items["prometheus"]["status"], "unconfigured")
