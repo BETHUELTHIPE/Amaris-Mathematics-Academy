@@ -51,9 +51,7 @@ def bucket_for(metric: str, value: float) -> int:
     )
 
 
-def summarize_p75(
-    *, days: int = 28, min_samples: int = 20, end_date: date | None = None
-) -> list[dict[str, object]]:
+def summarize_p75(*, days: int = 28, min_samples: int = 20, end_date: date | None = None) -> list[dict[str, object]]:
     """Approximate p75 as the upper bound of a fixed, coarse bucket."""
     end_date = end_date or timezone.now().date()
     start = end_date - timedelta(days=days - 1)
@@ -96,9 +94,7 @@ def summarize_p75(
     return result
 
 
-def summarize_weekly_p75(
-    *, weeks: int = 4, min_samples: int = 20
-) -> list[dict[str, object]]:
+def summarize_weekly_p75(*, weeks: int = 4, min_samples: int = 20) -> list[dict[str, object]]:
     """Non-overlapping seven-day windows show trends without raw measurements."""
     today = timezone.now().date()
     rows = []
@@ -131,11 +127,7 @@ def _valid_record(entry: object) -> tuple[str, str, str, str, int] | None:
     ):
         return None
     number = float(value)
-    if (
-        not math.isfinite(number)
-        or number < 0
-        or number > {"LCP": 120000, "INP": 60000, "CLS": 10}[metric]
-    ):
+    if not math.isfinite(number) or number < 0 or number > {"LCP": 120000, "INP": 60000, "CLS": 10}[metric]:
         return None
     return metric, route, device, network, bucket_for(metric, number)
 
