@@ -27,14 +27,28 @@ BOUNDS = {
     "INP": (50, 100, 150, 200, 300, 500, 800, 1200, 2000, 5000, 10000),
     "CLS": (0.01, 0.025, 0.05, 0.1, 0.15, 0.25, 0.5, 1, 3),
 }
-ROUTES = frozenset({"home", "courses", "contact", "announcements", "matric", "booking", "student", "other-public"})
+ROUTES = frozenset(
+    {
+        "home",
+        "courses",
+        "contact",
+        "announcements",
+        "matric",
+        "booking",
+        "student",
+        "other-public",
+    }
+)
 DEVICES = frozenset({"mobile", "tablet", "desktop"})
 NETWORKS = frozenset({"slow-2g", "2g", "3g", "4g", "unknown"})
 RECORD_FIELDS = frozenset({"name", "value", "route", "device", "network"})
 
 
 def bucket_for(metric: str, value: float) -> int:
-    return next((i for i, bound in enumerate(BOUNDS[metric]) if value <= bound), len(BOUNDS[metric]))
+    return next(
+        (i for i, bound in enumerate(BOUNDS[metric]) if value <= bound),
+        len(BOUNDS[metric]),
+    )
 
 
 def summarize_p75(
@@ -82,7 +96,9 @@ def summarize_p75(
     return result
 
 
-def summarize_weekly_p75(*, weeks: int = 4, min_samples: int = 20) -> list[dict[str, object]]:
+def summarize_weekly_p75(
+    *, weeks: int = 4, min_samples: int = 20
+) -> list[dict[str, object]]:
     """Non-overlapping seven-day windows show trends without raw measurements."""
     today = timezone.now().date()
     rows = []
@@ -115,7 +131,11 @@ def _valid_record(entry: object) -> tuple[str, str, str, str, int] | None:
     ):
         return None
     number = float(value)
-    if not math.isfinite(number) or number < 0 or number > {"LCP": 120000, "INP": 60000, "CLS": 10}[metric]:
+    if (
+        not math.isfinite(number)
+        or number < 0
+        or number > {"LCP": 120000, "INP": 60000, "CLS": 10}[metric]
+    ):
         return None
     return metric, route, device, network, bucket_for(metric, number)
 
