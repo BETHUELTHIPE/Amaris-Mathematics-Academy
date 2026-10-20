@@ -3,6 +3,7 @@
 These checks report only observed availability. They never expose internal
 addresses, tokens, session cookies, or a fabricated health result.
 """
+import base64
 import concurrent.futures
 import re
 import time
@@ -49,9 +50,11 @@ def is_private_monitoring_url(url):
 
 def _request(url):
     opener = urllib_request.build_opener(NoRedirect())
-    req = urllib_request.Request(
-        url, headers={"Accept-Encoding": "identity", "User-Agent": "Amaris-admin-health/1.0"}
-    )
+    headers = {"Accept-Encoding": "identity", "User-Agent": "Amaris-admin-health/1.0"}
+    if url.endswith("/admin/monitoring/flower/") and settings.MONITORING_FLOWER_BASIC_AUTH:
+        token = base64.b64encode(settings.MONITORING_FLOWER_BASIC_AUTH.encode("utf-8")).decode("ascii")
+        headers["Authorization"] = f"Basic {token}"
+    req = urllib_request.Request(url, headers=headers)
     try:
         response = opener.open(req, timeout=TIMEOUT_SECONDS)
     except urllib_error.HTTPError as exc:
