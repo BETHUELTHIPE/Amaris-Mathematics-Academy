@@ -130,7 +130,7 @@ def monitor_statuses():
                         (
                             "MONITORING_RENDER_EXPORTER_URL"
                             if record["name"] == "render"
-                            else "MONITORING_" + record["name"].upper() + "_URL"
+                            else "MONITORING_" + str(record["name"]).upper() + "_URL"
                         ),
                         "",
                     ),
