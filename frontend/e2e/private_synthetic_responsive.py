@@ -12,8 +12,35 @@ from pathlib import Path
 import responsive_browser as suite
 from playwright.sync_api import sync_playwright
 
+def check_current_navigation(page, width_name):
+    suite.goto(page, "/")
+    suite.require(page.get_by_role("link", name="Amaris Mathematics Academy home").is_visible(),
+                  "Home brand link is missing")
+    compact = width_name in ("narrow-mobile", "mobile", "tablet")
+    if compact:
+        panel = page.locator(".header-mobile-menu")
+        panel.locator("summary.header-mobile-trigger").click()
+        nav = page.get_by_role("navigation", name="Mobile navigation")
+        group = nav.locator("details.header-mobile-group").filter(
+            has=page.locator("summary", has_text="Learn")
+        ).first
+    else:
+        nav = page.get_by_role("navigation", name="Main navigation")
+        group = nav.locator("details.header-group").filter(
+            has=page.locator("summary", has_text="Learn")
+        ).first
+    suite.require(group.count() == 1, "Learn group missing")
+    group.locator("summary").click()
+    courses = group.locator('a[href="/courses"]')
+    suite.require(courses.count() == 1 and courses.is_visible(), "Courses link missing from Learn menu")
+    courses.focus()
+    suite.require(courses.evaluate("(el) => document.activeElement === el"),
+                  "Courses link cannot receive keyboard focus")
+    suite.assert_no_horizontal_overflow(page, "site navigation")
+
+
 CASE_NAMES = (
-    ("navigation", suite.check_navigation),
+    ("navigation", check_current_navigation),
     ("dashboard", suite.check_dashboard),
     ("document-invoice", suite.check_table),
     ("checkout-and-payment-recovery", suite.check_checkout),
