@@ -16,8 +16,18 @@ from urllib import request as urllib_request
 from django.conf import settings
 
 TOOL_SPECS = (
-    ("grafana", "Grafana", "MONITORING_GRAFANA_URL", "/admin/monitoring/grafana/api/health"),
-    ("prometheus", "Prometheus", "MONITORING_PROMETHEUS_URL", "/admin/monitoring/prometheus/-/healthy"),
+    (
+        "grafana",
+        "Grafana",
+        "MONITORING_GRAFANA_URL",
+        "/admin/monitoring/grafana/api/health",
+    ),
+    (
+        "prometheus",
+        "Prometheus",
+        "MONITORING_PROMETHEUS_URL",
+        "/admin/monitoring/prometheus/-/healthy",
+    ),
     ("flower", "Flower", "MONITORING_FLOWER_URL", "/admin/monitoring/flower/"),
 )
 TIMEOUT_SECONDS = 1.5
@@ -52,8 +62,13 @@ def is_private_monitoring_url(url):
 def _request(url):
     opener = urllib_request.build_opener(NoRedirect())
     headers = {"Accept-Encoding": "identity", "User-Agent": "Amaris-admin-health/1.0"}
-    if url.endswith("/admin/monitoring/flower/") and settings.MONITORING_FLOWER_BASIC_AUTH:
-        token = base64.b64encode(settings.MONITORING_FLOWER_BASIC_AUTH.encode("utf-8")).decode("ascii")
+    if (
+        url.endswith("/admin/monitoring/flower/")
+        and settings.MONITORING_FLOWER_BASIC_AUTH
+    ):
+        token = base64.b64encode(settings.MONITORING_FLOWER_BASIC_AUTH.encode("utf-8")).decode(
+            "ascii"
+        )
         headers["Authorization"] = f"Basic {token}"
     req = urllib_request.Request(url, headers=headers)
     try:
@@ -77,7 +92,8 @@ def _probe(tool, endpoint, time_bucket):
             if status != 200:
                 return "unavailable"
             healthy = re.search(
-                rb"(?m)^render_metrics_exporter_refresh_success\s+1(?:\.0+)?\s*$", payload
+                rb"(?m)^render_metrics_exporter_refresh_success\s+1(?:\.0+)?\s*$",
+                payload,
             )
             last = re.search(
                 rb"(?m)^render_metrics_exporter_last_success_timestamp_seconds\s+([0-9.]+)\s*$",
@@ -99,7 +115,10 @@ def _probe(tool, endpoint, time_bucket):
 def monitor_statuses():
     records = []
     enabled = settings.MONITORING_CONSOLE_ENABLED
-    names = (*TOOL_SPECS, ("render", "Render metrics", "MONITORING_RENDER_EXPORTER_URL", "/metrics"))
+    names = (
+        *TOOL_SPECS,
+        ("render", "Render metrics", "MONITORING_RENDER_EXPORTER_URL", "/metrics"),
+    )
     for name, title, setting, _ in names:
         endpoint = getattr(settings, setting, "")
         configured = bool(enabled and endpoint)
