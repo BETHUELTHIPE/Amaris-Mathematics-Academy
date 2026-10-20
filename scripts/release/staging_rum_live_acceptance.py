@@ -55,6 +55,12 @@ def synthetic_validation():
     print("PASS same-origin protection 403", flush=True)
     malformed_status = post({"records": [{**example, "account_id": "forbidden"}]}, FRONT)
     if malformed_status != 400:
+        if malformed_status == 403:
+            raise RuntimeError(
+                "The staging RUM forwarder rejected its real public Origin. "
+                "Verify the staging frontend RUM_ALLOWED_ORIGIN points to its "
+                "exact HTTPS public Render hostname; never trust Host or forwarded headers."
+            )
         raise RuntimeError(f"Non-allowlisted identifying field not rejected: HTTP {malformed_status}")
     print("PASS private-field rejection 400", flush=True)
     for batch in range(7):
