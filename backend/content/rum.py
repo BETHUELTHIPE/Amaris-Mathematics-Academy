@@ -14,7 +14,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.db import transaction
 from django.db.models import F, Sum
-from django.http import HttpRequest, HttpResponse, HttpResponseNotAllowed, JsonResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseNotAllowed
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
@@ -118,7 +118,10 @@ def collect_web_vitals(request: HttpRequest) -> HttpResponse:
         return HttpResponse(status=400, headers={"Cache-Control": "no-store"})
     today = timezone.now().date()
     with transaction.atomic():
-        for metric, route, device, network, bucket in clean:
+        for row in clean:
+            if row is None:  # All records are validated above.
+                continue
+            metric, route, device, network, bucket = row
             obj, _ = WebVitalBucket.objects.get_or_create(
                 day=today, metric=metric, route=route, device=device,
                 network=network, bucket=bucket, defaults={"count": 0},
