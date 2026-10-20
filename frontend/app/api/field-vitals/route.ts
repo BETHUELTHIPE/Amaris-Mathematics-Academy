@@ -16,7 +16,10 @@ const MAX_REPORTS_PER_MINUTE = 300; // process-local, never indexed by IP or acc
 export async function POST(request: NextRequest) {
   const cache = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" };
   const origin = request.headers.get("origin");
-  if (!origin || origin !== new URL(request.url).origin) {
+  // Render's reverse proxy may expose an internal URL here. Trust only the
+  // explicitly configured staging origin, never client-supplied Host headers.
+  const expectedOrigin = process.env.RUM_ALLOWED_ORIGIN || new URL(request.url).origin;
+  if (!origin || origin !== expectedOrigin) {
     return new NextResponse(null, { status: 403, headers: cache });
   }
   const site = request.headers.get("sec-fetch-site");
