@@ -106,3 +106,12 @@ details[open] > summary .header-chevron { transform:rotate(180deg); }
 @media (prefers-reduced-motion:reduce) {
   .header-navigation * { animation:none!important; transition:none!important; }
 }
+
+/* Responsive safety rails for user content and embedded learning media.
+   Do not conceal a wider-than-viewport page with global overflow:hidden. */
+@media screen {
+  img, video, iframe, canvas { max-inline-size:100%; }
+  pre { max-inline-size:100%; overflow-x:auto; }
+  .document-preview, .document-preview .print-sheet { min-inline-size:0; }
+  .document-preview .print-sheet { max-inline-size:100%; }
+}
