@@ -30,8 +30,8 @@ test("telemetry ingestion allowlists only metric, coarse page and device", async
   assert.match(endpoint, /Object\.keys\(input\)\.sort\(\)\.join\(","\) !== "device,metric,page,value"/);
   assert.match(endpoint, /origin !== new URL\(request\.url\)\.origin/);
   assert.match(endpoint, /acceptedInMinute > 300/);
-  assert.match(endpoint, /JSON\\.stringify\\(\\{ page, device, metric, value, release \\}\\)/);
-  assert.match(endpoint, /process\\.env\\.RENDER_GIT_COMMIT/);
+  assert.ok(endpoint.includes("JSON.stringify({ page, device, metric, value, release })"));
+  assert.ok(endpoint.includes("process.env.RENDER_GIT_COMMIT"));
   assert.match(endpoint, /"home", "courses", "announcements"/);
   assert.doesNotMatch(endpoint, /request\.headers\.get\("cookie"\)|request\.headers\.get\("authorization"\)|user\.id|session\.user/);
 });
