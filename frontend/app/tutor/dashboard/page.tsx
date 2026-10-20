@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BookOpen, CalendarDays, CheckCircle2, Clock3, LogOut, Plus, ShieldCheck, Video } from "lucide-react";
@@ -71,12 +72,32 @@ function SlotFields({ slot }: { slot?: TutorSlot }) {
   );
 }
 
+function TutorEarningsSkeleton() {
+  return <section id="earnings" aria-label="Loading your private earnings" role="status" className="min-h-72 rounded-3xl border border-[#dce4ef] bg-white p-5 sm:p-8">
+    <div aria-hidden="true" className="space-y-5">
+      <div className="h-6 w-52 max-w-full rounded bg-[#e9eef6]" />
+      <div className="h-10 w-72 max-w-full rounded bg-[#e9eef6]" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-28 rounded-2xl bg-[#f1f5fb]" />)}
+      </div>
+    </div>
+    <span className="sr-only">Loading verified private tutor earnings</span>
+  </section>;
+}
+
+async function TutorEarningsDetails({ pending }: { pending: Promise<TutorEarnings | null> }) {
+  return <TutorEarningsPanel earnings={await pending} />;
+}
+
 export default async function TutorDashboardPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const notices = await searchParams;
+  // Start independently scoped financial read while loading the timetable.
+  // Django still verifies tutor permissions on each no-store API request.
+  const pendingEarnings = getTutorEarnings().catch((): TutorEarnings | null => null);
   let dashboard: Awaited<ReturnType<typeof getTutorDashboard>>;
   try {
     dashboard = await getTutorDashboard();
@@ -107,9 +128,6 @@ export default async function TutorDashboardPage({
       </main>
     );
   }
-
-  let earnings: TutorEarnings | null = null;
-  try { earnings = await getTutorEarnings(); } catch { /* Show unavailable amounts without interrupting the timetable. */ }
 
   return (
     <main className="min-h-screen bg-[#f5f7fb]">
@@ -142,7 +160,7 @@ export default async function TutorDashboardPage({
       </section>
 
       <div className="mx-auto max-w-7xl space-y-8 px-5 py-10 lg:px-8 lg:py-14">
-        <TutorEarningsPanel earnings={earnings} />
+        <Suspense fallback={<TutorEarningsSkeleton />}><TutorEarningsDetails pending={pendingEarnings} /></Suspense>
         {notices.success && <div role="status" className="flex items-center gap-3 rounded-xl border border-[#a7ddcb] bg-[#ebfbf4] p-4 text-sm text-[#136950]"><CheckCircle2 className="size-5" />{notices.success.slice(0, 180)}</div>}
         {notices.error && <div role="alert" className="rounded-xl border border-[#f5c2bf] bg-[#fff3f3] p-4 text-sm text-[#9b2525]">{notices.error.slice(0, 180)}</div>}
 
