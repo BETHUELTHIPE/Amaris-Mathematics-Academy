@@ -3,38 +3,38 @@
   <h1>Anonymous real-user performance: last 28 days</h1>
   <p>These are approximate 75th-percentile upper bounds from anonymous daily histograms.
   No user accounts, addresses, full URLs, events or IP addresses are stored.
-  Groups with fewer than 20 observations are suppressed.</p>
+  Groups with fewer than 20 observations are suppressed. Reported p75 values are coarse bucket upper bounds, not exact percentiles or real-user before/after proof. Synthetic test samples belong only in isolated databases.</p>
   <p>Targets: LCP at most 2,500 ms; INP at most 200 ms; CLS at most 0.10.
   No INP is recorded for visits without an eligible interaction. Blank metrics do not mean zero.</p>
   <h2>Last 28 days — p75 bucket bounds (UTC days)</h2>
   <table id="result_list" role="table">
     <thead><tr>
-      <th>Metric</th><th>Page group</th><th>Device</th><th>Network</th>
+      <th>Frontend release</th><th>Metric</th><th>Page group</th><th>Device</th><th>Network</th>
       <th>Samples</th><th>p75 bucket upper bound</th>
     </tr></thead>
     <tbody>
       {% for row in rows %}
         <tr>
-          <td>{{ row.metric }}</td><td>{{ row.route }}</td><td>{{ row.device }}</td>
+          <td>{{ row.release }}</td><td>{{ row.metric }}</td><td>{{ row.route }}</td><td>{{ row.device }}</td>
           <td>{{ row.network }}</td><td>{{ row.samples }}</td>
           <td>{% if row.over_maximum %}Above measurement range{% else %}{{ row.p75_bound }}{% if row.metric != "CLS" %} ms{% endif %}{% endif %}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="6">No group has at least 20 observations yet. Monitoring is still collecting.</td></tr>
+        <tr><td colspan="7">No group has at least 20 observations yet. Monitoring is still collecting.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 <h2>Weekly p75 trend (non-overlapping 7-day windows)</h2>
   <p>Each week is shown separately. A missing row means fewer than 20 observations in that group.</p>
   <table role="table">
-    <thead><tr><th>Week ending (UTC)</th><th>Metric</th><th>Page group</th><th>Device</th><th>Network</th><th>Count</th><th>p75 upper bound</th></tr></thead>
+    <thead><tr><th>Week ending (UTC)</th><th>Frontend release</th><th>Metric</th><th>Page group</th><th>Device</th><th>Network</th><th>Count</th><th>p75 upper bound</th></tr></thead>
     <tbody>
       {% for row in weekly %}
-        <tr><td>{{ row.week_ending }}</td><td>{{ row.metric }}</td><td>{{ row.route }}</td>
+        <tr><td>{{ row.week_ending }}</td><td>{{ row.release }}</td><td>{{ row.metric }}</td><td>{{ row.route }}</td>
         <td>{{ row.device }}</td><td>{{ row.network }}</td><td>{{ row.samples }}</td>
         <td>{% if row.over_maximum %}Above measurement range{% else %}{{ row.p75_bound }}{% if row.metric != "CLS" %} ms{% endif %}{% endif %}</td></tr>
       {% empty %}
-        <tr><td colspan="7">Not enough real-user samples for a weekly trend yet.</td></tr>
+        <tr><td colspan="8">Not enough real-user samples for a weekly trend yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
