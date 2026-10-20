@@ -5,10 +5,6 @@ on:
   # Use a non-top-of-hour minute to reduce scheduled-run delays.
   schedule:
     - cron: '17 2 1 * *'
-  # One-time pre-migration encrypted backup; remove after this run.
-  push:
-    branches: [main]
-    paths: ['.github/workflows/genuine-production-public-backup.yml']
   workflow_dispatch:
     inputs:
       confirmation:
@@ -25,7 +21,7 @@ concurrency:
 
 jobs:
   isolated-restoration:
-    if: github.ref == 'refs/heads/main' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && (github.event_name == 'schedule' || github.event_name == 'push' || inputs.confirmation == 'BACKUP_PUBLIC_SCHEMA_ONLY')
+    if: github.ref == 'refs/heads/main' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && (github.event_name == 'schedule' || inputs.confirmation == 'BACKUP_PUBLIC_SCHEMA_ONLY')
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 45
