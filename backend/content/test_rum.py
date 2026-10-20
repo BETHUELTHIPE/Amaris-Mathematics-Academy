@@ -21,8 +21,10 @@ class WebVitalsCollectionTests(TestCase):
     def send(self, records, **kwargs):
         with patch("content.rum.secrets.randbelow", return_value=99):
             return self.client.post(
-                self.url, data=json.dumps({"records": records}),
-                content_type="application/json", **kwargs,
+                self.url,
+                data=json.dumps({"records": records}),
+                content_type="application/json",
+                **kwargs,
             )
 
     def test_requires_server_only_secret(self):
@@ -99,8 +101,13 @@ class WebVitalsAdminTests(TestCase):
         admin = User.objects.create_superuser("rum_admin", "admin@example.test", "test-password")
         self.client.force_login(admin)
         WebVitalBucket.objects.create(
-            day=timezone.now().date(), metric="INP", route="student",
-            network="3g", device="mobile", bucket=3, count=1,
+            day=timezone.now().date(),
+            metric="INP",
+            route="student",
+            network="3g",
+            device="mobile",
+            bucket=3,
+            count=1,
         )
         response = self.client.get(reverse("admin:content_webvitalbucket_report"))
         self.assertContains(response, "No group has at least 20 observations")
