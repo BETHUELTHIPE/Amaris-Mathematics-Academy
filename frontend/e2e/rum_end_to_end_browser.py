@@ -55,6 +55,20 @@ def main():
         context = browser.new_context(viewport={"width": 390, "height": 844})
         # Force CI sample selection, not fabricated metric values.
         context.add_init_script("Math.random = () => 0;")
+        # Observe actual browser fetch() calls in this disposable CI context.
+        # Keep the real fetch untouched: no fabricated metric or replacement POST.
+        # Playwright network events can miss keepalive requests during unload.
+        context.add_init_script("""(() => {
+          window.__ciRumObserved = [];
+          const nativeFetch = window.fetch.bind(window);
+          window.fetch = (resource, options) => {
+            const destination = typeof resource === 'string' ? resource : resource?.url || '';
+            if (destination === '/api/field-vitals' && options?.method === 'POST') {
+              try { window.__ciRumObserved.push(JSON.parse(options.body)); } catch {}
+            }
+            return nativeFetch(resource, options);
+          };
+        })();""")
         statuses = []
         payloads = []
 
@@ -77,6 +91,11 @@ def main():
             page.wait_for_timeout(950)
             page.evaluate("window.dispatchEvent(new Event('pagehide'))")
             page.wait_for_timeout(330)
+            # Capture genuine browser-assembled payloads before the page closes.
+            # Closing may interrupt Playwright's network event forwarding while
+            # the browser's keepalive request still reaches Django.
+            for observed in page.evaluate("window.__ciRumObserved || []"):
+                payloads.append(observed)
             page.close()
             count, _ = db_pool.submit(observed_histograms).result()
             if count >= COUNT_REQUIRED:
@@ -90,7 +109,7 @@ def main():
         # persisted the actual Web Vitals. Verify a 204 separately using the
         # exact browser-observed payload, not a manufactured measurement.
         if not payloads:
-            raise AssertionError("Chrome never emitted a real Web Vitals request")
+            raise AssertionError(f"Chrome did not expose any outgoing first-party vital beacons; accepted LCP count={count}, observed HTTP statuses={statuses}")
         if any(status != 204 for status in statuses):
             raise AssertionError(f"unexpected browser forwarding status: {statuses}")
         if not statuses:
