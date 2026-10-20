@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import secrets
 from datetime import date, timedelta
 
@@ -36,6 +37,7 @@ ROUTES = frozenset(
         "matric",
         "booking",
         "student",
+        "tutor",
         "other-public",
     }
 )
@@ -57,17 +59,17 @@ def summarize_p75(*, days: int = 28, min_samples: int = 20, end_date: date | Non
     start = end_date - timedelta(days=days - 1)
     values = (
         WebVitalBucket.objects.filter(day__gte=start, day__lte=end_date)
-        .values("metric", "route", "device", "network", "bucket")
+        .values("release", "metric", "route", "device", "network", "bucket")
         .annotate(samples=Sum("count"))
-        .order_by("metric", "route", "device", "network", "bucket")
+        .order_by("release", "metric", "route", "device", "network", "bucket")
     )
-    groups: dict[tuple[str, str, str, str], dict[int, int]] = {}
+    groups: dict[tuple[str, str, str, str, str], dict[int, int]] = {}
     for row in values:
-        key = (row["metric"], row["route"], row["device"], row["network"])
+        key = (row["release"], row["metric"], row["route"], row["device"], row["network"])
         bins = groups.setdefault(key, {})
         bins[row["bucket"]] = int(row["samples"])
     result = []
-    for (metric, route, device, network), bins in sorted(groups.items()):
+    for (release, metric, route, device, network), bins in sorted(groups.items()):
         n = sum(bins.values())
         if n < min_samples:
             continue  # Suppress small populations, rather than exposing raw events.
@@ -82,6 +84,7 @@ def summarize_p75(*, days: int = 28, min_samples: int = 20, end_date: date | Non
         bound = BOUNDS[metric][index] if index < len(BOUNDS[metric]) else None
         result.append(
             {
+                "release": release,
                 "metric": metric,
                 "route": route,
                 "device": device,
@@ -136,6 +139,8 @@ def _valid_record(entry: object) -> tuple[str, str, str, str, int] | None:
 def collect_web_vitals(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
+    if not getattr(settings, "RUM_PERSIST_ENABLED", False):
+        return HttpResponse(status=503, headers={"Cache-Control": "no-store"})
     secret = getattr(settings, "RUM_INGEST_TOKEN", "")
     supplied = request.headers.get("X-Amaris-Rum-Token", "")
     if not secret or not secrets.compare_digest(secret, supplied):
@@ -154,6 +159,9 @@ def collect_web_vitals(request: HttpRequest) -> HttpResponse:
     clean = [_valid_record(row) for row in entries]
     if any(row is None for row in clean):
         return HttpResponse(status=400, headers={"Cache-Control": "no-store"})
+    release = request.headers.get("X-Amaris-Rum-Release", "")
+    if not re.fullmatch(r"[a-f0-9]{12}", release):
+        return HttpResponse(status=400, headers={"Cache-Control": "no-store"})
     today = timezone.now().date()
     with transaction.atomic():
         for row in clean:
@@ -162,6 +170,7 @@ def collect_web_vitals(request: HttpRequest) -> HttpResponse:
             metric, route, device, network, bucket = row
             obj, _ = WebVitalBucket.objects.get_or_create(
                 day=today,
+                release=release,
                 metric=metric,
                 route=route,
                 device=device,
