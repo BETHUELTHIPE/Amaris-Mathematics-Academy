@@ -31,7 +31,6 @@ def check_index(page, width, reduced_motion):
     assert response and response.status == 200
     assert page.locator(".amaris-admin-welcome").count() == 1
     assert page.locator(".amaris-admin-shortcut").count() >= 3
-    assert page.locator('a[href*="amaris_monitoring_home"]').count() == 0 or True
     monitoring = page.get_by_role("link", name="Open monitoring")
     assert monitoring.count() == 1, "Superuser monitoring shortcut missing"
 
