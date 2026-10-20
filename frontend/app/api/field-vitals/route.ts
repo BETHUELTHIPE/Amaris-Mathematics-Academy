@@ -7,6 +7,10 @@ const NAMES = new Set(["LCP", "INP", "CLS"]);
 const ROUTES = new Set(["home", "courses", "contact", "announcements", "matric", "booking", "student", "other-public"]);
 const DEVICES = new Set(["mobile", "tablet", "desktop"]);
 const NETWORKS = new Set(["slow-2g", "2g", "3g", "4g", "unknown"]);
+let currentMinute = 0;
+let acceptedThisMinute = 0;
+const MAX_REPORTS_PER_MINUTE = 300; // process-local, never indexed by IP or account
+
 
 /** Same-origin public beacon, forwarded server-to-server with a private secret. */
 export async function POST(request: NextRequest) {
@@ -57,6 +61,16 @@ export async function POST(request: NextRequest) {
       }
       // Explicitly rebuild the payload; never relay unknown/private fields.
       records.push({ name: v.name, value: v.value, route: v.route, device: v.device, network: v.network });
+    }
+    // Bound public anonymous forwarding so a surge cannot overrun the shared
+    // private histogram database. Never store an IP, cookie or visitor ID.
+    const minute = Math.floor(Date.now() / 60000);
+    if (minute !== currentMinute) {
+      currentMinute = minute;
+      acceptedThisMinute = 0;
+    }
+    if (++acceptedThisMinute > MAX_REPORTS_PER_MINUTE) {
+      return new NextResponse(null, { status: 429, headers: cache });
     }
     const response = await fetch(`${base}/rum/`, {
       method: "POST",
