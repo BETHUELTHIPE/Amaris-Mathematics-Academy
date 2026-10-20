@@ -501,6 +501,8 @@ JAZZMIN_SETTINGS = {
     "site_title": "Amaris Academy Admin",
     "site_header": "Amaris Mathematics Academy",
     "site_brand": "Amaris Academy",
+    "custom_css": "content/admin/amaris-admin.css",
+    "custom_js": "content/admin/amaris-admin.js",
     "welcome_sign": "Content and learning operations",
     "copyright": "Amaris Mathematics Academy",
     "search_model": ["content.Course", "content.Lesson", "content.ContactEnquiry"],
