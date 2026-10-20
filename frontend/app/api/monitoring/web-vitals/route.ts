@@ -2,6 +2,7 @@
 // full URLs, cookies, headers, emails, raw browser events, or any account data.
 // No database migration or paid telemetry service is required.
 const ROUTES = new Set([
+  "home", "courses", "announcements", "contact", "matric_upgrades", "booking",
   "student_overview", "student_orders", "student_notifications", "tutor_dashboard",
 ]);
 const METRICS = new Set(["LCP", "INP", "CLS"]);
@@ -61,6 +62,9 @@ export async function POST(request: Request) {
 
   // No identifier or exact URL is logged. Render logs are temporary; reporting
   // p75 requires collecting enough real user samples for each route and metric.
-  console.info("amaris_dashboard_vital", JSON.stringify({ page, device, metric, value }));
+  // The release SHA is injected by Render SERVER-SIDE and is never accepted
+  // from the browser. This permits accurate per-release p75 comparisons.
+  const release = (process.env.RENDER_GIT_COMMIT || "").slice(0, 12);
+  console.info("amaris_dashboard_vital", JSON.stringify({ page, device, metric, value, release }));
   return response(204);
 }

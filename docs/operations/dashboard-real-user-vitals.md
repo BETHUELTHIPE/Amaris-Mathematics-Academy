@@ -4,14 +4,14 @@
 
 A small client component observes browser-reported **LCP, INP and CLS** for exact,
 allowlisted student Overview, Orders, Notifications and tutor Dashboard routes only.
-It samples 25% of browser page loads; exact URLs, student names, email addresses,
+It samples 25% of eligible browser page loads; exact URLs, student names, email addresses,
 user IDs, payment/invoice references, cookies, tokens and detailed interaction
 targets are **never transmitted or logged**. Client telemetry uses credentials=omit
 and referrerPolicy=no-referrer. The same-origin endpoint rejects unknown fields,
 oversized or implausible measurements, and caps the rate per running instance.
 
 Browser Do Not Track and Global Privacy Control signals are honored.\nValidated events are written as single JSON summaries prefixed
-`amaris_dashboard_vital` in existing Render frontend logs. No new database,
+`amaris_dashboard_vital` in existing Render frontend logs, with a server-side 12-character release SHA. No new database,
 paid service, or migration was introduced. Logging is **ephemeral** and subject
 to Render's log retention; avoid suggesting indefinite historical coverage.
 
@@ -26,7 +26,7 @@ to Render's log retention; avoid suggesting indefinite historical coverage.
 3. Review server log lines with prefix `amaris_dashboard_vital`. Each contains
    only: `page`, `device` (mobile/desktop), `metric` and `value`.
    Zero lines is **no evidence**, not a performance pass. Existing Render\n   logs can be aggregated without exporting personal data with\n   `node frontend/scripts/performance/summarize-dashboard-vitals.mjs < render-logs.txt`.\n   This tool outputs only group counts and p75 values.
-4. Record counts and **p75** separately by route, device and metric, after
+4. Record counts and **p75** separately by deployment release, route, device and metric, after
    collecting sufficient non-synthetic real-user observations (aim for at least
    100 reports per group; note statistical uncertainty). The frontend logs
    may be unavailable or incomplete. Low visit volume can take a long time.
@@ -34,7 +34,7 @@ to Render's log retention; avoid suggesting indefinite historical coverage.
    report without interaction; **INP is not available for sessions with no
    interaction**, and browser support differs. Telemetry observations are not
    equivalent to Google's CrUX population.
-6. PR #289 shipped **before** this instrumentation existed. Unless comparable
+6. Public-page measurements begin only **after** the sitewide collector is deployed.\n   The October 20 frontend was live at 15:18 UTC. Earlier page visits cannot\n   be reconstructed from browser field data that was not collected. Do not\n   claim an October 20 real-user baseline unless actual reported samples exist.\n7. PR #289 shipped **before** this instrumentation existed. Unless comparable
    actual *pre-change* field samples can be recovered, do not claim a quantified
    before/after real-user improvement for that specific release. This collector
    establishes a baseline for **future** changes.
