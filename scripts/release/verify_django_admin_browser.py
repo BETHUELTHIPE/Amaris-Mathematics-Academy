@@ -81,17 +81,17 @@ def test_form_save(page):
     assert page.goto(url, wait_until="networkidle").status == 200
     form = page.locator("form[id$='_form']")
     assert form.count() == 1
-    assert form.locator(".submit-row").count() >= 1  # save_on_top may render two rows
+    assert form.locator('input[name="_save"], button[name="_save"]').count() >= 1
     page.locator("#id_name").fill("Synthetic Admin Browser Course Category")
     page.locator("#id_slug").fill("synthetic-admin-browser-course-category")
     # Cancel navigation in this synthetic browser check only to inspect
     # the transient status. Normal Django form controls remain untouched.
     page.evaluate("""() => document.querySelector("form[id$='_form']")
         .addEventListener('submit', (event) => event.preventDefault())""")
-    page.locator('input[name="_save"]').first.click()
+    page.locator('input[name="_save"], button[name="_save"]').first.click()
     status = form.get_by_role("status")
     assert status.count() == 1 and "Submitting changes" in status.inner_text()
-    assert not page.locator('input[name="_save"]').first.is_disabled()
+    assert not page.locator('input[name="_save"], button[name="_save"]').first.is_disabled()
     print("PASS native form validation, non-blocking save indicator, enabled retry controls")
     # Fresh navigation restores ordinary Django form handling and persists to
     # the local-only SQLite fixture.
