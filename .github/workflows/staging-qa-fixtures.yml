@@ -7,6 +7,16 @@ on:
       - 'scripts/release/staging_fixture_setup.py'
       - '.github/workflows/staging-qa-fixtures.yml'
   workflow_dispatch:
+    inputs:
+      action:
+        description: 'Read-only preflight, guarded QA users, or SMTP authentication (no email)'
+        type: choice
+        required: true
+        default: PREFLIGHT_ONLY
+        options:
+          - PREFLIGHT_ONLY
+          - CREATE_STAGING_QA_USERS
+          - SMTP_AUTH_ONLY
 
 permissions:
   contents: read
@@ -38,10 +48,11 @@ jobs:
       - name: Validate exact staging service, DB, PayFast sandbox and protected keys
         run: |
           python -m py_compile scripts/release/staging_fixture_setup.py
+          python -m unittest discover -s scripts/release -p 'test_staging_fixture_setup.py' -v
           python -u scripts/release/staging_fixture_setup.py
 
   bootstrap-only-after-explicit-staging-opt-in:
-    if: github.ref == 'refs/heads/test/staging-fixture-setup-20261020'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/staging-fixture-setup-20261020' && inputs.action == 'CREATE_STAGING_QA_USERS'
     needs: staging-preflight
     runs-on: ubuntu-latest
     environment: staging
@@ -55,31 +66,53 @@ jobs:
       STAGING_TEST_TUTOR_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
       STAGING_TEST_SUPERUSER_PASSWORD: ${{ secrets.STAGING_TEST_SUPERUSER_PASSWORD }}
       STAGING_FIXTURE_BOOTSTRAP_CONFIRM: ${{ vars.STAGING_FIXTURE_BOOTSTRAP }}
+      STAGING_FIXTURE_ACTION: ${{ inputs.action }}
     steps:
-      - name: Require staging environment opt-in before using login secrets
-        id: gate
+      - name: Require BOTH manual selection and protected staging environment opt-in
         shell: bash
         run: |
-          if [ "$STAGING_FIXTURE_BOOTSTRAP_CONFIRM" = "CREATE_STAGING_QA_USERS" ]; then
-            echo 'allow=true' >> "$GITHUB_OUTPUT"
-            echo 'PASS protected staging account provisioning explicitly enabled'
-          else
-            echo 'allow=false' >> "$GITHUB_OUTPUT"
-            echo 'SKIP staging fixture creation; configure staging environment variable STAGING_FIXTURE_BOOTSTRAP'
+          set -euo pipefail
+          if [ "$STAGING_FIXTURE_ACTION" != "CREATE_STAGING_QA_USERS" ] ||
+             [ "$STAGING_FIXTURE_BOOTSTRAP_CONFIRM" != "CREATE_STAGING_QA_USERS" ]; then
+            echo "::error::BLOCK: manual action and staging environment variable STAGING_FIXTURE_BOOTSTRAP are both required"
+            exit 1
           fi
+          for key in STAGING_SUPABASE_SERVICE_ROLE_KEY STAGING_TEST_STUDENT_PASSWORD STAGING_TEST_TUTOR_PASSWORD STAGING_TEST_SUPERUSER_PASSWORD; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::BLOCK: missing protected staging secret $key"
+              exit 1
+            fi
+          done
+          echo 'PASS protected staging-only account creation explicitly approved'
       - uses: actions/checkout@v4
-        if: steps.gate.outputs.allow == 'true'
         with:
           persist-credentials: false
       - uses: actions/setup-python@v5
-        if: steps.gate.outputs.allow == 'true'
         with:
           python-version: '3.13'
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Install existing locked Django requirements
-        if: steps.gate.outputs.allow == 'true'
         run: python -m pip install -r backend/requirements.txt
       - name: Create only two staging Supabase Auth identities and Django QA roles
-        if: steps.gate.outputs.allow == 'true'
         run: python -u scripts/release/staging_fixture_setup.py --execute
+
+  smtp-auth-only-after-manual-approval:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/staging-fixture-setup-20261020' && inputs.action == 'SMTP_AUTH_ONLY'
+    runs-on: ubuntu-latest
+    environment: staging
+    needs: staging-preflight
+    timeout-minutes: 6
+    env:
+      PAYFAST_MODE: sandbox
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      STAGING_SMTP_PASSWORD: ${{ secrets.STAGING_SMTP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Authenticate via staging Gmail STARTTLS without sending messages
+        run: python -u scripts/release/staging_fixture_setup.py --smtp-auth-only
