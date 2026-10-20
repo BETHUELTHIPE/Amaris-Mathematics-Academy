@@ -3,7 +3,7 @@ import importlib.util
 import os
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import requests
 
@@ -26,6 +26,38 @@ def invalid_request():
 
 
 class PartialRefreshTests(unittest.TestCase):
+    def test_latency_400_retries_with_documented_service_filter(self):
+        rejected = Mock(status_code=400)
+        accepted = Mock(status_code=200)
+        accepted.json.return_value = [{"unit": "seconds", "values": [{"value": 0.12}]}]
+        with patch.object(exporter.SESSION, "get", side_effect=[rejected, accepted]) as get:
+            result = exporter._get("http-latency", ["srv-one", "srv-two"], quantile=0.95)
+        self.assertEqual(len(result), 1)
+        first, second = [call.kwargs["params"] for call in get.call_args_list]
+        self.assertIn(("resource", "srv-one"), first)
+        self.assertIn(("service", "srv-one"), second)
+        self.assertIn(("service", "srv-two"), second)
+        self.assertNotIn(("resource", "srv-one"), second)
+        self.assertIn(("quantile", "0.95"), second)
+        accepted.raise_for_status.assert_called_once()
+
+    def test_latency_auth_or_rate_limit_errors_do_not_retry(self):
+        for status in (401, 403, 429, 500):
+            response = requests.Response()
+            response.status_code = status
+            with self.subTest(status=status), patch.object(exporter.SESSION, "get", return_value=response) as get:
+                with self.assertRaises(requests.HTTPError):
+                    exporter._get("http-latency", ["srv-one"], quantile=0.95)
+                self.assertEqual(get.call_count, 1)
+
+    def test_other_metrics_do_not_change_resource_filter_on_400(self):
+        response = requests.Response()
+        response.status_code = 400
+        with patch.object(exporter.SESSION, "get", return_value=response) as get:
+            with self.assertRaises(requests.HTTPError):
+                exporter._get("cpu", ["srv-one"])
+        self.assertEqual(get.call_count, 1)
+
     def test_400_combined_request_falls_back_to_each_service(self):
         def fetch(endpoint, ids, **extra):
             if len(ids) > 1 or ids == ["srv-two"]:

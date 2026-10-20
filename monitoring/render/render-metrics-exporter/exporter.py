@@ -111,8 +111,8 @@ def _latest(series):
     return values[-1].get("value")
 
 
-def _params(resource_ids, **extra):
-    params = [("resource", resource_id) for resource_id in resource_ids]
+def _params(resource_ids, selector="resource", **extra):
+    params = [(selector, resource_id) for resource_id in resource_ids]
     for key, value in extra.items():
         params.append((key, str(value)))
     return params
@@ -124,6 +124,15 @@ def _get(endpoint, resource_ids, **extra):
         params=_params(resource_ids, resolutionSeconds=60, **extra),
         timeout=12,
     )
+    # Render documents both names, but some HTTP-latency API deployments reject
+    # "resource" with 400. Retry once with the supported legacy service filter.
+    # Other errors (including auth and rate limits) keep their original behavior.
+    if endpoint == "http-latency" and response.status_code == 400:
+        response = SESSION.get(
+            f"{API_BASE}/{endpoint}",
+            params=_params(resource_ids, selector="service", resolutionSeconds=60, **extra),
+            timeout=12,
+        )
     response.raise_for_status()
     payload = response.json()
     if not isinstance(payload, list):
@@ -270,6 +279,10 @@ def refresh():
     REFRESH_SUCCESS.set(1 if complete else 0)
     if complete:
         LAST_SUCCESS.set(time.time())
+    LOG.info(
+        "Render refresh complete=%s samples: cpu=%d memory=%d http_requests=%d http_latency=%d",
+        complete, len(cpu_data), len(memory_by_resource), len(request_data), len(latency_data),
+    )
 
 
 def main():
