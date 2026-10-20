@@ -102,9 +102,23 @@ def record_page(page, source, path, width, height, scan_axe):
     protected = path.startswith(GUARDED) or path == "/tutor/dashboard"
     if protected:
         if final not in LOGIN_ROUTES:
-            raise AssertionError(
-                f"Protected route {path} did not redirect an anonymous visitor safely: {final}"
+            # When the tutor backend is down, a safe, data-free error page is
+            # acceptable. No private timetable or editable tutor controls may
+            # be shown to an anonymous browser.
+            safe_tutor_fallback = (
+                path == "/tutor/dashboard"
+                and final == "/tutor/dashboard"
+                and (
+                    page.get_by_role("heading", name="Tutor service unavailable").count()
+                    or page.get_by_role("heading", name="Tutor access requires approval").count()
+                )
+                and page.get_by_text("Private tutor workspace").count() == 0
+                and page.locator('form[action*="tutor"]').count() == 0
             )
+            if not safe_tutor_fallback:
+                raise AssertionError(
+                    f"Protected route {path} leaked content or did not deny anonymous access: {final}"
+                )
     elif response.status >= 400:
         raise AssertionError(f"Public route {path} returned HTTP {response.status}")
 
