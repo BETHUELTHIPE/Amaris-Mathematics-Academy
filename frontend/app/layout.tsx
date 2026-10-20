@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ConnectionRecovery } from "@/components/site/connection-recovery";
+import { AnonymousWebVitals } from "@/components/site/anonymous-web-vitals";
 import globalStyles from "./globals.css?inline";
 
 export const metadata: Metadata = {
@@ -30,6 +31,7 @@ export default function RootLayout({
       <body className="antialiased">
         {children}
         <ConnectionRecovery />
+        <AnonymousWebVitals />
       </body>
     </html>
   );
