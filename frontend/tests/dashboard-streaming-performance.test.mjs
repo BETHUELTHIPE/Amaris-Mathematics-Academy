@@ -9,7 +9,7 @@ test("private student overview authenticates before streaming protected API cont
   assert.match(page, /const user = await requireVerifiedStudent\("\/dashboard"\)/);
   assert.match(page, /<StudentDashboardShell/);
   assert.match(page, /<Suspense fallback=\{<StudentDashboardSkeleton \/>\}>/);
-  assert.match(page, /async function StudentDashboardContent\(\)/);
+  assert.match(page, /async function StudentDashboardContent\(\{/);
   assert.match(page, /getStudentCourses\(\)/);
   assert.match(page, /Promise\.allSettled\(/);
   assert.match(page, /getStudentOrders\(\)/);
