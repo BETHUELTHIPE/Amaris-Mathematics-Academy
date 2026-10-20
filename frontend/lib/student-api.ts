@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { env } from "cloudflare:workers";
 import { normalizeCmsApiBaseUrl } from "@/lib/cms-api-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
