@@ -102,7 +102,28 @@ def browser_validation():
             page.goto(FRONT + "/", wait_until="domcontentloaded", timeout=80000)
             page.locator("h1").first.wait_for(timeout=30000)
             page.wait_for_timeout(2500)
-            page.evaluate("window.dispatchEvent(new Event('pagehide'))")
+            diagnostics = page.evaluate("""() => ({
+                dnt: navigator.doNotTrack === "1",
+                gpc: navigator.globalPrivacyControl === true,
+                hidden: document.visibilityState === "hidden",
+                pageReady: document.readyState,
+                hasPerformanceObserver: "PerformanceObserver" in window,
+            })""")
+            print("Browser telemetry eligibility:", json.dumps(diagnostics, sort_keys=True), flush=True)
+            if diagnostics["dnt"] or diagnostics["gpc"]:
+                raise RuntimeError("Test Chrome has a privacy opt-out enabled; do not override it")
+            # Finalize the browser's *observed* metrics by simulating the
+            # page-hidden lifecycle, without creating fake Web Vital values.
+            page.evaluate("""() => {
+                Object.defineProperty(document, "visibilityState", {
+                    configurable: true, get: () => "hidden"
+                });
+                Object.defineProperty(document, "hidden", {
+                    configurable: true, get: () => true
+                });
+                document.dispatchEvent(new Event("visibilitychange"));
+                setTimeout(() => window.dispatchEvent(new Event("pagehide")), 350);
+            }""")
             try:
                 page.wait_for_function(
                     "() => window.__amarisRumHttpStatuses.length > 0",
