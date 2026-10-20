@@ -191,6 +191,8 @@ CACHES = {
 }
 PUBLIC_CONTENT_CACHE_SECONDS = int(os.getenv("PUBLIC_CONTENT_CACHE_SECONDS", "300"))
 SITE_BOOTSTRAP_CACHE_SECONDS = int(os.getenv("SITE_BOOTSTRAP_CACHE_SECONDS", "60"))
+# Private Render-to-Render secret; absence disables all Web Vitals writes.
+RUM_INGEST_TOKEN = os.getenv("RUM_INGEST_TOKEN", "")
 PUBLIC_SITE_URL = os.getenv(
     "PUBLIC_SITE_URL",
     "https://amaris-mathematics-academy-live-students.onrender.com",
