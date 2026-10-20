@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/staging-rum-live-acceptance.yml'
+      - 'scripts/release/staging_rum_live_acceptance.py'
   workflow_dispatch:
 permissions:
   contents: read
