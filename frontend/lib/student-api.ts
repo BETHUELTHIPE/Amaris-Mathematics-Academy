@@ -170,14 +170,17 @@ function cmsBaseUrl(): string {
   return normalizeCmsApiBaseUrl(base);
 }
 
-async function accessToken(): Promise<string> {
+// React's request-local cache deduplicates token verification for the
+// courses, orders and video-request reads. It does not cache HTTP responses
+// or share credentials between users or requests.
+const accessToken = cache(async function accessToken(): Promise<string> {
   await requireVerifiedStudent();
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (error || !token) throw new Error("Your student session has expired. Please log in again.");
   return token;
-}
+});
 
 async function studentFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
