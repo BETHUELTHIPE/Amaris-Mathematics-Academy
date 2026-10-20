@@ -1,0 +1,109 @@
+name: Staging Tutor Candidate Anonymous Browser Preflight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/staging-tutor-candidate-anonymous.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-ui-staging-backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PAYFAST_MODE: sandbox
+      CMS_API_URL: https://amaris-mathematics-academy-staging.onrender.com
+      SUPABASE_URL: https://atyhhjwwxgzeurnwayay.supabase.co
+      SITE_URL: http://127.0.0.1:38118
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 4ef005618d28d75068a0b4c60dd8f437ec38b7ee
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install reviewed candidate and Node Nitro dependencies
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+      - name: Run candidate type/lint checks and compile authenticated tutor route
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npx eslint app/tutor/dashboard/page.tsx app/tutor/login/page.tsx
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Install genuine Chromium
+        run: |
+          python -m pip install playwright==1.62.0
+          python -m playwright install --with-deps chromium
+      - name: Check candidate login and isolated staging Django anonymously
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import time
+          from urllib.request import urlopen
+          from playwright.sync_api import sync_playwright
+          assert os.environ["PAYFAST_MODE"] == "sandbox"
+          assert os.environ["CMS_API_URL"] == "https://amaris-mathematics-academy-staging.onrender.com"
+          assert os.environ["SUPABASE_URL"] == "https://atyhhjwwxgzeurnwayay.supabase.co"
+          base = "http://127.0.0.1:38118"
+          backend = os.environ["CMS_API_URL"]
+          with open("/tmp/amaris-candidate-preflight.log", "w") as log:
+              server = subprocess.Popen(["node", ".output/server/index.mjs"],
+                  cwd="frontend", stdout=log, stderr=subprocess.STDOUT,
+                  env={**os.environ, "NODE_ENV":"production", "HOST":"127.0.0.1", "PORT":"38118"})
+              try:
+                  for trial in range(50):
+                      if server.poll() is not None:
+                          raise AssertionError("candidate Nitro exited")
+                      try:
+                          with urlopen(base + "/tutor/login", timeout=3) as r:
+                              if r.status == 200:
+                                  break
+                      except Exception:
+                          pass
+                      time.sleep(1)
+                  else:
+                      raise AssertionError("candidate tutor login did not become ready")
+                  with sync_playwright() as p:
+                      browser = p.chromium.launch(headless=True)
+                      context = browser.new_context(viewport={"width":390,"height":844})
+                      page = context.new_page()
+                      result = page.goto(base + "/tutor/login", wait_until="domcontentloaded",timeout=45000)
+                      assert result and result.status == 200, "new candidate tutor UI login unavailable"
+                      page.locator('input[name="email"]').wait_for(timeout=15000)
+                      page.locator('input[name="password"]').wait_for(timeout=15000)
+                      page.get_by_role("button",name="Sign in to tutor dashboard").wait_for()
+                      print("PASS new PR #291 tutor sign-in UI rendered with mobile browser")
+                      ready = context.request.get(backend + "/health/ready/",timeout=45000)
+                      assert ready.status == 200, f"staging Django health HTTP {ready.status}"
+                      for path in ("/api/v1/tutor/dashboard/", "/api/v1/tutor/earnings/"):
+                          denied = context.request.get(backend + path,timeout=45000)
+                          assert denied.status in (401,403), f"SECURITY staging anonymous tutor endpoint {path} HTTP {denied.status}"
+                      print("PASS deployed staging Django healthy and private tutor APIs deny anonymous users")
+                      view = page.evaluate("() => ({width:innerWidth,scroll:document.documentElement.scrollWidth})")
+                      assert view["scroll"] <= view["width"] + 2, "candidate mobile tutor login horizontal overflow"
+                      print("PASS candidate tutor login no mobile overflow")
+                      context.close()
+                      browser.close()
+              finally:
+                  server.terminate()
+                  try: server.wait(timeout=8)
+                  except subprocess.TimeoutExpired:
+                      server.kill()
+                      server.wait()
+          print("NOT VERIFIED: authenticated tutor browser and live tutor-owned data (staging Auth fixtures absent)")
+          PY
