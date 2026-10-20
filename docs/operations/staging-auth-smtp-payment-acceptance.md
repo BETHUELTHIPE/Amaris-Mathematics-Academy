@@ -1,6 +1,6 @@
 # Staging-only payment-to-Gmail acceptance prerequisites
 
-**Scope:** Render staging service `srv-dam2iivcgkoc7383tq50`, Supabase staging `atyhhjwwxgzeurnwayay`, **PayFast sandbox only**. Production must not be modified.
+**Scope:** Render staging service `srv-dam2iivcgkoc7383tq50`, Supabase staging `atyhhjwwxgzeurnwayay`, **PayFast sandbox only**. Production must not be modified. A green **preflight** does not mean users were created or SMTP/payment acceptance passed; inspect the separate guarded job results.
 
 ## Current verified state (20 October 2026)
 
@@ -21,18 +21,18 @@ Required environment secrets:
 - `STAGING_TEST_TUTOR_PASSWORD`: different random password of 24+ characters.
 - `STAGING_TEST_SUPERUSER_PASSWORD`: third random password of 24+ characters.
 
-The staging public/publishable key can be reused from the currently verified **staging Render service**; adding `STAGING_SUPABASE_PUBLISHABLE_KEY` as a protected GitHub environment secret is optional for the bootstrap but required by the separate existing browser workflow.
+The staging public/publishable key can be reused from the verified **staging Render service**; adding `STAGING_SUPABASE_PUBLISHABLE_KEY` as a GitHub staging secret is optional for fixture creation, but **required** for the existing payment/email acceptance workflow. Its value must belong to the staging project.
 
 Create a **staging environment variable** (not secret):
 `STAGING_FIXTURE_BOOTSTRAP=CREATE_STAGING_QA_USERS`.
 
-Then trigger a new commit to `test/staging-fixture-setup-20261020` (or use its workflow manually if exposed). The guarded workflow:
+**Never rely on a branch push to create fixtures.** Open [Staging Supabase and Django QA Fixture Setup](https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy/actions/workflows/staging-qa-fixtures.yml), click **Run workflow**, select branch `test/staging-fixture-setup-20261020`, and choose **CREATE_STAGING_QA_USERS**. Both that manual selection **and** staging environment variable `STAGING_FIXTURE_BOOTSTRAP=CREATE_STAGING_QA_USERS` are required. Regular push runs and the default `PREFLIGHT_ONLY` option will never create users. The guarded workflow:
 1. Asserts exact staging branch, Render service, Supabase database, project ref, PayFast sandbox and protected opt-in.
 2. Uses Supabase Auth Admin API to create an approved staging student (`bethuelmoukangwe8@gmail.com`) and isolated staging tutor (`qa-tutor@amaris.test`) with email confirmation for test-only identities.
 3. Uses the staging Django ORM to create the Tutors group membership for `amaris_staging_qa_tutor` and staging QA superuser `amaris_staging_qa_admin`.
 4. Verifies staging Supabase password grants without logging passwords or access tokens.
 
-**Warning:** The fixture bootstrap fails closed on existing QA accounts. Do not repeatedly seed or reset an identity after it is created.
+**Warning:** Account provisioning is intended to run once only. The bootstrap fails closed on existing QA accounts, and an interrupted two-system write may leave partial staging fixtures; inspect Auth and Django before retrying. Do not repeatedly seed, reset or overwrite an identity. After the initial successful creation, remove the `STAGING_FIXTURE_BOOTSTRAP` environment variable to prevent accidental future approval. The workflow requires the dedicated `STAGING_SUPABASE_SERVICE_ROLE_KEY` staging secret and **will not substitute Render's privileged key**.
 
 ## Stage 2 — Real Gmail app password (owner action only)
 
@@ -44,7 +44,7 @@ For the same Google account `bethuelmoukangwe8@gmail.com`, enable two-step verif
 
 Ensure GitHub staging environment secrets `STAGING_SMTP_USERNAME`, `STAGING_SMTP_FROM_EMAIL` are exactly `bethuelmoukangwe8@gmail.com`; `STAGING_SMTP_HOST=smtp.gmail.com`, `STAGING_SMTP_PORT=587`. The Render staging backend already has matching sender/login and STARTTLS/587 configured. Do not change the production SMTP account.
 
-Run a **no-email** SMTP authentication check before attempting mail delivery. If GitHub runner networking disconnects, provider login is *not verified*, even if app password format is valid. A sent Gmail message through Gmail's native connector does not qualify as Django SMTP.
+To verify the sender without sending anything, use the same [staging QA workflow](https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy/actions/workflows/staging-qa-fixtures.yml) → **Run workflow**, branch `test/staging-fixture-setup-20261020` → action **SMTP_AUTH_ONLY**. This requires the protected `STAGING_SMTP_PASSWORD` to equal Render staging `EMAIL_HOST_PASSWORD`, negotiates real Gmail STARTTLS, and authenticates. It **never sends email**. If the runner cannot reach Gmail, the test fails rather than claiming success. A message sent with Gmail directly is not proof of Django SMTP delivery.
 
 ## Stage 3 — Real sandbox evidence (never fake a payment)
 
