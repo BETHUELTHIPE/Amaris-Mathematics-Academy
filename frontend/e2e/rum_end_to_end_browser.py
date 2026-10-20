@@ -40,6 +40,7 @@ def main():
             raise RuntimeError("Django health HTTP status invalid")
 
     import django
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "amaris_cms.settings")
     django.setup()
     from content.rum import summarize_p75
 
