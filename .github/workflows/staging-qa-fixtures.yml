@@ -5,6 +5,7 @@ on:
     branches: [test/staging-fixture-setup-20261020]
     paths:
       - 'scripts/release/staging_fixture_setup.py'
+      - 'scripts/release/test_staging_fixture_setup.py'
       - '.github/workflows/staging-qa-fixtures.yml'
   workflow_dispatch:
     inputs:
