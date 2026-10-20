@@ -133,8 +133,10 @@ class RealMonitoringStatusTests(SimpleTestCase):
     def test_each_monitor_reports_actual_status_not_invented_online(self, request_probe):
         request_probe.side_effect = [
             (200, b"<html>flower</html>"),
-            (200, b"# HELP render_metrics_exporter_refresh_success one\n"
-                  b"render_metrics_exporter_refresh_success 0\n"),
+            (
+                200,
+                b"# HELP render_metrics_exporter_refresh_success one\n" b"render_metrics_exporter_refresh_success 0\n",
+            ),
         ]
         items = {r["name"]: r for r in monitor_statuses()}
         self.assertEqual(items["grafana"]["status"], "unconfigured")
@@ -180,7 +182,5 @@ class RealMonitoringStatusTests(SimpleTestCase):
         site = AmarisAdminSite()
         factory = RequestFactory()
         request = factory.get("/admin/monitoring/grafana/")
-        request.user = SimpleNamespace(
-            is_authenticated=True, is_active=True, is_staff=True, is_superuser=True
-        )
+        request.user = SimpleNamespace(is_authenticated=True, is_active=True, is_staff=True, is_superuser=True)
         self.assertEqual(site.monitoring_console(request, "grafana").status_code, 503)

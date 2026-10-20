@@ -108,9 +108,7 @@ class AmarisAdminSite(AdminSite):
         if tool == "flower" and settings.MONITORING_FLOWER_BASIC_AUTH:
             import base64
 
-            secret = base64.b64encode(
-                settings.MONITORING_FLOWER_BASIC_AUTH.encode("utf-8")
-            ).decode("ascii")
+            secret = base64.b64encode(settings.MONITORING_FLOWER_BASIC_AUTH.encode("utf-8")).decode("ascii")
             headers["Authorization"] = f"Basic {secret}"
 
         upstream_request = urllib_request.Request(target, headers=headers, method="GET")

@@ -3,6 +3,7 @@
 These checks report only observed availability. They never expose internal
 addresses, tokens, session cookies, or a fabricated health result.
 """
+
 import base64
 import concurrent.futures
 import re
@@ -90,24 +91,24 @@ def _probe(tool, endpoint, time_bucket):
 def monitor_statuses():
     records = []
     enabled = settings.MONITORING_CONSOLE_ENABLED
-    names = (*TOOL_SPECS, (
-        "render", "Render metrics", "MONITORING_RENDER_EXPORTER_URL", "/metrics"
-    ))
+    names = (*TOOL_SPECS, ("render", "Render metrics", "MONITORING_RENDER_EXPORTER_URL", "/metrics"))
     for name, title, setting, _ in names:
         endpoint = getattr(settings, setting, "")
         configured = bool(enabled and endpoint)
-        records.append({
-            "name": name,
-            "title": title,
-            "configured": configured,
-            "status": "unconfigured" if not configured else "checking",
-            "description": {
-                "grafana": "Dashboard panels (Django, Celery and host/service metrics).",
-                "prometheus": "PromQL, scrape targets and alert rules.",
-                "flower": "Celery task console (worker status needs separate validation).",
-                "render": "Official Render metrics exporter; freshness based on its last refresh.",
-            }[name],
-        })
+        records.append(
+            {
+                "name": name,
+                "title": title,
+                "configured": configured,
+                "status": "unconfigured" if not configured else "checking",
+                "description": {
+                    "grafana": "Dashboard panels (Django, Celery and host/service metrics).",
+                    "prometheus": "PromQL, scrape targets and alert rules.",
+                    "flower": "Celery task console (worker status needs separate validation).",
+                    "render": "Official Render metrics exporter; freshness based on its last refresh.",
+                }[name],
+            }
+        )
     pending = [r for r in records if r["configured"]]
     if pending:
         bucket = int(time.monotonic() // 30)
@@ -118,12 +119,16 @@ def monitor_statuses():
                     record["name"],
                     getattr(
                         settings,
-                        "MONITORING_RENDER_EXPORTER_URL" if record["name"] == "render"
-                        else "MONITORING_" + record["name"].upper() + "_URL",
+                        (
+                            "MONITORING_RENDER_EXPORTER_URL"
+                            if record["name"] == "render"
+                            else "MONITORING_" + record["name"].upper() + "_URL"
+                        ),
                         "",
                     ),
                     bucket,
-                ): record for record in pending
+                ): record
+                for record in pending
             }
             for future, record in futures.items():
                 try:
