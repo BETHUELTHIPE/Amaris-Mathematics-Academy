@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { p75, parseVitalLine, summarize } from "../scripts/performance/summarize-dashboard-vitals.mjs";
 
 const read = (name) => readFile(new URL(name, import.meta.url), "utf8");
 
@@ -42,4 +43,19 @@ test("production tutor acceptance is protected, actually logs in, and does not m
   assert.match(script, /Offer a new live Zoom class/);
   assert.match(script, /page\.reload\(/);
   assert.doesNotMatch(script, /\.screenshot\(|page\.content\(|\.click\(\).*Publish tutor availability/);
+});
+
+test("field aggregator computes per-route p75 without exposing raw users", () => {
+  assert.equal(p75([25, 7, 19, 3]), 19);
+  assert.equal(p75([]), null);
+  assert.equal(parseVitalLine('ignored log line containing account info'), null);
+  assert.equal(parseVitalLine('amaris_dashboard_vital {"page":"tutor_dashboard","device":"desktop","metric":"INP","value":145}').value, 145);
+  assert.equal(parseVitalLine('amaris_dashboard_vital {"page":"/dashboard?user=email","device":"desktop","metric":"INP","value":145}'), null);
+  const measurements = Array.from({length:100}, () => ({page:"tutor_dashboard",device:"mobile",metric:"CLS",value:0.04}));
+  const result = summarize(measurements);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].count, 100);
+  assert.equal(result[0].p75, 0.04);
+  assert.equal(result[0].acceptance, "TARGET MET");
+  assert.equal(summarize(measurements.slice(0, 20))[0].acceptance, "INSUFFICIENT SAMPLE");
 });
