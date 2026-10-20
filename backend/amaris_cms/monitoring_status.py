@@ -77,10 +77,10 @@ def _probe(tool, endpoint, time_bucket):
             if status != 200:
                 return "unavailable"
             healthy = re.search(
-                rb"(?m)^render_metrics_exporter_refresh_success\\s+1(?:\\.0+)?\\s*$", payload
+                rb"(?m)^render_metrics_exporter_refresh_success\s+1(?:\.0+)?\s*$", payload
             )
             last = re.search(
-                rb"(?m)^render_metrics_exporter_last_success_timestamp_seconds\\s+([0-9.]+)\\s*$",
+                rb"(?m)^render_metrics_exporter_last_success_timestamp_seconds\s+([0-9.]+)\s*$",
                 payload,
             )
             # A once-healthy exporter with stale data is not a live metric source.
