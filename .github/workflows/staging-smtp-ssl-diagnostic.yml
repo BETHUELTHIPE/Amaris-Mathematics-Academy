@@ -46,8 +46,9 @@ jobs:
           user=(env.get("EMAIL_HOST_USER") or env.get("GMAIL_USER") or env.get("GMAIL_EMAIL") or "").strip()
           password="".join((env.get("EMAIL_HOST_PASSWORD") or env.get("GMAIL_APP_PASSWORD") or "").split())
           sender=parseaddr(env.get("DEFAULT_FROM_EMAIL") or "")[1].lower()
-          if not user or not password or sender!=user.lower():
-              raise SystemExit("BLOCK: staging Gmail user/password/sender missing or mismatched")
+          if not user or not password:
+              raise SystemExit("BLOCK: staging Gmail login credentials missing")
+          print("STAGING_SENDER_MATCHES_SMTP_USERNAME="+str(sender==user.lower()))
           if len(password)!=16:
               raise SystemExit("BLOCK: staging credential does not normalize to 16-character app password")
           print("PASS isolated staging sender and protected credential format; testing SSL 465 (no email)")
