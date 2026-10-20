@@ -69,6 +69,12 @@ LAST_SUCCESS = Gauge(
     "Unix timestamp of the most recent successful Render API refresh.",
 )
 
+METRIC_REFRESH_SUCCESS = Gauge(
+    "render_metrics_exporter_metric_refresh_success",
+    "1 for a fully fetched metric family; 0 for failed or partial responses (not a data value).",
+    ["metric"],
+)
+
 SESSION = requests.Session()
 SESSION.headers.update(
     {
@@ -123,6 +129,38 @@ def _get(endpoint, resource_ids, **extra):
     if not isinstance(payload, list):
         raise RuntimeError(f"Unexpected Render metrics payload for {endpoint}.")
     return payload
+
+
+def _get_with_partial_recovery(endpoint, resource_ids, **extra):
+    """Keep available data without mislabeling missing resources as zero.
+
+    Some Render metric APIs reject a combined request with HTTP 400 when one
+    service does not support that metric. Retry per service; mark the metric
+    incomplete if any resource remains unsupported.
+    """
+    if not resource_ids:
+        return [], False
+    try:
+        return _get(endpoint, resource_ids, **extra), True
+    except requests.HTTPError as exc:
+        if exc.response is None or exc.response.status_code != 400 or len(resource_ids) < 2:
+            LOG.warning("Render metric %s unavailable (%s)", endpoint, type(exc).__name__)
+            return [], False
+        series = []
+        complete = True
+        for resource_id in resource_ids:
+            try:
+                series.extend(_get(endpoint, [resource_id], **extra))
+            except (requests.RequestException, ValueError, RuntimeError) as partial:
+                complete = False
+                LOG.warning(
+                    "Render %s not available for resource %s (%s)",
+                    endpoint, RESOURCE_MAP.get(resource_id, "unknown"), type(partial).__name__,
+                )
+        return series, complete
+    except (requests.RequestException, ValueError, RuntimeError) as exc:
+        LOG.warning("Render metric %s unavailable (%s)", endpoint, type(exc).__name__)
+        return [], False
 
 
 def _normalize_bytes(value, unit):
@@ -180,18 +218,15 @@ def _aggregate(series_list, resource_ids, reducer):
 
 def refresh():
     resource_ids = list(RESOURCE_MAP)
-    cpu_data = _aggregate(_get("cpu", resource_ids), resource_ids, max)
-    memory_series = _get("memory", resource_ids)
-    request_data = _aggregate(
-        _get("http-requests", SERVICE_IDS),
-        SERVICE_IDS,
-        sum,
+    cpu_series, cpu_ok = _get_with_partial_recovery("cpu", resource_ids)
+    memory_series, memory_ok = _get_with_partial_recovery("memory", resource_ids)
+    request_series, requests_ok = _get_with_partial_recovery("http-requests", SERVICE_IDS)
+    latency_series, latency_ok = _get_with_partial_recovery(
+        "http-latency", SERVICE_IDS, quantile=0.95
     )
-    latency_data = _aggregate(
-        _get("http-latency", SERVICE_IDS, quantile=0.95),
-        SERVICE_IDS,
-        max,
-    )
+    cpu_data = _aggregate(cpu_series, resource_ids, max)
+    request_data = _aggregate(request_series, SERVICE_IDS, sum)
+    latency_data = _aggregate(latency_series, SERVICE_IDS, max)
 
     CPU.clear()
     for resource_id, (value, unit) in cpu_data.items():
@@ -225,8 +260,16 @@ def refresh():
             _normalize_seconds(value, unit)
         )
 
-    REFRESH_SUCCESS.set(1)
-    LAST_SUCCESS.set(time.time())
+    for metric, ok in (
+        ("cpu", cpu_ok), ("memory", memory_ok),
+        ("http-requests", requests_ok), ("http-latency", latency_ok),
+    ):
+        METRIC_REFRESH_SUCCESS.labels(metric).set(1 if ok else 0)
+
+    complete = all((cpu_ok, memory_ok, requests_ok, latency_ok))
+    REFRESH_SUCCESS.set(1 if complete else 0)
+    if complete:
+        LAST_SUCCESS.set(time.time())
 
 
 def main():
