@@ -25,6 +25,7 @@ class Migration(migrations.Migration):
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("day", models.DateField()),
+                ("release", models.CharField(max_length=12, default="unknown")),
                 ("metric", models.CharField(max_length=3)),
                 ("route", models.CharField(max_length=24)),
                 ("device", models.CharField(max_length=8)),
@@ -40,7 +41,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="webvitalbucket",
             constraint=models.UniqueConstraint(
-                fields=("day", "metric", "route", "device", "network", "bucket"),
+                fields=("day", "release", "metric", "route", "device", "network", "bucket"),
                 name="rum_daily_bucket_unique",
             ),
         ),
