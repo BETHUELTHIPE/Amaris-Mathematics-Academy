@@ -11,11 +11,16 @@ from content.models import WebVitalBucket
 from content.rum import bucket_for, summarize_p75
 
 
-@override_settings(RUM_INGEST_TOKEN="test-only-rum-token-not-production", RUM_PERSIST_ENABLED=True, SECURE_SSL_REDIRECT=False)
+@override_settings(
+    RUM_INGEST_TOKEN="test-only-rum-token-not-production", RUM_PERSIST_ENABLED=True, SECURE_SSL_REDIRECT=False
+)
 class WebVitalsCollectionTests(TestCase):
     def setUp(self):
         self.url = reverse("anonymous-web-vitals")
-        self.headers = {"HTTP_X_AMARIS_RUM_TOKEN": "test-only-rum-token-not-production", "HTTP_X_AMARIS_RUM_RELEASE": "abcdef012345"}
+        self.headers = {
+            "HTTP_X_AMARIS_RUM_TOKEN": "test-only-rum-token-not-production",
+            "HTTP_X_AMARIS_RUM_RELEASE": "abcdef012345",
+        }
         self.valid = {"name": "LCP", "value": 2250, "route": "courses", "device": "mobile", "network": "3g"}
 
     def send(self, records, **kwargs):
