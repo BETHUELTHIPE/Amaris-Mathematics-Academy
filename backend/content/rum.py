@@ -4,6 +4,7 @@ Only server-to-server requests holding the shared Render secret can write.
 The database stores *only* daily counters in fixed buckets. There are no
 session IDs, student identifiers, exact URLs, IP addresses or event logs.
 """
+
 from __future__ import annotations
 
 import json
@@ -64,11 +65,17 @@ def summarize_p75(*, days: int = 28, min_samples: int = 20) -> list[dict[str, ob
                 index = b
                 break
         bound = BOUNDS[metric][index] if index < len(BOUNDS[metric]) else None
-        result.append({
-            "metric": metric, "route": route, "device": device,
-            "network": network, "samples": n, "p75_bound": bound,
-            "over_maximum": bound is None,
-        })
+        result.append(
+            {
+                "metric": metric,
+                "route": route,
+                "device": device,
+                "network": network,
+                "samples": n,
+                "p75_bound": bound,
+                "over_maximum": bound is None,
+            }
+        )
     return result
 
 
@@ -81,11 +88,16 @@ def _valid_record(entry: object) -> tuple[str, str, str, str, int] | None:
     network = entry["network"]
     value = entry["value"]
     if (
-        not isinstance(metric, str) or metric not in BOUNDS
-        or not isinstance(route, str) or route not in ROUTES
-        or not isinstance(device, str) or device not in DEVICES
-        or not isinstance(network, str) or network not in NETWORKS
-        or isinstance(value, bool) or not isinstance(value, (float, int))
+        not isinstance(metric, str)
+        or metric not in BOUNDS
+        or not isinstance(route, str)
+        or route not in ROUTES
+        or not isinstance(device, str)
+        or device not in DEVICES
+        or not isinstance(network, str)
+        or network not in NETWORKS
+        or isinstance(value, bool)
+        or not isinstance(value, (float, int))
     ):
         return None
     number = float(value)
@@ -123,8 +135,13 @@ def collect_web_vitals(request: HttpRequest) -> HttpResponse:
                 continue
             metric, route, device, network, bucket = row
             obj, _ = WebVitalBucket.objects.get_or_create(
-                day=today, metric=metric, route=route, device=device,
-                network=network, bucket=bucket, defaults={"count": 0},
+                day=today,
+                metric=metric,
+                route=route,
+                device=device,
+                network=network,
+                bucket=bucket,
+                defaults={"count": 0},
             )
             WebVitalBucket.objects.filter(pk=obj.pk).update(count=F("count") + 1)
         # Remove obsolete daily aggregates on approximately 1 in 100 reports.
