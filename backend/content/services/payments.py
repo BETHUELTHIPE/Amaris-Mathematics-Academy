@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from functools import partial
 from typing import Protocol
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
 
 from django.db import transaction
