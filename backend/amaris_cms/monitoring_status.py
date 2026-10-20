@@ -76,7 +76,15 @@ def _probe(tool, endpoint, time_bucket):
             status, payload = _request(endpoint.rstrip("/") + "/metrics")
             if status != 200:
                 return "unavailable"
-            if re.search(rb"(?m)^render_metrics_exporter_refresh_success\s+1(?:\.0+)?\s*$", payload):
+            healthy = re.search(
+                rb"(?m)^render_metrics_exporter_refresh_success\\s+1(?:\\.0+)?\\s*$", payload
+            )
+            last = re.search(
+                rb"(?m)^render_metrics_exporter_last_success_timestamp_seconds\\s+([0-9.]+)\\s*$",
+                payload,
+            )
+            # A once-healthy exporter with stale data is not a live metric source.
+            if healthy and last and 0 <= time.time() - float(last.group(1)) <= 300:
                 return "reachable"
             return "degraded"
         checks = {name: path for name, _, _, path in TOOL_SPECS}
