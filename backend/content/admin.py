@@ -30,6 +30,7 @@ from .models import (
     VideoAsset,
     VideoRequest,
     VideoRequestDocument,
+    WebVitalBucket,
 )
 
 admin.site.site_header = "Amaris Mathematics Academy"
@@ -770,3 +771,55 @@ class VideoRequestAdmin(TimeStampedAdmin):
 
 
 from . import tutor_application_admin as _tutor_application_admin  # noqa: E402,F401
+
+@admin.register(WebVitalBucket)
+class WebVitalBucketAdmin(admin.ModelAdmin):
+    """Superuser-only p75 trend view; never expose individual measurements."""
+
+    change_list_template = "admin/content/webvitalbucket/change_list.html"
+    list_display = ("day", "release", "metric", "route", "device", "network", "bucket", "count")
+    list_filter = ("release", "metric", "device", "network", "day")
+    ordering = ("-day", "route", "metric")
+    list_per_page = 30
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return self.has_module_permission(request)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_urls(self):
+        urls = super().get_urls()
+        return [
+            path(
+                "report/",
+                self.admin_site.admin_view(self.report),
+                name="content_webvitalbucket_report",
+            )
+        ] + urls
+
+    def report(self, request):
+        if not self.has_view_permission(request):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied()
+        from .rum import summarize_p75, summarize_weekly_p75
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Real-user Web Vitals, trailing 28 days",
+            "rows": summarize_p75(days=28, min_samples=20),
+            "weekly": summarize_weekly_p75(weeks=4, min_samples=20),
+            "opts": self.model._meta,
+        }
+        return TemplateResponse(request, "admin/content/webvitalbucket/report.html", context)
+
