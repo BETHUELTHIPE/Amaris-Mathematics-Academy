@@ -885,6 +885,7 @@ class WebVitalBucket(models.Model):
     """Coarse daily counts only; never store visitors, URLs, IPs or raw events."""
 
     day = models.DateField()
+    release = models.CharField(max_length=12, default="unknown")
     metric = models.CharField(max_length=3)
     route = models.CharField(max_length=24)
     device = models.CharField(max_length=8)
@@ -895,7 +896,7 @@ class WebVitalBucket(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["day", "metric", "route", "device", "network", "bucket"],
+                fields=["day", "release", "metric", "route", "device", "network", "bucket"],
                 name="rum_daily_bucket_unique",
             )
         ]
@@ -904,7 +905,7 @@ class WebVitalBucket(models.Model):
         verbose_name_plural = "Anonymous daily Web Vital buckets"
 
     def __str__(self) -> str:
-        return f"{self.day} {self.metric} {self.route} {self.device}/{self.network}: {self.count}"
+        return f"{self.day} {self.release} {self.metric} {self.route} {self.device}/{self.network}: {self.count}"
 
 
 # Django discovers the recruitment models through this application module.
