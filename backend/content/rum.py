@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 import secrets
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.db import transaction
@@ -37,11 +37,14 @@ def bucket_for(metric: str, value: float) -> int:
     return next((i for i, bound in enumerate(BOUNDS[metric]) if value <= bound), len(BOUNDS[metric]))
 
 
-def summarize_p75(*, days: int = 28, min_samples: int = 20) -> list[dict[str, object]]:
+def summarize_p75(
+    *, days: int = 28, min_samples: int = 20, end_date: date | None = None
+) -> list[dict[str, object]]:
     """Approximate p75 as the upper bound of a fixed, coarse bucket."""
-    start = timezone.now().date() - timedelta(days=days - 1)
+    end_date = end_date or timezone.now().date()
+    start = end_date - timedelta(days=days - 1)
     values = (
-        WebVitalBucket.objects.filter(day__gte=start)
+        WebVitalBucket.objects.filter(day__gte=start, day__lte=end_date)
         .values("metric", "route", "device", "network", "bucket")
         .annotate(samples=Sum("count"))
         .order_by("metric", "route", "device", "network", "bucket")
@@ -77,6 +80,17 @@ def summarize_p75(*, days: int = 28, min_samples: int = 20) -> list[dict[str, ob
             }
         )
     return result
+
+
+def summarize_weekly_p75(*, weeks: int = 4, min_samples: int = 20) -> list[dict[str, object]]:
+    """Non-overlapping seven-day windows show trends without raw measurements."""
+    today = timezone.now().date()
+    rows = []
+    for index in reversed(range(weeks)):
+        end = today - timedelta(days=index * 7)
+        for entry in summarize_p75(days=7, min_samples=min_samples, end_date=end):
+            rows.append({**entry, "week_ending": end})
+    return rows
 
 
 def _valid_record(entry: object) -> tuple[str, str, str, str, int] | None:
