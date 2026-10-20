@@ -1,13 +1,44 @@
 {% extends "admin/index.html" %}
 {% block content %}
+  <section class="amaris-admin-welcome" aria-labelledby="amaris-admin-heading">
+    <h2 id="amaris-admin-heading">Amaris operations</h2>
+    <p>Manage learning content, applications and requests using your existing role permissions.</p>
+  </section>
+  <nav class="amaris-admin-shortcuts" aria-label="Common administration tasks">
+    {% if perms.content.view_course %}
+      <a class="amaris-admin-shortcut" href="{% url 'admin:content_course_changelist' %}">
+        <i class="fas fa-graduation-cap" aria-hidden="true"></i><span>Courses</span>
+      </a>
+    {% endif %}
+    {% if perms.content.view_announcement %}
+      <a class="amaris-admin-shortcut" href="{% url 'admin:content_announcement_changelist' %}">
+        <i class="fas fa-bullhorn" aria-hidden="true"></i><span>Announcements</span>
+      </a>
+    {% endif %}
+    {% if perms.content.view_contactenquiry %}
+      <a class="amaris-admin-shortcut" href="{% url 'admin:content_contactenquiry_changelist' %}">
+        <i class="fas fa-inbox" aria-hidden="true"></i><span>Contact enquiries</span>
+      </a>
+    {% endif %}
+    {% if perms.content.view_tutorapplication %}
+      <a class="amaris-admin-shortcut" href="{% url 'admin:content_tutorapplication_changelist' %}">
+        <i class="fas fa-chalkboard-teacher" aria-hidden="true"></i><span>Tutor applications</span>
+      </a>
+    {% endif %}
+    {% if perms.content.view_liveclassbooking %}
+      <a class="amaris-admin-shortcut" href="{% url 'admin:content_liveclassbooking_changelist' %}">
+        <i class="fas fa-calendar-check" aria-hidden="true"></i><span>Live-class bookings</span>
+      </a>
+    {% endif %}
+  </nav>
   {% if request.user.is_active and request.user.is_staff and request.user.is_superuser %}
-  <div class="card mb-3">
-    <div class="card-header"><strong>Private operations monitoring</strong></div>
-    <div class="card-body">
-      <p>Prometheus, Grafana and Flower are hosted as private Render services. Render-native CPU, memory and HTTP metrics replace cAdvisor.</p>
-      <a class="btn btn-primary" href="{% url 'admin:amaris_monitoring_home' %}">Open monitoring dashboard</a>
-    </div>
-  </div>
+    <section class="card mb-3" aria-labelledby="amaris-monitoring-heading">
+      <div class="card-body">
+        <h2 class="h5" id="amaris-monitoring-heading">Private operations monitoring</h2>
+        <p>Monitoring consoles remain accessible only to authorised superusers. No live metrics are loaded on this page.</p>
+        <a class="btn btn-outline-primary" href="{% url 'admin:amaris_monitoring_home' %}">Open monitoring</a>
+      </div>
+    </section>
   {% endif %}
   {{ block.super }}
 {% endblock %}

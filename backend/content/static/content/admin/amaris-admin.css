@@ -1,0 +1,166 @@
+/* Amaris Django Admin — fast, accessible enhancements layered over Jazzmin.
+   No third-party fonts, JavaScript libraries or new HTTP requests. */
+:root {
+  --amaris-admin-ease: cubic-bezier(.2,.7,.2,1);
+  --amaris-admin-border: rgba(42, 94, 157, .13);
+  --amaris-admin-focus: #1d67b5;
+}
+
+.content-wrapper .content-header h1,
+.content-wrapper .card-title {
+  letter-spacing: -.025em;
+}
+
+.content-wrapper .card,
+.content-wrapper .small-box {
+  border-radius: .9rem;
+  border-color: var(--amaris-admin-border);
+  box-shadow: 0 3px 12px rgba(20, 43, 75, .05);
+  transition: transform 170ms var(--amaris-admin-ease),
+              box-shadow 170ms var(--amaris-admin-ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .content-wrapper .card:hover,
+  .content-wrapper .small-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(20, 43, 75, .10);
+  }
+}
+.content-wrapper .card .table {
+  margin-bottom: 0;
+}
+.content-wrapper .table-responsive {
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+}
+.content-wrapper .table thead th {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.content-wrapper .table tbody td {
+  vertical-align: middle;
+}
+.content-wrapper .table tbody tr {
+  transition: background-color 140ms ease;
+}
+.content-wrapper .table tbody tr:hover {
+  background-color: rgba(38, 103, 166, .055);
+}
+.content-wrapper input:not([type=checkbox]):not([type=radio]),
+.content-wrapper textarea,
+.content-wrapper select {
+  max-width: 100%;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.content-wrapper :is(input,select,textarea,a,button,.btn):focus-visible,
+.main-sidebar a:focus-visible {
+  outline: 3px solid var(--amaris-admin-focus);
+  outline-offset: 2px;
+}
+.content-wrapper .btn,
+.content-wrapper .submit-row input {
+  transition: transform 150ms var(--amaris-admin-ease),
+              box-shadow 150ms var(--amaris-admin-ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .content-wrapper .btn:hover,
+  .content-wrapper .submit-row input:hover {
+    transform: translateY(-1px);
+  }
+}
+.content-wrapper :is(.alert,.messagelist li) {
+  animation: amaris-admin-notice-in 230ms ease-out both;
+}
+.content-wrapper .form-row {
+  scroll-margin-top: 5rem;
+}
+.content-wrapper .form-row:focus-within {
+  border-radius: .35rem;
+}
+@keyframes amaris-admin-notice-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Dashboard shortcuts use standard links, not extra per-request DB counts. */
+.amaris-admin-welcome {
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--amaris-admin-border);
+  border-radius: 1rem;
+  background: linear-gradient(110deg, rgba(24, 87, 150, .08), rgba(19, 131, 166, .03));
+}
+.amaris-admin-welcome h2 { margin: 0 0 .3rem; font-size: 1.3rem; }
+.amaris-admin-welcome p { margin: 0; line-height: 1.5; }
+.amaris-admin-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr));
+  gap: .75rem;
+  margin: .9rem 0 1.5rem;
+}
+.amaris-admin-shortcut {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  min-height: 4.2rem;
+  padding: .9rem 1rem;
+  border: 1px solid var(--amaris-admin-border);
+  border-radius: .8rem;
+  color: inherit;
+  background: var(--bs-body-bg, #fff);
+  transition: border-color 180ms ease, background-color 180ms ease,
+              transform 180ms var(--amaris-admin-ease);
+}
+.amaris-admin-shortcut .fas { font-size: 1.15rem; color: #2379b4; }
+.amaris-admin-shortcut span { font-weight: 600; }
+.amaris-admin-shortcut:hover {
+  border-color: #438bb9;
+  transform: translateY(-2px);
+  text-decoration: none;
+  color: inherit;
+}
+.amaris-admin-shortcut:focus-visible {
+  outline: 3px solid var(--amaris-admin-focus);
+  outline-offset: 3px;
+}
+.amaris-admin-submit-status {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  margin: .7rem 0;
+  font-size: .9rem;
+}
+.amaris-admin-submit-status::before {
+  content: "";
+  width: .8rem;
+  height: .8rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: amaris-admin-spin .8s linear infinite;
+}
+@keyframes amaris-admin-spin { to { transform: rotate(360deg); } }
+html[data-bs-theme=dark] .amaris-admin-shortcut,
+body.dark-mode .amaris-admin-shortcut { background: #272c33; }
+html[data-bs-theme=dark] .content-wrapper .table tbody tr:hover,
+body.dark-mode .content-wrapper .table tbody tr:hover {
+  background-color: rgba(95, 166, 228, .12);
+}
+@media (max-width: 767px) {
+  .content-wrapper .content { padding-inline: .6rem; }
+  .content-wrapper .table-responsive { overflow-x: auto; }
+  .content-wrapper .submit-row { display: flex; flex-wrap: wrap; gap: .45rem; }
+  .content-wrapper .submit-row input { max-width: 100%; }
+  .content-wrapper .card:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .content-wrapper *,
+  .amaris-admin-shortcut,
+  .amaris-admin-submit-status::before {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .content-wrapper .card:hover,
+  .amaris-admin-shortcut:hover { transform: none; }
+}
