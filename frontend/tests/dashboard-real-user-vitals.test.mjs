@@ -9,7 +9,7 @@ test("public and dashboard Web Vitals use coarse allowlisted routes without iden
   const client = await read("../components/site/dashboard-real-user-vitals.tsx");
   assert.match(client, /useReportWebVitals\(reportDashboardVital\)/);
   assert.match(client, /\["LCP", "INP", "CLS"\]/);
-  for (const route of ["home", "courses", "announcements", "contact", "matric_upgrades", "booking"]) {
+  for (const route of ["home", "courses", "announcements", "contact", "matric", "booking"]) {
     assert.ok(client.includes(`"${route}"`), `missing public route ${route}`);
   }
   assert.match(client, /"student_overview"/);
