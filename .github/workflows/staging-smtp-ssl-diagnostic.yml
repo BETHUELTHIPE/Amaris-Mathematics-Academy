@@ -1,0 +1,62 @@
+name: Staging Gmail SMTP SSL Authentication (no email)
+
+on:
+  push:
+    branches: [diagnostics/staging-smtp-ssl-20261020]
+    paths: [.github/workflows/staging-smtp-ssl-diagnostic.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ssl-authentication:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Verify isolated Render staging credentials with SMTP SSL 465 (no email sent)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,ssl,smtplib,urllib.request,urllib.parse
+          from email.utils import parseaddr
+
+          service_id="srv-dam2iivcgkoc7383tq50"
+          repo="https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy"
+          key=os.environ.get("RENDER_API_KEY","")
+          if not key: raise SystemExit("BLOCK: protected Render API key missing")
+          base=f"https://api.render.com/v1/services/{service_id}"
+          headers={"Authorization":"Bearer "+key,"Accept":"application/json"}
+          def read(url):
+              with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=20) as response:
+                  return json.load(response)
+          service=read(base)
+          if service.get("id")!=service_id or service.get("ownerId")!="tea-csppi8l6l47c73dk9c90" or service.get("repo")!=repo or service.get("branch")!="ops/staging-known-good-af8709c-20261019":
+              raise SystemExit("BLOCK: unexpected service/branch; no SMTP attempted")
+          raw=read(base+"/env-vars?limit=100")
+          if isinstance(raw,dict): raw=raw.get("envVars",raw.get("data",[]))
+          env={x.get("envVar",x).get("key"):x.get("envVar",x).get("value") for x in raw}
+          db=urllib.parse.urlsplit(env.get("DATABASE_URL") or "")
+          if not (db.hostname=="db.atyhhjwwxgzeurnwayay.supabase.co" or "atyhhjwwxgzeurnwayay" in (db.username or "")):
+              raise SystemExit("BLOCK: not isolated staging database")
+          if (env.get("EMAIL_HOST") or "").lower()!="smtp.gmail.com":
+              raise SystemExit("BLOCK: SMTP provider is not Gmail")
+          user=(env.get("EMAIL_HOST_USER") or env.get("GMAIL_USER") or env.get("GMAIL_EMAIL") or "").strip()
+          password="".join((env.get("EMAIL_HOST_PASSWORD") or env.get("GMAIL_APP_PASSWORD") or "").split())
+          sender=parseaddr(env.get("DEFAULT_FROM_EMAIL") or "")[1].lower()
+          if not user or not password or sender!=user.lower():
+              raise SystemExit("BLOCK: staging Gmail user/password/sender missing or mismatched")
+          if len(password)!=16:
+              raise SystemExit("BLOCK: staging credential does not normalize to 16-character app password")
+          print("PASS isolated staging sender and protected credential format; testing SSL 465 (no email)")
+          try:
+              with smtplib.SMTP_SSL("smtp.gmail.com",465,timeout=14,context=ssl.create_default_context()) as smtp:
+                  smtp.login(user,password)
+          except smtplib.SMTPAuthenticationError:
+              raise SystemExit("SMTP_465_RESULT=AUTH_REJECTED; generate a new Gmail app password for this exact sender")
+          except (smtplib.SMTPException,OSError,ssl.SSLError) as exc:
+              raise SystemExit("SMTP_465_RESULT=TRANSPORT_FAILED; error type: "+type(exc).__name__)
+          print("SMTP_465_RESULT=AUTHENTICATED; no mail sent; set EMAIL_PORT=465, EMAIL_USE_SSL=true, EMAIL_USE_TLS=false on staging")
+          PY
