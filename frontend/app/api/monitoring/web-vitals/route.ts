@@ -5,6 +5,9 @@ const ROUTES = new Set([
   "student_overview", "student_orders", "student_notifications", "tutor_dashboard",
 ]);
 const METRICS = new Set(["LCP", "INP", "CLS"]);
+const DEVICES = new Set(["mobile", "desktop"]);
+let minuteStart = 0;
+let acceptedInMinute = 0;
 
 const response = (status: number) => new Response(null, {
   status,
@@ -39,15 +42,25 @@ export async function POST(request: Request) {
   }
   if (data === null || typeof data !== "object" || Array.isArray(data)) return response(400);
   const input = data as Record<string, unknown>;
-  if (Object.keys(input).sort().join(",") !== "metric,page,value") return response(400);
-  const { metric, page, value } = input;
+  if (Object.keys(input).sort().join(",") !== "device,metric,page,value") return response(400);
+  const { device, metric, page, value } = input;
+  if (typeof device !== "string" || !DEVICES.has(device)) return response(400);
   if (typeof metric !== "string" || !METRICS.has(metric)) return response(400);
   if (typeof page !== "string" || !ROUTES.has(page)) return response(400);
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return response(400);
   if (value > (metric === "CLS" ? 5 : metric === "LCP" ? 120000 : 60000)) return response(400);
 
+  // Limit unauthenticated log volume per process. This cap is deliberately
+  // account-agnostic; we do not inspect IP addresses or session cookies.
+  const now = Date.now();
+  if (now - minuteStart > 60_000) {
+    minuteStart = now;
+    acceptedInMinute = 0;
+  }
+  if (++acceptedInMinute > 300) return response(429);
+
   // No identifier or exact URL is logged. Render logs are temporary; reporting
   // p75 requires collecting enough real user samples for each route and metric.
-  console.info("amaris_dashboard_vital", JSON.stringify({ page, metric, value }));
+  console.info("amaris_dashboard_vital", JSON.stringify({ page, device, metric, value }));
   return response(204);
 }
