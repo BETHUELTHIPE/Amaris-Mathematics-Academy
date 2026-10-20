@@ -89,12 +89,14 @@ def main():
         # Chrome-originated data. keepalive beacons can outlive their page,
         # making Playwright network callbacks unreliable; never manufacture
         # or replay a metric just to pass this assertion.
-        import re
         from pathlib import Path
 
-        django_logs = Path("/tmp/rum-django.log").read_text(encoding="utf-8", errors="replace")
-        acknowledgements = len(
-            re.findall(r'"POST /api/v1/rum/ HTTP/[0-9.]+" 204(?:\\s|$)', django_logs)
+        # CI-only WSGI instrumentation records only the actual returned
+        # HTTP status, not visitor information or fabricated/replayed events.
+        status_file = Path("/tmp/amaris-rum-ci-204-count.txt")
+        acknowledgements = (
+            status_file.read_text(encoding="ascii").splitlines().count("204")
+            if status_file.exists() else 0
         )
         if acknowledgements < COUNT_REQUIRED:
             raise AssertionError(
