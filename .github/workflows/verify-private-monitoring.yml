@@ -73,8 +73,9 @@ jobs:
                   return None
 
           opener = urllib.request.build_opener(NoRedirect())
-          def get(url, auth=False):
+          def get(url, auth=False, extra_headers=None):
               headers = {"Accept-Encoding": "identity", "User-Agent": "Amaris-private-verification/1.0"}
+              headers.update(extra_headers or {})
               if auth:
                   credentials = os.environ.get("MONITORING_FLOWER_BASIC_AUTH", "")
                   headers["Authorization"] = "Basic " + base64.b64encode(credentials.encode()).decode()
@@ -86,6 +87,18 @@ jobs:
                   return response.status, response.read(1024 * 1024)
 
           result = {}
+          result["django_private_http_trials"] = {}
+          for variant, headers in {
+              "private_host": {},
+              "forwarded_https": {"X-Forwarded-Proto": "https"},
+              "public_host": {"Host": "amaris-production-web.onrender.com"},
+              "public_host_forwarded_https": {"Host": "amaris-production-web.onrender.com", "X-Forwarded-Proto": "https"},
+          }.items():
+              try:
+                  status, body = get("http://amaris-production-web:10000/metrics", extra_headers=headers)
+                  result["django_private_http_trials"][variant] = {"status": status, "invalid_http_parser": b"Invalid HTTP request received" in body[:256]}
+              except (OSError, ValueError):
+                  result["django_private_http_trials"][variant] = {"status": "connection_error"}
           checks = {
               "prometheus_ready": "http://amaris-monitoring-prometheus:10000/admin/monitoring/prometheus/-/ready",
               "grafana_health": "http://amaris-monitoring-grafana:10000/admin/monitoring/grafana/api/health",
