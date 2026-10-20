@@ -23,7 +23,7 @@ def observed_app(environ, start_response):
     def status_only(status, headers, exc_info=None):
         if environ.get("PATH_INFO") == "/api/v1/rum/" and status.startswith("204 "):
             with ack_path.open("a", encoding="ascii") as output:
-                output.write("204\\n")
+                output.write("204\n")
         return start_response(status, headers, exc_info)
 
     return app(environ, status_only)
