@@ -12,6 +12,7 @@ rule_files:
 
 scrape_configs:
   - job_name: prometheus
+    metrics_path: /admin/monitoring/prometheus/metrics
     static_configs:
       - targets: ["localhost:9090"]
 
@@ -21,7 +22,7 @@ scrape_configs:
       - targets: ["web:8000"]
 
   - job_name: flower
-    metrics_path: /monitoring/flower/metrics
+    metrics_path: /admin/monitoring/flower/metrics
     basic_auth:
       username_file: /tmp/flower_username
       password_file: /tmp/flower_password
