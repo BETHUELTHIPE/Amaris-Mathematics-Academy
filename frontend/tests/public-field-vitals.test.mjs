@@ -10,6 +10,8 @@ test("October 20 Web Vitals reporting keeps previous dashboard collector", async
   assert.match(source, /\/api\/monitoring\/web-vitals/);
   assert.match(source, /NEXT_PUBLIC_ENABLE_WEB_VITALS/);
   assert.match(source, /PUBLIC_RATE = 0\.20/);
+  assert.match(source, /if \(process\.env\.NEXT_PUBLIC_ENABLE_WEB_VITALS === "true"\) return;/);
+  assert.match(source, /if \(path === "\/tutor\/dashboard"\) return "tutor"/);
   assert.match(source, /pagehide/);
   assert.match(source, /visibilitychange/);
   for (const route of ["home", "courses", "contact", "announcements", "matric", "booking"]) {
@@ -30,6 +32,9 @@ test("rum beacon rejects cross-origin, unexpected fields and unconfigured backen
   assert.match(endpoint, /Object\.keys\(v\)\.some\(\(field\) => !APPROVED\.has\(field\)\)/);
   assert.match(endpoint, /X-Amaris-Rum-Token/);
   assert.match(endpoint, /process\.env\.RUM_INGEST_TOKEN/);
+  assert.match(endpoint, /process\.env\.RUM_FORWARD_ENABLED/);
+  assert.match(endpoint, /X-Amaris-Rum-Release/);
+  assert.match(endpoint, /process\.env\.RENDER_GIT_COMMIT/);
   assert.match(endpoint, /response\.status === 204 \? 204 : 503/);
   assert.match(endpoint, /AbortSignal\.timeout\(3000\)/);
   assert.doesNotMatch(endpoint, /console\.(log|info)\(|authorization|request\.headers\.get\("cookie"\)/);
