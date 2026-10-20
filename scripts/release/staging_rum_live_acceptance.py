@@ -53,8 +53,9 @@ def synthetic_validation():
     if post({"records": [example]}, "https://not-your-staging.example") != 403:
         raise RuntimeError("Cross-origin RUM attempt not denied")
     print("PASS same-origin protection 403", flush=True)
-    if post({"records": [{**example, "account_id": "forbidden"}]}, FRONT) != 400:
-        raise RuntimeError("Non-allowlisted identifying field not rejected")
+    malformed_status = post({"records": [{**example, "account_id": "forbidden"}]}, FRONT)
+    if malformed_status != 400:
+        raise RuntimeError(f"Non-allowlisted identifying field not rejected: HTTP {malformed_status}")
     print("PASS private-field rejection 400", flush=True)
     for batch in range(7):
         metrics = [{**example, "value": 2100 + batch * 25} for _ in range(3)]
