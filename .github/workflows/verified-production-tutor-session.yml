@@ -1,6 +1,10 @@
 name: Verified Production Tutor Session
 
 on:
+  # One-time, no-write protected acceptance attempt. Remove the push trigger after the run.
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verified-production-tutor-session.yml']
   workflow_dispatch:
 
 permissions:
