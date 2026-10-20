@@ -135,5 +135,5 @@ jobs:
         run: |
           kill "$(cat /tmp/rum-nitro.pid)" 2>/dev/null || true
           kill "$(cat /tmp/rum-django.pid)" 2>/dev/null || true
-          rm -f /tmp/amaris-rum-canary.sqlite3 /tmp/amaris-rum-cert.pem /tmp/amaris-rum-key.pem
+          rm -f /tmp/amaris-rum-canary.sqlite3 /tmp/amaris-rum-cert.pem /tmp/amaris-rum-key.pem /tmp/amaris-rum-ci-204-count.txt
           echo "PASS isolated test storage and TLS removed"
