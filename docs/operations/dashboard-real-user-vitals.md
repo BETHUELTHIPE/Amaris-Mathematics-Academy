@@ -10,7 +10,7 @@ targets are **never transmitted or logged**. Client telemetry uses credentials=o
 and referrerPolicy=no-referrer. The same-origin endpoint rejects unknown fields,
 oversized or implausible measurements, and caps the rate per running instance.
 
-Validated events are written as single JSON summaries prefixed
+Browser Do Not Track and Global Privacy Control signals are honored.\nValidated events are written as single JSON summaries prefixed
 `amaris_dashboard_vital` in existing Render frontend logs. No new database,
 paid service, or migration was introduced. Logging is **ephemeral** and subject
 to Render's log retention; avoid suggesting indefinite historical coverage.
@@ -25,7 +25,7 @@ to Render's log retention; avoid suggesting indefinite historical coverage.
    be sent. Do **not** paste cookies or network HAR files.
 3. Review server log lines with prefix `amaris_dashboard_vital`. Each contains
    only: `page`, `device` (mobile/desktop), `metric` and `value`.
-   Zero lines is **no evidence**, not a performance pass.
+   Zero lines is **no evidence**, not a performance pass. Existing Render\n   logs can be aggregated without exporting personal data with\n   `node frontend/scripts/performance/summarize-dashboard-vitals.mjs < render-logs.txt`.\n   This tool outputs only group counts and p75 values.
 4. Record counts and **p75** separately by route, device and metric, after
    collecting sufficient non-synthetic real-user observations (aim for at least
    100 reports per group; note statistical uncertainty). The frontend logs
