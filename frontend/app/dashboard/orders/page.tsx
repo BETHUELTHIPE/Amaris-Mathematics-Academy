@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowRight, Download, ReceiptText, ShoppingBag } from "lucide-react";
 import { StudentDashboardShell } from "@/components/site/student-dashboard-shell";
@@ -14,8 +15,19 @@ export const metadata: Metadata = {
 const successfulStatuses = new Set(["paid", "confirmed", "completed", "ready"]);
 const attentionStatuses = new Set(["failed", "cancelled", "expired", "payment_review"]);
 
-export default async function OrdersPage() {
-  await requireVerifiedStudent("/dashboard/orders");
+function OrdersSkeleton() {
+  return <div role="status" aria-label="Loading your private orders" className="space-y-4">
+    <div aria-hidden="true" className="grid gap-4 sm:grid-cols-3">
+      {Array.from({ length: 3 }, (_, i) => <div key={i} className="h-28 rounded-2xl border border-[#dce4ef] bg-white p-5"><div className="h-4 w-24 rounded bg-[#e9eef6]" /><div className="mt-4 h-8 w-16 rounded bg-[#e9eef6]" /></div>)}
+    </div>
+    <div aria-hidden="true" className="min-h-48 rounded-3xl border border-[#dce4ef] bg-white p-6">
+      <div className="h-6 w-44 rounded bg-[#e9eef6]" /><div className="mt-6 h-24 rounded-xl bg-[#f1f5fa]" />
+    </div>
+    <span className="sr-only">Loading private orders records</span>
+  </div>;
+}
+
+async function OrdersContent() {
   let orders: StudentOrder[] = [];
   let serviceAvailable = true;
   try {
@@ -29,12 +41,9 @@ export default async function OrdersPage() {
     ["pending", "pending_payment"].includes(order.status),
   ).length;
 
-  return <StudentDashboardShell
-    active="orders"
-    title="Orders & payments"
-    description="Review your 100 most recent course, live class and requested video orders in one private account view."
-  >
-    <div className="grid gap-4 sm:grid-cols-3">
+
+  return <>
+   <div className="grid gap-4 sm:grid-cols-3">
       {[
         ["All orders", orders.length],
         ["Payments received", paidOrders],
@@ -89,8 +98,22 @@ export default async function OrdersPage() {
         })}
       </div>
     </section>}
+  </>;
+}
+
+export default async function OrdersPage() {
+  await requireVerifiedStudent("/dashboard/orders");
+  return <StudentDashboardShell
+    active="orders"
+    title="Orders & payments"
+    description="Review your 100 most recent course, live class and requested video orders in one private account view."
+  >
+    <Suspense fallback={<OrdersSkeleton />}>
+      <OrdersContent />
+    </Suspense>
   </StudentDashboardShell>;
 }
+
 
 function kindLabel(kind: StudentOrder["kind"]): string {
   if (kind === "live_class") return "Live class";
