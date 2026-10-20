@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowRight, BellRing } from "lucide-react";
 import { StudentDashboardShell } from "@/components/site/student-dashboard-shell";
@@ -11,8 +12,19 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function NotificationsPage() {
-  await requireVerifiedStudent("/dashboard/notifications");
+function NotificationsSkeleton() {
+  return <div role="status" aria-label="Loading your private notifications" className="space-y-4">
+    <div aria-hidden="true" className="grid gap-4 sm:grid-cols-3">
+      {Array.from({ length: 3 }, (_, i) => <div key={i} className="h-28 rounded-2xl border border-[#dce4ef] bg-white p-5"><div className="h-4 w-24 rounded bg-[#e9eef6]" /><div className="mt-4 h-8 w-16 rounded bg-[#e9eef6]" /></div>)}
+    </div>
+    <div aria-hidden="true" className="min-h-48 rounded-3xl border border-[#dce4ef] bg-white p-6">
+      <div className="h-6 w-44 rounded bg-[#e9eef6]" /><div className="mt-6 h-24 rounded-xl bg-[#f1f5fa]" />
+    </div>
+    <span className="sr-only">Loading private notifications records</span>
+  </div>;
+}
+
+async function NotificationsContent() {
   let notifications: StudentNotification[] = [];
   let serviceAvailable = true;
   try {
@@ -21,12 +33,9 @@ export default async function NotificationsPage() {
     serviceAvailable = false;
   }
 
-  return <StudentDashboardShell
-    active="notifications"
-    title="Notifications"
-    description="Payment confirmations, live-class reminders and requested-video updates appear here."
-  >
-    {!serviceAvailable && <div role="alert" className="rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-5 text-sm leading-6 text-[#765314]">
+
+  return <>
+   {!serviceAvailable && <div role="alert" className="rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-5 text-sm leading-6 text-[#765314]">
       Notifications are temporarily unavailable. Your account and purchases remain secure; try again shortly.
     </div>}
 
@@ -58,8 +67,22 @@ export default async function NotificationsPage() {
         </article>)}
       </div>
     </section>}
+  </>;
+}
+
+export default async function NotificationsPage() {
+  await requireVerifiedStudent("/dashboard/notifications");
+  return <StudentDashboardShell
+    active="notifications"
+    title="Notifications"
+    description="Payment confirmations, live-class reminders and requested-video updates appear here."
+  >
+    <Suspense fallback={<NotificationsSkeleton />}>
+      <NotificationsContent />
+    </Suspense>
   </StudentDashboardShell>;
 }
+
 
 function formatDate(value: string): string {
   const date = new Date(value);
