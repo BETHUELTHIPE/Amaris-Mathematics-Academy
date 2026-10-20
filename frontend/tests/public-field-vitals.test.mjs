@@ -27,7 +27,7 @@ test("October 20 Web Vitals reporting keeps previous dashboard collector", async
 
 test("rum beacon rejects cross-origin, unexpected fields and unconfigured backend", async () => {
   const endpoint = await read("../app/api/field-vitals/route.ts");
-  assert.match(endpoint, /process\\.env\\.RUM_ALLOWED_ORIGIN/);
+  assert.match(endpoint, /process\.env\.RUM_ALLOWED_ORIGIN/);
   assert.match(endpoint, /origin !== expectedOrigin/);
   assert.match(endpoint, /site !== "same-origin"/);
   assert.match(endpoint, /Object\.keys\(v\)\.some\(\(field\) => !APPROVED\.has\(field\)\)/);
