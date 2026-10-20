@@ -32,9 +32,10 @@ test("telemetry ingestion allowlists only metric, coarse page and device", async
 });
 
 test("production tutor acceptance is protected, actually logs in, and does not modify bookings", async () => {
-  const workflow = await read("../../.github/workflows/live-tutor-dashboard-acceptance.yml");
+  const workflow = await read("../../.github/workflows/verified-production-tutor-session.yml");
   const script = await read("../e2e/live_tutor_dashboard_acceptance.py");
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /github.ref_name == 'main'/);
   assert.match(workflow, /environment: tutor-production-verification/);
   assert.match(workflow, /secrets\.AMARIS_LIVE_TEST_TUTOR_EMAIL/);
   assert.match(workflow, /secrets\.AMARIS_LIVE_TEST_TUTOR_PASSWORD/);
