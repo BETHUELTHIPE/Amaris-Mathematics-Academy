@@ -11,11 +11,11 @@ from content.models import WebVitalBucket
 from content.rum import bucket_for, summarize_p75
 
 
-@override_settings(RUM_INGEST_TOKEN="test-only-rum-token-not-production", SECURE_SSL_REDIRECT=False)
+@override_settings(RUM_INGEST_TOKEN="test-only-rum-token-not-production", RUM_PERSIST_ENABLED=True, SECURE_SSL_REDIRECT=False)
 class WebVitalsCollectionTests(TestCase):
     def setUp(self):
         self.url = reverse("anonymous-web-vitals")
-        self.headers = {"HTTP_X_AMARIS_RUM_TOKEN": "test-only-rum-token-not-production"}
+        self.headers = {"HTTP_X_AMARIS_RUM_TOKEN": "test-only-rum-token-not-production", "HTTP_X_AMARIS_RUM_RELEASE": "abcdef012345"}
         self.valid = {"name": "LCP", "value": 2250, "route": "courses", "device": "mobile", "network": "3g"}
 
     def send(self, records, **kwargs):
@@ -26,6 +26,15 @@ class WebVitalsCollectionTests(TestCase):
                 content_type="application/json",
                 **kwargs,
             )
+
+    def test_disabled_persistence_refuses_ingestion(self):
+        with override_settings(RUM_PERSIST_ENABLED=False):
+            self.assertEqual(self.send([self.valid], **self.headers).status_code, 503)
+        self.assertEqual(WebVitalBucket.objects.count(), 0)
+
+    def test_invalid_release_is_rejected(self):
+        self.assertEqual(self.send([self.valid], HTTP_X_AMARIS_RUM_TOKEN="test-only-rum-token-not-production", HTTP_X_AMARIS_RUM_RELEASE="../private").status_code, 400)
+        self.assertEqual(WebVitalBucket.objects.count(), 0)
 
     def test_requires_server_only_secret(self):
         self.assertEqual(self.send([self.valid]).status_code, 403)
@@ -38,6 +47,7 @@ class WebVitalsCollectionTests(TestCase):
         self.assertEqual(self.send([self.valid], **self.headers).status_code, 204)
         row = WebVitalBucket.objects.get()
         self.assertEqual(row.count, 2)
+        self.assertEqual(row.release, "abcdef012345")
         self.assertEqual(row.bucket, bucket_for("LCP", 2250))
         self.assertFalse(hasattr(row, "student_id"))
         self.assertFalse(hasattr(row, "user_agent"))
