@@ -7,6 +7,7 @@ on:
       - 'frontend/app/**'
       - 'frontend/components/**'
       - 'frontend/e2e/sitewide_responsive.py'
+      - 'frontend/e2e/private_synthetic_responsive.py'
       - '.github/workflows/sitewide-responsive-gate.yml'
   workflow_dispatch:
 
@@ -57,5 +58,57 @@ jobs:
         with:
           name: amaris-sitewide-responsive-audit
           path: frontend/artifacts/sitewide-responsive/
+          retention-days: 14
+          if-no-files-found: warn
+
+  isolated-synthetic-student:
+    name: Signed-in student UI (synthetic only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install development-only browser harness
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          python -m pip install -r e2e/requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Check signed-in synthetic student screens at four breakpoints
+        working-directory: frontend
+        env:
+          NODE_ENV: development
+          E2E_SYNTHETIC_STUDENT: 'true'
+          E2E_WORKFLOW_FIXTURES: 'false'
+          E2E_BASE_URL: http://127.0.0.1:3000
+          CMS_API_URL: http://127.0.0.1:3001/api/v1
+          CSP_REPORT_ONLY: 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev:ci > /tmp/amaris-sitewide-synthetic.log 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          for n in $(seq 1 60); do
+            if curl --fail --silent --max-time 4 http://127.0.0.1:3000/ >/dev/null; then break; fi
+            if [ "$n" -eq 60 ]; then cat /tmp/amaris-sitewide-synthetic.log; exit 1; fi
+            sleep 2
+          done
+          python -u e2e/private_synthetic_responsive.py
+      - name: Retain private synthetic screenshots on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-private-synthetic-responsive
+          path: frontend/artifacts/sitewide-private-responsive/
           retention-days: 14
           if-no-files-found: warn
