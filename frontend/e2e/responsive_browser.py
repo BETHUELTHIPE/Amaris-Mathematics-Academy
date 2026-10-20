@@ -168,7 +168,14 @@ def check_dashboard(page: Page) -> None:
     require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
     require(page.get_by_role("heading", name=re.compile(r"Welcome, Responsive\.")).is_visible(), "Synthetic student dashboard did not render")
     require(page.get_by_role("navigation", name="Dashboard navigation").is_visible(), "Dashboard navigation is not visible")
-    require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(), "Dashboard course shelf is not visible")
+    # On a 320px screen the shelf is below the fold. Scroll the actual
+    # anchor into view before asserting; do not treat offscreen content as missing.
+    shelf = page.locator("#my-courses")
+    require(shelf.count() == 1, "Dashboard needs exactly one My courses target")
+    shelf.scroll_into_view_if_needed(timeout=10000)
+    require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(),
+            "Dashboard course shelf is not visible after scrolling")
+
     navigation = page.get_by_role("navigation", name="Dashboard navigation")
     require(navigation.is_visible(), "Dashboard navigation is not visible")
     course_link = navigation.get_by_role("link", name="My courses")
