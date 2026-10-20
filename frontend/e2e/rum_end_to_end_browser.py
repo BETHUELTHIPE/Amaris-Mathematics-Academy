@@ -137,18 +137,21 @@ def main():
         page.goto(BACK + "/admin/login/", wait_until="domcontentloaded", timeout=30000)
         page.locator('input[name="username"]').fill("rum_ci_admin")
         page.locator('input[name="password"]').fill(os.environ["RUM_E2E_ADMIN_PASSWORD"])
-        # Wait for the login redirect and Django session cookie before
-        # navigating away. Otherwise the report GET can race the login POST.
-        page.locator('button[type="submit"], input[type="submit"]').first.click()
-        try:
-            page.wait_for_url("**/admin/", wait_until="domcontentloaded", timeout=15000)
-        except Exception as exc:
-            headings = page.locator("h1").all_inner_texts()[:2]
+        # The project's LOGIN_REDIRECT_URL may be /accounts/profile/, not
+        # /admin/. Check the actual Admin login POST and Django session, then
+        # request the superuser-only report directly (no bypass or force_login).
+        with page.expect_response(
+            lambda res: res.request.method == "POST"
+            and res.url.split("?")[0] == BACK + "/admin/login/",
+            timeout=15000,
+        ) as login_result:
+            page.locator('button[type="submit"], input[type="submit"]').first.click()
+        if login_result.value.status not in (302, 303):
             raise AssertionError(
-                f"isolated superuser login did not reach admin index: "
-                f"path={__import__('urllib.parse', fromlist=['urlsplit']).urlsplit(page.url).path} "
-                f"headings={headings}"
-            ) from exc
+                f"isolated Django Admin authentication failed HTTP {login_result.value.status}"
+            )
+        if not any(cookie["name"] == "sessionid" for cookie in admin.cookies(BACK)):
+            raise AssertionError("Django did not establish a superuser session")
         report = page.goto(
             BACK + "/admin/content/webvitalbucket/report/",
             wait_until="domcontentloaded", timeout=30000
