@@ -1,6 +1,8 @@
-# Missing monitoring services — approval proposal
+# Missing monitoring services — paused paid proposal
 
-Do not apply `pending-services.yaml` until the owner approves its additional recurring budget. This file is separate from the active Blueprint paths and defines only three missing services; it does not redefine the existing backend, Flower, exporter or databases.
+The owner approved the estimated USD 21.50/month, then requested free private Prometheus and Grafana using Docker. New paid provisioning is paused under that latest constraint. Do not apply `pending-services.yaml`; Docker on Render still requires paid private instances. The standalone alternative is documented in `../self-hosted/README.md` and requires an existing, accessible Docker host plus private connectivity to Render.
+
+This file is separate from the active Blueprint paths and defines only three missing services; it does not redefine the existing backend, Flower, exporter or databases. The estimate below is retained for reference, not as an active provisioning instruction.
 
 | Resource | Starting configuration | Monthly base estimate (USD) |
 | --- | --- | ---: |
@@ -13,7 +15,7 @@ Pricing source: https://render.com/pricing. This is a small starting configurati
 
 ## Safe activation sequence
 
-1. Obtain explicit approval for the extra recurring cost. Inspect Render's deployment plan: exactly the three new service names and two one-GB disks must be added, with no replacements or database changes. The YAML passed Render's published JSON Schema; account-aware provider validation remains required.
+1. Resolve the owner's latest no-new-paid-hosting constraint before considering this alternative. Inspect Render's deployment plan: exactly the three new service names and two one-GB disks must be added, with no replacements or database changes. The YAML passed Render's published JSON Schema; account-aware provider validation remains required.
 2. Verify that `DJANGO_SECRET_KEY` and `DATABASE_URL` exist on the production backend. `fromService` references copy them within Render without exposing their values. Reuse the existing production broker. Never copy production secrets into GitHub source or terminal output.
 3. Deploy the worker on the isolated `monitoring-verification` queue first. It emits real Celery events but does not consume the application's production queues. Confirm current heartbeats in Flower. No synthetic worker or fabricated healthy state is acceptable.
 4. Deploy private Prometheus and Grafana. Verify Django, Flower and exporter scrape targets, real datasource samples and disk write paths. Use internal service addresses only; no public dashboard service or new domain is required.
