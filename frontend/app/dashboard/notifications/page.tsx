@@ -91,8 +91,11 @@ export default async function NotificationsPage({ searchParams }: {
 }
 
 
+const southAfricaDate = new Intl.DateTimeFormat("en-ZA", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg",
+});
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.valueOf())) return "Date unavailable";
-  return new Intl.DateTimeFormat("en-ZA", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg" }).format(date);
+  return southAfricaDate.format(date);
 }
