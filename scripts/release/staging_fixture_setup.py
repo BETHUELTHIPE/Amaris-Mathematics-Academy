@@ -101,6 +101,12 @@ def preflight() -> dict:
     )
     for name in names:
         print(name + "=" + ("SET" if os.environ.get(name) else "MISSING"), flush=True)
+    print("RENDER_STAGING_AUTH_ADMIN_KEY_PRESENT=" + str(bool(
+        variables.get("SUPABASE_SERVICE_ROLE_KEY") or variables.get("SUPABASE_SECRET_KEY")
+    )), flush=True)
+    print("RENDER_STAGING_PUBLISHABLE_KEY_PRESENT=" + str(bool(
+        variables.get("SUPABASE_PUBLISHABLE_KEY") or variables.get("SUPABASE_ANON_KEY")
+    )), flush=True)
     print("PREFLIGHT_ONLY=YES; NO_USERS_CREATED=YES; NO_EMAIL_SENT=YES", flush=True)
     return variables
 
@@ -123,8 +129,20 @@ def http_json(url: str, headers: dict, body: dict | None = None) -> dict:
 def execute(variables: dict) -> None:
     if os.environ.get("STAGING_FIXTURE_BOOTSTRAP_CONFIRM") != "CREATE_STAGING_QA_USERS":
         raise RuntimeError("BLOCK: fixture creation requires explicit protected opt-in")
-    service_key = need("STAGING_SUPABASE_SERVICE_ROLE_KEY")
-    publishable = need("STAGING_SUPABASE_PUBLISHABLE_KEY")
+    service_key = (
+        os.environ.get("STAGING_SUPABASE_SERVICE_ROLE_KEY")
+        or variables.get("SUPABASE_SERVICE_ROLE_KEY")
+        or variables.get("SUPABASE_SECRET_KEY")
+        or ""
+    )
+    publishable = (
+        os.environ.get("STAGING_SUPABASE_PUBLISHABLE_KEY")
+        or variables.get("SUPABASE_PUBLISHABLE_KEY")
+        or variables.get("SUPABASE_ANON_KEY")
+        or ""
+    )
+    if not service_key or not publishable:
+        raise RuntimeError("BLOCK: secure staging Supabase Auth admin/publishable keys not configured")
     student_password = need("STAGING_TEST_STUDENT_PASSWORD")
     tutor_password = need("STAGING_TEST_TUTOR_PASSWORD")
     admin_password = need("STAGING_TEST_SUPERUSER_PASSWORD")
@@ -157,7 +175,7 @@ def execute(variables: dict) -> None:
         if cursor.fetchone()[0] != "postgres":
             raise RuntimeError("BLOCK: unexpected database name")
     User = get_user_model()
-    if User.objects.filter(username__in=[EXPECTED_TUTOR, EXPECTED_ADMIN]).exists():
+    if User.objects.filter(username__in=["amaris_staging_qa_tutor", EXPECTED_ADMIN]).exists():
         raise RuntimeError("BLOCK: QA Django identities already exist; review before resetting")
     print("PASS staging Django ORM and duplicate-identity checks", flush=True)
 
