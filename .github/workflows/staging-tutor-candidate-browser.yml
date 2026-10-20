@@ -1,0 +1,86 @@
+name: Protected Staging Tutor Candidate Browser Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type RUN_STAGING_TUTOR_UI to test approved staging QA tutor credentials (no writes)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-tutor-candidate-authentication
+  cancel-in-progress: false
+
+jobs:
+  authenticated-tutor-candidate:
+    if: >-
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.confirmation == 'RUN_STAGING_TUTOR_UI'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: staging
+    env:
+      PAYFAST_MODE: sandbox
+      STAGING_TUTOR_UI_CONFIRM: ${{ inputs.confirmation }}
+      CMS_API_URL: https://amaris-mathematics-academy-staging.onrender.com
+      SUPABASE_URL: https://atyhhjwwxgzeurnwayay.supabase.co
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+      STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+      STAGING_TEST_TUTOR_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
+      STAGING_TEST_TUTOR_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
+      VERIFIED_CANDIDATE_SHA: 4ef005618d28d75068a0b4c60dd8f437ec38b7ee
+    steps:
+      - name: Verify operator-approved staging configuration before checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in STAGING_TEST_TUTOR_EMAIL STAGING_TEST_TUTOR_PASSWORD SUPABASE_PUBLISHABLE_KEY; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::BLOCK: protected staging secret $key is missing"
+              exit 1
+            fi
+          done
+          python3 - <<'PY'
+          import json, os, urllib.request
+          url = "https://api.github.com/repos/BETHUELTHIPE/Amaris-Mathematics-Academy/pulls/291"
+          req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
+          with urllib.request.urlopen(req, timeout=20) as res:
+              head = json.load(res)["head"]["sha"]
+          if head != os.environ["VERIFIED_CANDIDATE_SHA"]:
+              raise SystemExit("BLOCK: PR #291 changed since reviewed pin; update pin after reviewing candidate")
+          print("PASS pinned reviewed PR #291 commit and protected staging test credentials")
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: 4ef005618d28d75068a0b4c60dd8f437ec38b7ee
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install candidate frontend and pinned adapter for Node Render parity
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+      - name: Build real candidate tutor UI, with staging-only backend/Auth configuration
+        working-directory: frontend
+        env:
+          NODE_ENV: production
+          NITRO_PRESET: node
+        run: npx vite build --config vite.node.config.ts
+      - name: Install Playwright and Chrome for true browser session
+        run: |
+          python -m pip install -r frontend/e2e/requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Verify authenticated tutor UI + staging Django and Supabase, read-only
+        run: python -u frontend/e2e/staging_tutor_candidate_acceptance.py
