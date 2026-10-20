@@ -2,6 +2,8 @@ from datetime import timedelta
 
 from django import forms
 from django.contrib import admin, messages
+from django.template.response import TemplateResponse
+from django.urls import path
 from django.utils import timezone
 
 from .models import (
