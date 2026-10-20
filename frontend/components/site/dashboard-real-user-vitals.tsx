@@ -27,6 +27,7 @@ function reportDashboardVital(metric: Vital) {
   // Avoid cookies and referer on this explicitly anonymous measurement.
   const body = JSON.stringify({
     page,
+    device: window.innerWidth < 768 ? "mobile" : "desktop",
     metric: metric.name,
     value: Number(metric.value.toFixed(metric.name === "CLS" ? 4 : 0)),
   });
