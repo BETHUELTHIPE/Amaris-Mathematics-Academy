@@ -2,7 +2,7 @@
 
 This standalone stack adds no Render services and purchases no hosting. Prometheus and Grafana run on a server or computer the owner already controls. Hardware, electricity, storage and any existing hosting bills remain the owner's responsibility. Docker does not make Render private instances free: Render has no free private-service plan.
 
-The two services use an internal Docker network, persistent named volumes, and ports bound only to `127.0.0.1`. Grafana requires a login; anonymous access and signup are disabled. A Compose secret file supplies the initial admin password. No production database, Celery queue, Flower service or Render service is changed by this stack.
+The two services use a private Docker bridge network, persistent named volumes, and ports bound only to `127.0.0.1`. The bridge permits outbound traffic for configured scrape targets; it does not publish dashboards publicly. Grafana requires a login; anonymous access and signup are disabled. A Compose secret file supplies the initial admin password. No production database, Celery queue, Flower service or Render service is changed by this stack.
 
 ## Start on the selected host
 
@@ -35,7 +35,7 @@ Open `http://localhost:3000` for Grafana and `http://localhost:9090` for Prometh
 
 Run `docker compose ps`, inspect `http://localhost:9090/-/ready`, and confirm the `prometheus` target is UP. In Grafana Explore, query `up{job="prometheus"}` using the provisioned Amaris Prometheus datasource. A value of 1 verifies only this collector, not the application's monitoring integration.
 
-Initially Prometheus scrapes only itself. Render's internal hostnames are reachable only from its private network, so an external Docker host cannot scrape the existing Flower or Render exporter directly. Keep them private. Configure an authenticated private tunnel/VPN or an outbound metrics-forwarding path after the host is selected, then add the actual targets and credentials. Do not use invented hostnames or pretend empty application graphs are healthy. The isolated Docker network also needs an explicitly configured connection to that private path.
+Initially Prometheus scrapes only itself. Render's internal hostnames are reachable only from its private network, so an external Docker host cannot scrape the existing Flower or Render exporter directly. Keep them private. Configure an authenticated private tunnel/VPN or an outbound metrics-forwarding path after the host is selected, then add the actual targets and credentials. Do not use invented hostnames or pretend empty application graphs are healthy. Verify that the Docker bridge can route to that private path.
 
 The Django superuser proxy requires a backend-reachable private origin for Grafana and Prometheus. `localhost` on Render means the Render backend itself, not this Docker host. Leave the production origin variables unconfigured until that path and authentication are verified. This stack alone does not complete the authenticated Django admin verification or Celery worker verification.
 
