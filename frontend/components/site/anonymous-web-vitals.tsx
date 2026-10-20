@@ -68,7 +68,6 @@ export function AnonymousWebVitals() {
     if (state.__amarisVitalsStarted || Math.random() >= 0.2) return;
     const route = safeRoute(window.location.pathname);
     if (!route) return;
-    state.__amarisVitalsStarted = true;
     const device = deviceGroup();
     const network = networkGroup();
     const begin = () => {
@@ -79,7 +78,7 @@ export function AnonymousWebVitals() {
         onCLS((metric) => publish("CLS", metric.value, route, device, network));
       }).catch(() => undefined);
     };
-    const scheduled = window.setTimeout(begin, 0);
+    const scheduled = window.setTimeout(begin, 500);
     return () => window.clearTimeout(scheduled);
   }, []);
   return null;
