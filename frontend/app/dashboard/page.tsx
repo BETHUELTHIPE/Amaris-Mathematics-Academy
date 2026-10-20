@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -18,12 +19,24 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function DashboardPage() {
-  const user = await requireVerifiedStudent("/dashboard");
-  const firstName = user.firstName;
-  const profileSaved = user.emailVerified;
-  const recommended = courses.slice(0, 2);
+function StudentDashboardSkeleton() {
+  return <div role="status" aria-label="Loading your private dashboard" className="space-y-6">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-hidden="true">
+      {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-32 rounded-2xl border border-[#dce4ef] bg-white p-5">
+        <div className="h-4 w-24 rounded bg-[#e9eef6]" />
+        <div className="mt-5 h-9 w-16 rounded bg-[#e9eef6]" />
+      </div>)}
+    </div>
+    <div aria-hidden="true" className="min-h-64 rounded-3xl border border-[#dce4ef] bg-white p-6">
+      <div className="h-6 w-52 max-w-full rounded bg-[#e9eef6]" />
+      <div className="mt-5 h-24 rounded-2xl bg-[#f1f5fa]" />
+    </div>
+    <span className="sr-only">Loading your courses, orders and learning progress</span>
+  </div>;
+}
 
+async function StudentDashboardContent() {
+  const recommended = courses.slice(0, 2);
   // Start independent student-scoped reads together so the workflow panel
   // does not add another serial API round trip to the dashboard loading path.
   const pendingSecondary = Promise.allSettled([
@@ -47,16 +60,9 @@ export default async function DashboardPage() {
 
   const lessonsStarted = enrolledCourses.filter((item) => item.resume.last_lesson).length;
 
-  return <StudentDashboardShell
-    active="overview"
-    title={`Welcome, ${firstName}.`}
-    description="Your next mathematics step will always be clear here."
-    headerAside={<div className={`inline-flex max-w-full self-start items-center gap-2 rounded-2xl px-4 py-2 text-left text-sm font-semibold leading-5 md:shrink-0 ${profileSaved ? "bg-[#daf5ec] text-[#13715f]" : "bg-[#fff3d6] text-[#7b5710]"}`}>
-          {profileSaved ? <CheckCircle2 className="size-4" /> : <ShieldCheck className="size-4" />}
-          {profileSaved ? "Email verified · profile active" : "Email verified"}
-        </div>}
-  >
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+
+  return <>
+       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
             ["Active courses", String(enrolledCourses.length)],
             ["Lessons started", String(lessonsStarted)],
@@ -149,5 +155,26 @@ export default async function DashboardPage() {
             </Link>)}
           </div>
         </section>
+  </>;
+}
+
+export default async function DashboardPage() {
+  // Authorize before streaming any personal information. Suspense never
+  // bypasses the verified student boundary or private no-store API requests.
+  const user = await requireVerifiedStudent("/dashboard");
+  const firstName = user.firstName;
+  const profileSaved = user.emailVerified;
+  return <StudentDashboardShell
+    active="overview"
+    title={`Welcome, ${firstName}.`}
+    description="Your next mathematics step will always be clear here."
+    headerAside={<div className={`inline-flex max-w-full self-start items-center gap-2 rounded-2xl px-4 py-2 text-left text-sm font-semibold leading-5 md:shrink-0 ${profileSaved ? "bg-[#daf5ec] text-[#13715f]" : "bg-[#fff3d6] text-[#7b5710]"}`}>
+      {profileSaved ? <CheckCircle2 className="size-4" /> : <ShieldCheck className="size-4" />}
+      {profileSaved ? "Email verified · profile active" : "Email verified"}
+    </div>}
+  >
+    <Suspense fallback={<StudentDashboardSkeleton />}>
+      <StudentDashboardContent />
+    </Suspense>
   </StudentDashboardShell>;
 }
