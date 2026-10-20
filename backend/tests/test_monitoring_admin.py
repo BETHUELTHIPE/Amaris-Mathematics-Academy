@@ -134,7 +134,9 @@ class RealMonitoringStatusTests(SimpleTestCase):
         def inspect_target(url):
             if url.endswith("/admin/monitoring/flower/"):
                 return (200, b"<html>flower</html>")
-            return (200, b"render_metrics_exporter_refresh_success 0\n")
+            if url.endswith("/admin/monitoring/flower/api/workers"):
+                return (200, b'{"celery-worker-test": {"status": true}}')
+            return (200, b"render_metrics_exporter_refresh_success 0\\n")
 
         request_probe.side_effect = inspect_target
         items = {r["name"]: r for r in monitor_statuses()}
@@ -142,6 +144,49 @@ class RealMonitoringStatusTests(SimpleTestCase):
         self.assertEqual(items["prometheus"]["status"], "unconfigured")
         self.assertEqual(items["flower"]["status"], "reachable")
         self.assertEqual(items["render"]["status"], "degraded")
+
+    @override_settings(
+        MONITORING_CONSOLE_ENABLED=True,
+        MONITORING_GRAFANA_URL="",
+        MONITORING_PROMETHEUS_URL="",
+        MONITORING_FLOWER_URL="http://amaris-monitoring-flower:10000",
+        MONITORING_RENDER_EXPORTER_URL="",
+    )
+    @patch("amaris_cms.monitoring_status._request")
+    def test_flower_ui_without_live_workers_is_degraded(self, request_probe):
+        def inspect_target(url):
+            if url.endswith("/admin/monitoring/flower/"):
+                return (200, b"<html>Flower</html>")
+            if url.endswith("/admin/monitoring/flower/api/workers"):
+                return (200, b"{}")
+            raise AssertionError("Unexpected probe target")
+
+        request_probe.side_effect = inspect_target
+        items = {record["name"]: record for record in monitor_statuses()}
+        self.assertEqual(items["flower"]["status"], "degraded")
+
+    @override_settings(MONITORING_FLOWER_BASIC_AUTH="synthetic:test-secret")
+    @patch("amaris_cms.monitoring_status.urllib_request.build_opener")
+    def test_flower_worker_probe_forwards_only_server_held_basic_auth(self, opener_factory):
+        class Reply:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def read(self, size):
+                return b"{}"
+
+        opener_factory.return_value.open.return_value = Reply()
+        from amaris_cms.monitoring_status import _request
+
+        _request("http://amaris-monitoring-flower:10000/admin/monitoring/flower/api/workers")
+        request = opener_factory.return_value.open.call_args.args[0]
+        self.assertIn("Authorization", request.headers)
+        self.assertNotIn("Cookie", request.headers)
 
     @override_settings(
         MONITORING_CONSOLE_ENABLED=False,
