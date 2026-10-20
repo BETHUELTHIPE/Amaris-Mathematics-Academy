@@ -26,11 +26,11 @@ export function PrivatePagination({
   return (
     <nav aria-label="List pages" className="mt-5 flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dce4ef] bg-white px-4 py-3 text-sm">
       {current > 1 ? (
-        <Link href={href(current - 1)} className="inline-flex min-h-11 items-center rounded-full border border-[#bfd0e8] px-4 font-semibold text-[#194f95]">Previous</Link>
+        <Link prefetch={false} href={href(current - 1)} className="inline-flex min-h-11 items-center rounded-full border border-[#bfd0e8] px-4 font-semibold text-[#194f95]">Previous</Link>
       ) : <span className="min-h-11 px-4 py-3 text-[#60708a]">First page</span>}
       <span aria-live="polite" className="font-semibold text-[#263852]">Page {current} of {totalPages}</span>
       {current < totalPages ? (
-        <Link href={href(current + 1)} className="inline-flex min-h-11 items-center rounded-full bg-[#0b2a5b] px-4 font-semibold text-white">Next</Link>
+        <Link prefetch={false} href={href(current + 1)} className="inline-flex min-h-11 items-center rounded-full bg-[#0b2a5b] px-4 font-semibold text-white">Next</Link>
       ) : <span className="min-h-11 px-4 py-3 text-[#60708a]">Last page</span>}
     </nav>
   );
