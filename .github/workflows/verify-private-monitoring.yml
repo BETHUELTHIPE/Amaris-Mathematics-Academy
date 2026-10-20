@@ -64,8 +64,10 @@ jobs:
           import datetime
           import json
           import os
+          import re
           import time
           import urllib.error
+          import urllib.parse
           import urllib.request
 
           class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -73,19 +75,21 @@ jobs:
                   return None
 
           opener = urllib.request.build_opener(NoRedirect())
-          def get(url, auth=False):
+          def get(url, auth=False, payload=None):
               headers = {"Accept-Encoding": "identity", "User-Agent": "Amaris-private-verification/1.0"}
               if url.startswith("http://amaris-production-web:10000/"):
                   headers["X-Forwarded-Proto"] = "https"
               if auth:
                   credentials = os.environ.get("MONITORING_FLOWER_BASIC_AUTH", "")
                   headers["Authorization"] = "Basic " + base64.b64encode(credentials.encode()).decode()
+              if payload is not None:
+                  headers["Content-Type"] = "application/json"
               try:
-                  response = opener.open(urllib.request.Request(url, headers=headers), timeout=8)
+                  response = opener.open(urllib.request.Request(url, data=None if payload is None else json.dumps(payload).encode(), headers=headers), timeout=8)
               except urllib.error.HTTPError as error:
                   response = error
               with response:
-                  return response.status, response.read(1024 * 1024)
+                  return response.status, response.read(8 * 1024 * 1024 + 1)
 
           result = {}
           checks = {
@@ -125,6 +129,45 @@ jobs:
               result["grafana_real_datasource_query"] = False
 
           try:
+              status, body = get("http://amaris-monitoring-grafana:10000/admin/monitoring/grafana/api/ds/query", payload={
+                  "from": "now-5m", "to": "now", "queries": [{
+                      "refId": "A", "datasource": {"uid": "amaris-prometheus", "type": "prometheus"},
+                      "expr": "up", "instant": True, "range": False, "intervalMs": 1000, "maxDataPoints": 100,
+                  }],
+              })
+              query = json.loads(body).get("results", {}).get("A", {})
+              result["grafana_chart_post_query"] = status == 200 and not query.get("error") and bool(query.get("frames"))
+          except (OSError, ValueError):
+              result["grafana_chart_post_query"] = False
+
+          try:
+              grafana_base = "http://amaris-monitoring-grafana:10000/admin/monitoring/grafana/"
+              status, body = get(grafana_base)
+              html = body.decode("utf-8")
+              scripts = re.findall(r'<script[^>]+src=["\x27]([^"\x27]+)', html)
+              result["grafana_html_and_scripts"] = status == 200 and 0 < len(scripts) <= 32
+              for source in scripts:
+                  asset = urllib.parse.urljoin(grafana_base, source)
+                  if not asset.startswith(grafana_base):
+                      result["grafana_html_and_scripts"] = False
+                      continue
+                  asset_status, asset_body = get(asset)
+                  if asset_status != 200 or not 0 < len(asset_body) <= 8 * 1024 * 1024:
+                      result["grafana_html_and_scripts"] = False
+              result["grafana_script_count"] = len(scripts)
+          except (OSError, ValueError):
+              result["grafana_html_and_scripts"] = False
+
+          result["anonymous_tool_routes_denied"] = True
+          for tool in ("grafana", "prometheus", "flower"):
+              try:
+                  status, _ = get(f"http://amaris-production-web:10000/admin/monitoring/{tool}/")
+                  if status not in (302, 403):
+                      result["anonymous_tool_routes_denied"] = False
+              except (OSError, ValueError):
+                  result["anonymous_tool_routes_denied"] = False
+
+          try:
               status, body = get("http://amaris-monitoring-flower:10000/admin/monitoring/flower/api/workers?status=true", auth=True)
               workers = json.loads(body) if status == 200 else {}
               result["monitor_worker_current_heartbeat"] = isinstance(workers, dict) and any(name.startswith("monitor@") and alive is True for name, alive in workers.items())
@@ -135,7 +178,7 @@ jobs:
           # preserve existing entries if the private scrape host needs adding.
           result["django_allowed_hosts"] = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
           print("AMARIS_PRIVATE_MONITORING_PROBE=" + json.dumps(result, sort_keys=True), flush=True)
-          required = ["prometheus_ready", "grafana_health", "django_metrics", "anonymous_admin_denied", "all_scrapes_up_and_fresh", "grafana_real_datasource_query", "monitor_worker_current_heartbeat"]
+          required = ["prometheus_ready", "grafana_health", "django_metrics", "anonymous_admin_denied", "all_scrapes_up_and_fresh", "grafana_real_datasource_query", "grafana_chart_post_query", "grafana_html_and_scripts", "anonymous_tool_routes_denied", "monitor_worker_current_heartbeat"]
           raise SystemExit(0 if all(result.get(key) is True for key in required) else 1)
           '''
           import textwrap
