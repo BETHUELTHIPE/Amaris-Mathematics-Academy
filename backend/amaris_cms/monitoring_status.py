@@ -6,6 +6,7 @@ addresses, tokens, session cookies, or a fabricated health result.
 
 import base64
 import concurrent.futures
+import json
 import re
 import time
 from functools import lru_cache
@@ -62,7 +63,7 @@ def is_private_monitoring_url(url):
 def _request(url):
     opener = urllib_request.build_opener(NoRedirect())
     headers = {"Accept-Encoding": "identity", "User-Agent": "Amaris-admin-health/1.0"}
-    if url.endswith("/admin/monitoring/flower/") and settings.MONITORING_FLOWER_BASIC_AUTH:
+    if urllib_parse.urlsplit(url).path.startswith("/admin/monitoring/flower/") and settings.MONITORING_FLOWER_BASIC_AUTH:
         token = base64.b64encode(settings.MONITORING_FLOWER_BASIC_AUTH.encode("utf-8")).decode("ascii")
         headers["Authorization"] = f"Basic {token}"
     req = urllib_request.Request(url, headers=headers)
@@ -100,9 +101,25 @@ def _probe(tool, endpoint, time_bucket):
             return "degraded"
         checks = {name: path for name, _, _, path in TOOL_SPECS}
         status, _ = _request(endpoint.rstrip("/") + checks[tool])
-        if status == 200:
-            return "reachable"
-        return "unavailable"
+        if status != 200:
+            return "unavailable"
+        if tool == "flower":
+            worker_status, workers_payload = _request(
+                endpoint.rstrip("/") + "/admin/monitoring/flower/api/workers"
+            )
+            if worker_status != 200:
+                return "degraded"
+            try:
+                workers = json.loads(workers_payload)
+            except (ValueError, UnicodeError):
+                return "degraded"
+            # A responsive Flower UI does not prove any Celery worker is alive.
+            # Never expose worker node names or task details on the status page.
+            if not isinstance(workers, dict) or not any(
+                isinstance(value, dict) for value in workers.values()
+            ):
+                return "degraded"
+        return "reachable"
     except (KeyError, ValueError, urllib_error.URLError, TimeoutError, OSError):
         return "unavailable"
 
