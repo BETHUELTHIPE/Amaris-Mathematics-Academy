@@ -28,7 +28,7 @@ test("private orders and notifications stream only after verified identity", asy
     assert.match(page, /export const dynamic = "force-dynamic"/);
     assert.match(page, /await requireVerifiedStudent/);
     assert.match(page, new RegExp(`<Suspense fallback=\\{<${section}Skeleton \\/>\\}>`));
-    assert.match(page, new RegExp(`async function ${section}Content\\(\\)`));
+    assert.match(page, new RegExp(`async function ${section}Content\\(\\{`));
     assert.match(page, new RegExp(`await ${api}\\(\\)`));
     assert.doesNotMatch(page, /getStaticProps|unstable_cache|force-static|revalidate\s*=/);
   }
