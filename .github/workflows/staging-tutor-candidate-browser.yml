@@ -28,13 +28,14 @@ jobs:
       (
         (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'RUN_STAGING_TUTOR_UI') ||
         (github.event_name == 'push' &&
-         github.event.before == '464145c2cd3fe467264e87a0654e0755542d077b' &&
-         contains(github.event.head_commit.message, '[RUN_STAGING_TUTOR_UI:4ef005618d28d75068a0b4c60dd8f437ec38b7ee]'))
+         github.event.before == '9004bae1332da1ca6c7bd95a913578ed848555ee' &&
+         contains(github.event.head_commit.message, '[RUN_STAGING_TUTOR_UI:16a0ed2bb1daa6174434a43ca737d65ad60b8b16]'))
       )
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: staging
     env:
+      STAGING_TUTOR_REQUIRE_PAGINATION: 'true'
       PAYFAST_MODE: sandbox
       STAGING_TUTOR_UI_CONFIRM: ${{ github.event_name == 'push' && 'RUN_STAGING_TUTOR_UI' || inputs.confirmation }}
       CMS_API_URL: https://amaris-mathematics-academy-staging.onrender.com
@@ -43,7 +44,7 @@ jobs:
       STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
       STAGING_TEST_TUTOR_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
       STAGING_TEST_TUTOR_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
-      VERIFIED_CANDIDATE_SHA: 4ef005618d28d75068a0b4c60dd8f437ec38b7ee
+      VERIFIED_CANDIDATE_SHA: 16a0ed2bb1daa6174434a43ca737d65ad60b8b16
     steps:
       - name: Verify operator-approved staging configuration before checkout
         shell: bash
@@ -57,17 +58,17 @@ jobs:
           done
           python3 - <<'PY'
           import json, os, urllib.request
-          url = "https://api.github.com/repos/BETHUELTHIPE/Amaris-Mathematics-Academy/pulls/291"
+          url = "https://api.github.com/repos/BETHUELTHIPE/Amaris-Mathematics-Academy/pulls/317"
           req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
           with urllib.request.urlopen(req, timeout=20) as res:
               head = json.load(res)["head"]["sha"]
           if head != os.environ["VERIFIED_CANDIDATE_SHA"]:
-              raise SystemExit("BLOCK: PR #291 changed since reviewed pin; update pin after reviewing candidate")
-          print("PASS pinned reviewed PR #291 commit and protected staging test credentials")
+              raise SystemExit("BLOCK: PR #317 changed since reviewed pin; update pin after reviewing candidate")
+          print("PASS pinned reviewed PR #317 commit and protected staging test credentials")
           PY
       - uses: actions/checkout@v4
         with:
-          ref: 4ef005618d28d75068a0b4c60dd8f437ec38b7ee
+          ref: 16a0ed2bb1daa6174434a43ca737d65ad60b8b16
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
