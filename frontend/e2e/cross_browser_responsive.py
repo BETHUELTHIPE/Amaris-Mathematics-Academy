@@ -41,8 +41,16 @@ def main():
             except subprocess.TimeoutExpired: server.kill()
     counts=Counter(x["status"] for x in results)
     failures=[x for x in results if x["status"].startswith("FAIL") or x["status"]=="ERROR"]
+    valid_dynamic=[x for x in results if x["status"] == "PASS_VALID_DYNAMIC"]
+    negative_404=[x for x in results if x["status"] == "PASS_EXPECTED_404"]
+    expected_valid=len([route for route in routes if route["coverage"] == "valid-dynamic"]) * len(devices)
+    if len(valid_dynamic) != expected_valid:
+        failures.append({"status":"FAIL_VALID_DYNAMIC_COVERAGE",
+                         "expected":expected_valid,"actual":len(valid_dynamic)})
     summary={"engine":engine,"routes":len(routes),"widths":[x[1] for x in devices],
-             "checks":len(results),"statusCounts":dict(counts),"failures":failures}
+             "checks":len(results),"statusCounts":dict(counts),"failures":failures,
+             "validDynamicChecks":len(valid_dynamic),"negative404Checks":len(negative_404),
+             "note":"Expected 404s are negative assertions, not proof of course/recovery content."}
     (ART / f"{engine}-results.json").write_text(json.dumps({"summary":summary,"results":results},indent=2))
     print("CROSS BROWSER SUMMARY",json.dumps(summary)[:9000],flush=True)
     if failures:
