@@ -289,7 +289,7 @@ def run():
         f.write("## Status counts\n\n")
         for status,count in counts.most_common(): f.write(f"- {status}: {count}\n")
         f.write("\n## Failure details\n\n")
-        for x in failed[:100]: f.write(f'- {x["route"]} at {x["width"]}px: {x["status"]}; overflow {x.get("overflowPx","?")}px; HTTP {x.get("http","?")}; elements {x.get("offenders",[])[:2]}; {x.get("errors",[])[:1]}\n')
+        for x in failed[:100]: f.write(f'- {x.get("route","<coverage gate>")} at {x.get("width","?")}px: {x["status"]}; overflow {x.get("overflowPx","?")}px; HTTP {x.get("http","?")}; elements {x.get("offenders",[])[:2]}; {x.get("errors",[])[:1]}\n')
         f.write(f"\n## Verified page layout checks: {len(verified_layout)}\n")
         f.write(f"Valid dynamic page checks (HTTP 200 + content): **{len(valid_dynamic)}**.\n")
         f.write(f"Invalid dynamic 404 checks (excluded): **{len(negative_404)}**.\n")
