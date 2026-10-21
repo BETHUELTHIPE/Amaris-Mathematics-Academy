@@ -177,6 +177,8 @@ jobs:
           # This hostname allowlist is non-secret configuration, printed only to
           # preserve existing entries if the private scrape host needs adding.
           result["django_allowed_hosts"] = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
+          # Presence only: a failing production check must not be bypassed.
+          result["production_payfast_passphrase_present"] = bool(os.environ.get("PAYFAST_PASSPHRASE", "").strip())
           print("AMARIS_PRIVATE_MONITORING_PROBE=" + json.dumps(result, sort_keys=True), flush=True)
           required = ["prometheus_ready", "grafana_health", "django_metrics", "anonymous_admin_denied", "all_scrapes_up_and_fresh", "grafana_real_datasource_query", "grafana_chart_post_query", "grafana_html_and_scripts", "anonymous_tool_routes_denied", "monitor_worker_current_heartbeat"]
           raise SystemExit(0 if all(result.get(key) is True for key in required) else 1)
