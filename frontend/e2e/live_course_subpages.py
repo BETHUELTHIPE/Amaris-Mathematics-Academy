@@ -16,14 +16,16 @@ from live_all_pages import APP, BACKEND, BASE, OUT, ROOT, request
 
 def published_slugs():
     source = (ROOT / "lib" / "courses.ts").read_text(encoding="utf-8")
-    local = set(re.findall(r'slug:\\s*["\\\']([a-z0-9-]+)["\\\']', source))
+    local = set(re.findall(r'slug:\s*"([a-z0-9-]+)"', source))
     live = set()
     endpoint = BACKEND + "/api/v1/courses/?page_size=100"
     api_calls = 0
     while endpoint and api_calls < 6:
-        response = request(endpoint)
+        response = request(endpoint, accept="application/json")
         if response["status"] != 200:
             raise AssertionError(f"Published course API returned {response['status']} on page {api_calls+1}")
+        if "application/json" not in response["contentType"].lower():
+            raise AssertionError("Published courses endpoint did not serve JSON content type")
         try:
             payload = json.loads(response["body"])
         except ValueError:
