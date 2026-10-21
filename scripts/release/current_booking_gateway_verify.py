@@ -4,13 +4,13 @@ from pathlib import Path
 from django.conf import settings
 from content.models import Payment, LiveClassBooking, VideoRequest, Enrollment
 from content.payment_models import Invoice
-from content.tasks import deliver_transactional_email, deliver_live_class_confirmation, deliver_video_request_notifications
+from content.payment_models import PaymentWebhookEvent
 
 assert settings.EMAIL_BACKEND == "django.core.mail.backends.filebased.EmailBackend"
 checkouts = json.loads(Path("/tmp/amaris-all-payfast-bookings.json").read_text())
 assert len(checkouts) == 8
 models = {"course": Payment, "live": LiveClassBooking, "video": VideoRequest}
-for attempt in range(35):
+for attempt in range(60):
     pending = []
     for item in checkouts:
         model = models["course" if item["kind"].startswith("course") else "live" if item["kind"].startswith("live") else "video"]
@@ -22,6 +22,12 @@ for attempt in range(35):
         break
     time.sleep(3)
 else:
+    for item in checkouts:
+        model = models["course" if item["kind"].startswith("course") else "live" if item["kind"].startswith("live") else "video"]
+        order = model.objects.get(reference=item["reference"])
+        print("SAFE_ORDER_STATE=" + json.dumps({"kind":item["kind"],"status":order.status,"verified":bool(order.gateway_verified_at),"provider_reference_present":bool(order.provider_reference)}),flush=True)
+    for event in PaymentWebhookEvent.objects.all():
+        print("SAFE_COURSE_EVENT=" + json.dumps({"state":event.state,"error_code":event.last_error_code,"attempts":event.attempts}),flush=True)
     raise AssertionError("Genuine provider settlement not verified for: " + ", ".join(pending))
 assert Enrollment.objects.count() == 1
 invoice_numbers = set()
@@ -33,11 +39,13 @@ for item in checkouts:
     invoice_numbers.add(number)
     print("PASS genuine sandbox wallet and server-validated provider ITN: " + item["kind"], flush=True)
 assert len(invoice_numbers) == 8
-deliver_transactional_email.run()
-deliver_live_class_confirmation.run()
-deliver_video_request_notifications.run()
-assert not LiveClassBooking.objects.filter(confirmation_sent_at__isnull=True).exists()
-assert not VideoRequest.objects.filter(confirmation_sent_at__isnull=True).exists()
+# Delivery must be performed by the real Celery worker and Beat, never .run().
+for attempt in range(60):
+    if not LiveClassBooking.objects.filter(confirmation_sent_at__isnull=True).exists() and not VideoRequest.objects.filter(confirmation_sent_at__isnull=True).exists():
+        break
+    time.sleep(3)
+assert not LiveClassBooking.objects.filter(confirmation_sent_at__isnull=True).exists(), "Celery did not deliver all class confirmations"
+assert not VideoRequest.objects.filter(confirmation_sent_at__isnull=True).exists(), "Celery did not deliver all video confirmations"
 attached = set()
 for path in Path("/tmp/amaris-staging-mail").glob("*"):
     message = email.message_from_bytes(path.read_bytes(), policy=policy.default)
@@ -49,5 +57,5 @@ for path in Path("/tmp/amaris-staging-mail").glob("*"):
             assert raw and raw.startswith(b"%PDF-")
             attached.add(name[:-4])
 assert invoice_numbers <= attached, "Missing generated PDF receipt attachment for one or more service types"
-print("PASS eight verified paid-service invoices and PDF attachments in isolated Django file mailbox")
-print("NOT VERIFIED external SMTP/Gmail delivery, Supabase private archive, deployed staging checkout or autonomous workers")
+print("PASS eight verified paid-service invoices and PDF attachments delivered by autonomous Celery/Beat in isolated file mailbox")
+print("NOT VERIFIED external SMTP/Gmail delivery, Supabase private archive, deployed staging checkout or deployed staging workers")
