@@ -72,12 +72,12 @@ class Links(html.parser.HTMLParser):
             self.title += data
 
 
-def request(url: str) -> dict:
+def request(url: str, accept: str = "text/html") -> dict:
     last = None
     for attempt in range(3):
         try:
             req = urllib.request.Request(
-                url, headers={"User-Agent": "Amaris-live-read-only-page-audit/1.0", "Accept": "text/html"}
+                url, headers={"User-Agent": "Amaris-live-read-only-page-audit/1.0", "Accept": accept}
             )
             with urllib.request.urlopen(req, timeout=35) as response:
                 status = response.status
@@ -196,12 +196,13 @@ def main():
         (BACKEND, "/health/ready/"),
         (BACKEND, "/api/v1/announcements/"),
     ):
-        a = request(origin + path)
-        api.append({"path": origin + path, "status": a["status"], "error": a["error"]})
-        print(f"BACKEND/FRONTEND PROBE {a['status']:3} {origin + path}", flush=True)
+        a = request(origin + path, accept="application/json")
+        is_json = "application/json" in a["contentType"].lower()
+        api.append({"path": origin + path, "status": a["status"], "json": is_json, "error": a["error"]})
+        print(f"BACKEND/FRONTEND PROBE {a['status']:3} {origin + path} json={is_json}", flush=True)
     bad_pages = [r for r in rows if r["verdict"] == "FAIL"]
     broken = [r for r in checked if r["verdict"] == "BROKEN"]
-    bad_api = [r for r in api if r["status"] != 200]
+    bad_api = [r for r in api if r["status"] != 200 or not r["json"]]
     output = {
         "release": os.environ.get("GITHUB_SHA", "unknown"),
         "base": BASE, "pagesFound": len(targets),
