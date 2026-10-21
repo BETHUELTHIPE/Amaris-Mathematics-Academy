@@ -3,6 +3,8 @@ name: Live Render Browser Smoke
 on:
   push:
     branches: [render-live-current-20260918]
+  pull_request:
+    branches: [render-live-current-20260918]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +13,7 @@ permissions:
 jobs:
   browser-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       BASE_URL: https://amaris-mathematics-academy-live-students.onrender.com
     steps:
@@ -22,6 +24,61 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check playwright==1.55.0
           python -m playwright install --with-deps chromium
+      - name: Wait for real Render readiness after free-tier cold start
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+
+          base = os.environ["BASE_URL"].rstrip("/")
+          deadline = time.monotonic() + 210
+          checks = (("/", "text/html"), ("/api/auth-state", "application/json"))
+          attempt = 0
+
+          while True:
+              attempt += 1
+              outcomes = []
+              transient_only = True
+              for path, expected_type in checks:
+                  try:
+                      request = urllib.request.Request(
+                          base + path, headers={"User-Agent": "Amaris-readiness-probe/1.0"}
+                      )
+                      with urllib.request.urlopen(request, timeout=15) as response:
+                          status = response.status
+                          content_type = response.headers.get("Content-Type", "").lower()
+                          body = response.read(8192)
+                  except urllib.error.HTTPError as exc:
+                      status, content_type, body = exc.code, "", b""
+                  except (urllib.error.URLError, TimeoutError) as exc:
+                      print(f"READINESS RETRY {path}: network {type(exc).__name__}", flush=True)
+                      outcomes.append(False)
+                      continue
+
+                  ok = (
+                      status == 200
+                      and expected_type in content_type
+                      and b"Application loading" not in body
+                  )
+                  if not ok:
+                      print(f"READINESS CHECK {path}: HTTP {status} ({content_type or 'no content type'})", flush=True)
+                      if status not in (502, 503, 504):
+                          transient_only = False
+                  outcomes.append(ok)
+
+              if all(outcomes):
+                  print(f"PASS Render application ready: two HTTP 200 endpoints after {attempt} checks", flush=True)
+                  break
+              if not transient_only:
+                  sys.exit("FAIL: non-transient HTTP error or incorrect content type, refusing to bypass live gate")
+              if time.monotonic() >= deadline:
+                  sys.exit("FAIL: Render did not become fully ready within 210 seconds")
+              time.sleep(12)
+          PY
       - name: Verify live public pages
         shell: bash
         run: |
