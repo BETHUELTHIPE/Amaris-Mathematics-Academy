@@ -1,0 +1,114 @@
+name: Isolated Staging Role Payment and Invoice Journey
+
+on:
+  push:
+    branches: [qa/isolated-staging-roles-payfast-20261021]
+    paths:
+      - '.github/workflows/staging-role-payment-isolation.yml'
+      - 'backend/content/**'
+      - 'backend/amaris_cms/**'
+  pull_request:
+    branches: [ops/staging-known-good-af8709c-20261019]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-django-real-endpoints:
+    name: Django roles + sandbox-simulated payment + PDF email (isolated Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_roles_acceptance
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: local-ci-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U test -d amaris_roles_acceptance"
+          --health-interval 5s --health-timeout 3s --health-retries 15
+    env:
+      DJANGO_DEBUG: 'true'
+      DJANGO_SECRET_KEY: 'synthetic-isolated-ci-only'
+      DATABASE_URL: postgresql://test:local-ci-only@127.0.0.1:5432/amaris_roles_acceptance
+      DATABASE_SSL_REQUIRED: 'false'
+      SUPABASE_DATABASE_REQUIRED: 'false'
+      SUPABASE_S3_REQUIRED: 'false'
+      EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
+      DEFAULT_FROM_EMAIL: no-reply@example.invalid
+      PAYFAST_ENV: sandbox
+      PAYFAST_MODE: sandbox
+      TEST_PROOF_KIND: ISOLATED_POSTGRES_FAKE_GATEWAY_LOCAL_MAIL
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install locked backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Run Django system checks and all application migrations on disposable database
+        working-directory: backend
+        run: |
+          python manage.py check
+          python manage.py migrate --noinput
+      - name: Verify real Django role APIs, permission boundaries, payment state, invoice PDF and local-mail task
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../artifacts/staging-payment-roles
+          python manage.py test \
+            content.test_live_classes \
+            content.test_student_api \
+            content.test_tutor_dashboard \
+            content.test_tutor_finance \
+            content.test_invoice_archive \
+            content.test_payments \
+            content.test_payfast_security \
+            --noinput --verbosity=1 2>&1 | tee ../artifacts/staging-payment-roles/django-test-output.txt
+      - name: Publish unambiguous, non-provider acceptance classification
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/staging-payment-roles
+          cat > artifacts/staging-payment-roles/acceptance-status.md <<'EOF'
+          # Isolated staging-payment integration test
+          This run uses actual Django views/models/permissions with synthetic student,
+          tutor and admin fixtures against an ephemeral PostgreSQL 17 database.
+
+          **This is NOT genuine PayFast sandbox transaction acceptance.**
+          The PayFast verifier is replaced with deterministic test adapters.
+          Emails are captured in Django's local memory backend, not external SMTP or Gmail.
+          Staging Supabase Auth, staging Django deployed sessions, private S3 and
+          live inbox delivery are NOT tested by this job.
+
+          Genuine release acceptance requires:
+          - Staging Supabase Auth test student, tutor, and authorized superuser
+          - An actual PayFast sandbox wallet checkout and provider-origin ITN
+          - Django-owned confirmed payment with matching provider transaction ID
+          - Private invoice download by owner, denied to non-owner and anonymous
+          - External SMTP send plus matching received Gmail PDF attachment
+          - Tutor-only aggregate access without student PII, superuser scoped CRUD
+          - No production credentials, requests that mutate production, or real funds
+          EOF
+          if [ "${{ job.status }}" = success ]; then
+            echo "**DISPOSABLE_DJANGO_INTEGRATION=PASS**" >> artifacts/staging-payment-roles/acceptance-status.md
+          else
+            echo "**DISPOSABLE_DJANGO_INTEGRATION=FAIL**" >> artifacts/staging-payment-roles/acceptance-status.md
+          fi
+          cat artifacts/staging-payment-roles/acceptance-status.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive isolated test output; never secrets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolated-staging-roles-payments-test
+          path: artifacts/staging-payment-roles/
+          retention-days: 14
+          if-no-files-found: error
