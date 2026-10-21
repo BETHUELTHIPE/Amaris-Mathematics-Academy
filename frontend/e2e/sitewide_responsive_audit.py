@@ -2,7 +2,7 @@
 
 This is an unauthenticated, production-equivalent local Chrome audit.
 Protected student/tutor/payment routes are tested in their public/redirect state.
-Dynamic routes use deliberately invalid example slugs and are reported as unverified.
+Real course/recovery details use known-good fixtures; invalid slugs are negative tests, never proof of working pages.
 """
 from __future__ import annotations
 
@@ -44,6 +44,24 @@ CONDITIONAL = (
     "/dashboard",
     "/tutor/dashboard",
 )
+
+# Source-backed public fixtures with known-good local fallbacks.
+DYNAMIC_PUBLIC_FIXTURES = {
+    "courses/[slug]": {
+        "route": "/courses/caps-grade-12-mathematics",
+        "heading": "CAPS Grade 12 Mathematics",
+        "bodyText": "Course structure",
+        "sourceFixture": ROOT / "lib" / "courses.ts",
+        "sourceNeedle": 'slug: "caps-grade-12-mathematics"',
+    },
+    "errors/[code]": {
+        "route": "/errors/404",
+        "heading": "That page is not on the syllabus.",
+        "bodyText": "Browse mathematics courses",
+        "sourceFixture": ROOT / "lib" / "recovery.ts",
+        "sourceNeedle": '"404": {',
+    },
+}
 
 INIT = r"""
 (() => {
@@ -92,10 +110,27 @@ def discover():
         rel = f.parent.relative_to(ROOT / "app")
         parts = [] if str(rel) == "." else list(rel.parts)
         dynamic = any("[" in part for part in parts)
-        path = "/" + "/".join(re.sub(r"\[.*?\]", "responsive-test-invalid-slug", p) for p in parts)
-        result.append({"route": path, "source": str(f.relative_to(ROOT)),
-                       "dynamic": dynamic,
-                       "conditional": dynamic or any(path.startswith(x) for x in CONDITIONAL)})
+        path = "/" + "/".join(re.sub(r"\\[.*?\\]", "responsive-test-invalid-slug", p) for p in parts)
+        key = "/".join(parts)
+        fixture = DYNAMIC_PUBLIC_FIXTURES.get(key)
+        protected = any(path.startswith(x) for x in CONDITIONAL if x != "/errors/")
+        result.append({
+            "route": path, "source": str(f.relative_to(ROOT)),
+            "dynamic": dynamic,
+            "coverage": "negative-404" if fixture else ("protected" if dynamic or protected else "public"),
+            "conditional": (dynamic or protected) and not bool(fixture),
+        })
+        if fixture:
+            if fixture["sourceNeedle"] not in fixture["sourceFixture"].read_text(encoding="utf-8"):
+                raise RuntimeError(f"Stale positive fixture for {key}")
+            result.append({
+                "route": fixture["route"],
+                "source": str(f.relative_to(ROOT)),
+                "dynamic": True,
+                "coverage": "valid-dynamic", "conditional": False,
+                "expectedHeading": fixture["heading"],
+                "expectedBodyText": fixture["bodyText"],
+            })
     return result
 
 
@@ -125,7 +160,7 @@ def audit_page(browser, route, device, screenshots):
     res={"route":route["route"],"source":route["source"],
          "device":name,"width":width,"height":height,
          "dynamic":route["dynamic"],"conditional":route["conditional"],
-         "status":"pending","errors":[]}
+         "coverage":route["coverage"],"status":"pending","errors":[]}
     try:
         response=page.goto(BASE+route["route"],wait_until="domcontentloaded",timeout=35000)
         res["http"]=response.status if response else None
@@ -142,16 +177,41 @@ def audit_page(browser, route, device, screenshots):
         res["lcpMs"]=round(after["lcp"]) if after["lcp"] else None
         res["offenders"]=after["offenders"] if res["overflowPx"]>2 else []
         res["errors"]=errors[:3]
-        if res["overflowPx"]>2:
-            res["status"]="FAIL_OVERFLOW"
-        elif res["cls"]>0.10:
-            res["status"]="FAIL_CLS"
-        elif res["http"] and res["http"]>=500:
-            res["status"]="FAIL_HTTP_5XX"
-        elif res["http"] and res["http"]>=400:
-            res["status"]="CONDITIONAL_UNVERIFIED" if route["conditional"] else "FAIL_HTTP_4XX"
+        coverage = route["coverage"]
+        if coverage == "valid-dynamic":
+            # A generic 200, login redirect or branded 404 cannot pass this.
+            heading = page.locator("h1").first.inner_text(timeout=5000).strip() if page.locator("h1").count() else ""
+            res["heading"] = heading[:180]
+            res["positiveContentMatched"] = (
+                heading == route["expectedHeading"] and
+                page.get_by_text(route["expectedBodyText"], exact=False).count() > 0
+            )
+        if res["http"] and res["http"] >= 500:
+            res["status"] = "FAIL_HTTP_5XX"
+        elif coverage == "valid-dynamic":
+            if (res["http"] != 200 or res["finalPath"] != route["route"]
+                    or not res["positiveContentMatched"]):
+                res["status"] = "FAIL_VALID_DYNAMIC_PAGE"
+            elif res["overflowPx"] > 2:
+                res["status"] = "FAIL_OVERFLOW"
+            elif res["cls"] > 0.10:
+                res["status"] = "FAIL_CLS"
+            else:
+                res["status"] = "PASS_VALID_DYNAMIC"
+        elif coverage == "negative-404":
+            # Expected 404 is not a real page-rendering success.
+            res["status"] = (
+                "PASS_EXPECTED_404" if res["http"] == 404 and res["finalPath"] == route["route"]
+                else "FAIL_NEGATIVE_EXPECTED_404"
+            )
+        elif res["overflowPx"] > 2:
+            res["status"] = "FAIL_OVERFLOW"
+        elif res["cls"] > 0.10:
+            res["status"] = "FAIL_CLS"
+        elif res["http"] and res["http"] >= 400:
+            res["status"] = "CONDITIONAL_UNVERIFIED" if route["conditional"] else "FAIL_HTTP_4XX"
         else:
-            res["status"]="PASS_CONDITIONAL" if route["conditional"] else "PASS"
+            res["status"] = "PASS_CONDITIONAL" if route["conditional"] else "PASS"
 
         # Keep a visual evidence sample, plus capped failure screenshots.
         capture=(width==390 and route["route"] in {
@@ -177,6 +237,9 @@ def run():
     routes=discover()
     if not routes or len(routes)<40:
         raise RuntimeError(f"Expected at least 40 discoverable route entries, found {len(routes)}")
+    fixtures=[r for r in routes if r["coverage"] == "valid-dynamic"]
+    if len(fixtures) != len(DYNAMIC_PUBLIC_FIXTURES):
+        raise RuntimeError("Some known public dynamic pages lack a valid fixture.")
     screenshots=[]
     results=[]
     with (ART/"nitro.log").open("w") as log:
@@ -200,12 +263,23 @@ def run():
     counts=Counter(row["status"] for row in results)
     failed=[row for row in results if row["status"].startswith("FAIL") or row["status"]=="ERROR"]
     conditional=[row for row in results if "CONDITIONAL" in row["status"]]
+    valid_dynamic=[row for row in results if row["status"] == "PASS_VALID_DYNAMIC"]
+    negative_404=[row for row in results if row["status"] == "PASS_EXPECTED_404"]
+    verified_layout=[row for row in results if row["status"] in ("PASS", "PASS_VALID_DYNAMIC")]
+    required_positive=len(fixtures) * len(DEVICES)
+    if len(valid_dynamic) != required_positive:
+        failed.append({"status":"FAIL_POSITIVE_DYNAMIC_COVERAGE",
+                       "required":required_positive,"actual":len(valid_dynamic)})
     summary={"routesDiscovered":len(routes),"viewports":len(DEVICES),"totalChecks":len(results),
              "counts":dict(counts),"failures":failed,"conditionalChecks":len(conditional),
+             "validDynamicChecks":len(valid_dynamic),"validDynamicRoutes":len(fixtures),
+             "negative404Checks":len(negative_404),"verifiedPageLayoutChecks":len(verified_layout),
              "screenshots":screenshots,"caveats":[
                  "Automated responsive layout on Chromium; not every physical device or browser.",
                  "Unauthenticated pages only; dashboards/payments/bookings need synthetic signed-in journey tests.",
-                 "Dynamic routes use invalid test slugs and may return expected 404.",
+                 "Invalid dynamic slugs are negative HTTP 404 checks, NOT proof of a real page.",
+                 "Real course and error-detail paths require HTTP 200, the expected h1 and page content.",
+                 "Authenticated lesson/checkout details remain unverified without isolated logged-in fixtures.",
                  "Locally served production-equivalent Nitro build, not live Render or real-user telemetry.",
              ]}
     (ART/"results.json").write_text(json.dumps({"summary":summary,"results":results},indent=2))
@@ -216,6 +290,9 @@ def run():
         for status,count in counts.most_common(): f.write(f"- {status}: {count}\n")
         f.write("\n## Failure details\n\n")
         for x in failed[:100]: f.write(f'- {x["route"]} at {x["width"]}px: {x["status"]}; overflow {x.get("overflowPx","?")}px; HTTP {x.get("http","?")}; elements {x.get("offenders",[])[:2]}; {x.get("errors",[])[:1]}\n')
+        f.write(f"\\n## Verified page layout checks: {len(verified_layout)}\\n")
+        f.write(f"Valid dynamic page checks (HTTP 200 + content): **{len(valid_dynamic)}**.\\n")
+        f.write(f"Invalid dynamic 404 checks (excluded): **{len(negative_404)}**.\\n")
         f.write("\n## Coverage restrictions\n\n"+"\n".join(f"- {x}" for x in summary["caveats"]))
     print("AUDIT SUMMARY",json.dumps({k:v for k,v in summary.items() if k not in ("failures","screenshots")}),flush=True)
     if failed:
