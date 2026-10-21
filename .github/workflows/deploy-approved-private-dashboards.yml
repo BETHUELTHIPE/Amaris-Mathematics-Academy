@@ -1,0 +1,105 @@
+name: Deploy approved private dashboard production release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/deploy-approved-private-dashboards.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-production-frontend-release
+  cancel-in-progress: false
+
+jobs:
+  deploy-approved-commit:
+    if: >-
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.before == '0e3515684a48691cffbc88fec4b4bad8bb2e0e96' &&
+      contains(github.event.head_commit.message, '[DEPLOY_PRIVATE_DASHBOARDS:8de65936d0925529dbc6bdfeda62938b2ea03344]')
+    environment: production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Verify exact release gates and request one pinned Render deployment
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re, urllib.error, urllib.request
+          
+          REPO = "BETHUELTHIPE/Amaris-Mathematics-Academy"
+          SERVICE = "srv-damn6d2d0e5s73d02j5g"
+          WORKSPACE = "tea-csppi8l6l47c73dk9c90"
+          BRANCH = "render-live-current-20260918"
+          TARGET = "8de65936d0925529dbc6bdfeda62938b2ea03344"
+          PREVIOUS = "6548ed3a2687c6e26350b8318241d25c015d1061"
+          KEY = os.environ.get("RENDER_API_KEY", "")
+          if not KEY or os.environ.get("GITHUB_REPOSITORY") != REPO or os.environ.get("GITHUB_REF") != "refs/heads/main":
+              raise SystemExit("BLOCK: protected production configuration unavailable")
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          
+          opener = urllib.request.build_opener(NoRedirect)
+          def api(path, *, render=True, body=None):
+              host = "https://api.render.com/v1" if render else "https://api.github.com/repos/" + REPO
+              headers = {"Accept": "application/json", "User-Agent": "Amaris-approved-release/1.0"}
+              if render:
+                  headers["Authorization"] = "Bearer " + KEY
+              if body is not None:
+                  headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(host + path, data=json.dumps(body).encode() if body is not None else None, headers=headers, method="POST" if body is not None else "GET")
+              try:
+                  with opener.open(req, timeout=25) as res:
+                      return json.load(res)
+              except urllib.error.HTTPError as exc:
+                  raise SystemExit(f"BLOCK: release API HTTP {exc.code}; response body suppressed") from None
+              except Exception as exc:
+                  raise SystemExit(f"BLOCK: release API unavailable ({type(exc).__name__}); inspect Render before retrying") from None
+          
+          if api("/branches/" + BRANCH, render=False)["commit"]["sha"] != TARGET:
+              raise SystemExit("BLOCK: production branch moved")
+          checks = api("/commits/" + TARGET + "/check-runs", render=False)["check_runs"]
+          required = {"Frontend lint, TypeScript and assistant tests", "Frontend auth type and unit checks", "browser-smoke"}
+          passed = {c["name"] for c in checks if c["status"] == "completed" and c["conclusion"] == "success"}
+          if not required <= passed or any(c["status"] != "completed" or c["conclusion"] not in ("success", "neutral", "skipped") for c in checks):
+              raise SystemExit("BLOCK: exact production merge commit checks have not all passed")
+          staging = api("/actions/runs/39647443044", render=False)
+          if staging["conclusion"] != "success" or staging["status"] != "completed":
+              raise SystemExit("BLOCK: mandatory real staging pagination gate is not successful")
+          service = api("/services/" + SERVICE)
+          if service.get("ownerId") != WORKSPACE or service.get("branch") != BRANCH or service.get("name") != "amaris-mathematics-academy-live-students":
+              raise SystemExit("BLOCK: Render service identity or production branch mismatch")
+          rows = api("/services/" + SERVICE + "/deploys?limit=10")
+          deploys = [row.get("deploy", row) for row in rows]
+          active = {"created", "queued", "build_in_progress", "pre_deploy_in_progress", "update_in_progress"}
+          for deploy in deploys:
+              if deploy["status"] in active:
+                  if (deploy.get("commit") or {}).get("id") == TARGET:
+                      print("PASS: approved commit already deploying; no duplicate created")
+                      print("Render deploy ID:", deploy["id"])
+                      raise SystemExit(0)
+                  raise SystemExit("BLOCK: another Render deploy is active; no cancellation or duplicate")
+          live = next((d for d in deploys if d["status"] == "live"), None)
+          if live is None or (live.get("commit") or {}).get("id") not in (PREVIOUS, TARGET):
+              raise SystemExit("BLOCK: unexpected live rollback baseline")
+          if (live.get("commit") or {}).get("id") == TARGET:
+              print("PASS: approved commit already live; no duplicate created")
+              print("Render deploy ID:", live["id"])
+              raise SystemExit(0)
+          result = api("/services/" + SERVICE + "/deploys", body={"commitId": TARGET, "clearCache": "do_not_clear"})
+          deploy = result.get("deploy", result)
+          if not re.fullmatch(r"dep-[a-z0-9]+", deploy.get("id", "")):
+              raise SystemExit("BLOCK: deploy response ambiguous; inspect Render before retrying")
+          print("PASS: exact approved production commit accepted by Render")
+          print("Render deploy ID:", deploy["id"])
+          print("Render status:", deploy.get("status", "unknown"))
+          print("No environment changes, database changes or additional services requested")
+          PY
