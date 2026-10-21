@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowRight, BellRing } from "lucide-react";
 import { StudentDashboardShell } from "@/components/site/student-dashboard-shell";
+import { paginatePrivateRows, PrivatePagination } from "@/components/site/private-pagination";
 import { requireVerifiedStudent } from "@/lib/auth";
 import { getStudentNotifications, type StudentNotification } from "@/lib/student-api";
 
@@ -24,7 +25,7 @@ function NotificationsSkeleton() {
   </div>;
 }
 
-async function NotificationsContent() {
+async function NotificationsContent({ page }: { page?: string }) {
   let notifications: StudentNotification[] = [];
   let serviceAvailable = true;
   try {
@@ -32,6 +33,8 @@ async function NotificationsContent() {
   } catch {
     serviceAvailable = false;
   }
+  const history = paginatePrivateRows(notifications, page, 12);
+
 
 
   return <>
@@ -46,10 +49,10 @@ async function NotificationsContent() {
       <Link href="/dashboard" className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-5 py-3 font-bold text-white sm:w-fit">Back to overview <ArrowRight aria-hidden="true" className="size-4" /></Link>
     </section>}
 
-    {notifications.length > 0 && <section className="min-w-0 rounded-3xl border border-[#dce4ef] bg-white p-5 sm:p-8">
+    {notifications.length > 0 && <section id="notifications-list" className="min-w-0 scroll-mt-28 rounded-3xl border border-[#dce4ef] bg-white p-5 sm:p-8">
       <h2 className="text-xl font-semibold">Recent updates</h2>
       <div className="mt-5 grid gap-3">
-        {notifications.map((notification) => <article key={notification.id} className="min-w-0 rounded-2xl border border-[#dce4ef] p-4 sm:p-5">
+        {history.rows.map((notification) => <article key={notification.id} className="min-w-0 rounded-2xl border border-[#dce4ef] p-4 sm:p-5">
           <div className="flex min-w-0 gap-3 sm:gap-4">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#edf3ff] text-[#1f5bbd]"><BellRing aria-hidden="true" className="size-5" /></div>
             <div className="min-w-0 flex-1">
@@ -66,26 +69,33 @@ async function NotificationsContent() {
           </div>
         </article>)}
       </div>
+      <PrivatePagination basePath="/dashboard/notifications" anchor="notifications-list" queryKey="page" current={history.current} totalPages={history.totalPages} />
     </section>}
   </>;
 }
 
-export default async function NotificationsPage() {
+export default async function NotificationsPage({ searchParams }: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   await requireVerifiedStudent("/dashboard/notifications");
+  const { page } = await searchParams;
   return <StudentDashboardShell
     active="notifications"
     title="Notifications"
     description="Payment confirmations, live-class reminders and requested-video updates appear here."
   >
     <Suspense fallback={<NotificationsSkeleton />}>
-      <NotificationsContent />
+      <NotificationsContent page={page} />
     </Suspense>
   </StudentDashboardShell>;
 }
 
 
+const southAfricaDate = new Intl.DateTimeFormat("en-ZA", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg",
+});
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.valueOf())) return "Date unavailable";
-  return new Intl.DateTimeFormat("en-ZA", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg" }).format(date);
+  return southAfricaDate.format(date);
 }

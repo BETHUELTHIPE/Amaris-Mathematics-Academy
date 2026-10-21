@@ -9,7 +9,7 @@ test("private student overview authenticates before streaming protected API cont
   assert.match(page, /const user = await requireVerifiedStudent\("\/dashboard"\)/);
   assert.match(page, /<StudentDashboardShell/);
   assert.match(page, /<Suspense fallback=\{<StudentDashboardSkeleton \/>\}>/);
-  assert.match(page, /async function StudentDashboardContent\(\)/);
+  assert.match(page, /async function StudentDashboardContent\(\{/);
   assert.match(page, /getStudentCourses\(\)/);
   assert.match(page, /Promise\.allSettled\(/);
   assert.match(page, /getStudentOrders\(\)/);
@@ -28,7 +28,7 @@ test("private orders and notifications stream only after verified identity", asy
     assert.match(page, /export const dynamic = "force-dynamic"/);
     assert.match(page, /await requireVerifiedStudent/);
     assert.match(page, new RegExp(`<Suspense fallback=\\{<${section}Skeleton \\/>\\}>`));
-    assert.match(page, new RegExp(`async function ${section}Content\\(\\)`));
+    assert.match(page, new RegExp(`async function ${section}Content\\(\\{`));
     assert.match(page, new RegExp(`await ${api}\\(\\)`));
     assert.doesNotMatch(page, /getStaticProps|unstable_cache|force-static|revalidate\s*=/);
   }
