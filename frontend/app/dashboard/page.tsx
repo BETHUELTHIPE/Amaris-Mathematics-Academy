@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { requireVerifiedStudent } from "@/lib/auth";
 import { StudentDashboardShell } from "@/components/site/student-dashboard-shell";
+import { paginatePrivateRows, PrivatePagination } from "@/components/site/private-pagination";
 import { StudentWorkflowVisuals } from "@/components/site/student-workflow-visuals";
 import { courses } from "@/lib/courses";
 import { getStudentCourses, getStudentOrders, getStudentVideoRequests } from "@/lib/student-api";
@@ -35,7 +36,7 @@ function StudentDashboardSkeleton() {
   </div>;
 }
 
-async function StudentDashboardContent() {
+async function StudentDashboardContent({ coursesPage, videosPage }: { coursesPage?: string; videosPage?: string }) {
   const recommended = courses.slice(0, 2);
   // Start independent student-scoped reads together so the workflow panel
   // does not add another serial API round trip to the dashboard loading path.
@@ -59,6 +60,8 @@ async function StudentDashboardContent() {
   const orders = ordersResult.status === "fulfilled" ? ordersResult.value : [];
 
   const lessonsStarted = enrolledCourses.filter((item) => item.resume.last_lesson).length;
+  const courseHistory = paginatePrivateRows(enrolledCourses, coursesPage, 8);
+  const videoHistory = paginatePrivateRows(videoRequests, videosPage, 8);
 
 
   return <>
@@ -93,7 +96,7 @@ async function StudentDashboardContent() {
           <p className="eyebrow">My courses</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-.035em]">Continue where you stopped.</h2>
           <div className="mt-6 grid gap-4">
-            {enrolledCourses.map(({ course, resume }) => {
+            {courseHistory.rows.map(({ course, resume }) => {
               const lesson = resume.last_lesson;
               const href = lesson
                 ? `/learn/${encodeURIComponent(course.slug)}/${encodeURIComponent(lesson.slug)}?t=${resume.last_position_seconds}`
@@ -113,6 +116,7 @@ async function StudentDashboardContent() {
               </Link>;
             })}
           </div>
+          <PrivatePagination basePath="/dashboard" anchor="my-courses" queryKey="courses_page" current={courseHistory.current} totalPages={courseHistory.totalPages} preserve={{ videos_page: videoHistory.current }} />
         </section> : <div id="my-courses" className="mt-6 min-w-0 scroll-mt-36 rounded-3xl border border-[#dce4ef] bg-white p-5 sm:p-9">
           <div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center">
             <div>
@@ -124,19 +128,20 @@ async function StudentDashboardContent() {
           </div>
         </div>}
 
-        <section className="mt-8 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
+        <section id="requested-videos" className="mt-8 scroll-mt-36 rounded-3xl border border-[#dce4ef] bg-white p-7 sm:p-9">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div><p className="eyebrow">My requested videos</p><h2 className="mt-2 text-2xl font-semibold">Paid queue and completed lessons</h2></div>
             <Link href="/request-a-video" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-5 font-bold text-white"><Video className="size-4" /> Request a topic video</Link>
           </div>
           {videoRequests.length ? <div className="mt-6 grid gap-3">
-            {videoRequests.map((item) => <Link key={item.request_reference} href={`/request-a-video/confirmation?reference=${encodeURIComponent(item.request_reference)}`} className="group rounded-2xl border border-[#dce4ef] p-5 transition hover:border-[#aac3ec] hover:bg-[#f8fbff]">
+            {videoHistory.rows.map((item) => <Link key={item.request_reference} href={`/request-a-video/confirmation?reference=${encodeURIComponent(item.request_reference)}`} className="group rounded-2xl border border-[#dce4ef] p-5 transition hover:border-[#aac3ec] hover:bg-[#f8fbff]">
               <div className="flex items-center justify-between gap-4">
                 <div><h3 className="font-semibold [overflow-wrap:anywhere]">{item.topic}</h3><p className="mt-1 text-sm text-[#60708a]">{item.status_label}{item.queue_position ? ` · Queue ${item.queue_position}` : ""}{item.ticket_number ? ` · ${item.ticket_number}` : ""}</p></div>
                 <ArrowRight className="size-5 text-[#1f5bbd] transition group-hover:translate-x-1" />
               </div>
             </Link>)}
           </div> : <p className="mt-5 text-sm leading-7 text-[#60708a]">No video requests yet. Upload a question, assignment or past paper and choose the explanation you need.</p>}
+          <PrivatePagination basePath="/dashboard" anchor="requested-videos" queryKey="videos_page" current={videoHistory.current} totalPages={videoHistory.totalPages} preserve={{ courses_page: courseHistory.current }} />
         </section>
 
         <section className="mt-8">
@@ -158,12 +163,15 @@ async function StudentDashboardContent() {
   </>;
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: {
+  searchParams: Promise<{ courses_page?: string; videos_page?: string }>;
+}) {
   // Authorize before streaming any personal information. Suspense never
   // bypasses the verified student boundary or private no-store API requests.
   const user = await requireVerifiedStudent("/dashboard");
   const firstName = user.firstName;
   const profileSaved = user.emailVerified;
+  const { courses_page, videos_page } = await searchParams;
   return <StudentDashboardShell
     active="overview"
     title={`Welcome, ${firstName}.`}
@@ -174,7 +182,7 @@ export default async function DashboardPage() {
     </div>}
   >
     <Suspense fallback={<StudentDashboardSkeleton />}>
-      <StudentDashboardContent />
+      <StudentDashboardContent coursesPage={courses_page} videosPage={videos_page} />
     </Suspense>
   </StudentDashboardShell>;
 }

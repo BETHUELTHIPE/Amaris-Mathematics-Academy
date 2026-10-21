@@ -9,6 +9,7 @@ import { Header } from "@/components/site/header";
 import { createTutorSlotAction, pauseTutorSlotAction, updateTutorSlotAction } from "@/app/tutor/actions";
 import { getTutorDashboard, getTutorEarnings, TutorApiError, type TutorEarnings, type TutorSlot } from "@/lib/tutor-api";
 import { TutorEarningsPanel } from "@/components/site/tutor-earnings";
+import { paginatePrivateRows, PrivatePagination } from "@/components/site/private-pagination";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Tutor Dashboard — Amaris Mathematics Academy", robots: { index: false, follow: false } };
@@ -16,17 +17,20 @@ export const metadata: Metadata = { title: "Tutor Dashboard — Amaris Mathemati
 const programmes = [["caps", "CAPS"], ["ieb", "IEB"], ["tvet", "TVET"], ["university", "University"]] as const;
 const subjects = [["mathematics", "Mathematics"], ["mathematical_literacy", "Mathematical Literacy"]] as const;
 
+const sessionFormatter = new Intl.DateTimeFormat("en-ZA", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg",
+});
+const formDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Africa/Johannesburg", year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+
 function formatSessionTime(value: string): string {
-  return new Intl.DateTimeFormat("en-ZA", {
-    dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg",
-  }).format(new Date(value));
+  return sessionFormatter.format(new Date(value));
 }
 
 function localDateTime(value: string): string {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Johannesburg", year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-  }).formatToParts(new Date(value));
+  const parts = formDateFormatter.formatToParts(new Date(value));
   const part = (name: string) => parts.find((item) => item.type === name)?.value || "00";
   return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
 }
@@ -92,7 +96,7 @@ async function TutorEarningsDetails({ pending }: { pending: Promise<TutorEarning
 export default async function TutorDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; success?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; slots_page?: string; bookings_page?: string }>;
 }) {
   const notices = await searchParams;
   // Start independently scoped financial read while loading the timetable.
@@ -128,6 +132,9 @@ export default async function TutorDashboardPage({
       </main>
     );
   }
+
+  const slotHistory = paginatePrivateRows(dashboard.slots, notices.slots_page, 8);
+  const bookingHistory = paginatePrivateRows(dashboard.bookings, notices.bookings_page, 8);
 
   return (
     <main className="min-h-screen bg-[#f5f7fb]">
@@ -179,7 +186,7 @@ export default async function TutorDashboardPage({
           </form>
         </section>
 
-        <section aria-labelledby="my-slots">
+        <section id="slots-list" className="scroll-mt-28" aria-labelledby="my-slots">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div><p className="eyebrow">My timetable</p><h2 id="my-slots" className="mt-2 text-3xl font-semibold tracking-tight">Your teaching slots</h2></div>
             <Link href="/book-online-live-class" className="text-sm font-bold text-[#1f5bbd]">See public booking page →</Link>
@@ -188,7 +195,7 @@ export default async function TutorDashboardPage({
             <div className="mt-5 rounded-2xl border border-[#dce4ef] bg-white p-7 text-sm text-[#60708a]">No classes have been published yet. Use the form above to offer your first session.</div>
           ) : (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              {dashboard.slots.map((slot) => {
+              {slotHistory.rows.map((slot) => {
                 const editable = slot.editable;
                 return (
                   <article key={slot.id} className="min-w-0 rounded-2xl border border-[#dce4ef] bg-white p-6">
@@ -217,16 +224,17 @@ export default async function TutorDashboardPage({
               })}
             </div>
           )}
+          <PrivatePagination basePath="/tutor/dashboard" anchor="slots-list" queryKey="slots_page" current={slotHistory.current} totalPages={slotHistory.totalPages} preserve={{ bookings_page: bookingHistory.current }} />
         </section>
 
-        <section aria-labelledby="my-bookings">
+        <section id="bookings-list" className="scroll-mt-28" aria-labelledby="my-bookings">
           <p className="eyebrow">Private teaching schedule</p>
           <h2 id="my-bookings" className="mt-2 text-3xl font-semibold tracking-tight">Student bookings</h2>
           {dashboard.bookings.length === 0 ? (
             <div className="mt-5 rounded-2xl border border-[#dce4ef] bg-white p-7 text-sm text-[#60708a]">Your paid and pending class bookings will appear here automatically.</div>
           ) : (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              {dashboard.bookings.map((booking) => (
+              {bookingHistory.rows.map((booking) => (
                 <article key={booking.reference} className="rounded-2xl border border-[#dce4ef] bg-white p-6">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div><p className="text-sm font-bold text-[#1f5bbd]">{booking.level} · {booking.topic}</p><h3 className="mt-2 text-xl font-semibold">{booking.duration_hours} hour Zoom lesson</h3></div>
@@ -245,6 +253,7 @@ export default async function TutorDashboardPage({
               ))}
             </div>
           )}
+          <PrivatePagination basePath="/tutor/dashboard" anchor="bookings-list" queryKey="bookings_page" current={bookingHistory.current} totalPages={bookingHistory.totalPages} preserve={{ slots_page: slotHistory.current }} />
         </section>
       </div>
       <Footer />
