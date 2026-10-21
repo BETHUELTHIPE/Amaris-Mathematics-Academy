@@ -30,10 +30,7 @@ def main():
         try:
             wait_for_server(server)
             with sync_playwright() as playwright:
-                browser = getattr(playwright, engine).launch(
-                    headless=True,
-                    args=["--no-sandbox"] if engine == "firefox" else [],
-                )
+                browser = getattr(playwright, engine).launch(headless=True)
                 for device in devices:
                     for route in routes:
                         results.append(audit_page(browser,route,device,screenshots))
