@@ -1,9 +1,10 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.core.exceptions import PermissionDenied
 from django.test import RequestFactory, SimpleTestCase, override_settings
-from django.urls import reverse
+from django.urls import resolve, reverse
 
 from amaris_cms.monitoring_admin import AmarisAdminSite
 from amaris_cms.monitoring_status import _probe, is_private_monitoring_url, monitor_statuses
@@ -28,6 +29,17 @@ class MonitoringAdminTests(SimpleTestCase):
 
     def test_admin_route_exists(self):
         self.assertEqual(reverse("admin:amaris_monitoring_home"), "/admin/monitoring/")
+
+    @patch("django.contrib.admin.AdminSite.get_app_list", return_value=[])
+    def test_sidebar_links_are_superuser_only(self, app_list):
+        request = self.factory.get("/admin/")
+        request.user = self.superuser
+        links = self.site.get_app_list(request)[0]["models"]
+        self.assertEqual([link["name"] for link in links], ["Grafana", "Prometheus", "Flower"])
+        self.assertEqual(links[0]["admin_url"], "/admin/monitoring/grafana/")
+        self.assertEqual(self.site.get_app_list(request, "content"), [])
+        request.user = self.staff
+        self.assertEqual(self.site.get_app_list(request), [])
 
     def test_non_superuser_is_denied(self):
         request = self.factory.get("/admin/monitoring/")
@@ -99,6 +111,95 @@ class MonitoringAdminTests(SimpleTestCase):
             outbound.full_url,
             "http://prometheus-private:10000/admin/monitoring/prometheus/api/v1/query?query=up",
         )
+
+
+@override_settings(
+    MONITORING_CONSOLE_ENABLED=True,
+    MONITORING_GRAFANA_URL="http://grafana-private:10000",
+    ALLOWED_HOSTS=["testserver"],
+)
+class GrafanaQueryTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.user = SimpleNamespace(is_authenticated=True, is_active=True, is_staff=True, is_superuser=True)
+        self.payload = {"queries": [{"refId": "A", "datasource": {"uid": "amaris-prometheus"}, "expr": "up"}]}
+
+    def request(self, payload=None, **headers):
+        request = self.factory.post(
+            "/admin/monitoring/grafana/api/ds/query",
+            data=json.dumps(self.payload if payload is None else payload),
+            content_type="application/json",
+            secure=True,
+            **{"HTTP_ORIGIN": "https://testserver", **headers},
+        )
+        request.user = self.user
+        return request
+
+    @patch("amaris_cms.monitoring_admin.urllib_request.build_opener")
+    def test_native_grafana_query_works_without_django_csrf_token(self, opener_factory):
+        from unittest.mock import MagicMock
+
+        reply = MagicMock(status=200, headers={"Content-Type": "application/json"})
+        reply.__enter__.return_value = reply
+        reply.read.return_value = b'{"results":{"A":{}}}'
+        opener_factory.return_value.open.return_value = reply
+        request = self.request(HTTP_COOKIE="sessionid=private", HTTP_AUTHORIZATION="Bearer private")
+        view = resolve(request.path).func
+        self.assertTrue(view.csrf_exempt)
+        response = view(request)
+        self.assertEqual(response.status_code, 200)
+        outbound = opener_factory.return_value.open.call_args.args[0]
+        self.assertEqual(outbound.method, "POST")
+        self.assertEqual(json.loads(outbound.data), self.payload)
+        self.assertEqual(outbound.get_header("Content-type"), "application/json")
+        self.assertNotIn("Cookie", outbound.headers)
+        self.assertNotIn("Authorization", outbound.headers)
+
+    @patch("amaris_cms.monitoring_admin.urllib_request.build_opener")
+    def test_cross_origin_or_missing_origin_queries_are_denied(self, opener_factory):
+        for origin in ("https://attacker.example", "http://testserver", "null", "", "http://["):
+            with self.subTest(origin=origin):
+                with self.assertRaises(PermissionDenied):
+                    resolve("/admin/monitoring/grafana/api/ds/query").func(self.request(HTTP_ORIGIN=origin))
+        opener_factory.assert_not_called()
+
+    def test_same_origin_referer_is_supported(self):
+        request = self.request(HTTP_ORIGIN="", HTTP_REFERER="https://testserver/admin/monitoring/grafana/d/dashboard")
+        request._body = b"{}"
+        self.assertEqual(resolve(request.path).func(request).status_code, 400)
+
+    def test_non_superuser_query_is_denied(self):
+        request = self.request()
+        request.user.is_superuser = False
+        with self.assertRaises(PermissionDenied):
+            resolve(request.path).func(request)
+
+    @patch("amaris_cms.monitoring_admin.urllib_request.build_opener")
+    def test_invalid_or_other_datasource_queries_never_reach_upstream(self, opener_factory):
+        for payload in ([], {}, {"queries": []}, {"queries": [None]}, {"queries": [{"datasource": {"uid": "other"}}]}):
+            with self.subTest(payload=payload):
+                request = self.request(payload)
+                self.assertEqual(resolve(request.path).func(request).status_code, 400)
+        request = self.request()
+        request._body = b"not json"
+        self.assertEqual(resolve(request.path).func(request).status_code, 400)
+        request = self.request()
+        request.META["CONTENT_LENGTH"] = str(256 * 1024 + 1)
+        self.assertEqual(resolve(request.path).func(request).status_code, 413)
+        request = self.request()
+        request.content_type = "text/plain"
+        self.assertEqual(resolve(request.path).func(request).status_code, 415)
+        opener_factory.assert_not_called()
+
+    def test_query_exception_does_not_allow_mutations(self):
+        for tool, subpath in (
+            ("grafana", "api/dashboards/db"),
+            ("grafana", "api/admin/users"),
+            ("flower", "api/worker/shutdown"),
+        ):
+            request = self.request()
+            self.assertEqual(AmarisAdminSite().monitoring_console(request, tool, subpath).status_code, 405)
+        self.assertFalse(getattr(resolve("/admin/monitoring/grafana/api/admin/users").func, "csrf_exempt", False))
 
 
 class RealMonitoringStatusTests(SimpleTestCase):
