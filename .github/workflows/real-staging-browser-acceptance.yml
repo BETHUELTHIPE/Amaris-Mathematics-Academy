@@ -1,0 +1,85 @@
+name: Real Staging Tutor and Superuser Browser Acceptance
+
+on:
+  pull_request:
+    branches: [ops/staging-known-good-af8709c-20261019]
+    paths:
+      - backend/scripts/staging_real_browser_acceptance.py
+      - .github/workflows/real-staging-browser-acceptance.yml
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type RUN_STAGING_AUTH_BROWSER to use protected real staging fixture accounts"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-authenticated-browser-smoke
+  cancel-in-progress: false
+
+jobs:
+  safe-anonymous-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PAYFAST_MODE: sandbox
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Chromium test harness (no application credentials)
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Read-only anonymous staging browser and permission gate
+        run: python -u backend/scripts/staging_real_browser_acceptance.py
+
+  authenticated-staging-browser:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/test/staging-real-browser-acceptance-20261020' &&
+      inputs.confirmation == 'RUN_STAGING_AUTH_BROWSER'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment: staging
+    env:
+      PAYFAST_MODE: sandbox
+      STAGING_AUTH_BROWSER_ACCEPTANCE: "true"
+      STAGING_TEST_TUTOR_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
+      STAGING_TEST_TUTOR_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
+      STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+      STAGING_TEST_SUPERUSER_USERNAME: ${{ secrets.STAGING_TEST_SUPERUSER_USERNAME }}
+      STAGING_TEST_SUPERUSER_PASSWORD: ${{ secrets.STAGING_TEST_SUPERUSER_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Require real staging fixtures without exposing secrets
+        run: |
+          python - <<'PY'
+          import os
+          required = (
+              "STAGING_TEST_TUTOR_EMAIL", "STAGING_TEST_TUTOR_PASSWORD",
+              "STAGING_SUPABASE_PUBLISHABLE_KEY",
+              "STAGING_TEST_SUPERUSER_USERNAME", "STAGING_TEST_SUPERUSER_PASSWORD",
+          )
+          absent = [key for key in required if not os.environ.get(key)]
+          if absent:
+              raise SystemExit("BLOCK: configure protected staging environment fixture keys: " + ", ".join(absent))
+          print("PASS protected staging fixtures configured (no values logged)")
+          PY
+      - name: Install Chromium test harness
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Test real tutor JWT browser and Django superuser login
+        run: python -u backend/scripts/staging_real_browser_acceptance.py --authenticated
