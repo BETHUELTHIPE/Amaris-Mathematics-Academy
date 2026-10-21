@@ -5,6 +5,7 @@ on:
     branches: [render-live-current-20260918]
     paths:
       - 'frontend/e2e/sitewide_responsive_audit.py'
+      - 'frontend/e2e/test_sitewide_dynamic_routes.py'
       - '.github/workflows/sitewide-responsive-audit.yml'
   workflow_dispatch:
 
@@ -39,6 +40,8 @@ jobs:
           npm run lint
       - name: Install browser automation tools
         run: python -m pip install -r frontend/e2e/requirements.txt
+      - name: Verify dynamic route fixture coverage cannot count 404 as page success
+        run: python -m unittest discover -s frontend/e2e -p 'test_sitewide_dynamic_routes.py' -v
       - name: Build production-like Nitro Node bundle
         working-directory: frontend
         run: |
