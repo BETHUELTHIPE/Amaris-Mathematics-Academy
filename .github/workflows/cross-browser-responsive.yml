@@ -5,6 +5,7 @@ on:
     branches: [render-live-current-20260918]
     paths:
       - 'frontend/e2e/cross_browser_responsive.py'
+      - 'frontend/e2e/live_all_pages.py'
       - 'frontend/e2e/sitewide_responsive_audit.py'
       - 'frontend/e2e/test_sitewide_dynamic_routes.py'
       - '.github/workflows/cross-browser-responsive.yml'

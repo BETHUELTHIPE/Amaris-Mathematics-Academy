@@ -1,0 +1,41 @@
+name: Amaris Live All Pages and Internal Links
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/e2e/live_all_pages.py'
+      - '.github/workflows/live-all-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  anonymous-live-route-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check every deployed public page, protected-page response and internal link
+        run: python -u frontend/e2e/live_all_pages.py
+      - name: Publish complete route list and failure summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f frontend/artifacts/live-site-pages/summary.md ]; then
+            cat frontend/artifacts/live-site-pages/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Archive route-by-route evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-live-all-pages-report
+          path: frontend/artifacts/live-site-pages/
+          retention-days: 14
+          if-no-files-found: warn
