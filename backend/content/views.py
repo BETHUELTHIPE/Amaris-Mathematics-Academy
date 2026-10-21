@@ -3,7 +3,8 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, IntegerField, OuterRef, Prefetch, Q, Subquery, Value
+from django.db.models.functions import Coalesce
 from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -120,15 +121,23 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
         module_queryset = CourseModule.objects.filter(is_published=True).prefetch_related(
             Prefetch("lessons", queryset=lesson_queryset)
         )
+        # Correlated counts avoid joining every lesson into the paginated
+        # course queryset. Preserve the existing visibility/count semantics.
+        live_lesson_counts = (
+            Lesson.objects.filter(module__course_id=OuterRef("pk"))
+            .filter(live_filter(now))
+            .order_by()
+            .values("module__course_id")
+            .annotate(total=Count("pk"))
+            .values("total")[:1]
+        )
         queryset = (
             Course.objects.filter(live_filter(now), status=Course.Status.PUBLISHED)
             .select_related("category")
             .annotate(
-                lesson_count=Count(
-                    "modules__lessons",
-                    filter=Q(modules__lessons__is_published=True)
-                    & (Q(modules__lessons__publish_at__isnull=True) | Q(modules__lessons__publish_at__lte=now)),
-                    distinct=True,
+                lesson_count=Coalesce(
+                    Subquery(live_lesson_counts, output_field=IntegerField()),
+                    Value(0),
                 )
             )
         )
