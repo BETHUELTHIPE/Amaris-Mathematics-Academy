@@ -1,0 +1,110 @@
+name: Register approved staging QA tutor
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/register-staging-qa-tutor.yml]
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type REGISTER_STAGING_QA_TUTOR to register the approved staging QA identity
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: register-approved-staging-qa-tutor
+  cancel-in-progress: false
+
+jobs:
+  register:
+    if: >-
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || inputs.confirmation == 'REGISTER_STAGING_QA_TUTOR')
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 5
+    env:
+      STAGING_TEST_TUTOR_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
+      STAGING_TEST_TUTOR_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
+      STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - name: Register only the approved staging QA account without logging credentials
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+
+          PROJECT = "atyhhjwwxgzeurnwayay"
+          AUTH = "https://" + PROJECT + ".supabase.co/auth/v1/signup"
+          APPROVED_EMAIL_SHA256 = "2351cb430f5976021719b1c7fb36bd3ec0559d79a32b694c38b7f4a0313bb03a"
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args):
+                  return None
+
+          def credentials(environ):
+              if environ.get("GITHUB_REPOSITORY") != "BETHUELTHIPE/Amaris-Mathematics-Academy" or environ.get("GITHUB_REF") != "refs/heads/main":
+                  raise ValueError("BLOCK: trusted main workflow required")
+              values = {}
+              for key in ("STAGING_TEST_TUTOR_EMAIL", "STAGING_TEST_TUTOR_PASSWORD", "STAGING_SUPABASE_PUBLISHABLE_KEY"):
+                  value = environ.get(key, "")
+                  if not value or len(value) > 4096 or any(c in value for c in "\r\n\0"):
+                      raise ValueError("BLOCK: protected staging secret " + key + " is missing or malformed")
+                  values[key] = value
+              email = values["STAGING_TEST_TUTOR_EMAIL"].strip().lower()
+              if hashlib.sha256(email.encode()).hexdigest() != APPROVED_EMAIL_SHA256:
+                  raise ValueError("BLOCK: staging QA email does not match the approved identity")
+              key = values["STAGING_SUPABASE_PUBLISHABLE_KEY"]
+              if key.startswith("sb_publishable_"):
+                  pass
+              elif key.count(".") == 2:
+                  try:
+                      encoded = key.split(".")[1]
+                      claims = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+                  except (ValueError, TypeError):
+                      raise ValueError("BLOCK: invalid publishable key") from None
+                  if claims.get("ref") != PROJECT or claims.get("role") != "anon":
+                      raise ValueError("BLOCK: wrong project or privileged key")
+              else:
+                  raise ValueError("BLOCK: only a staging publishable or legacy anon key is accepted")
+              return email, values["STAGING_TEST_TUTOR_PASSWORD"], key
+
+          def main():
+              try:
+                  email, password, key = credentials(os.environ)
+              except ValueError as error:
+                  raise SystemExit(str(error)) from None
+              request = urllib.request.Request(AUTH, method="POST", data=json.dumps({"email": email, "password": password}).encode(), headers={"apikey": key, "Content-Type": "application/json"})
+              try:
+                  with urllib.request.build_opener(NoRedirect()).open(request, timeout=25) as response:
+                      data = json.loads(response.read(256 * 1024))
+              except urllib.error.HTTPError as error:
+                  try:
+                      code = json.loads(error.read(8192)).get("error_code", "unspecified")
+                  except (ValueError, AttributeError):
+                      code = "unspecified"
+                  if not isinstance(code, str) or not re.fullmatch(r"[a-z0-9_]{1,64}", code):
+                      code = "unspecified"
+                  raise SystemExit(f"BLOCK: staging signup HTTP {error.code}; code={code}") from None
+              except (OSError, ValueError):
+                  raise SystemExit("BLOCK: staging signup transport or response error") from None
+              user = data.get("user", data) if isinstance(data, dict) else None
+              if not isinstance(user, dict) or not user.get("id") or str(user.get("email", "")).lower() != email:
+                  raise SystemExit("BLOCK: staging signup response did not match approved identity")
+              print("PASS: staging signup accepted for approved QA identity; database verification required")
+              print("Email confirmation present:", bool(user.get("email_confirmed_at")))
+              print("No credentials, access tokens or refresh tokens are logged or saved as artifacts")
+
+          if __name__ == "__main__":
+              main()
+          PY
