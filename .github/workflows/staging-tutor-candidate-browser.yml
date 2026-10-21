@@ -1,6 +1,11 @@
 name: Protected Staging Tutor Candidate Browser Acceptance
 
 on:
+  # One approved connector-driven run; later pushes do not unlock this job.
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/staging-tutor-candidate-browser.yml
   workflow_dispatch:
     inputs:
       confirmation:
@@ -20,13 +25,18 @@ jobs:
     if: >-
       github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
       github.ref == 'refs/heads/main' &&
-      inputs.confirmation == 'RUN_STAGING_TUTOR_UI'
+      (
+        (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'RUN_STAGING_TUTOR_UI') ||
+        (github.event_name == 'push' &&
+         github.event.before == '464145c2cd3fe467264e87a0654e0755542d077b' &&
+         contains(github.event.head_commit.message, '[RUN_STAGING_TUTOR_UI:4ef005618d28d75068a0b4c60dd8f437ec38b7ee]'))
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: staging
     env:
       PAYFAST_MODE: sandbox
-      STAGING_TUTOR_UI_CONFIRM: ${{ inputs.confirmation }}
+      STAGING_TUTOR_UI_CONFIRM: ${{ github.event_name == 'push' && 'RUN_STAGING_TUTOR_UI' || inputs.confirmation }}
       CMS_API_URL: https://amaris-mathematics-academy-staging.onrender.com
       SUPABASE_URL: https://atyhhjwwxgzeurnwayay.supabase.co
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
