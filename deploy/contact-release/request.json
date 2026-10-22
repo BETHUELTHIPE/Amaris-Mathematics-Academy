@@ -1,0 +1,18 @@
+{
+  "phase": "staging",
+  "merged_pr": 331,
+  "main": "f4062ba000dec3cdf24b456d8dc29b8a20729f2b",
+  "previous": {
+    "backend": "1b3b0c532060212578ad7e512dc1f4cf64eb8657",
+    "frontend": "31a28fd67b69ddb9b56dd3563d9aaa68fdc95b3a"
+  },
+  "release": {
+    "backend": "a47f9228b582d75a4ff0eeffb329b6b74827f222",
+    "frontend": "43fca4af502d2ed5fbaa97375c3170bc4f43caeb"
+  },
+  "migrations": "none",
+  "production_backup_restore": "NOT VERIFIED; authorized no-migration application release",
+  "rollback": "Redeploy recorded previous application commits; no database downgrade.",
+  "authorization": "User instruction on 2026-10-22: merge and deploy",
+  "candidate_tests": "https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy/actions/runs/39810449829"
+}
