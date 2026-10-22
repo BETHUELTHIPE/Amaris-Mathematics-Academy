@@ -28,9 +28,9 @@ function SubmitButton() {
 
 export function EnquiryForm({ location }: { location: InitialLocation }) {
   const [state, formAction] = useActionState(submitEnquiry, initialEnquiryState);
-  const [clientErrors, setClientErrors] = useState<Partial<Record<ContactField, string>>>({});
+  const [clientErrors, setClientErrors] = useState<Partial<Record<ContactField | "provinceOther" | "cityOther", string>>>({});
   const [editedFields, setEditedFields] = useState<Set<string>>(new Set());
-  const errors = Object.fromEntries((Object.keys(contactRequiredMessages) as ContactField[]).map((field) => [
+  const errors = Object.fromEntries(([...Object.keys(contactRequiredMessages), "provinceOther", "cityOther"] as (ContactField | "provinceOther" | "cityOther")[]).map((field) => [
     field, clientErrors[field] ?? (editedFields.has(field) ? undefined : state.errors?.[field]),
   ]));
 
@@ -49,8 +49,8 @@ export function EnquiryForm({ location }: { location: InitialLocation }) {
 
   function handleInput(event: FormEvent<HTMLFormElement>) {
     const control = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-    const field = control.name as ContactField;
-    if (!(field in contactRequiredMessages)) return;
+    const field = control.name as ContactField | "provinceOther" | "cityOther";
+    if (!Object.hasOwn(contactRequiredMessages, field) && field !== "provinceOther" && field !== "cityOther") return;
     control.setCustomValidity("");
     setClientErrors((previous) => ({ ...previous, [field]: undefined }));
     setEditedFields((previous) => new Set([...previous, field]));

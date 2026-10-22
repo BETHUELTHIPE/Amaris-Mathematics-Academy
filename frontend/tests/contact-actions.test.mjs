@@ -86,6 +86,11 @@ test("unlisted locations keep explicit Other markers when sent to Django", async
   const form = enquiry();
   form.set("province", "__other__"); form.set("provinceOther", "Synthetic region");
   form.set("city", "__other__"); form.set("cityOther", "Synthetic town");
+  form.set("cityOther", "   ");
+  const invalid = await submitEnquiry({ status: "idle" }, form);
+  assert.equal(invalid.errors.cityOther, "Please enter your city or town.");
+  assert.equal(calls.length, 0);
+  form.set("cityOther", "Synthetic town");
   assert.equal((await submitEnquiry({ status: "idle" }, form)).status, "success");
   const body = JSON.parse(calls[0][1].body);
   assert.equal(body.province, "__other__"); assert.equal(body.provinceOther, "Synthetic region");
