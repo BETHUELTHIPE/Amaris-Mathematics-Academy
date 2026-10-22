@@ -44,7 +44,7 @@ export function CurriculumFields({ initialProgramme = "", initialSubject = "", i
       </select>
     </label>
     <label className="grid min-w-0 gap-2 text-sm font-semibold">Grade / level
-      <select name="level" required value={level} onChange={event => { setLevel(event.target.value); clearTopic(); }} aria-describedby={`${id}-level-help`} className={inputClass}>
+      <select name="level" aria-label="Grade / level" required value={level} onChange={event => { setLevel(event.target.value); clearTopic(); }} aria-describedby={`${id}-level-help`} className={inputClass}>
         <option value="">Choose grade / level</option>
         {programme ? levels.map(item => <option key={item} value={item}>{item}</option>) : Object.entries(gradeLevelsByProgramme).map(([key, items]) => <optgroup key={key} label={programmes.find(([value]) => value === key)?.[1] ?? key}>{items.map(item => <option key={item} value={item}>{item}</option>)}</optgroup>)}
         {!isSchoolProgramme(programme) && <option value={CUSTOM_CHOICE}>Other academic level or module</option>}
