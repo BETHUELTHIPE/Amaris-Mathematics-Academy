@@ -14,6 +14,7 @@ jobs:
       options: --init --ipc=host --user 1001
     env:
       LOCATION_LAYOUT_ONLY: 'true'
+      LOCATION_LAYOUT_REVISION: '2e2871a66a88534c8305dfcc388fb53807c0ce0b'
       LOCATION_SITE: https://amaris-mathematics-academy-staging-x4ax.onrender.com
       LOCATION_API: https://amaris-mathematics-academy-staging.onrender.com
     steps:
