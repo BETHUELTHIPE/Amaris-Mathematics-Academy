@@ -164,8 +164,15 @@ def validate_bindings(environment, values):
     user = values.get("EMAIL_HOST_USER") or values.get("GMAIL_USER") or values.get("GMAIL_EMAIL")
     password = values.get("EMAIL_HOST_PASSWORD") or values.get("GMAIL_APP_PASSWORD")
     sender = values.get("DEFAULT_FROM_EMAIL", "")
-    if not (values.get("EMAIL_HOST") and user and password and "@" in sender and ".invalid" not in sender):
-        raise ValueError("Real SMTP host, credentials and sender are required")
+    checks = {
+        "EMAIL_HOST": bool(values.get("EMAIL_HOST")),
+        "EMAIL_HOST_USER (or Gmail alias)": bool(user),
+        "EMAIL_HOST_PASSWORD (or Gmail alias)": bool(password),
+        "DEFAULT_FROM_EMAIL (real sender)": "@" in sender and ".invalid" not in sender,
+    }
+    missing = [key for key, valid in checks.items() if not valid]
+    if missing:
+        raise ValueError("Missing SMTP requirements: " + ", ".join(missing))
     tls, ssl = truth(values.get("EMAIL_USE_TLS", "true")), truth(values.get("EMAIL_USE_SSL", "false"))
     if tls == ssl:
         raise ValueError("Exactly one SMTP TLS or SSL transport must be enabled")
