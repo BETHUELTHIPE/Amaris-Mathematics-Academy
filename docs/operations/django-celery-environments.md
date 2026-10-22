@@ -83,6 +83,15 @@ any changes. It verifies the existing live source, database/Auth/storage project
 SSL, SMTP settings, non-evicting broker, queue isolation, secret allowlist and
 service-name collisions before allowing any create request.
 
+Live inspection found that production web has no SMTP host, login, app password
+or real sender configured. The prepared production notification-worker plan
+therefore copies only SMTP settings from the existing configured Amaris sender
+in staging, restricted to the known owner-controlled Gmail sender and matching
+login. It retains production's own database, Auth, storage and queue bindings.
+Both preflights authenticate through Gmail TLS without submitting any email;
+authentication failure blocks service creation. Neither web service's settings
+are changed. Credential presence/authentication is not inbox-delivery proof.
+
 After separate recurring-cost approval, merge the reviewed infrastructure PR
 and dispatch **Django Celery staging and production services** on `main`. Select
 `target=staging`, `apply=true`, `approved_monthly_usd=21`. The protected production

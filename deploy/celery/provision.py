@@ -5,8 +5,11 @@ Values are copied inside the protected runner and are never included in reports.
 """
 
 import argparse
+from email.utils import parseaddr
 import json
 import os
+import smtplib
+import ssl
 import sys
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
@@ -91,6 +94,32 @@ class RenderAPI:
         except (OSError, ValueError):
             raise RuntimeError(f"Render {method} failed; response suppressed") from None
 
+    def verify_smtp(self, values):
+        """Authenticate over TLS without submitting any message or recipient."""
+        host = values["EMAIL_HOST"]
+        port_text = values.get("EMAIL_PORT", "587")
+        if host not in {"smtp.gmail.com", "smtp.googlemail.com"} or port_text not in {"465", "587"}:
+            raise ValueError("Review SMTP provider before credential authentication")
+        port = int(port_text)
+        use_ssl = truth(values.get("EMAIL_USE_SSL", "false"))
+        if (port == 465) != use_ssl:
+            raise ValueError("SMTP port does not match the configured TLS transport")
+        user = values.get("EMAIL_HOST_USER") or values.get("GMAIL_USER") or values.get("GMAIL_EMAIL")
+        password = values.get("EMAIL_HOST_PASSWORD") or values.get("GMAIL_APP_PASSWORD")
+        try:
+            if use_ssl:
+                smtp = smtplib.SMTP_SSL(host, port, timeout=15, context=ssl.create_default_context())
+            else:
+                smtp = smtplib.SMTP(host, port, timeout=15)
+            with smtp:
+                smtp.ehlo()
+                if not use_ssl:
+                    smtp.starttls(context=ssl.create_default_context())
+                    smtp.ehlo()
+                smtp.login(user, password)
+        except (OSError, smtplib.SMTPException):
+            raise RuntimeError("SMTP TLS authentication failed; no email sent; provider response suppressed") from None
+
 
 def rows(api, path):
     cursor = ""
@@ -161,6 +190,9 @@ def validate_bindings(environment, values):
         raise ValueError("Private invoice storage bindings are incomplete")
     if environment == "staging" and (values.get("PAYFAST_MODE") or values.get("PAYFAST_ENV", "")).lower() != "sandbox":
         raise ValueError("Staging must remain PayFast sandbox")
+
+
+def validate_smtp(values):
     user = values.get("EMAIL_HOST_USER") or values.get("GMAIL_USER") or values.get("GMAIL_EMAIL")
     password = values.get("EMAIL_HOST_PASSWORD") or values.get("GMAIL_APP_PASSWORD")
     sender = values.get("DEFAULT_FROM_EMAIL", "")
@@ -176,6 +208,33 @@ def validate_bindings(environment, values):
     tls, ssl = truth(values.get("EMAIL_USE_TLS", "true")), truth(values.get("EMAIL_USE_SSL", "false"))
     if tls == ssl:
         raise ValueError("Exactly one SMTP TLS or SSL transport must be enabled")
+
+
+def notification_configuration(api, environment, values):
+    """Prepare only notification-worker SMTP; do not change either web service."""
+    try:
+        validate_smtp(values)
+        return values
+    except ValueError:
+        if environment != "production":
+            raise
+        has_smtp = bool(values.get("EMAIL_HOST") or values.get("EMAIL_HOST_USER") or values.get("GMAIL_USER") or values.get("GMAIL_EMAIL") or values.get("EMAIL_HOST_PASSWORD") or values.get("GMAIL_APP_PASSWORD"))
+        sender = values.get("DEFAULT_FROM_EMAIL", "")
+        if has_smtp or ("@" in sender and ".invalid" not in sender):
+            raise ValueError("Production SMTP is partially configured; review instead of replacing it") from None
+    # Production currently has no SMTP configuration. Reuse the already
+    # configured Amaris sender, not staging database/Auth/queue credentials.
+    staging = env_values(api, ENVIRONMENTS["staging"]["web"])
+    validate_bindings("staging", staging)
+    validate_smtp(staging)
+    user = staging.get("EMAIL_HOST_USER") or staging.get("GMAIL_USER") or staging.get("GMAIL_EMAIL")
+    sender = parseaddr(staging.get("DEFAULT_FROM_EMAIL", ""))[1].lower()
+    if sender not in {"bethuelthipe@gmail.com", "bethuelmoukangwe8@gmail.com"} or user.lower() != sender:
+        raise ValueError("Shared SMTP must use the existing approved Amaris sender")
+    result = {k: v for k, v in values.items() if k not in SMTP_KEYS}
+    result.update({k: v for k, v in staging.items() if k in SMTP_KEYS})
+    print("Production notification-worker plan reuses existing Amaris SMTP only; production web unchanged", flush=True)
+    return result
 
 
 def payload(environment, role, source_values):
@@ -241,6 +300,9 @@ def preflight(api, environment):
         raise ValueError("Unexpected broker identity or queue eviction policy")
     values = env_values(api, spec["web"])
     validate_bindings(environment, values)
+    values = notification_configuration(api, environment, values)
+    validate_smtp(values)
+    api.verify_smtp(values)
     definitions = [payload(environment, role, values) for role in ROLES]
     services = [r.get("service", r) for r in rows(api, "/services?ownerId=" + WORKSPACE)]
     existing = {}

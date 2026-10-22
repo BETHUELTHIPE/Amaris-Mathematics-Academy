@@ -91,7 +91,7 @@ jobs:
       github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/ops/django-celery-environments-20261022' &&
-      github.event.before == 'a1819062da765c82b0e81569705d7b682190707d' &&
+      github.event.before == '3ebed5e6e91c3013ce6d32fdde6856662758e5be' &&
       contains(github.event.head_commit.message, '[CELERY_PREFLIGHT:20261022]')
     needs: [validate, runtime]
     runs-on: ubuntu-24.04

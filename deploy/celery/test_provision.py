@@ -49,6 +49,11 @@ class FakeRender:
             "owner": {"id": p.WORKSPACE}, "name": f"amaris-{environment}-broker",
             "region": "frankfurt", "options": {"maxmemoryPolicy": "noeviction"},
         }
+        self.smtp_verified = 0
+
+    def verify_smtp(self, values):
+        self.smtp_verified += 1
+        p.validate_smtp(values)
 
     def request(self, method, path, payload=None):
         if method == "POST":
@@ -84,6 +89,7 @@ class ProvisionTests(unittest.TestCase):
                 report = p.provision(api, environment)
                 self.assertEqual(api.created, [])
                 self.assertEqual(len(report), 3)
+                self.assertEqual(api.smtp_verified, 1)
                 self.assertTrue(all(r["action"] == "would-create" for r in report))
 
     def test_apply_uses_exact_sources_and_separate_queues_without_secret_logs(self):
@@ -138,6 +144,29 @@ class ProvisionTests(unittest.TestCase):
                 p.provision(api, "staging", True, 21)
         self.run_apply(api)
         self.assertEqual(len(api.created), 3)
+
+    def test_missing_production_smtp_reuses_only_existing_approved_sender(self):
+        api = FakeRender("production")
+        for key in p.SMTP_KEYS:
+            api.values.pop(key, None)
+        staging = configuration("staging")
+        staging.update(EMAIL_HOST_USER="bethuelmoukangwe8@gmail.com", DEFAULT_FROM_EMAIL="Amaris <bethuelmoukangwe8@gmail.com>")
+        api.vars[p.ENVIRONMENTS["staging"]["web"]] = staging
+        report, logs = self.run_apply(api)
+        self.assertEqual(len(report), 3)
+        env = {v["key"]: v["value"] for v in api.created[1]["envVars"]}
+        self.assertEqual(env["EMAIL_HOST_PASSWORD"], staging["EMAIL_HOST_PASSWORD"])
+        self.assertEqual(env["DATABASE_URL"], api.values["DATABASE_URL"])
+        self.assertEqual(env["CELERY_BROKER_URL"], api.values["CELERY_BROKER_URL"])
+        self.assertNotIn("EMAIL_HOST_PASSWORD", api.values)
+        self.assertIn("SMTP only", logs)
+
+    def test_smtp_failure_prevents_any_service_purchase(self):
+        api = FakeRender("staging")
+        with patch.object(api, "verify_smtp", side_effect=RuntimeError("SMTP unavailable")):
+            with self.assertRaises(RuntimeError):
+                self.run_apply(api)
+        self.assertEqual(api.created, [])
 
     def test_approval_is_required_before_api_reads_or_creates(self):
         for amount in (None, 0, 7, 20, 42):
