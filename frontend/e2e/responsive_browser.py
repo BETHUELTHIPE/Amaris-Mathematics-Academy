@@ -88,6 +88,9 @@ def check_form(page: Page) -> None:
 
 def check_contact_required_fields(page: Page) -> None:
     goto(page, "/contact")
+    # Isolate validation from a draft saved by the preceding journey, including
+    # one whose hydration effect has not restored its values yet on mobile.
+    page.evaluate("sessionStorage.removeItem('amaris:safe-draft:contact-enquiry-v1')")
     prompts = {
         "fullName": "Please enter your full name.",
         "email": "Please enter your email address.",
@@ -101,6 +104,8 @@ def check_contact_required_fields(page: Page) -> None:
         page.locator(f"#{field}").fill("")
     page.locator("#enquiryType").evaluate("element => { element.value = ''; }")
     page.locator("#consent").uncheck()
+    for field in ("fullName", "email", "phone", "message"):
+        require(page.locator(f"#{field}").input_value() == "", f"{field} was not empty before validation")
     page.get_by_role("button", name=re.compile("Send enquiry")).click()
     for field, prompt in prompts.items():
         control = page.locator(f"#{field}")
