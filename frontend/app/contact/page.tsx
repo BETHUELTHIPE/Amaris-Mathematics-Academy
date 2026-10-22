@@ -39,7 +39,7 @@ export default async function ContactPage() {
             <div className="absolute right-0 top-0 h-2 w-36 bg-[#ffcc66]" />
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#1f5bbd]">Enquiry form</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-.035em] text-[#0a1b36]">Send us a message</h2>
-            <p className="mt-3 text-base leading-7 text-[#60708a]">Required fields are marked with an asterisk. We will use your details only to respond to this enquiry.</p>
+            <p className="mt-3 text-base leading-7 text-[#60708a]">All fields are required and marked with an asterisk. We will use your details only to respond to this enquiry.</p>
             <EnquiryForm />
           </div>
         </div>
