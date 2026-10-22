@@ -10,7 +10,7 @@ class CallbackDiagnostics(MiddlewareMixin):
         if request.method != "POST" or request.path != "/api/v1/payfast/itn/":
             return
         from content.payfast_views import _request_ip, _allowed_networks
-        from content.services.payments import _payfast_credentials, generate_payfast_signature
+        from content.services.payments import _payfast_credentials, generate_payfast_itn_signature
         payload = {str(k):str(v) for k,v in request.POST.items()}
         networks = _allowed_networks()
         def allowed(value):
