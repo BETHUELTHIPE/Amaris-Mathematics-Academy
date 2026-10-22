@@ -112,3 +112,28 @@ class ContactLocationPersistenceTests(TestCase):
             }
         )
         self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    @patch("content.serializers.auto_reply_to_enquiry")
+    def test_other_names_survive_contact_storage(self, reply):
+        serializer = ContactEnquirySerializer(
+            data={
+                "name": "Synthetic Student",
+                "email": "synthetic@example.test",
+                "phone": "0710000000",
+                "subject": "Course guidance",
+                "message": "Please help me choose a mathematics course.",
+                "country": "ZA",
+                "province": "__other__",
+                "provinceOther": " Synthetic region ",
+                "city": "__other__",
+                "cityOther": " Synthetic town ",
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        record = serializer.save()
+        record.refresh_from_db()
+        self.assertEqual(
+            (record.country, record.province, record.city),
+            ("ZA", "Synthetic region", "Synthetic town"),
+        )
+        reply.assert_called_once_with(record)
