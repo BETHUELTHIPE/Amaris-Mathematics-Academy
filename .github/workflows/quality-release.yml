@@ -204,8 +204,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: frontend/e2e/requirements.txt
+          # The official container omits lsb_release, which setup-python's
+          # optional pip-cache lookup requires. Install the pinned package below.
       - name: Install locked frontend dependencies
         run: npm ci
       - name: Install Playwright test dependency
