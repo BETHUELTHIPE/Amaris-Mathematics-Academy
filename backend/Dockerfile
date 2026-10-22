@@ -35,7 +35,7 @@ RUN apt-get update \
     && rm -f /tmp/restic.tar.gz \
     && rm -rf /var/lib/apt/lists/*
 
-FROM python:3.13.15-slim AS django-runtime
+FROM python:3.14.7-slim AS django-runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
