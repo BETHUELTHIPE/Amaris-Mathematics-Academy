@@ -16,7 +16,7 @@ permissions:
 jobs:
   authentic-sandbox-itn:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == '92e63bd86c6bf983efc001d2aa786299714bcb55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:browser-v3]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'f474b48120bcfe253ba7b0ec2215d439eda3641b' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:mailbox-v4]')
     environment: staging
     name: Eight real sandbox wallets and provider callbacks; isolated database
     runs-on: ubuntu-24.04
@@ -108,6 +108,7 @@ jobs:
           cd backend
           python manage.py migrate --noinput >/dev/null
           python manage.py check
+          python manage.py shell -c 'import tempfile; from pathlib import Path; from django.conf import settings; from django.core.mail import get_connection; connection=get_connection(); assert Path(connection.file_path).resolve()==Path("/tmp/amaris-staging-mail"); tempfile.NamedTemporaryFile(dir=settings.EMAIL_FILE_PATH).close(); print("ISOLATED_MAILBOX_BACKEND_AND_WRITE=PASS")'
           celery -A amaris_cms worker --loglevel=WARNING --queues=critical,default,notifications --concurrency=2 --hostname=acceptance@%h > /tmp/amaris-ci-worker.log 2>&1 &
           echo $! > /tmp/amaris-ci-worker.pid
           celery -A amaris_cms beat --loglevel=WARNING --pidfile=/tmp/amaris-ci-beat.pid --schedule=/tmp/amaris-ci-beat-schedule > /tmp/amaris-ci-beat.log 2>&1 &
@@ -257,7 +258,7 @@ jobs:
 
   deployed-staging-prerequisites:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == '92e63bd86c6bf983efc001d2aa786299714bcb55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:browser-v3]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'f474b48120bcfe253ba7b0ec2215d439eda3641b' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:mailbox-v4]')
     name: Real staging configuration, SMTP and asynchronous delivery prerequisites
     environment: production
     runs-on: ubuntu-24.04
@@ -359,7 +360,7 @@ jobs:
 
   approved-staging-student:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == '92e63bd86c6bf983efc001d2aa786299714bcb55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:browser-v3]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'f474b48120bcfe253ba7b0ec2215d439eda3641b' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:mailbox-v4]')
     name: Real approved staging student authentication
     environment: staging
     runs-on: ubuntu-24.04
