@@ -59,6 +59,7 @@ jobs:
         run: |
           python manage.py check
           python manage.py makemigrations --check --dry-run
+          python manage.py collectstatic --noinput
           python manage.py test
   frontend:
     if: "!contains(github.event.head_commit.message, '[CONTACT_SMOKE:')"
