@@ -1,0 +1,29 @@
+name: Deployed location forms verification
+on:
+  push:
+    branches: [ops/location-live-acceptance-20261022]
+    paths: [.github/workflows/location-live-smoke.yml, frontend/e2e/location_live_smoke.py]
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble
+      options: --init --ipc=host --user 1001
+    env:
+      LOCATION_SITE: https://amaris-mathematics-academy-staging-x4ax.onrender.com
+      LOCATION_API: https://amaris-mathematics-academy-staging.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - run: python -m pip install playwright==1.62.0
+      - run: python frontend/e2e/location_live_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployed-location-evidence
+          path: artifacts/location-live
