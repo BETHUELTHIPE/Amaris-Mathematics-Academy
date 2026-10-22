@@ -21,6 +21,11 @@ permissions:
 jobs:
   browser-performance:
     runs-on: ubuntu-latest
+    # Use the same reproducible browser toolchain as the location/release gates.
+    # Unpinned Chromium snapshots produced NO_NAVSTART and inconsistent scores.
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble
+      options: --init --ipc=host --user 1001
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -34,8 +39,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - uses: browser-actions/setup-chrome@v1
-        id: chrome
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --include=dev
@@ -47,6 +50,23 @@ jobs:
           npm test
       - name: Install browser harness
         run: pip install -r frontend/e2e/requirements.txt
+      - name: Verify pinned browser and expose executable paths
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from importlib.metadata import version
+          from playwright.sync_api import sync_playwright
+
+          assert version("playwright") == "1.62.0"
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              print("Pinned Chromium:", browser.version, flush=True)
+              browser.close()
+              with open(os.environ["GITHUB_ENV"], "a") as env:
+                  for name in ("AMARIS_CHROME_PATH", "CHROME_PATH"):
+                      env.write(name + "=" + p.chromium.executable_path + "\n")
+          PY
       - name: Build production-equivalent Nitro Node server
         working-directory: frontend
         run: |
@@ -54,12 +74,12 @@ jobs:
           NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
       - name: Verify 320/390/768/1440 viewport, LCP, CLS and horizontal overflow
         env:
-          AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          AMARIS_CHROME_PATH: ${{ env.AMARIS_CHROME_PATH }}
         run: python -u frontend/e2e/public_browser_performance.py
       - name: Run existing strict mobile Lighthouse LCP, CLS and accessibility gate
         working-directory: frontend
         env:
-          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          CHROME_PATH: ${{ env.AMARIS_CHROME_PATH }}
         run: npm run test:lighthouse:mobile
       - name: Diagnose mobile LCP, JavaScript blocking and unused bundles
         if: always()
