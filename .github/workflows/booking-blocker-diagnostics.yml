@@ -9,14 +9,14 @@ on:
       - scripts/release/current_booking_gateway_verify.py
       - scripts/release/booking_gateway_diagnostics.py
 concurrency:
-  group: current-all-booking-acceptance
+  group: booking-blocker-acceptance
   cancel-in-progress: false
 permissions:
   contents: read
 jobs:
   authentic-sandbox-itn:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'f474b48120bcfe253ba7b0ec2215d439eda3641b' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:mailbox-v4]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == '0d867c599a9d17077599e0d7c730a2a982ed2901' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:mailbox-v5]')
     environment: staging
     name: Eight real sandbox wallets and provider callbacks; isolated database
     runs-on: ubuntu-24.04
@@ -258,7 +258,7 @@ jobs:
 
   deployed-staging-prerequisites:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'f474b48120bcfe253ba7b0ec2215d439eda3641b' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:mailbox-v4]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == '0d867c599a9d17077599e0d7c730a2a982ed2901' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:mailbox-v5]')
     name: Real staging configuration, SMTP and asynchronous delivery prerequisites
     environment: production
     runs-on: ubuntu-24.04
@@ -360,7 +360,7 @@ jobs:
 
   approved-staging-student:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'f474b48120bcfe253ba7b0ec2215d439eda3641b' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:mailbox-v4]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == '0d867c599a9d17077599e0d7c730a2a982ed2901' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:mailbox-v5]')
     name: Real approved staging student authentication
     environment: staging
     runs-on: ubuntu-24.04
