@@ -190,7 +190,7 @@ jobs:
     # browser builds and OS libraries, avoiding slow runner apt-mirror installs.
     container:
       image: mcr.microsoft.com/playwright/python:v1.62.0-noble
-      options: --init --ipc=host
+      options: --init --ipc=host --user 1001
     defaults:
       run:
         working-directory: frontend
