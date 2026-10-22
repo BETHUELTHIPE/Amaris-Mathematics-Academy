@@ -92,6 +92,16 @@ class ProvisionTests(unittest.TestCase):
                 self.assertEqual(api.smtp_verified, 1)
                 self.assertTrue(all(r["action"] == "would-create" for r in report))
 
+    def test_non_redis_brokers_are_rejected_for_both_environments(self):
+        for environment in p.ENVIRONMENTS:
+            for url in ("amqp://localhost//", "sqs://", "memory://"):
+                with self.subTest(environment=environment, transport=url.split(":")[0]):
+                    api = FakeRender(environment)
+                    api.values["CELERY_BROKER_URL"] = url
+                    with self.assertRaisesRegex(ValueError, "Redis"):
+                        self.run_apply(api)
+                    self.assertEqual(api.created, [])
+
     def test_apply_uses_exact_sources_and_separate_queues_without_secret_logs(self):
         for environment in p.ENVIRONMENTS:
             with self.subTest(environment=environment):

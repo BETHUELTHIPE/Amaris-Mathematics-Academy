@@ -5,6 +5,17 @@ not approved or purchased. The existing web, database, broker and monitoring
 services are unchanged. Celery is a Python library; always-on worker and scheduler
 processes still require compute.
 
+Celery must use **Redis as its broker transport** through `CELERY_BROKER_URL`
+(`redis://` or TLS `rediss://`). Django producers, workers and Beat within each
+environment use the same environment-specific broker. Staging and production
+brokers remain separate, and neither uses the evicting application cache.
+Runtime validation checks Celery's resolved Redis transport; provisioning rejects
+AMQP, SQS, in-memory or other broker URL schemes.
+
+The existing Render Key Value brokers implement the Redis protocol using
+**Valkey 8**, not the Redis server engine. This plan retains those existing
+Redis-compatible services. It does not install or claim an actual Redis server.
+
 ## Concrete service plan
 
 Both environments already have Django's Celery app, task registry, database-backed

@@ -17,6 +17,7 @@ assert app.conf.task_acks_late and app.conf.task_reject_on_worker_lost
 assert app.conf.worker_prefetch_multiplier == 1
 assert app.conf.broker_connection_retry_on_startup
 assert app.conf.accept_content == ["json"]
+assert app.connection_for_write().transport.driver_type == "redis", "Celery must use the Redis broker transport"
 
 expected_notifications = {
     "content.tasks.deliver_transactional_email",
