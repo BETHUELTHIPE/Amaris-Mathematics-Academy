@@ -312,7 +312,18 @@ class ContactEnquiryAdmin(TimeStampedAdmin):
     list_filter = ("status", "created_at", "assigned_to")
     list_editable = ("status", "assigned_to")
     search_fields = ("name", "email", "phone", "subject", "message")
-    readonly_fields = ("name", "email", "phone", "subject", "message", "created_at", "updated_at")
+    readonly_fields = (
+        "name",
+        "email",
+        "phone",
+        "subject",
+        "message",
+        "country",
+        "province",
+        "city",
+        "created_at",
+        "updated_at",
+    )
     actions = ("mark_in_progress", "mark_resolved")
     date_hierarchy = "created_at"
 
