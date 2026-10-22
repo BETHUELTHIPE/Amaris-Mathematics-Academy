@@ -13,6 +13,8 @@ import { academyBrand } from "@/lib/brand";
 import { ClearSafeFormDraft, SafeFormDraft } from "@/components/site/safe-form-draft";
 import { contactRequiredErrors, contactRequiredMessages, type ContactField } from "@/lib/contact-validation";
 
+const contactDraftFields = ["fullName", "email", "phone", "enquiryType", "message"];
+
 function FieldError({ field, message }: { field: ContactField; message?: string }) {
   return message ? <p id={`${field}-error`} className="mt-2 text-sm font-medium text-[#b42318]" role="alert">{message}</p> : null;
 }
@@ -70,7 +72,7 @@ export function EnquiryForm() {
 
   return (
     <form action={formAction} onInvalidCapture={handleInvalid} onInputCapture={handleInput} onChangeCapture={handleInput} onSubmit={handleSubmit} className="mt-8 space-y-6">
-      <SafeFormDraft draftKey="contact-enquiry-v1" allowedFields={["fullName", "email", "phone", "enquiryType", "message"]} />
+      <SafeFormDraft draftKey="contact-enquiry-v1" allowedFields={contactDraftFields} />
       <div className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">
         <label htmlFor="website">Website</label><input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
       </div>
