@@ -6,6 +6,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from playwright.sync_api import Browser, Page, sync_playwright
 
@@ -70,7 +71,7 @@ def check_navigation(page: Page, viewport_name: str) -> None:
 
 
 def check_form(page: Page) -> None:
-    goto(page, "/contact")
+    goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
     page.locator("#fullName").fill("Responsive Test Student")
     page.locator("#email").fill("responsive.student@example.test")
     page.locator("#phone").fill("0710000000")
@@ -89,9 +90,10 @@ def check_form(page: Page) -> None:
 
 
 def check_offline_recovery(page: Page) -> None:
-    goto(page, "/contact")
+    goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
     page.locator("#fullName").fill("Offline Synthetic Student")
     page.locator("#email").fill("offline.student@example.test")
+    page.locator("#phone").fill("0710000000")
     page.locator("#enquiryType").select_option("technical-support")
     page.locator("#message").fill("Synthetic offline submission check with enough safe detail.")
     page.locator("#consent").check()
@@ -121,7 +123,7 @@ def check_offline_recovery(page: Page) -> None:
             "Nothing will be submitted until you reconnect." in notice.locator("[data-recovery-message]").inner_text(),
             "Offline submission protection message is missing",
         )
-        require(page.url.endswith("/contact"), "Offline form submission unexpectedly navigated away")
+        require(urlsplit(page.url).path == "/contact", "Offline form submission unexpectedly navigated away")
     finally:
         page.context.set_offline(False)
 
@@ -137,9 +139,10 @@ def check_offline_recovery(page: Page) -> None:
     )
 
 def check_slow_submission(page: Page) -> None:
-    goto(page, "/contact")
+    goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
     page.locator("#fullName").fill("Slow Network Synthetic Student")
     page.locator("#email").fill("slow.network.student@example.test")
+    page.locator("#phone").fill("0710000000")
     page.locator("#enquiryType").select_option("technical-support")
     page.locator("#message").fill("Synthetic delayed submission used to verify slow-network recovery without data loss.")
     page.locator("#consent").check()
@@ -158,7 +161,7 @@ def check_slow_submission(page: Page) -> None:
         elapsed = time.monotonic() - started
         require(elapsed >= 1.8, f"Slow-network delay was not exercised: elapsed={elapsed:.2f}s")
         require(success.is_visible(), "Delayed enquiry did not recover to a success state")
-        require(page.url.endswith("/contact"), "Delayed submission navigated away unexpectedly")
+        require(urlsplit(page.url).path == "/contact", "Delayed submission navigated away unexpectedly")
     finally:
         page.unroute("**/contact*", delay_contact_post)
 
@@ -412,9 +415,10 @@ def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: s
         page.wait_for_url("**/courses*", wait_until="domcontentloaded")
         require("/courses" in page.url, "Navigation to courses failed without JavaScript")
 
-        goto(page, "/contact")
+        goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
         page.locator("#fullName").fill("No JS Synthetic Student")
         page.locator("#email").fill("nojs.student@example.test")
+        page.locator("#phone").fill("0710000000")
         page.locator("#enquiryType").select_option("course-guidance")
         page.locator("#message").fill("Synthetic no JavaScript enquiry used only for progressive enhancement verification.")
         page.locator("#consent").check(force=True)
