@@ -312,7 +312,18 @@ class ContactEnquiryAdmin(TimeStampedAdmin):
     list_filter = ("status", "created_at", "assigned_to")
     list_editable = ("status", "assigned_to")
     search_fields = ("name", "email", "phone", "subject", "message")
-    readonly_fields = ("name", "email", "phone", "subject", "message", "created_at", "updated_at")
+    readonly_fields = (
+        "name",
+        "email",
+        "phone",
+        "subject",
+        "message",
+        "country",
+        "province",
+        "city",
+        "created_at",
+        "updated_at",
+    )
     actions = ("mark_in_progress", "mark_resolved")
     date_hierarchy = "created_at"
 
@@ -774,6 +785,7 @@ class VideoRequestAdmin(TimeStampedAdmin):
 
 from . import tutor_application_admin as _tutor_application_admin  # noqa: E402,F401
 
+
 @admin.register(WebVitalBucket)
 class WebVitalBucketAdmin(admin.ModelAdmin):
     """Superuser-only p75 trend view; never expose individual measurements."""
@@ -824,4 +836,3 @@ class WebVitalBucketAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
         }
         return TemplateResponse(request, "admin/content/webvitalbucket/report.html", context)
-

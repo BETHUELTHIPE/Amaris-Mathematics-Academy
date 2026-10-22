@@ -191,7 +191,7 @@ CACHES = {
 }
 PUBLIC_CONTENT_CACHE_SECONDS = int(os.getenv("PUBLIC_CONTENT_CACHE_SECONDS", "300"))
 SITE_BOOTSTRAP_CACHE_SECONDS = int(os.getenv("SITE_BOOTSTRAP_CACHE_SECONDS", "60"))
-# Staging-only aggregate telemetry defaults to OFF; never persist without a strong token.
+# Private Render-to-Render secret; absence disables all Web Vitals writes.
 RUM_INGEST_TOKEN = os.getenv("RUM_INGEST_TOKEN", "")
 RUM_PERSIST_ENABLED = env_bool("RUM_PERSIST_ENABLED", False)
 PUBLIC_SITE_URL = os.getenv(
@@ -594,3 +594,5 @@ MONITORING_CONSOLE_ENABLED = env_bool("MONITORING_CONSOLE_ENABLED", False)
 MONITORING_GRAFANA_URL = os.getenv("MONITORING_GRAFANA_URL", "").rstrip("/")
 MONITORING_PROMETHEUS_URL = os.getenv("MONITORING_PROMETHEUS_URL", "").rstrip("/")
 MONITORING_FLOWER_URL = os.getenv("MONITORING_FLOWER_URL", "").rstrip("/")
+MONITORING_FLOWER_BASIC_AUTH = os.getenv("MONITORING_FLOWER_BASIC_AUTH", "")
+MONITORING_RENDER_EXPORTER_URL = os.getenv("MONITORING_RENDER_EXPORTER_URL", "").rstrip("/")

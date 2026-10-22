@@ -452,6 +452,9 @@ class ContactEnquiry(TimeStampedModel):
     name = models.CharField(max_length=120)
     email = models.EmailField(unique=False)
     phone = models.CharField(max_length=30, blank=True)
+    country = models.CharField(max_length=2, blank=True, default="")
+    province = models.CharField(max_length=160, blank=True, default="")
+    city = models.CharField(max_length=160, blank=True, default="")
     subject = models.CharField(max_length=180)
     message = models.TextField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.NEW, db_index=True)
@@ -880,9 +883,6 @@ class PaymentReconciliationRun(TimeStampedModel):
     def __str__(self) -> str:
         return f"{self.started_at:%Y-%m-%d %H:%M} — {self.status}"
 
-
-# Django discovers the recruitment models through this application module.
-from .tutor_application_models import TutorApplication, TutorApplicationDocument  # noqa: E402,F401
 
 class WebVitalBucket(models.Model):
     """Coarse daily counts only; never store visitors, URLs, IPs or raw events."""

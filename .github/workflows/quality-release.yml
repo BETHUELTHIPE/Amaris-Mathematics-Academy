@@ -104,7 +104,7 @@ jobs:
       - name: Collect production static assets
         run: python manage.py collectstatic --noinput
       - name: Unit tests
-        run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests
+        run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests tests.test_monitoring_admin
       - name: Integration tests
         run: python manage.py test content.tests.PublicContentApiTests content.test_integrations
       - name: Load/capacity harness contract (no traffic)

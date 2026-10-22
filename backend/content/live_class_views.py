@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from io import BytesIO
-from django.db.models import Exists, OuterRef, Q
+from django.core.files.storage import storages
+from django.db.models import Q
 from django.http import FileResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
 from .models import LiveClassBooking, TutorAvailabilitySlot
-from .services.invoices import archive_invoice_pdf
+from .services.invoices import student_invoice_key
 from .services.live_classes import create_live_class_checkout, price_for_live_class_slot
 from .services.payments import PaymentSecurityError
 
@@ -59,16 +59,24 @@ class LiveClassSlotView(APIView):
         values = filters.validated_data
         now = timezone.now()
 
-        # Keep browsing read-only; checkout and the expiry task own hold expiry.
-        # Test status and hold expiry on the same booking, without join fan-out.
-        blocking_bookings = LiveClassBooking.objects.filter(slot_id=OuterRef("pk")).filter(
-            Q(status=LiveClassBooking.Status.CONFIRMED)
-            | Q(status=LiveClassBooking.Status.PENDING_PAYMENT, hold_expires_at__gt=now)
-        )
+        # Public availability is read-only. Expired holds are ignored by the
+        # queryset below and cleaned up by the scheduled expiration task (or
+        # by the locked checkout path). Never write booking state from GET.
+
         queryset = (
-            TutorAvailabilitySlot.objects.filter(is_active=True, starts_at__gt=now)
+            TutorAvailabilitySlot.objects.filter(
+                is_active=True,
+                starts_at__gt=now,
+            )
             .select_related("tutor")
-            .filter(~Exists(blocking_bookings))
+            .exclude(
+                Q(bookings__status=LiveClassBooking.Status.CONFIRMED)
+                | Q(
+                    bookings__status=LiveClassBooking.Status.PENDING_PAYMENT,
+                    bookings__hold_expires_at__gt=now,
+                )
+            )
+            .distinct()
         )
         if values.get("programme"):
             queryset = queryset.filter(programme=values["programme"])
@@ -231,11 +239,7 @@ class LiveClassBookingStatusView(LiveClassStudentAPIView):
                 "amount": booking.amount,
                 "currency": booking.currency,
                 "invoice_number": booking.invoice_number,
-                "invoice_ready": bool(
-                    booking.status == LiveClassBooking.Status.CONFIRMED
-                    and booking.gateway_verified_at
-                    and booking.invoice_number
-                ),
+                "invoice_ready": bool(booking.confirmation_sent_at),
                 "zoom_join_url": (
                     booking.slot.zoom_join_url if booking.status == LiveClassBooking.Status.CONFIRMED else ""
                 ),
@@ -256,15 +260,13 @@ class LiveClassInvoiceDownloadView(LiveClassStudentAPIView):
             reference=reference,
             student=request.user.student,
             status=LiveClassBooking.Status.CONFIRMED,
-            gateway_verified_at__isnull=False,
+            confirmation_sent_at__isnull=False,
         ).first()
         if booking is None or not booking.invoice_number:
             return Response({"detail": "Invoice not found."}, status=status.HTTP_404_NOT_FOUND)
+        key = student_invoice_key(booking.student.supabase_user_id, booking.invoice_number)
         try:
-            # A verified paid invoice is available to its owner even if SMTP or
-            # Celery is delayed. The archived PDF remains private and immutable
-            # across later email delivery and repeated student downloads.
-            document = BytesIO(archive_invoice_pdf(booking))
+            document = storages["student_private"].open(key, "rb")
         except (OSError, ValueError):
             return Response(
                 {"detail": "Invoice is temporarily unavailable."},
