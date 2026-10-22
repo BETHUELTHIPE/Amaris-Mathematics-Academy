@@ -1,18 +1,19 @@
 {
-  "phase": "staging",
+  "phase": "production",
+  "authorization": "User instruction on 2026-10-22: merge and deploy",
   "merged_pr": 331,
   "main": "f4062ba000dec3cdf24b456d8dc29b8a20729f2b",
   "previous": {
-    "backend": "1b3b0c532060212578ad7e512dc1f4cf64eb8657",
-    "frontend": "31a28fd67b69ddb9b56dd3563d9aaa68fdc95b3a"
+    "backend": "751393e8fdd4eba96cec354b013bb6654431068c",
+    "frontend": "8de65936d0925529dbc6bdfeda62938b2ea03344"
   },
   "release": {
-    "backend": "a47f9228b582d75a4ff0eeffb329b6b74827f222",
-    "frontend": "43fca4af502d2ed5fbaa97375c3170bc4f43caeb"
+    "backend": "141d078ab24242bbb5839569829f077e9cdbb53c",
+    "frontend": "284dc9a9bf0491df0e924abcebeffbf1f8758730"
   },
+  "candidate_tests": "https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy/actions/runs/39810449829",
+  "staging_tests": "https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy/actions/runs/39811595540",
   "migrations": "none",
-  "production_backup_restore": "NOT VERIFIED; authorized no-migration application release",
-  "rollback": "Redeploy recorded previous application commits; no database downgrade.",
-  "authorization": "User instruction on 2026-10-22: merge and deploy",
-  "candidate_tests": "https://github.com/BETHUELTHIPE/Amaris-Mathematics-Academy/actions/runs/39810449829"
+  "backup_restore": "NOT VERIFIED; explicitly authorized no-migration application release",
+  "rollback": "Redeploy recorded previous application commits. Database downgrade is unnecessary."
 }
