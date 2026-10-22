@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -64,6 +65,7 @@ class FakeAuth(BaseHTTPRequestHandler):
         data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}")
         if self.path.startswith("/auth/v1/signup"):
             assert data["email"] == USER["email"]
+            assert {key: data["data"][key] for key in ("country", "province", "city")} == {"country": "ZA", "province": "Gauteng", "city": "Pretoria"}
             self.reply({"user": {**USER, "email_confirmed_at": None}, "session": None})
         elif self.path.startswith("/auth/v1/verify") and data.get("token") == "123456":
             self.reply(self.session())
@@ -151,6 +153,9 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             page.get_by_label("Email address", exact=True).fill(USER["email"])
             page.get_by_label("Password", exact=True).fill("Synthetic-Test-927!")
             page.get_by_label("Confirm password", exact=True).fill("Synthetic-Test-927!")
+            page.locator("#country").select_option("ZA")
+            page.locator("#province").select_option("Gauteng")
+            page.locator("#city").select_option("Pretoria")
             page.locator('input[name="consent"]').check()
             page.get_by_role("button", name="Create applicant account").click()
             page.wait_for_url("**/tutor/verify-email?**")
@@ -172,13 +177,16 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             page.wait_for_url("**/tutor/apply")
             page.get_by_role("button", name="Submit tutor application", exact=True).wait_for()
             audit(page, "Application form mobile")
-            values = {"phone": "0712345678", "location": "Pretoria, South Africa", "qualification": "BSc Mathematics",
+            values = {"phone": "0710000000", "qualification": "BSc Mathematics",
                       "institution": "Synthetic University", "subjects": "Mathematics", "levels": "Grade 12",
                       "experience_years": "3", "teaching_experience": "Three years of mathematics tutoring.",
                       "availability": "Weekday evenings in SAST with Zoom and stable internet.",
                       "motivation": "I enjoy helping students understand mathematics and build confidence."}
             for name, value in values.items():
                 page.locator(f'[name="{name}"]').fill(value)
+            page.locator("#country").select_option("ZA")
+            page.locator("#province").select_option("Gauteng")
+            page.locator("#city").select_option("Pretoria")
             page.locator('input[name="programmes"][value="caps"]').check()
             page.locator('input[name="documents"]').set_input_files({"name": "qualification.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.7\nsynthetic browser qualification\n%%EOF"})
             page.locator('input[name="consent"]').check()
@@ -202,6 +210,8 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             assert USER["email"] in str(message["To"])
             assert not list(message.iter_attachments())
             assert len(list((root / "qualifications").rglob("*.pdf"))) == 1
+            with sqlite3.connect(root / "database.sqlite3") as connection:
+                assert connection.execute("SELECT country, province, city FROM content_tutorapplication").fetchall() == [("ZA", "Gauteng", "Pretoria")]
             context.close()
             browser.close()
         print("PASS: registration → verification → fresh-session login → application → private qualification upload → receipt → captured acknowledgement.")

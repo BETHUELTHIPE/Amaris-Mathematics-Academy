@@ -31,15 +31,29 @@ async function FeaturedCourses() {
   );
 }
 
+function InitialHeaderShell() {
+  // Same 36px + 80px header footprint while the managed site branding
+  // and navigation are fetched. Keep the public hero in the first stream.
+  return (
+    <div className="sticky top-0 z-50 bg-[#07152d] text-white" aria-hidden="true">
+      <div className="h-9 border-b border-white/10 bg-[#041026]" />
+      <div className="mx-auto flex h-20 max-w-7xl items-center gap-3 px-5 lg:px-8">
+        <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-[#ffcc66] font-black text-[#07152d] sm:size-14">A</span>
+        <span className="font-semibold tracking-tight">Amaris <span className="hidden text-white/60 sm:inline">Mathematics Academy</span></span>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
-  preload("/amaris-math-hero.webp", { as: "image", fetchPriority: "high" });
+  preload("/amaris-math-hero.webp", { as: "image", fetchPriority: "high", media: "(min-width: 640px)" });
   return (
     <main className="home-shell min-h-screen bg-[#f5f7fb] text-[#0a1b36]">
-      <Header />
+      <Suspense fallback={<InitialHeaderShell />}><Header /></Suspense>
       <section className="relative isolate overflow-hidden bg-[#07152d] text-white">
         {/* Direct delivery avoids the Vinext image optimizer path while keeping the LCP image discoverable in the initial HTML. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
+        <img src="/amaris-math-hero.webp" alt="A student working through mathematics in a focused study environment" width={1600} height={900} fetchPriority="high" loading="eager" decoding="async" className="absolute inset-0 hidden h-full w-full object-cover object-[62%_center] sm:block" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,#07152d_0%,rgba(7,21,45,.95)_34%,rgba(7,21,45,.66)_54%,rgba(7,21,45,.04)_100%)]" />
         <div className="graph-paper absolute inset-0 hidden opacity-15 sm:block" />
         <div className="relative mx-auto grid min-h-[600px] max-w-7xl items-center px-5 py-16 sm:min-h-[690px] sm:py-20 lg:px-8">

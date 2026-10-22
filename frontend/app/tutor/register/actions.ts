@@ -1,5 +1,6 @@
 "use server";
 
+import { parseLocation } from "@/lib/location-server";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -14,6 +15,8 @@ function verification(email: string, key: string, value = "1"): never {
   redirect(`/tutor/verify-email?email=${encodeURIComponent(email)}&${key}=${encodeURIComponent(value)}`);
 }
 export async function registerApplicant(form: FormData): Promise<never> {
+  const location = await parseLocation(Object.fromEntries(form));
+  if (!location.value) redirect("/tutor/register?error=" + encodeURIComponent(Object.values(location.errors)[0] || "Please choose your location."));
   const parsed = registration.safeParse({ ...Object.fromEntries(form), consent: form.get("consent") === "on" });
   if (!parsed.success) redirect("/tutor/register?error=Check+your+name,+email,+password+and+privacy+agreement.");
   const values = parsed.data;
@@ -24,7 +27,7 @@ export async function registerApplicant(form: FormData): Promise<never> {
       email: values.email.trim().toLowerCase(), password: values.password,
       options: {
         emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/tutor/apply`,
-        data: { first_name: values.firstName, last_name: values.lastName, terms_accepted_at: new Date().toISOString() },
+        data: { first_name: values.firstName, last_name: values.lastName, ...location.value, terms_accepted_at: new Date().toISOString() },
       },
     });
     failed = Boolean(error && !["user_already_exists", "email_exists"].includes(error.code || ""));

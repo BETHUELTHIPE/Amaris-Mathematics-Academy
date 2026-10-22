@@ -1,3 +1,5 @@
+import { parseLocation } from "@/lib/location-server";
+import { countryName } from "@/lib/location-data";
 import { NextResponse } from "next/server";
 import { applicantToken, applicationRequest, ApplicationError } from "@/lib/tutor-applications";
 
@@ -42,6 +44,12 @@ export async function POST(request: Request): Promise<Response> {
     const data = await new Response(new Blob(chunks), {
       headers: { "Content-Type": request.headers.get("content-type")! },
     }).formData();
+    if (data.get("_action") !== "retry-email") {
+      const location = await parseLocation(Object.fromEntries(data));
+      if (!location.value) return result(Object.fromEntries(Object.entries(location.errors).map(([field, message]) => [field, [message]])), 400);
+      // Keep the summary readable for older API releases during an ordered rollout.
+      data.set("location", [location.value.city, location.value.province, countryName(location.value.country)].join(", ").slice(0, 120));
+    }
     const response = await applicationRequest(data.get("_action") === "retry-email" ? "acknowledgement/" : "", { method: "POST", body: data }, token);
     const body = await response.json().catch(() => ({ detail: "Applications are temporarily unavailable. Please retry." }));
     return result(body, response.status);

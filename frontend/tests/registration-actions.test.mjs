@@ -31,7 +31,7 @@ const vite = await createServer({
   appType: "custom", configFile: false, root,
   plugins: [{
     name: "isolated-auth-dependencies", enforce: "pre",
-    resolveId(id) { if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
+    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
     load(id) { if (id === "\0test:auth-state") return mockModule; },
   }],
   server: { middlewareMode: true, hmr: false, ws: false },
@@ -48,7 +48,7 @@ function registration(overrides = {}) {
   const form = new FormData();
   for (const [key, value] of Object.entries({
     firstName: " Synthetic ", lastName: " Student ", email: " Student@Example.test ",
-    mobile: "0710000000", province: "Gauteng", institution: "Synthetic School",
+    mobile: "0710000000", country: "ZA", city: "Pretoria", province: "Gauteng", institution: "Synthetic School",
     academicLevel: "Grade 12", password: "Synthetic-Only-729!", confirmPassword: "Synthetic-Only-729!", terms: "on", ...overrides,
   })) form.set(key, value);
   return form;
@@ -68,7 +68,7 @@ test("valid registration passes all profile fields and waits for email verificat
   assert.equal(url.pathname, "/verify-email");
   assert.equal(url.searchParams.get("email"), "student@example.test");
   assert.deepEqual(state.signup.options.data, {
-    first_name: "Synthetic", last_name: "Student", mobile: "0710000000", province: "Gauteng",
+    first_name: "Synthetic", last_name: "Student", mobile: "0710000000", country: "ZA", city: "Pretoria", province: "Gauteng",
     institution: "Synthetic School", academic_level: "Grade 12", terms_accepted_at: state.signup.options.data.terms_accepted_at,
   });
   assert.ok(Number.isFinite(Date.parse(state.signup.options.data.terms_accepted_at)));

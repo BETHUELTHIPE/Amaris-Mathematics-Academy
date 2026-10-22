@@ -1,3 +1,5 @@
+import { initialLocation } from "@/lib/location-server";
+import type { LocationValues } from "@/lib/location-data";
 import type { Metadata } from "next";
 import { Clock3, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { Header } from "@/components/site/header";
@@ -10,7 +12,8 @@ export const metadata: Metadata = {
   description: "Contact Amaris Mathematics Academy for course guidance, enrolment, payment or technical support.",
 };
 
-export default async function ContactPage() {
+export default async function ContactPage({ searchParams }: { searchParams: Promise<Partial<LocationValues>> }) {
+  const location = await initialLocation(await searchParams);
   const academyBrand = await getManagedBrand();
   const contactCards = [
     { Icon: Phone, label: "Call us", value: academyBrand.phoneDisplay, href: academyBrand.phoneHref },
@@ -40,7 +43,7 @@ export default async function ContactPage() {
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#1f5bbd]">Enquiry form</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-.035em] text-[#0a1b36]">Send us a message</h2>
             <p className="mt-3 text-base leading-7 text-[#60708a]">All fields are required and marked with an asterisk. We will use your details only to respond to this enquiry.</p>
-            <EnquiryForm />
+            <EnquiryForm location={location} />
           </div>
         </div>
       </section>

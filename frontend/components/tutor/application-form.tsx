@@ -1,13 +1,15 @@
 "use client";
 
+import { LocationFields } from "@/components/site/location-fields";
+import type { InitialLocation } from "@/lib/location-data";
 import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 
 const input = "min-w-0 min-h-12 w-full rounded-xl border border-[#cbd6e5] bg-white px-4 py-3 text-base font-normal text-[#263852] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1f5bbd]";
-const labels: Record<string, string> = { full_name: "Full name", phone: "Phone", location: "Location", qualification: "Qualification", institution: "Institution", subjects: "Subjects", programmes: "Programmes", levels: "Levels", experience_years: "Experience", teaching_experience: "Teaching experience", availability: "Availability", motivation: "Motivation", consent: "Declaration", documents: "Qualifications" };
+const labels: Record<string, string> = { full_name: "Full name", phone: "Phone", country: "Country", province: "Province / Region", city: "City / Town", provinceOther: "Province / Region", cityOther: "City / Town", qualification: "Qualification", institution: "Institution", subjects: "Subjects", programmes: "Programmes", levels: "Levels", experience_years: "Experience", teaching_experience: "Teaching experience", availability: "Availability", motivation: "Motivation", consent: "Declaration", documents: "Qualifications" };
 
-export function ApplicationForm({ name, email }: { name: string; email: string }) {
+export function ApplicationForm({ name, email, location }: { name: string; email: string; location: InitialLocation }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [documents, setDocuments] = useState<File[]>([]);
@@ -41,7 +43,8 @@ export function ApplicationForm({ name, email }: { name: string; email: string }
     {errors.length > 0 && <div ref={errorSummary} tabIndex={-1} role="alert" className="rounded-xl border border-red-300 bg-red-50 p-5 text-red-900"><h2 className="font-bold">Please check your application</h2><ul className="mt-2 list-disc space-y-2 pl-5">{errors.map(({ field, message }) => <li key={field}>{labels[field] ? <a href={`#${field}`} className="underline">{labels[field]}</a> : "Application"}: {message}</li>)}</ul></div>}
     <fieldset disabled={pending} className="min-w-0 grid gap-5"><legend className="mb-5 text-xl font-semibold">1. Your details</legend>
       <Field label="Full name" name="full_name" maxLength={160} minLength={2} autoComplete="name" defaultValue={name === "Student" ? "" : name} />
-      <div className="grid gap-5 sm:grid-cols-2"><Field label="Mobile number" name="phone" type="tel" autoComplete="tel" maxLength={30} minLength={7} /><Field label="City, province and country" name="location" minLength={2} maxLength={120} autoComplete="address-level2" /></div>
+      <div className="grid gap-5 sm:grid-cols-2"><Field label="Mobile number" name="phone" type="tel" autoComplete="tel" maxLength={30} minLength={7} /></div>
+      <LocationFields initial={location} draftKey="tutor-application-v1" returnTo="/tutor/apply" />
     </fieldset>
     <fieldset disabled={pending} className="min-w-0 grid gap-5"><legend className="mb-5 text-xl font-semibold">2. Qualifications and teaching</legend>
       <Field label="Relevant qualification title" name="qualification" minLength={2} maxLength={200} placeholder="e.g. BSc Mathematics, teaching diploma" />

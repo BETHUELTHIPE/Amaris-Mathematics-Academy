@@ -35,11 +35,32 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 .section-title { color:#0a1b36; font-size:clamp(2.3rem,5vw,4.4rem); font-weight:650; letter-spacing:-.05em; line-height:1.02; }
 /* Distinct section heights avoid the large scroll jumps from one generic
    800px placeholder, particularly on 320px mobile viewports. Browser skips
-   offscreen painting on larger screens; mobile paints normally for stable CLS. */
+   offscreen layout/painting; mobile estimates below are measured content-box
+   heights (section height less its padding) to preserve the page's scroll range. */
 @media (min-width: 768px) {
   .home-deferred-featured { content-visibility:auto; contain-intrinsic-size:auto 900px; }
   .home-deferred-steps { content-visibility:auto; contain-intrinsic-size:auto 650px; }
   .home-deferred-cta { content-visibility:auto; contain-intrinsic-size:auto 360px; }
+}
+/* Measured at 320, 390, 412 and 640px on the real homepage. Keeping each
+   section's approximate natural content height avoids the old generic 800px
+   placeholders while deferring offscreen mobile style/layout work. */
+@media (max-width: 767px) {
+  .home-deferred-featured { content-visibility:auto; contain-intrinsic-size:auto 1410px; }
+  .home-deferred-steps { content-visibility:auto; contain-intrinsic-size:auto 916px; }
+  .home-deferred-cta { content-visibility:auto; contain-intrinsic-size:auto 409px; }
+}
+@media (max-width: 359px) {
+  .home-deferred-featured { contain-intrinsic-size:auto 1504px; }
+  .home-deferred-steps { contain-intrinsic-size:auto 1000px; }
+}
+@media (min-width: 400px) and (max-width: 639px) {
+  .home-deferred-featured { contain-intrinsic-size:auto 1373px; }
+}
+@media (min-width: 640px) and (max-width: 767px) {
+  .home-deferred-featured { contain-intrinsic-size:auto 1310px; }
+  .home-deferred-steps { contain-intrinsic-size:auto 794px; }
+  .home-deferred-cta { contain-intrinsic-size:auto 396px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior:auto; }
@@ -49,6 +70,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 .letterhead-accent { height:.45rem; background:linear-gradient(90deg,#07152d 0 58%,#1f5bbd 58% 82%,#ffcc66 82% 100%); }
 @page { size:A4; margin:0; }
 @media print {
+  .home-deferred-featured,.home-deferred-steps,.home-deferred-cta { content-visibility:visible; contain-intrinsic-size:none; }
   html,body { background:#fff!important; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
   .print-hidden { display:none!important; }
   .document-preview { margin:0!important; padding:0!important; background:#fff!important; }

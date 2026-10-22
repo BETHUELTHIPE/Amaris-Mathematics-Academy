@@ -22,7 +22,7 @@ export async function createSupabaseServerClient() { return { auth: {
 const stubs = new Set(["@/lib/supabase/config", "@/lib/supabase/server", "@/lib/tutor-applications", "test:applicants"]);
 const vite = await createServer({
   root: fileURLToPath(new URL("..", import.meta.url)), configFile: false, appType: "custom",
-  plugins: [{ name: "applicant-test-services", enforce: "pre", resolveId(id) { if (stubs.has(id)) return "\0test:applicants"; }, load(id) { if (id === "\0test:applicants") return mock; } }],
+  plugins: [{ name: "applicant-test-services", enforce: "pre", resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubs.has(id)) return "\0test:applicants"; }, load(id) { if (id === "\0test:applicants") return mock; } }],
   server: { middlewareMode: true, hmr: false, ws: false },
 });
 const { state } = await vite.ssrLoadModule("test:applicants");
@@ -32,7 +32,7 @@ after(() => vite.close());
 beforeEach(() => { for (const key of Object.keys(state)) delete state[key]; });
 function signup(overrides = {}) {
   const form = new FormData();
-  for (const [key, value] of Object.entries({ firstName: "Synthetic", lastName: "Applicant", email: "applicant@example.test", password: "Synthetic-Test-927!", confirmPassword: "Synthetic-Test-927!", consent: "on", ...overrides })) form.set(key, value);
+  for (const [key, value] of Object.entries({ firstName: "Synthetic", lastName: "Applicant", country: "ZA", province: "Gauteng", city: "Pretoria", email: "applicant@example.test", password: "Synthetic-Test-927!", confirmPassword: "Synthetic-Test-927!", consent: "on", ...overrides })) form.set(key, value);
   return form;
 }
 async function destination(action, data) {
@@ -77,6 +77,7 @@ test("cross-origin application submissions are rejected before checking credenti
 test("qualification multipart form preserves file bytes and returns private receipt", async () => {
   const form = new FormData();
   form.set("full_name", "Synthetic Applicant");
+  form.set("country", "ZA"); form.set("province", "Gauteng"); form.set("city", "Pretoria");
   form.append("documents", new File(["%PDF-test"], "qualification.pdf", { type: "application/pdf" }));
   const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
   assert.equal(response.status, 201);
@@ -97,7 +98,16 @@ test("oversized uploads are rejected even without a content-length header", asyn
   assert.equal(state.forwarded, undefined);
 });
 test("ordinary HTML form submits redirect to the saved application without JavaScript", async () => {
-  const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: new FormData(), headers: { Origin: "https://academy.example.test", Accept: "text/html" } }));
+  const form = new FormData();
+  for (const [key, value] of Object.entries({ country: "ZA", province: "Gauteng", city: "Pretoria" })) form.set(key, value);
+  const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "text/html" } }));
   assert.equal(response.status, 303);
   assert.equal(response.headers.get("location"), "https://academy.example.test/tutor/apply");
+});
+
+test("missing application location returns named errors before forwarding files", async () => {
+  const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: new FormData(), headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
+  assert.equal(response.status, 400);
+  assert.deepEqual(Object.keys(await response.json()).sort(), ["city", "country", "province"]);
+  assert.equal(state.forwarded, undefined);
 });
