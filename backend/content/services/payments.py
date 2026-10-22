@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from functools import partial
 from typing import Protocol
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
 
 from django.db import transaction
@@ -184,6 +184,27 @@ def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: 
     )
 
 
+def _payfast_itn_parameter_string(payload: Mapping[str, str]) -> str:
+    """Preserve every posted ITN field and its order, including empty values.
+
+    PayFast's notification protocol differs from checkout form generation:
+    https://developers.payfast.co.za/ (4.3, signature and valid-data checks).
+    """
+    return "&".join(
+        f"{key}={quote_plus(str(value), safe='').replace('~', '%7E')}"
+        for key, value in payload.items()
+        if key != "signature"
+    )
+
+
+def generate_payfast_itn_signature(payload: Mapping[str, str], passphrase: str = "") -> str:
+    parameter_string = _payfast_itn_parameter_string(payload)
+    if passphrase:
+        encoded_passphrase = quote_plus(passphrase, safe="").replace("~", "%7E")
+        parameter_string += f"&passphrase={encoded_passphrase}"
+    return hashlib.md5(parameter_string.encode("utf-8")).hexdigest()
+
+
 class HttpPayFastVerificationGateway:
     """Validate PayFast ITN signatures and confirm the payload with PayFast."""
 
@@ -194,13 +215,11 @@ class HttpPayFastVerificationGateway:
         supplied_signature = str(payload.get("signature", "")).strip().lower()
         if not supplied_signature:
             return False
-        expected_signature = generate_payfast_signature(payload, passphrase)
+        expected_signature = generate_payfast_itn_signature(payload, passphrase)
         if not hmac.compare_digest(supplied_signature, expected_signature):
             return False
 
-        encoded = urlencode(
-            [(str(key), str(value)) for key, value in payload.items() if key != "signature" and str(value) != ""]
-        ).encode("utf-8")
+        encoded = _payfast_itn_parameter_string(payload).encode("utf-8")
         validate_url = PAYFAST_SANDBOX_VALIDATE_URL if _payfast_mode() == "sandbox" else PAYFAST_LIVE_VALIDATE_URL
         request = Request(
             validate_url,

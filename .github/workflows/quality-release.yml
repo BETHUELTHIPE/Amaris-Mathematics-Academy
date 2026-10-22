@@ -36,6 +36,7 @@ jobs:
   backend-quality:
     name: Python quality and Django checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17-alpine
@@ -116,7 +117,7 @@ jobs:
       - name: Payment tests
         run: python manage.py test content.tests.PaymentReconciliationTests content.test_payments
       - name: Full Django regression suite
-        run: python manage.py test
+        run: timeout 180s python manage.py test --verbosity=2
       - name: Production-acceptance gate contract
         working-directory: ${{ github.workspace }}
         run: python -m unittest discover -s scripts/release -p 'test_*.py'
@@ -361,6 +362,17 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           scanners: vuln
+      - name: Report dependency findings without weakening the vulnerability gate
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path("trivy-results.sarif").read_text())
+          for run in report.get("runs",[]):
+              for finding in run.get("results",[]):
+                  print(json.dumps({"rule":finding.get("ruleId"),"level":finding.get("level"),"message":finding.get("message",{}).get("text","")}))
+          PY
       - name: Upload container scan results
         if: always() && hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
@@ -371,7 +383,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: amaris-backend-sbom
-          path: amaris-backend-sbom.cdx.json
+          path: |
+            amaris-backend-sbom.cdx.json
+            trivy-results.sarif
           if-no-files-found: error
           retention-days: 90
 
