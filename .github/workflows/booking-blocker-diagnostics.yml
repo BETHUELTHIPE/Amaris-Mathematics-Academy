@@ -7,6 +7,7 @@ on:
       - scripts/release/booking_acceptance_settings.py
       - scripts/release/booking_callback_diagnostics.py
       - scripts/release/current_booking_gateway_verify.py
+      - scripts/release/booking_gateway_diagnostics.py
 concurrency:
   group: current-all-booking-acceptance
   cancel-in-progress: false
@@ -15,7 +16,7 @@ permissions:
 jobs:
   authentic-sandbox-itn:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'bcb581863a4b74d9b44e279932ed0442d3f6940c' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de:observer-v2]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == '92e63bd86c6bf983efc001d2aa786299714bcb55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:browser-v3]')
     environment: staging
     name: Eight real sandbox wallets and provider callbacks; isolated database
     runs-on: ubuntu-24.04
@@ -64,7 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ffbcc7de4313b74f0845af6de9ebfac5ed72dc3d
+          ref: 011e467cc8c593786058effacb65d7ba0fb448f1
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
@@ -205,10 +206,10 @@ jobs:
                 const esc=x=>String(x).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
                 const hidden=Object.entries(item.fields).map(([k,v])=>'<input type="hidden" name="'+esc(k)+'" value="'+esc(v)+'">').join('');
                 await page.setContent('<form method="post" action="'+item.url+'">'+hidden+'<button id="pay">Pay test wallet</button></form>');
-                await page.locator('#pay').click();
-                await page.waitForURL(u=>u.hostname==='sandbox.payfast.co.za',{timeout:45000});
+                await page.locator('#pay').click({noWaitAfter:true,timeout:90000});
+                await page.waitForURL(u=>u.hostname==='sandbox.payfast.co.za',{timeout:90000,waitUntil:'domcontentloaded'});
                 await page.getByText('Complete Payment',{exact:true}).waitFor({timeout:40000});
-                await page.getByText('Complete Payment',{exact:true}).click();
+                await page.getByText('Complete Payment',{exact:true}).click({noWaitAfter:true,timeout:90000});
                 await page.getByText('Your payment was successful!',{exact:false}).waitFor({timeout:70000});
                 console.log('PASS genuine sandbox wallet: '+item.kind);
               }
@@ -237,9 +238,15 @@ jobs:
           print("SAFE_SERVER_EXCEPTION_CLASSES="+json.dumps(dict(collections.Counter(classes))))
           path=Path("/tmp/amaris-safe-callbacks.jsonl")
           lines=path.read_text().splitlines() if path.exists() else []
-          print("OBSERVED_PROVIDER_CALLBACKS="+str(len(lines)))
+          print("OBSERVED_PROVIDER_CALLBACKS="+str(sum(json.loads(line).get("kind")!="unknown" for line in lines)))
           for line in lines[:100]:print("SAFE_CALLBACK="+line)
           PY
+      - name: Safe persisted settlement and receipt diagnostics
+        if: always()
+        shell: bash
+        run: |
+          cd backend
+          python manage.py shell -c 'exec(open("../verification-harness/scripts/release/booking_gateway_diagnostics.py").read())'
       - name: Stop isolated services
         if: always()
         shell: bash
@@ -250,7 +257,7 @@ jobs:
 
   deployed-staging-prerequisites:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'bcb581863a4b74d9b44e279932ed0442d3f6940c' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de:observer-v2]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == '92e63bd86c6bf983efc001d2aa786299714bcb55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:browser-v3]')
     name: Real staging configuration, SMTP and asynchronous delivery prerequisites
     environment: production
     runs-on: ubuntu-24.04
@@ -352,7 +359,7 @@ jobs:
 
   approved-staging-student:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'bcb581863a4b74d9b44e279932ed0442d3f6940c' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de:observer-v2]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == '92e63bd86c6bf983efc001d2aa786299714bcb55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:browser-v3]')
     name: Real approved staging student authentication
     environment: staging
     runs-on: ubuntu-24.04
