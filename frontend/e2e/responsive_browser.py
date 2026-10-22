@@ -86,11 +86,58 @@ def check_form(page: Page) -> None:
     assert_no_horizontal_overflow(page, "enquiry form")
 
 
+def check_contact_required_fields(page: Page) -> None:
+    goto(page, "/contact")
+    # Isolate validation from a draft saved by the preceding journey, including
+    # one whose hydration effect has not restored its values yet on mobile.
+    page.evaluate("sessionStorage.removeItem('amaris:safe-draft:contact-enquiry-v1')")
+    prompts = {
+        "fullName": "Please enter your full name.",
+        "email": "Please enter your email address.",
+        "phone": "Please enter your phone number.",
+        "enquiryType": "Please choose an enquiry type.",
+        "message": "Please enter your message.",
+        "consent": "Please agree so we can respond to your enquiry.",
+    }
+    # Other journeys may have left a safe draft; begin with a truly empty form.
+    for field in ("fullName", "email", "phone", "message"):
+        page.locator(f"#{field}").fill("")
+    page.locator("#enquiryType").evaluate("element => { element.value = ''; }")
+    page.locator("#consent").uncheck()
+    for field in ("fullName", "email", "phone", "message"):
+        require(page.locator(f"#{field}").input_value() == "", f"{field} was not empty before validation")
+    page.get_by_role("button", name=re.compile("Send enquiry")).click()
+    for field, prompt in prompts.items():
+        control = page.locator(f"#{field}")
+        require(control.get_attribute("required") is not None, f"{field} is optional")
+        error = page.locator(f"#{field}-error")
+        error.wait_for(state="visible", timeout=5_000)
+        require(error.inner_text() == prompt, f"Missing field-specific prompt for {field}")
+        require(control.get_attribute("aria-describedby") == f"{field}-error", f"{field} error is not associated")
+    require(page.locator("#fullName").evaluate("element => element === document.activeElement"), "First missing field was not focused")
+    page.locator("#fullName").fill("Synthetic Student")
+    page.locator("#email").fill("synthetic@example.test")
+    page.locator("#enquiryType").select_option("technical-support")
+    page.locator("#message").fill("Synthetic message that must not be sent without a phone number.")
+    page.locator("#consent").check()
+    page.get_by_role("button", name=re.compile("Send enquiry")).click()
+    require(page.locator("#phone-error").inner_text() == prompts["phone"], "Missing phone was accepted")
+    require(page.locator("#email").input_value() == "synthetic@example.test", "Validation discarded entered fields")
+    require(page.get_by_text("Enquiry received", exact=True).count() == 0, "Incomplete form was accepted")
+    page.locator("#phone").fill("   ")
+    page.get_by_role("button", name=re.compile("Send enquiry")).click()
+    page.locator("#phone-error").wait_for(state="visible", timeout=5_000)
+    require(page.locator("#phone-error").inner_text() == prompts["phone"], "Whitespace-only phone was accepted")
+    page.locator("#phone").fill("0710000000")
+    require(page.locator("#phone").evaluate("element => element.validationMessage === ''"), "Corrected phone kept a stale validation error")
+
+
 
 def check_offline_recovery(page: Page) -> None:
     goto(page, "/contact")
     page.locator("#fullName").fill("Offline Synthetic Student")
     page.locator("#email").fill("offline.student@example.test")
+    page.locator("#phone").fill("0710000000")
     page.locator("#enquiryType").select_option("technical-support")
     page.locator("#message").fill("Synthetic offline submission check with enough safe detail.")
     page.locator("#consent").check()
@@ -142,6 +189,7 @@ def check_slow_submission(page: Page) -> None:
     goto(page, "/contact")
     page.locator("#fullName").fill("Slow Network Synthetic Student")
     page.locator("#email").fill("slow.network.student@example.test")
+    page.locator("#phone").fill("0710000000")
     page.locator("#enquiryType").select_option("technical-support")
     page.locator("#message").fill("Synthetic delayed submission used to verify slow-network recovery without data loss.")
     page.locator("#consent").check()
@@ -216,6 +264,7 @@ def check_lesson_interface(page: Page) -> None:
 CHECKS = (
     ("navigation", check_navigation),
     ("forms", check_form),
+    ("contact-required-fields", check_contact_required_fields),
     ("offline-recovery", check_offline_recovery),
     ("slow-submission", check_slow_submission),
     ("dashboard", check_dashboard),
@@ -384,6 +433,7 @@ def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: s
         goto(page, "/contact")
         page.locator("#fullName").fill("No JS Synthetic Student")
         page.locator("#email").fill("nojs.student@example.test")
+        page.locator("#phone").fill("0710000000")
         page.locator("#enquiryType").select_option("course-guidance")
         page.locator("#message").fill("Synthetic no JavaScript enquiry used only for progressive enhancement verification.")
         page.locator("#consent").check(force=True)

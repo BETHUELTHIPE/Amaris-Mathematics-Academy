@@ -2,7 +2,7 @@ name: Quality Gates and Release
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, ops/django-celery-environments-20261022]
   push:
     branches: [main]
   workflow_dispatch:
@@ -162,6 +162,7 @@ jobs:
           done
           npm run test:accessibility
       - name: Lighthouse CI
+        timeout-minutes: 20
         run: npm run test:lighthouse
       - name: Generate frontend CycloneDX SBOM
         uses: anchore/sbom-action@v0
@@ -184,6 +185,12 @@ jobs:
   responsive-browser:
     name: Responsive browser E2E
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Match frontend/e2e/requirements.txt. The official image includes all three
+    # browser builds and OS libraries, avoiding slow runner apt-mirror installs.
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble
+      options: --init --ipc=host --user 1001
     defaults:
       run:
         working-directory: frontend
@@ -197,14 +204,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: frontend/e2e/requirements.txt
+          # The official container omits lsb_release, which setup-python's
+          # optional pip-cache lookup requires. Install the pinned package below.
       - name: Install locked frontend dependencies
         run: npm ci
       - name: Install Playwright test dependency
         run: python -m pip install --upgrade pip && pip install -r e2e/requirements.txt
-      - name: Install Chromium, Firefox, and WebKit
-        run: python -m playwright install --with-deps chromium firefox webkit
+      - name: Verify Chromium, Firefox, and WebKit are installed and launch
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' 2>&1 | tee /tmp/amaris-playwright-launch.log
+          from importlib.metadata import version
+          from playwright.sync_api import sync_playwright
+
+          assert version("playwright") == "1.62.0", "Match the pinned official browser image"
+          with sync_playwright() as playwright:
+              for engine in (playwright.chromium, playwright.firefox, playwright.webkit):
+                  browser = engine.launch(headless=True)
+                  browser.close()
+                  print(f"BROWSER_LAUNCH=PASS {engine.name}", flush=True)
+          PY
       - name: Run mobile, tablet, and desktop browser tests
         shell: bash
         env:
@@ -271,6 +292,7 @@ jobs:
           path: |
             frontend/artifacts/e2e/
             /tmp/amaris-e2e-server.log
+            /tmp/amaris-playwright-*.log
           if-no-files-found: warn
           retention-days: 30
 

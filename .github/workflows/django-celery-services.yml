@@ -1,0 +1,139 @@
+name: Django Celery staging and production services
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['deploy/celery/**', '.github/workflows/django-celery-services.yml']
+  push:
+    branches: [ops/django-celery-environments-20261022]
+    paths: ['deploy/celery/**', '.github/workflows/django-celery-services.yml']
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Django environment
+        type: choice
+        options: [staging, production]
+        required: true
+      apply:
+        description: Create the three workers after separately approving the additional recurring cost
+        type: boolean
+        default: false
+        required: true
+      approved_monthly_usd:
+        description: Enter 21 only after approving US$21/month extra for the selected environment, excluding tax and usage
+        type: string
+        default: '0'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-celery-services
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - run: python -m unittest discover -s deploy/celery -p 'test_*.py' -v
+      - run: |
+          python deploy/celery/provision.py --environment staging
+          python deploy/celery/provision.py --environment production
+
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        include:
+          - target: staging
+            source: 1b3b0c532060212578ad7e512dc1f4cf64eb8657
+          - target: production
+            source: 751393e8fdd4eba96cec354b013bb6654431068c
+    env:
+      DJANGO_DEBUG: 'true'
+      DJANGO_SECRET_KEY: disposable-ci-only-key-not-used-for-real-users-1234567890
+      SUPABASE_DATABASE_REQUIRED: 'false'
+      DATABASE_URL: 'sqlite:///:memory:'
+      EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: harness
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.source }}
+          persist-credentials: false
+          path: release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+          cache: pip
+          cache-dependency-path: release/backend/requirements.txt
+      - run: python -m pip install -r release/backend/requirements.txt
+      - name: Check real Django task registry, schedule and queue routes without executing tasks
+        run: PYTHONPATH=release/backend python harness/deploy/celery/verify_runtime.py
+
+  read-only-preflight:
+    # One-time protected inspection of this reviewed branch. No POST/PATCH/DELETE.
+    if: >-
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/ops/django-celery-environments-20261022' &&
+      github.event.before == '3ebed5e6e91c3013ce6d32fdde6856662758e5be' &&
+      contains(github.event.head_commit.message, '[CELERY_PREFLIGHT:20261022]')
+    needs: [validate, runtime]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [staging, production]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate existing environment and print only missing service names
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          TARGET: ${{ matrix.target }}
+        run: python deploy/celery/provision.py --environment "$TARGET" --preflight
+
+  operate:
+    if: >-
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: [validate, runtime]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read-only preflight or separately approved service creation
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          TARGET: ${{ inputs.target }}
+          APPLY: ${{ inputs.apply }}
+          APPROVED: ${{ inputs.approved_monthly_usd }}
+        run: |
+          set -euo pipefail
+          if [ "$APPLY" = true ]; then
+            test "$APPROVED" = 21
+            python deploy/celery/provision.py --environment "$TARGET" --apply --approved-monthly-usd "$APPROVED"
+          else
+            python deploy/celery/provision.py --environment "$TARGET" --preflight
+          fi
