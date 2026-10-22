@@ -122,4 +122,3 @@ export function LocationFields({ initial, draftKey, returnTo, errors: serverErro
     <p className="text-xs leading-5 text-[#60708a]">Choose “Other” if your province or city is not listed. Place names: <a href="https://www.geonames.org/" className="underline" target="_blank" rel="noreferrer">GeoNames</a> (<a href="https://creativecommons.org/licenses/by/4.0/" className="underline" target="_blank" rel="noreferrer">CC BY 4.0</a>).</p>
   </fieldset>;
 }
-
