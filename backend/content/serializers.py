@@ -267,9 +267,28 @@ class AmarisAssistantResponseSerializer(serializers.Serializer):
 
 
 class ContactEnquirySerializer(serializers.ModelSerializer):
+    provinceOther = serializers.CharField(required=False, allow_blank=True, max_length=160, write_only=True)
+    cityOther = serializers.CharField(required=False, allow_blank=True, max_length=160, write_only=True)
+
+    def validate(self, attrs):
+        from .locations import normalize_location
+
+        return normalize_location(attrs)
+
     class Meta:
         model = ContactEnquiry
-        fields = ("name", "email", "phone", "subject", "message")
+        fields = (
+            "name",
+            "email",
+            "phone",
+            "subject",
+            "message",
+            "country",
+            "province",
+            "city",
+            "provinceOther",
+            "cityOther",
+        )
         extra_kwargs = {
             field: {
                 "required": True,

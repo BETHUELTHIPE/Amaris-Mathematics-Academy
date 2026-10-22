@@ -71,7 +71,12 @@ class ApplicantThrottle(SimpleRateThrottle):
 class ApplicationInput(serializers.Serializer):
     full_name = serializers.CharField(max_length=160, min_length=2)
     phone = serializers.RegexField(r"^\+?[0-9 ()-]{7,30}$", max_length=30)
-    location = serializers.CharField(max_length=120, min_length=2)
+    location = serializers.CharField(max_length=500, min_length=2, required=False)
+    country = serializers.CharField(max_length=2, required=False, allow_blank=True)
+    province = serializers.CharField(max_length=160, required=False, allow_blank=True)
+    city = serializers.CharField(max_length=160, required=False, allow_blank=True)
+    provinceOther = serializers.CharField(max_length=160, required=False, allow_blank=True, write_only=True)
+    cityOther = serializers.CharField(max_length=160, required=False, allow_blank=True, write_only=True)
     qualification = serializers.CharField(max_length=200, min_length=2)
     institution = serializers.CharField(max_length=200, min_length=2)
     subjects = serializers.CharField(max_length=300, min_length=2)
@@ -85,6 +90,22 @@ class ApplicationInput(serializers.Serializer):
     motivation = serializers.CharField(max_length=4000, min_length=20)
     consent = serializers.BooleanField()
     documents = serializers.ListField(child=serializers.FileField(), min_length=1, max_length=5, write_only=True)
+
+    def validate(self, attrs):
+        from .locations import COUNTRY_NAMES, normalize_location
+
+        attrs = normalize_location(attrs)
+        if attrs.get("country"):
+            attrs["location"] = ", ".join((attrs["city"], attrs["province"], COUNTRY_NAMES[attrs["country"]]))
+        elif not attrs.get("location"):
+            raise serializers.ValidationError(
+                {
+                    "country": "Please choose your country.",
+                    "province": "Please choose your province or region.",
+                    "city": "Please choose your city or town.",
+                }
+            )
+        return attrs
 
     def validate_consent(self, value):
         if value is not True:
