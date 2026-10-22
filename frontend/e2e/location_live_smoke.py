@@ -66,7 +66,7 @@ with sync_playwright() as p:
                 page.screenshot(path=str(OUT / (engine + "-" + str(width) + path.replace("/", "-") + ".png")), full_page=True)
                 print("PASS " + engine + "/" + str(width) + path + ": reset, Other validation, draft recovery, responsive", flush=True)
             print("Blocked POST paths", sorted(set(posts)), flush=True)
-            assert not [path for path in posts if path not in {"/api/web-vitals", "/api/web-vitals/"}], "Unexpected form submission blocked: " + repr(sorted(set(posts)))
+            assert not [path for path in posts if path not in {"/api/field-vitals", "/api/field-vitals/"}], "Unexpected form submission blocked: " + repr(sorted(set(posts)))
             context.close()
         browser.close()
     browser = p.chromium.launch()
