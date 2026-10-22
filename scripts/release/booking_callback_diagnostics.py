@@ -23,7 +23,7 @@ class CallbackDiagnostics(MiddlewareMixin):
             "source_allowed": allowed(_request_ip(request)),
             "cloudflare_source_allowed": allowed(request.META.get("HTTP_CF_CONNECTING_IP","")),
             "merchant_matches": hmac.compare_digest(str(payload.get("merchant_id","")).strip(), merchant),
-            "signature_matches": hmac.compare_digest(str(payload.get("signature","")).strip().lower(), generate_payfast_signature(payload,passphrase)),
+            "signature_matches": hmac.compare_digest(str(payload.get("signature","")).strip().lower(), generate_payfast_itn_signature(payload,passphrase)),
             "complete": payload.get("payment_status") == "COMPLETE",
         }
     def process_exception(self, request, exception):
