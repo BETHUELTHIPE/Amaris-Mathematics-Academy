@@ -7,6 +7,7 @@ const vite = await createServer({ root: fileURLToPath(new URL("..", import.meta.
 const { parseLocation, initialLocation, loadCountry } = await vite.ssrLoadModule("/lib/location-server.ts");
 const { africanCountries, OTHER_LOCATION } = await vite.ssrLoadModule("/lib/location-data.ts");
 after(() => vite.close());
+const manifest = JSON.parse(await readFile(new URL("../data/locations/index.json", import.meta.url), "utf8"));
 const pretoria = { country: "ZA", province: "Gauteng", city: "Pretoria" };
 
 test("all African country choices have matching offline province and city data", async () => {
@@ -18,7 +19,7 @@ test("all African country choices have matching offline province and city data",
     const data = await loadCountry(country.code);
     assert.deepEqual(data, JSON.parse(await readFile(new URL("../public/data/locations/" + country.code + ".json", import.meta.url), "utf8")));
     assert.equal(data.name, country.name);
-    assert.deepEqual(Object.keys(data.provinces), country.provinces);
+    assert.deepEqual(Object.keys(data.provinces), manifest.find(item => item.code === country.code).provinces);
   }
   assert.equal(Object.keys((await loadCountry("ZA")).provinces).length, 9);
   assert.deepEqual((await parseLocation(pretoria)).value, pretoria);
@@ -54,4 +55,3 @@ test("server-rendered selections preserve valid choices and support the no-JavaS
   assert.equal(other.city, OTHER_LOCATION);
   assert.equal((await initialLocation({ country: "KE", province: "Gauteng", city: "Pretoria" })).province, "");
 });
-

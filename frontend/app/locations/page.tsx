@@ -35,4 +35,3 @@ export default async function LocationPicker({ searchParams }: { searchParams: P
     </form><Link href={returnTo} className="mt-5 inline-block text-sm font-semibold text-[#1f5bbd] underline">Back to form</Link>
   </div></section><Footer /></main>;
 }
-

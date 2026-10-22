@@ -1,4 +1,4 @@
-import countries from "../data/locations/index.json";
+import countries from "../data/locations/countries.json";
 
 export const africanCountries = countries;
 export const OTHER_LOCATION = "__other__";
@@ -18,4 +18,3 @@ export const locationMessages = {
 export function countryName(code: string) {
   return africanCountries.find(country => country.code === code)?.name || code;
 }
-

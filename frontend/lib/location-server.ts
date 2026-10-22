@@ -35,4 +35,3 @@ export async function initialLocation(params: Partial<Record<keyof LocationValue
     city: parsed.raw.city === OTHER_LOCATION || !parsed.errors.city ? parsed.raw.city : "",
     provinceOther: parsed.raw.provinceOther, cityOther: parsed.raw.cityOther, data };
 }
-

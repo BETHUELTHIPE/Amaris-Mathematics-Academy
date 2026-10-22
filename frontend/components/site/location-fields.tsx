@@ -16,8 +16,8 @@ async function fetchCountry(country: string): Promise<CountryLocations> {
   return data;
 }
 
-export function LocationFields({ initial, draftKey, returnTo, errors: serverErrors, showPicker = true }: {
-  initial: InitialLocation; draftKey?: string; returnTo: string; errors?: LocationErrors; showPicker?: boolean;
+export function LocationFields({ initial, draftKey, returnTo, errors: serverErrors, showPicker = true, onEdit }: {
+  initial: InitialLocation; draftKey?: string; returnTo: string; errors?: LocationErrors; showPicker?: boolean; onEdit?: (field: keyof LocationValues) => void;
 }) {
   const [values, setValues] = useState<LocationValues>(() => ({ country: initial.country, province: initial.province, city: initial.city, provinceOther: initial.provinceOther, cityOther: initial.cityOther }));
   const [data, setData] = useState<CountryLocations | null>(initial.data);
@@ -70,11 +70,17 @@ export function LocationFields({ initial, draftKey, returnTo, errors: serverErro
       if (request.current === id) setLoading(false);
     }
   }
-  function clear(event: FormEvent<HTMLFieldSetElement>) {
-    const field = event.target as HTMLInputElement | HTMLSelectElement;
+  function clearControl(field: HTMLInputElement | HTMLSelectElement) {
     if (!Object.hasOwn(locationMessages, field.name)) return;
     field.setCustomValidity("");
     setErrors(previous => ({ ...previous, [field.name]: undefined }));
+    onEdit?.(field.name as keyof LocationValues);
+  }
+  function editOther(field: HTMLInputElement) {
+    // Capture the typed value before validation updates can rerender a controlled input.
+    const next = { ...values, [field.name]: field.value };
+    clearControl(field);
+    update(next);
   }
   function invalid(event: FormEvent<HTMLFieldSetElement>) {
     const field = event.target as HTMLInputElement | HTMLSelectElement;
@@ -90,13 +96,15 @@ export function LocationFields({ initial, draftKey, returnTo, errors: serverErro
   }
   const provinces = data ? Object.keys(data.provinces) : [];
   const cities = data?.provinces[values.province] || [];
-  return <fieldset className="grid min-w-0 gap-4" onInvalidCapture={invalid} onInputCapture={clear} onChangeCapture={clear}>
+  return <fieldset className="grid min-w-0 gap-4" onInvalidCapture={invalid}>
     <legend className="mb-3 text-sm font-semibold text-[#263852]">Your location <span aria-hidden="true" className="text-[#b42318]">*</span></legend>
     {showPicker && <noscript><p className="mb-3 text-sm leading-6">Choose your location before completing this form. <a className="font-semibold underline" href={"/locations?returnTo=" + encodeURIComponent(returnTo)}>Choose country, province and city</a>.</p></noscript>}
     <div className="grid min-w-0 gap-4 sm:grid-cols-3">
       <div className="grid min-w-0 content-start gap-2"><label htmlFor="country" className="text-sm font-semibold text-[#263852]">Country</label>
         <select id="country" name="country" required autoComplete="country" value={values.country} className={controlClass} {...errorProps("country")} onChange={event => {
           const country = event.currentTarget.value;
+          clearControl(event.currentTarget);
+          for (const field of ["province", "city", "provinceOther", "cityOther"] as const) onEdit?.(field);
           update({ country, province: "", city: "", provinceOther: "", cityOther: "" });
           setErrors({});
           if (country) void load(country);
@@ -105,16 +113,22 @@ export function LocationFields({ initial, draftKey, returnTo, errors: serverErro
       </div>
       <div className="grid min-w-0 content-start gap-2"><label htmlFor="province" className="text-sm font-semibold text-[#263852]">Province / Region</label>
         <select id="province" name="province" required autoComplete="address-level1" value={values.province} disabled={!values.country || loading || failed} className={controlClass} {...errorProps("province")} onChange={event => {
-          update({ ...values, province: event.currentTarget.value, provinceOther: "", city: "", cityOther: "" });
+          const province = event.currentTarget.value;
+          clearControl(event.currentTarget);
+          for (const field of ["provinceOther", "city", "cityOther"] as const) onEdit?.(field);
+          update({ ...values, province, provinceOther: "", city: "", cityOther: "" });
           setErrors(previous => ({ ...previous, province: undefined, provinceOther: undefined, city: undefined, cityOther: undefined }));
         }}><option value="">{loading ? "Loading regions…" : "Choose province / region"}</option>{provinces.map(province => <option key={province} value={province}>{province}</option>)}<option value={OTHER_LOCATION}>Other province / region</option></select>{error("province")}
-        {values.province === OTHER_LOCATION && <><label htmlFor="provinceOther" className="text-sm font-semibold">Province / Region name</label><input id="provinceOther" name="provinceOther" required maxLength={160} value={values.provinceOther} autoComplete="address-level1" className={controlClass} {...errorProps("provinceOther")} onChange={event => update({ ...values, provinceOther: event.currentTarget.value })} />{error("provinceOther")}</>}
+        {values.province === OTHER_LOCATION && <><label htmlFor="provinceOther" className="text-sm font-semibold">Province / Region name</label><input id="provinceOther" name="provinceOther" required maxLength={160} value={values.provinceOther} autoComplete="address-level1" className={controlClass} {...errorProps("provinceOther")} onChange={event => editOther(event.currentTarget)} />{error("provinceOther")}</>}
       </div>
       <div className="grid min-w-0 content-start gap-2"><label htmlFor="city" className="text-sm font-semibold text-[#263852]">City / Town</label>
         <select id="city" name="city" required autoComplete="address-level2" value={values.city} disabled={!values.province || loading || failed} className={controlClass} {...errorProps("city")} onChange={event => {
-          update({ ...values, city: event.currentTarget.value, cityOther: "" });
+          const city = event.currentTarget.value;
+          clearControl(event.currentTarget);
+          onEdit?.("cityOther");
+          update({ ...values, city, cityOther: "" });
         }}><option value="">Choose city / town</option>{cities.map(city => <option key={city} value={city}>{city}</option>)}<option value={OTHER_LOCATION}>Other city / town</option></select>{error("city")}
-        {values.city === OTHER_LOCATION && <><label htmlFor="cityOther" className="text-sm font-semibold">City / Town name</label><input id="cityOther" name="cityOther" required maxLength={160} value={values.cityOther} autoComplete="address-level2" className={controlClass} {...errorProps("cityOther")} onChange={event => update({ ...values, cityOther: event.currentTarget.value })} />{error("cityOther")}</>}
+        {values.city === OTHER_LOCATION && <><label htmlFor="cityOther" className="text-sm font-semibold">City / Town name</label><input id="cityOther" name="cityOther" required maxLength={160} value={values.cityOther} autoComplete="address-level2" className={controlClass} {...errorProps("cityOther")} onChange={event => editOther(event.currentTarget)} />{error("cityOther")}</>}
       </div>
     </div>
     {loading && <p role="status" className="text-sm text-[#52617a]">Loading provinces and cities…</p>}
@@ -122,4 +136,3 @@ export function LocationFields({ initial, draftKey, returnTo, errors: serverErro
     <p className="text-xs leading-5 text-[#60708a]">Choose “Other” if your province or city is not listed. Place names: <a href="https://www.geonames.org/" className="underline" target="_blank" rel="noreferrer">GeoNames</a> (<a href="https://creativecommons.org/licenses/by/4.0/" className="underline" target="_blank" rel="noreferrer">CC BY 4.0</a>).</p>
   </fieldset>;
 }
-

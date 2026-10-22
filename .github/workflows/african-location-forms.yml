@@ -78,6 +78,7 @@ jobs:
           python-version: '3.13.15'
       - run: python -m pip install playwright==1.62.0
       - name: Frontend checks and release build
+        id: quality
         working-directory: frontend
         run: |
           npm ci
@@ -98,9 +99,16 @@ jobs:
                       env.write(name + '=' + p.chromium.executable_path + '\n')
           PY
       - name: Existing mobile and desktop Lighthouse gates
+        id: lighthouse
         working-directory: frontend
         run: npm run test:lighthouse
+      - name: Explain any retained Lighthouse performance failure
+        if: ${{ !cancelled() && steps.lighthouse.outcome == 'failure' }}
+        working-directory: frontend
+        run: node scripts/performance/summarize-lighthouse-bottlenecks.mjs .lighthouseci/mobile
       - name: Build Render Node target with isolated real-component fixture
+        id: render_build
+        if: ${{ !cancelled() && steps.quality.outcome == 'success' }}
         working-directory: frontend
         run: |
           mkdir -p app/location-test-fixture
@@ -108,6 +116,7 @@ jobs:
           npm install --no-save nitro @tailwindcss/vite@4.3.3
           NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
       - name: Cross-browser forms and JavaScript-disabled picker; no POSTs
+        if: ${{ !cancelled() && steps.render_build.outcome == 'success' }}
         working-directory: frontend
         shell: bash
         run: |
@@ -130,3 +139,4 @@ jobs:
             frontend/.lighthouseci/
             /tmp/location-node.log
           if-no-files-found: ignore
+          include-hidden-files: true

@@ -9,7 +9,7 @@ const vite = await createServer({
   plugins: [{
     name: "isolated-contact-storage", enforce: "pre",
     resolveId(id) {
-      if (id === "@/lib/location-server" || id === "@/lib/location-data") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); 
+      if (id === "@/lib/location-server" || id === "@/lib/location-data") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url));
       if (id === "cloudflare:workers") return "\0test:contact-env";
       if (id === "@/db") return "\0test:contact-db";
       if (id === "@/lib/contact-validation") return fileURLToPath(new URL("../lib/contact-validation.ts", import.meta.url));
