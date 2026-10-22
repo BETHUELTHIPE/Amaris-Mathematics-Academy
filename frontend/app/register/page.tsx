@@ -10,18 +10,22 @@ import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { getStudentIdentity } from "@/lib/auth";
 import { SafeFormDraft } from "@/components/site/safe-form-draft";
+import { LocationFields } from "@/components/site/location-fields";
+import { initialLocation } from "@/lib/location-server";
+import type { LocationValues } from "@/lib/location-data";
 import { GoogleAuthButton } from "@/components/site/google-auth-button";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Registration" };
 
-const provinces = ["Eastern Cape", "Free State", "Gauteng", "KwaZulu-Natal", "Limpopo", "Mpumalanga", "Northern Cape", "North West", "Western Cape"];
 const levels = ["Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12", "TVET / College", "University", "Adult learner"];
 
-export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string } & Partial<LocationValues>> }) {
   const student = await getStudentIdentity();
   if (student?.emailVerified) redirect("/dashboard");
-  const { error } = await searchParams;
+  const params = await searchParams;
+  const { error } = params;
+  const location = await initialLocation(params);
 
   return <main className="min-h-screen bg-[#f5f7fb]">
     <Header />
@@ -41,11 +45,11 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
         <div className="mt-7"><GoogleAuthButton label="Register with Google" /></div>
         <div className="my-7 flex items-center gap-4 text-xs font-bold uppercase tracking-[.12em] text-[#60708a]"><span className="h-px flex-1 bg-[#dce4ef]" /><span>or register with email</span><span className="h-px flex-1 bg-[#dce4ef]" /></div>
         <form action={registerAction} className="grid gap-5">
-          <SafeFormDraft draftKey="student-registration-v1" allowedFields={["firstName", "lastName", "email", "mobile", "province", "academicLevel", "institution"]} />
+          <SafeFormDraft draftKey="student-registration-v1" allowedFields={["firstName", "lastName", "email", "mobile", "academicLevel", "institution"]} />
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="First name" name="firstName" autoComplete="given-name" /><AuthField label="Last name" name="lastName" autoComplete="family-name" /></div>
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="Email address" name="email" type="email" autoComplete="email" /><AuthField label="Mobile number" name="mobile" type="tel" autoComplete="tel" placeholder="071 234 5678" /></div>
+          <LocationFields initial={location} draftKey="student-registration-v1" returnTo="/register" />
           <div className="grid gap-5 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-semibold text-[#263852]">Province<NativeSelect name="province" required className="h-12 w-full bg-white"><NativeSelectOption value="">Select province</NativeSelectOption>{provinces.map((province) => <NativeSelectOption key={province} value={province}>{province}</NativeSelectOption>)}</NativeSelect></label>
             <label className="grid gap-2 text-sm font-semibold text-[#263852]">Grade or academic level<NativeSelect name="academicLevel" required className="h-12 w-full bg-white"><NativeSelectOption value="">Select level</NativeSelectOption>{levels.map((level) => <NativeSelectOption key={level} value={level}>{level}</NativeSelectOption>)}</NativeSelect></label>
           </div>
           <AuthField label="School, college or university" name="institution" autoComplete="organization" />

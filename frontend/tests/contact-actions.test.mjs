@@ -9,6 +9,7 @@ const vite = await createServer({
   plugins: [{
     name: "isolated-contact-storage", enforce: "pre",
     resolveId(id) {
+      if (id === "@/lib/location-server" || id === "@/lib/location-data") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); 
       if (id === "cloudflare:workers") return "\0test:contact-env";
       if (id === "@/db") return "\0test:contact-db";
       if (id === "@/lib/contact-validation") return fileURLToPath(new URL("../lib/contact-validation.ts", import.meta.url));
@@ -39,7 +40,7 @@ after(() => {
 
 function enquiry() {
   const form = new FormData();
-  for (const [key, value] of Object.entries({ fullName: "Synthetic Student", email: "student@example.test", phone: "+27 71 000 0000", enquiryType: "technical-support", message: "Please help me choose the correct mathematics course.", consent: "on" })) form.set(key, value);
+  for (const [key, value] of Object.entries({ fullName: "Synthetic Student", country: "ZA", province: "Gauteng", city: "Pretoria", email: "student@example.test", phone: "+27 71 000 0000", enquiryType: "technical-support", message: "Please help me choose the correct mathematics course.", consent: "on" })) form.set(key, value);
   return form;
 }
 
@@ -57,7 +58,7 @@ test("each omitted, empty or whitespace field returns its named prompt without s
   }
 });
 
-test("an empty contact form identifies all six visible fields", async () => {
+test("an empty contact form identifies all nine visible fields", async () => {
   const result = await submitEnquiry({ status: "idle" }, new FormData());
   assert.deepEqual(Object.keys(result.errors).sort(), Object.keys(contactRequiredMessages).sort());
   assert.equal(calls.length, 0);
@@ -79,4 +80,14 @@ test("a corrected complete form submits the phone number to Django", async () =>
   assert.equal(result.status, "success");
   assert.equal(calls.length, 1);
   assert.equal(JSON.parse(calls[0][1].body).phone, "+27 71 000 0000");
+});
+
+test("unlisted locations keep explicit Other markers when sent to Django", async () => {
+  const form = enquiry();
+  form.set("province", "__other__"); form.set("provinceOther", "Synthetic region");
+  form.set("city", "__other__"); form.set("cityOther", "Synthetic town");
+  assert.equal((await submitEnquiry({ status: "idle" }, form)).status, "success");
+  const body = JSON.parse(calls[0][1].body);
+  assert.equal(body.province, "__other__"); assert.equal(body.provinceOther, "Synthetic region");
+  assert.equal(body.city, "__other__"); assert.equal(body.cityOther, "Synthetic town");
 });

@@ -1,5 +1,7 @@
 "use server";
 
+import { parseLocation } from "@/lib/location-server";
+import { countryName } from "@/lib/location-data";
 import { z } from "zod";
 import { env } from "cloudflare:workers";
 import { getD1 } from "@/db";
@@ -21,6 +23,8 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
   if (Object.keys(requiredErrors).length) {
     return { status: "error", message: "Please complete the required fields.", errors: requiredErrors };
   }
+  const location = await parseLocation(Object.fromEntries(formData));
+  if (!location.value) return { status: "error", message: "Please check your location.", errors: location.errors };
   const parsed = enquirySchema.safeParse({
     fullName: formData.get("fullName"),
     email: formData.get("email"),
@@ -45,6 +49,7 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({
+            ...location.raw,
             name: parsed.data.fullName,
             email: parsed.data.email.toLowerCase(),
             phone: parsed.data.phone,
@@ -72,7 +77,7 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
       parsed.data.email.toLowerCase(),
       parsed.data.phone || null,
       parsed.data.enquiryType,
-      parsed.data.message,
+      parsed.data.message + "\n\nCity / Town: " + location.value.city + "\nProvince / Region: " + location.value.province + "\nCountry: " + countryName(location.value.country),
       1,
       "new",
     ).run();
