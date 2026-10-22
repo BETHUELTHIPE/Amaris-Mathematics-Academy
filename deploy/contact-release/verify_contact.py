@@ -17,6 +17,14 @@ spec = importlib.util.spec_from_file_location("contact_browser_checks", module_p
 checks = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checks)
 
+# Public Render pages load their hydration scripts over the network. Wait for
+# loading to settle before testing the interactive inline error handlers.
+original_goto = checks.goto
+def ready_goto(page, path):
+    original_goto(page, path)
+    page.wait_for_load_state("networkidle", timeout=60000)
+checks.goto = ready_goto
+
 from playwright.sync_api import sync_playwright
 
 with sync_playwright() as playwright:
