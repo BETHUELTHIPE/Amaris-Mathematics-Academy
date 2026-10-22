@@ -1,3 +1,4 @@
+import { TutorSlotFields as SlotFields } from "@/components/tutor/slot-fields";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
@@ -7,73 +8,18 @@ import { signOutAction } from "@/app/auth/actions";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { createTutorSlotAction, pauseTutorSlotAction, updateTutorSlotAction } from "@/app/tutor/actions";
-import { getTutorDashboard, getTutorEarnings, TutorApiError, type TutorEarnings, type TutorSlot } from "@/lib/tutor-api";
+import { getTutorDashboard, getTutorEarnings, TutorApiError, type TutorEarnings } from "@/lib/tutor-api";
 import { TutorEarningsPanel } from "@/components/site/tutor-earnings";
 import { paginatePrivateRows, PrivatePagination } from "@/components/site/private-pagination";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Tutor Dashboard — Amaris Mathematics Academy", robots: { index: false, follow: false } };
 
-const programmes = [["caps", "CAPS"], ["ieb", "IEB"], ["tvet", "TVET"], ["university", "University"]] as const;
-const subjects = [["mathematics", "Mathematics"], ["mathematical_literacy", "Mathematical Literacy"]] as const;
-
 const sessionFormatter = new Intl.DateTimeFormat("en-ZA", {
   dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg",
 });
-const formDateFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Africa/Johannesburg", year: "numeric", month: "2-digit", day: "2-digit",
-  hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-});
-
 function formatSessionTime(value: string): string {
   return sessionFormatter.format(new Date(value));
-}
-
-function localDateTime(value: string): string {
-  const parts = formDateFormatter.formatToParts(new Date(value));
-  const part = (name: string) => parts.find((item) => item.type === name)?.value || "00";
-  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
-}
-
-function SlotFields({ slot }: { slot?: TutorSlot }) {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <label className="grid gap-2 text-sm font-semibold text-[#263852]">
-        Programme
-        <select name="programme" defaultValue={slot?.programme ?? "caps"} required className="min-h-12 rounded-xl border border-[#dce4ef] bg-white px-3 font-normal">
-          {programmes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-      </label>
-      <label className="grid gap-2 text-sm font-semibold text-[#263852]">
-        Subject
-        <select name="subject" defaultValue={slot?.subject ?? "mathematics"} required className="min-h-12 rounded-xl border border-[#dce4ef] bg-white px-3 font-normal">
-          {subjects.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-      </label>
-      <label className="grid gap-2 text-sm font-semibold text-[#263852]">
-        Grade or level
-        <input name="level" type="text" required minLength={2} maxLength={80} placeholder="Grade 12 / N3 / First year" defaultValue={slot?.level ?? ""} className="min-h-12 rounded-xl border border-[#dce4ef] px-3 font-normal" />
-      </label>
-      <label className="grid gap-2 text-sm font-semibold text-[#263852]">
-        Session start (South Africa time)
-        <input name="starts_at" type="datetime-local" required defaultValue={slot ? localDateTime(slot.starts_at) : undefined} className="min-h-12 rounded-xl border border-[#dce4ef] px-3 font-normal" />
-      </label>
-      <label className="grid gap-2 text-sm font-semibold text-[#263852]">
-        Number of hours
-        <input name="duration_hours" type="number" required min={1} max={24} step={1} defaultValue={slot?.duration_hours ?? 1} className="min-h-12 rounded-xl border border-[#dce4ef] px-3 font-normal" />
-        <span className="text-xs font-normal text-[#60708a]">R250 per whole hour; the end time is calculated automatically.</span>
-      </label>
-      <label className="grid gap-2 text-sm font-semibold text-[#263852]">
-        Zoom meeting link
-        <input name="zoom_join_url" type="url" required placeholder="https://..." defaultValue={slot?.zoom_join_url ?? ""} className="min-h-12 rounded-xl border border-[#dce4ef] px-3 font-normal" />
-        <span className="text-xs font-normal text-[#60708a]">This link is kept private until a student&apos;s payment is confirmed.</span>
-      </label>
-      <label className="flex items-center gap-3 text-sm font-semibold text-[#263852] sm:col-span-2">
-        <input type="checkbox" name="is_active" defaultChecked={slot?.is_active ?? true} className="size-5 accent-[#1f5bbd]" />
-        Publish this slot for student booking
-      </label>
-    </div>
-  );
 }
 
 function TutorEarningsSkeleton() {

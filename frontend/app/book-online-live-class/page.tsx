@@ -1,3 +1,4 @@
+import { CUSTOM_CHOICE, isSchoolProgramme } from "@/lib/school-curriculum.mjs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -42,8 +43,8 @@ export default async function BookOnlineLiveClassPage({
   const params = await searchParams;
   const programme = queryValue(params.programme);
   const subject = queryValue(params.subject);
-  const level = queryValue(params.level);
-  const topic = queryValue(params.topic).trim().slice(0, 180);
+  const level = queryValue(params.level) === CUSTOM_CHOICE ? queryValue(params.customLevel).trim().slice(0, 80) : queryValue(params.level);
+  const topic = (queryValue(params.topic) === CUSTOM_CHOICE ? queryValue(params.customTopic) : queryValue(params.topic)).trim().slice(0, 180);
 
   const validProgramme = programmes.some(([value]) => value === programme)
     ? programme
@@ -64,9 +65,10 @@ export default async function BookOnlineLiveClassPage({
   const levels = getGradeLevels(
     validProgramme,
     availableSlots.map((slot) => slot.level),
+    validSubject,
   );
   // Never treat a stale or cross-programme grade as a valid selection.
-  const chosenLevel = levels.includes(level) ? level : "";
+  const chosenLevel = levels.includes(level) || (validProgramme && !isSchoolProgramme(validProgramme) && level.length > 0 && level.length <= 80) ? level : "";
   const matchingSlots = chosenLevel
     ? availableSlots.filter((slot) => slot.level === chosenLevel)
     : [];
@@ -86,7 +88,7 @@ export default async function BookOnlineLiveClassPage({
           </h1>
           <p className="mt-5 max-w-3xl text-base leading-8 text-[#60708a]">
             Tutors offer 1 to 24-hour Zoom sessions at <strong>R250 per hour</strong>.
-            Your booking is confirmed only after PayFast verifies the payment.
+            CAPS and IEB Mathematics support Grades 7–12, with a syllabus guide and chapter choices for each grade. Your booking is confirmed only after PayFast verifies the payment.
           </p>
         </div>
       </section>
