@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (file) => fs.readFileSync(new URL(file, import.meta.url), "utf8");
 const login = read("../app/tutor/login/page.tsx");
-const page = read("../app/tutor/dashboard/page.tsx");
+const page = read("../app/tutor/dashboard/page.tsx") + read("../components/tutor/slot-fields.tsx");
 const actions = read("../app/tutor/actions.ts");
 const api = read("../lib/tutor-api.ts");
 const nav = read("../lib/navigation.ts");

@@ -18,7 +18,7 @@ import { GoogleAuthButton } from "@/components/site/google-auth-button";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Registration" };
 
-const levels = ["Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12", "TVET / College", "University", "Adult learner"];
+const levels = ["Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12", "TVET / College", "University", "Adult learner"];
 
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string } & Partial<LocationValues>> }) {
   const student = await getStudentIdentity();

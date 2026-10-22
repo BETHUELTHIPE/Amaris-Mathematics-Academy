@@ -1,5 +1,6 @@
 "use server";
 
+import { resolveCurriculumFields } from "@/lib/school-curriculum.mjs";
 import { redirect } from "next/navigation";
 import { createTutorSlot, TutorApiError, updateTutorSlot, type SlotInput } from "@/lib/tutor-api";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -13,9 +14,7 @@ function cleanStart(value: string): string {
 }
 
 function slotInput(form: FormData): SlotInput {
-  const programme = String(form.get("programme") || "");
-  const subject = String(form.get("subject") || "");
-  const level = String(form.get("level") || "").trim().slice(0, 80);
+  const { programme, subject, level } = resolveCurriculumFields(form, false);
   const duration = Number(form.get("duration_hours"));
   const zoom = String(form.get("zoom_join_url") || "").trim().slice(0, 200);
   if (!["caps", "ieb", "tvet", "university"].includes(programme)) throw new Error("Choose a programme.");

@@ -1,20 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { CurriculumFields } from "@/components/site/curriculum-fields";
+import { resolveCurriculumFields } from "@/lib/school-curriculum.mjs";
 import { CreditCard, FileUp, LoaderCircle, ShieldCheck } from "lucide-react";
 import type { VideoRequestCheckoutSession } from "@/lib/student-api";
 import type { VideoRequestPackage } from "@/lib/video-requests";
-
-const programmes = [
-  ["caps", "CAPS"],
-  ["ieb", "IEB"],
-  ["tvet", "TVET"],
-  ["university", "University"],
-] as const;
-const subjects = [
-  ["mathematics", "Mathematics"],
-  ["mathematical_literacy", "Mathematical Literacy"],
-] as const;
 
 export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[] }) {
   const [checkout, setCheckout] = useState<VideoRequestCheckoutSession | null>(null);
@@ -34,6 +25,9 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
     for (const file of files) data.append("documents", file);
 
     try {
+      const selection = resolveCurriculumFields(data);
+      data.set("level", selection.level);
+      data.set("topic", selection.topic);
       const response = await fetch("/api/video-requests/checkout", {
         method: "POST",
         body: data,
@@ -84,34 +78,13 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
   return (
     <form onSubmit={submit} className="rounded-[2rem] border border-[#dce4ef] bg-white p-7 shadow-[0_25px_75px_rgba(7,21,45,.08)] sm:p-9">
       <div className="grid gap-5 sm:grid-cols-2">
-        <label className="grid gap-2 text-sm font-semibold">
-          Programme
-          <select name="programme" required defaultValue="" className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal">
-            <option value="">Choose programme</option>
-            {programmes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
-        <label className="grid gap-2 text-sm font-semibold">
-          Subject
-          <select name="subject" required defaultValue="" className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal">
-            <option value="">Choose subject</option>
-            {subjects.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
-        <label className="grid gap-2 text-sm font-semibold">
-          Grade or academic level
-          <input name="level" required minLength={1} maxLength={80} placeholder="e.g. Grade 12 or UNISA first year" className="min-h-12 rounded-xl border border-[#c9d5e5] px-4 font-normal" />
-        </label>
+        <CurriculumFields />
         <label className="grid gap-2 text-sm font-semibold">
           Video package
           <select name="request_type" required defaultValue="" className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal">
             <option value="">Choose package</option>
             {packages.map((item) => <option key={item.value} value={item.value}>{item.label} — R{item.amount}</option>)}
           </select>
-        </label>
-        <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
-          Topic, chapter, assignment or exam
-          <input name="topic" required minLength={2} maxLength={180} placeholder="e.g. Grade 12 differential calculus, November 2025 Question 4" className="min-h-12 rounded-xl border border-[#c9d5e5] px-4 font-normal" />
         </label>
         <label className="grid gap-2 text-sm font-semibold">
           Preferred duration
