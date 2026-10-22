@@ -36,6 +36,7 @@ jobs:
   backend-quality:
     name: Python quality and Django checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17-alpine
@@ -116,7 +117,7 @@ jobs:
       - name: Payment tests
         run: python manage.py test content.tests.PaymentReconciliationTests content.test_payments
       - name: Full Django regression suite
-        run: python manage.py test
+        run: timeout 180s python manage.py test --verbosity=2
       - name: Production-acceptance gate contract
         working-directory: ${{ github.workspace }}
         run: python -m unittest discover -s scripts/release -p 'test_*.py'
