@@ -271,9 +271,20 @@ class ContactEnquirySerializer(serializers.ModelSerializer):
         model = ContactEnquiry
         fields = ("name", "email", "phone", "subject", "message")
         extra_kwargs = {
-            "name": {"trim_whitespace": True},
-            "subject": {"trim_whitespace": True},
-            "message": {"trim_whitespace": True},
+            field: {
+                "required": True,
+                "allow_blank": False,
+                "allow_null": False,
+                "trim_whitespace": True,
+                "error_messages": {"required": message, "blank": message, "null": message},
+            }
+            for field, message in {
+                "name": "Please enter your full name.",
+                "email": "Please enter your email address.",
+                "phone": "Please enter your phone number.",
+                "subject": "Please choose an enquiry type.",
+                "message": "Please enter your message.",
+            }.items()
         }
 
     def validate_message(self, value):
