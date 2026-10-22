@@ -27,6 +27,9 @@ jobs:
       image: mcr.microsoft.com/playwright/python:v1.62.0-noble
       options: --init --ipc=host --user 1001
     timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,7 +52,7 @@ jobs:
           npm run lint
           npm test
       - name: Install browser harness
-        run: pip install -r frontend/e2e/requirements.txt
+        run: python -m pip install -r frontend/e2e/requirements.txt
       - name: Verify pinned browser and expose executable paths
         shell: bash
         run: |
