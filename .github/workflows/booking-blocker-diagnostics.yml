@@ -353,7 +353,7 @@ jobs:
           missing=[k for k in keys if not os.environ.get(k)]
           if missing:raise SystemExit("BLOCK: missing protected staging keys: "+", ".join(missing))
           email=os.environ[keys[0]].strip().lower()
-          print("STUDENT_SECRET_EMAIL_SYNTAX_VALID="+str(bool(re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+",email))))
+          print("STUDENT_SECRET_EMAIL_SYNTAX_VALID="+str(bool(re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+",email))))
           print("STUDENT_SECRET_MATCHES_APPROVED_TUTOR="+str(email=="bethuelmoukangwe30@gmail.com"))
           if hashlib.sha256(email.encode()).hexdigest()!="dff017c2f812483ad01fbb1988d70e420ffd574b53b88c51a1c97d6a4f314d8d":
               raise SystemExit("BLOCK: dedicated approved staging test-student identity mismatch")
