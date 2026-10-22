@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { ArrowLeft, Bot, MessageCircle, Mic, Send, Sparkles, Volume2, X } from "lucide-react";
+import { rankedEnglishVoices, selectEnglishVoice } from "@/lib/speech-voices";
 
 type ChatMessage = {
   id: string;
@@ -69,13 +70,22 @@ export function AmarisAssistant({ initialOpen = false }: { initialOpen?: boolean
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(true);
   const [voiceError, setVoiceError] = useState("");
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceURI, setVoiceURI] = useState("automatic");
   const endRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
+    const synthesis = window.speechSynthesis;
+    const loadVoices = () => {
+      if (synthesis) setAvailableVoices(rankedEnglishVoices(synthesis.getVoices()));
+    };
+    loadVoices();
+    synthesis?.addEventListener("voiceschanged", loadVoices);
     return () => {
       recognitionRef.current?.stop();
-      window.speechSynthesis?.cancel();
+      synthesis?.removeEventListener("voiceschanged", loadVoices);
+      synthesis?.cancel();
     };
   }, []);
 
@@ -90,8 +100,20 @@ export function AmarisAssistant({ initialOpen = false }: { initialOpen?: boolean
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-ZA";
-    utterance.rate = 0.98;
+    const selected = selectEnglishVoice(
+      window.speechSynthesis.getVoices(),
+      voiceURI === "automatic" ? null : voiceURI,
+    );
+    if (selected) utterance.voice = selected;
+    utterance.lang = selected?.lang ?? "en-ZA";
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    utterance.onerror = (event) => {
+      if (event.error !== "canceled" && event.error !== "interrupted") {
+        setVoiceError("Voice playback is unavailable on this device. The written answer is still visible.");
+      }
+    };
     window.speechSynthesis.speak(utterance);
   }
 
@@ -372,6 +394,19 @@ export function AmarisAssistant({ initialOpen = false }: { initialOpen?: boolean
                 </form>
               ) : (
                 <div className="border-t border-[#dce4ef] bg-white p-4">
+                  <label htmlFor="amaris-assistant-speaking-voice" className="mb-2 block text-xs font-semibold text-[#0b2a5b]">Speaking voice</label>
+                  <select
+                    id="amaris-assistant-speaking-voice"
+                    value={availableVoices.some((voice) => voice.voiceURI === voiceURI) ? voiceURI : "automatic"}
+                    onChange={(event) => {
+                      window.speechSynthesis?.cancel();
+                      setVoiceURI(event.target.value);
+                    }}
+                    className="mb-3 min-h-11 w-full rounded-xl border border-[#cdd8e7] bg-white px-3 text-sm text-[#0a1b36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"
+                  >
+                    <option value="automatic">Best available English voice</option>
+                    {availableVoices.map((voice) => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}
+                  </select>
                   <div className="flex flex-col items-center text-center">
                     <button
                       type="button"

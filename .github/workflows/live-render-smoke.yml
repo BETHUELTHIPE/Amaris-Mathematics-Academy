@@ -1,0 +1,174 @@
+name: Live Render Browser Smoke
+
+on:
+  push:
+    branches: [render-live-current-20260918]
+  pull_request:
+    branches: [render-live-current-20260918]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE_URL: https://amaris-mathematics-academy-live-students.onrender.com
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install browser smoke dependencies
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Wait for real Render readiness after free-tier cold start
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+
+          base = os.environ["BASE_URL"].rstrip("/")
+          deadline = time.monotonic() + 210
+          checks = (("/", "text/html"), ("/api/auth-state", "application/json"))
+          attempt = 0
+
+          while True:
+              attempt += 1
+              outcomes = []
+              transient_only = True
+              for path, expected_type in checks:
+                  try:
+                      request = urllib.request.Request(
+                          base + path, headers={"User-Agent": "Amaris-readiness-probe/1.0"}
+                      )
+                      with urllib.request.urlopen(request, timeout=15) as response:
+                          status = response.status
+                          content_type = response.headers.get("Content-Type", "").lower()
+                          body = response.read(8192)
+                  except urllib.error.HTTPError as exc:
+                      status, content_type, body = exc.code, "", b""
+                  except (urllib.error.URLError, TimeoutError) as exc:
+                      print(f"READINESS RETRY {path}: network {type(exc).__name__}", flush=True)
+                      outcomes.append(False)
+                      continue
+
+                  ok = (
+                      status == 200
+                      and expected_type in content_type
+                      and b"Application loading" not in body
+                  )
+                  if not ok:
+                      print(f"READINESS CHECK {path}: HTTP {status} ({content_type or 'no content type'})", flush=True)
+                      if status not in (502, 503, 504):
+                          transient_only = False
+                  outcomes.append(ok)
+
+              if all(outcomes):
+                  print(f"PASS Render application ready: two HTTP 200 endpoints after {attempt} checks", flush=True)
+                  break
+              if not transient_only:
+                  sys.exit("FAIL: non-transient HTTP error or incorrect content type, refusing to bypass live gate")
+              if time.monotonic() >= deadline:
+                  sys.exit("FAIL: Render did not become fully ready within 210 seconds")
+              time.sleep(12)
+          PY
+      - name: Verify live public pages
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from playwright.sync_api import sync_playwright
+
+          base = os.environ["BASE_URL"].rstrip("/")
+          failures = []
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              for path in ["/", "/contact", "/login", "/register"]:
+                  page = browser.new_page()
+                  page_errors = []
+                  console_errors = []
+
+                  page.on("pageerror", lambda exc, store=page_errors: store.append(str(exc)))
+                  page.on(
+                      "console",
+                      lambda msg, store=console_errors: store.append(msg.text)
+                      if msg.type == "error"
+                      else None,
+                  )
+
+                  response = page.goto(
+                      f"{base}{path}",
+                      wait_until="networkidle",
+                      timeout=120_000,
+                  )
+                  status = response.status if response else 0
+                  body = page.locator("body").inner_text(timeout=30_000)
+                  print(f"PATH {path} STATUS {status}")
+                  print(f"TITLE {page.title()}")
+                  if page_errors:
+                      print("PAGE_ERRORS:")
+                      for item in page_errors:
+                          print(f"  - {item}")
+                  if console_errors:
+                      print("CONSOLE_ERRORS:")
+                      for item in console_errors[:20]:
+                          print(f"  - {item}")
+
+                  if path in ("/login", "/register"):
+                      expected_google = "Sign in with Google" if path == "/login" else "Register with Google"
+                      google_button = page.get_by_role("button", name=expected_google, exact=True)
+                      count = google_button.count()
+                      if count != 1:
+                          failures.append(f"{path}: expected one student Google sign-in button; found {count}")
+                      else:
+                          print(f"PASS {path}: {expected_google} visible")
+                      # Never expose GitHub social sign-in on student authentication pages.
+                      social_options = page.locator("button, a").all_inner_texts()
+                      unexpected = [text for text in social_options if "github" in text.lower() and
+                                    any(action in text.lower() for action in ("sign in", "log in", "continue", "register"))]
+                      if unexpected:
+                          failures.append(f"{path}: unexpected GitHub login option")
+                      else:
+                          print(f"PASS {path}: no GitHub social sign-in offered")
+
+                  if not response or status >= 500:
+                      failures.append(f"{path}: HTTP {status}")
+                  if "We could not load this page." in body:
+                      failures.append(f"{path}: recovery screen rendered")
+                  if page_errors:
+                      failures.append(f"{path}: browser page error: {page_errors[0]}")
+                  if console_errors:
+                      failures.append(f"{path}: browser console error: {console_errors[0]}")
+
+                  page.close()
+
+              api = browser.new_page()
+              auth_response = api.goto(
+                  f"{base}/api/auth-state",
+                  wait_until="networkidle",
+                  timeout=120_000,
+              )
+              auth_status = auth_response.status if auth_response else 0
+              print(f"PATH /api/auth-state STATUS {auth_status}")
+              if not auth_response or auth_status != 200:
+                  failures.append(f"/api/auth-state: HTTP {auth_status}")
+              api.close()
+              browser.close()
+
+          if failures:
+              print("LIVE SMOKE FAILED")
+              for failure in failures:
+                  print(f"  - {failure}")
+              sys.exit(1)
+
+          print("LIVE SMOKE PASSED")
+          PY

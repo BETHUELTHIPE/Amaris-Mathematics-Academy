@@ -1,5 +1,7 @@
 "use client";
 
+import { LocationFields } from "@/components/site/location-fields";
+import type { InitialLocation } from "@/lib/location-data";
 import { useActionState, useState, type FormEvent } from "react";
 import { useFormStatus } from "react-dom";
 import { CheckCircle2, LoaderCircle, Send } from "lucide-react";
@@ -24,11 +26,11 @@ function SubmitButton() {
   return <Button type="submit" disabled={pending} className="h-12 rounded-full bg-[#0b2a5b] px-7 text-base font-bold text-white hover:bg-[#133b76]">{pending ? <><LoaderCircle className="size-4 animate-spin" />Sending enquiry…</> : <>Send enquiry <Send className="size-4" /></>}</Button>;
 }
 
-export function EnquiryForm() {
+export function EnquiryForm({ location }: { location: InitialLocation }) {
   const [state, formAction] = useActionState(submitEnquiry, initialEnquiryState);
-  const [clientErrors, setClientErrors] = useState<Partial<Record<ContactField, string>>>({});
+  const [clientErrors, setClientErrors] = useState<Partial<Record<ContactField | "provinceOther" | "cityOther", string>>>({});
   const [editedFields, setEditedFields] = useState<Set<string>>(new Set());
-  const errors = Object.fromEntries((Object.keys(contactRequiredMessages) as ContactField[]).map((field) => [
+  const errors = Object.fromEntries(([...Object.keys(contactRequiredMessages), "provinceOther", "cityOther"] as (ContactField | "provinceOther" | "cityOther")[]).map((field) => [
     field, clientErrors[field] ?? (editedFields.has(field) ? undefined : state.errors?.[field]),
   ]));
 
@@ -47,8 +49,8 @@ export function EnquiryForm() {
 
   function handleInput(event: FormEvent<HTMLFormElement>) {
     const control = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-    const field = control.name as ContactField;
-    if (!(field in contactRequiredMessages)) return;
+    const field = control.name as ContactField | "provinceOther" | "cityOther";
+    if (!Object.hasOwn(contactRequiredMessages, field) && field !== "provinceOther" && field !== "cityOther") return;
     control.setCustomValidity("");
     setClientErrors((previous) => ({ ...previous, [field]: undefined }));
     setEditedFields((previous) => new Set([...previous, field]));
@@ -83,7 +85,8 @@ export function EnquiryForm() {
         <div><label htmlFor="phone" className="text-sm font-semibold text-[#263951]">Phone number <span className="text-[#b42318]">*</span></label><Input id="phone" name="phone" type="tel" required maxLength={30} autoComplete="tel" aria-invalid={Boolean(errors.phone)} aria-describedby={errors.phone ? "phone-error" : undefined} className="mt-2 h-12 rounded-xl border-[#cdd8e6] bg-[#fbfcfe] px-4 text-base" placeholder="e.g. 071 234 5678" /><FieldError field="phone" message={errors.phone} /></div>
         <div><label htmlFor="enquiryType" className="text-sm font-semibold text-[#263951]">Enquiry type <span className="text-[#b42318]">*</span></label><NativeSelect id="enquiryType" name="enquiryType" required defaultValue="" aria-invalid={Boolean(errors.enquiryType)} aria-describedby={errors.enquiryType ? "enquiryType-error" : undefined} className="mt-2 h-12 w-full rounded-xl border-[#cdd8e6] bg-[#fbfcfe] px-4 text-base"><NativeSelectOption value="" disabled>Select a topic</NativeSelectOption><NativeSelectOption value="course-guidance">Course guidance</NativeSelectOption><NativeSelectOption value="registration">Registration</NativeSelectOption><NativeSelectOption value="payments">Payments</NativeSelectOption><NativeSelectOption value="student-account">Student account</NativeSelectOption><NativeSelectOption value="technical-support">Technical support</NativeSelectOption><NativeSelectOption value="other">Other enquiry</NativeSelectOption></NativeSelect><FieldError field="enquiryType" message={errors.enquiryType} /></div>
       </div>
-      <div><div className="flex items-center justify-between gap-4"><label htmlFor="message" className="text-sm font-semibold text-[#263951]">How can we help? <span className="text-[#b42318]">*</span></label><span className="text-xs text-[#60708a]">20–2,000 characters</span></div><Textarea id="message" name="message" required minLength={20} maxLength={2000} aria-invalid={Boolean(errors.message)} aria-describedby={errors.message ? "message-error" : undefined} className="mt-2 min-h-40 resize-y rounded-xl border-[#cdd8e6] bg-[#fbfcfe] p-4 text-base leading-7" placeholder="Tell us what you need help with, including your study level or order reference when relevant." /><FieldError field="message" message={errors.message} /></div>
+      <LocationFields initial={location} draftKey="contact-enquiry-v1" returnTo="/contact" errors={errors} />
+      <div><div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"><label htmlFor="message" className="text-sm font-semibold text-[#263951]">How can we help? <span className="text-[#b42318]">*</span></label><span className="text-xs text-[#60708a]">20–2,000 characters</span></div><Textarea id="message" name="message" required minLength={20} maxLength={2000} aria-invalid={Boolean(errors.message)} aria-describedby={errors.message ? "message-error" : undefined} className="mt-2 min-h-40 resize-y rounded-xl border-[#cdd8e6] bg-[#fbfcfe] p-4 text-base leading-7" placeholder="Tell us what you need help with, including your study level or order reference when relevant." /><FieldError field="message" message={errors.message} /></div>
       <div><div className="flex items-start gap-3 text-sm leading-6 text-[#60708a]"><input id="consent" name="consent" type="checkbox" required value="on" aria-labelledby="consent-label" aria-invalid={Boolean(errors.consent)} aria-describedby={errors.consent ? "consent-error" : undefined} className="mt-0.5 size-6 shrink-0 cursor-pointer rounded border border-[#9aabc0] accent-[#1f5bbd]" /><span id="consent-label">I agree that Amaris Mathematics Academy may use these details to respond to my enquiry. <span className="text-[#b42318]">*</span></span></div><FieldError field="consent" message={errors.consent} /></div>
       <div className="flex flex-col gap-4 border-t border-[#e4eaf2] pt-6 sm:flex-row sm:items-center sm:justify-between"><SubmitButton /><p className="text-sm text-[#60708a]">Prefer to speak? <a href={academyBrand.phoneHref} className="font-semibold text-[#1f5bbd] hover:underline">Call {academyBrand.phoneDisplay}</a></p></div>
     </form>

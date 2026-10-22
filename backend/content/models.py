@@ -387,61 +387,6 @@ class Announcement(PublishableModel):
         return self.title
 
 
-class AnnouncementMedia(TimeStampedModel):
-    """Superuser-managed marketing attachments stored in the CMS S3 bucket."""
-
-    class Kind(models.TextChoices):
-        IMAGE = "image", "Image"
-        VIDEO = "video", "Video"
-        PDF = "pdf", "PDF"
-
-    announcement = models.ForeignKey(Announcement, related_name="media", on_delete=models.CASCADE)
-    kind = models.CharField(max_length=8, choices=Kind.choices)
-    title = models.CharField(max_length=180)
-    file = models.FileField(upload_to="marketing/announcements/%Y/%m/")
-    order = models.PositiveSmallIntegerField(default=0)
-
-    class Meta:
-        ordering = ("order", "id")
-
-    def clean(self):
-        super().clean()
-        if not self.file:
-            raise ValidationError({"file": "Upload a marketing file."})
-        from pathlib import Path
-
-        extensions = {
-            self.Kind.IMAGE: {".jpg", ".jpeg", ".png", ".webp"},
-            self.Kind.VIDEO: {".mp4", ".webm"},
-            self.Kind.PDF: {".pdf"},
-        }
-        extension = Path(self.file.name).suffix.lower()
-        if extension not in extensions.get(self.Kind(self.kind), set()):
-            raise ValidationError({"file": "File extension does not match the selected media type."})
-        # Existing stored objects should not trigger a remote S3 HEAD during metadata edits.
-        if not self.file._committed:
-            if self.file.size > 50 * 1024 * 1024:
-                raise ValidationError({"file": "Maximum file size is 50 MB (Supabase bucket limit)."})
-            # Validate signatures to reject renamed HTML or executable files.
-            pos = self.file.tell()
-            header = self.file.read(16)
-            self.file.seek(pos)
-            valid = {
-                ".pdf": header.startswith(b"%PDF-"),
-                ".png": header.startswith(b"\x89PNG\r\n\x1a\n"),
-                ".jpg": header.startswith(b"\xff\xd8\xff"),
-                ".jpeg": header.startswith(b"\xff\xd8\xff"),
-                ".webp": header[:4] == b"RIFF" and header[8:12] == b"WEBP",
-                ".mp4": header[4:8] == b"ftyp",
-                ".webm": header.startswith(b"\x1a\x45\xdf\xa3"),
-            }
-            if not valid.get(extension, False):
-                raise ValidationError({"file": "File content does not match the allowed format."})
-
-    def __str__(self):
-        return self.title
-
-
 class ContactEnquiry(TimeStampedModel):
     class Status(models.TextChoices):
         NEW = "new", "New"
@@ -489,6 +434,10 @@ class StudentRecord(TimeStampedModel):
 
 def live_class_hold_expiry():
     return timezone.now() + timedelta(minutes=30)
+
+
+def video_request_payment_expiry():
+    return timezone.now() + timedelta(hours=24)
 
 
 class TutorAvailabilitySlot(TimeStampedModel):
@@ -555,6 +504,7 @@ class LiveClassBooking(TimeStampedModel):
         EXPIRED = "expired", "Expired"
         CANCELLED = "cancelled", "Cancelled"
         COMPLETED = "completed", "Completed"
+        PAYMENT_REVIEW = "payment_review", "Paid booking requiring review"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reference = models.CharField(max_length=100, unique=True)
@@ -597,6 +547,134 @@ class LiveClassBooking(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.reference
+
+
+class VideoRequest(TimeStampedModel):
+    class RequestType(models.TextChoices):
+        CHAPTER_TOPIC = "chapter_topic", "Chapter or topic video"
+        PREVIOUS_ASSIGNMENT = "previous_assignment", "Previous assignment walkthrough"
+        PREVIOUS_EXAM = "previous_exam", "Previous exam walkthrough"
+        COMPLETE_CONTENT = "complete_content", "Complete subject content"
+
+    class Status(models.TextChoices):
+        PENDING_PAYMENT = "pending_payment", "Pending payment"
+        QUEUED = "queued", "Paid and queued"
+        TUTOR_ASSIGNED = "tutor_assigned", "Tutor assigned"
+        RECORDING = "recording", "Recording"
+        PROCESSING = "processing", "Processing"
+        REVIEW = "review", "Quality review"
+        READY = "ready", "Ready"
+        CANCELLED = "cancelled", "Cancelled"
+        PAYMENT_REVIEW = "payment_review", "Payment requiring review"
+
+    class VideoProvider(models.TextChoices):
+        YOUTUBE = "youtube", "YouTube unlisted"
+        DIRECT = "direct", "Private direct video"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reference = models.CharField(max_length=100, unique=True)
+    idempotency_key = models.CharField(max_length=64, unique=True, editable=False)
+    student = models.ForeignKey(StudentRecord, related_name="video_requests", on_delete=models.PROTECT)
+    assigned_tutor = models.ForeignKey(
+        "auth.User",
+        related_name="assigned_video_requests",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+    )
+    programme = models.CharField(max_length=20, choices=TutorAvailabilitySlot.Programme.choices)
+    subject = models.CharField(max_length=32, choices=TutorAvailabilitySlot.Subject.choices)
+    level = models.CharField(max_length=80)
+    topic = models.CharField(max_length=180)
+    request_type = models.CharField(max_length=24, choices=RequestType.choices)
+    instructions = models.TextField(blank=True)
+    explanation_style = models.CharField(max_length=120, blank=True)
+    preferred_duration_minutes = models.PositiveSmallIntegerField(default=60)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    currency = models.CharField(max_length=3, default="ZAR")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING_PAYMENT,
+        db_index=True,
+    )
+    payment_expires_at = models.DateTimeField(default=video_request_payment_expiry, db_index=True)
+    provider_reference = models.CharField(max_length=160, blank=True)
+    paid_at = models.DateTimeField(blank=True, null=True)
+    gateway_verified_at = models.DateTimeField(blank=True, null=True)
+    queue_entered_at = models.DateTimeField(blank=True, null=True, db_index=True)
+    priority_paid_at = models.DateTimeField(blank=True, null=True, db_index=True)
+    ticket_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
+    invoice_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
+    video_provider = models.CharField(
+        max_length=12,
+        choices=VideoProvider.choices,
+        default=VideoProvider.YOUTUBE,
+    )
+    video_external_id = models.CharField(
+        max_length=160,
+        blank=True,
+        help_text="Store only the provider ID or private object key, never a public URL.",
+    )
+    video_ready_at = models.DateTimeField(blank=True, null=True)
+    confirmation_sent_at = models.DateTimeField(blank=True, null=True)
+    position_one_sent_at = models.DateTimeField(blank=True, null=True)
+    recording_sent_at = models.DateTimeField(blank=True, null=True)
+    ready_notification_sent_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=("student", "status", "-created_at"), name="video_req_student_idx"),
+            models.Index(fields=("status", "queue_entered_at"), name="video_req_queue_idx"),
+            models.Index(fields=("status", "payment_expires_at"), name="video_req_expiry_idx"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if not 15 <= self.preferred_duration_minutes <= 180:
+            raise ValidationError("Preferred video duration must be between 15 and 180 minutes.")
+        fulfilment_statuses = {
+            self.Status.QUEUED,
+            self.Status.TUTOR_ASSIGNED,
+            self.Status.RECORDING,
+            self.Status.PROCESSING,
+            self.Status.REVIEW,
+            self.Status.READY,
+        }
+        if self.status in fulfilment_statuses and (self.gateway_verified_at is None or not self.ticket_number):
+            raise ValidationError("Only server-verified paid requests may enter fulfilment.")
+        if self.status == self.Status.READY and not self.video_external_id:
+            raise ValidationError("A ready video request must have a private video reference.")
+        if self.video_provider == self.VideoProvider.YOUTUBE and self.video_external_id:
+            parsed = urlparse(self.video_external_id)
+            if parsed.scheme or parsed.netloc:
+                raise ValidationError("Store the YouTube video ID, not a YouTube URL.")
+
+    @property
+    def tutor_display_name(self) -> str:
+        if self.assigned_tutor is None:
+            return "Tutor assignment pending"
+        return self.assigned_tutor.get_full_name().strip() or self.assigned_tutor.get_username()
+
+    def __str__(self) -> str:
+        return self.ticket_number or self.reference
+
+
+class VideoRequestDocument(TimeStampedModel):
+    request = models.ForeignKey(VideoRequest, related_name="documents", on_delete=models.CASCADE)
+    original_name = models.CharField(max_length=255)
+    storage_path = models.CharField(max_length=512, unique=True, editable=False)
+    content_type = models.CharField(max_length=100)
+    size_bytes = models.PositiveIntegerField()
+    sha256 = models.CharField(max_length=64, editable=False)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [models.Index(fields=("request", "created_at"), name="video_req_doc_idx")]
+
+    def __str__(self) -> str:
+        return self.original_name
 
 
 class Enrollment(TimeStampedModel):

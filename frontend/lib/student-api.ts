@@ -1,8 +1,12 @@
+import { cache } from "react";
 import { env } from "cloudflare:workers";
+import { normalizeCmsApiBaseUrl } from "@/lib/cms-api-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireVerifiedStudent } from "@/lib/auth";
+import { visualTestCourses, visualTestOrders } from "@/lib/student-workflow-e2e-fixtures";
 
 declare const __E2E_SYNTHETIC_STUDENT__: boolean;
+declare const __E2E_SYNTHETIC_WORKFLOWS__: boolean;
 
 export type ResumeState = {
   course_slug: string;
@@ -19,7 +23,7 @@ export type ResumeState = {
 };
 
 export type StudentCourse = {
-  course: { slug: string; title: string };
+  course: { slug: string; title: string; first_lesson_slug?: string };
   resume: ResumeState;
 };
 
@@ -36,6 +40,16 @@ export type StudentOrder = {
   paid_at: string | null;
   invoice_number: string | null;
   invoice_ready: boolean;
+  href: string;
+};
+
+export type StudentNotification = {
+  id: string;
+  category: "payment" | "live_class" | "video_request";
+  title: string;
+  message: string;
+  delivery_status: string;
+  occurred_at: string;
   href: string;
 };
 
@@ -60,6 +74,7 @@ export type LiveClassCheckoutSession = {
     tutor: string;
     starts_at: string;
     ends_at: string;
+    duration_minutes: number;
     amount: string;
     currency: string;
   };
@@ -75,10 +90,58 @@ export type LiveClassBookingStatus = {
   tutor: string;
   starts_at: string;
   ends_at: string;
+  duration_minutes: number;
   amount: string;
   currency: string;
   invoice_number: string | null;
+  invoice_ready: boolean;
   zoom_join_url: string;
+};
+
+export type VideoRequestCheckoutSession = {
+  request_reference: string;
+  status: string;
+  gateway_url: string;
+  fields: Record<string, string>;
+  request: {
+    request_type: string;
+    programme: string;
+    subject: string;
+    level: string;
+    topic: string;
+    preferred_duration_minutes: number;
+    amount: string;
+    currency: string;
+  };
+};
+
+export type StudentVideoRequest = {
+  request_reference: string;
+  ticket_number: string | null;
+  status: string;
+  status_label: string;
+  request_type: string;
+  request_type_label: string;
+  programme: string;
+  subject: string;
+  level: string;
+  topic: string;
+  preferred_duration_minutes: number;
+  amount: string;
+  currency: string;
+  tutor: string;
+  requests_ahead: number | null;
+  queue_position: number | null;
+  estimated_ready_from: string | null;
+  estimated_ready_to: string | null;
+  invoice_number: string | null;
+  invoice_ready: boolean;
+  document_count: number;
+  video: null | {
+    provider: "youtube" | "direct";
+    youtube_video_id: string;
+    direct_download_url: string;
+  };
 };
 
 export type ProtectedLesson = {
@@ -105,17 +168,20 @@ function cmsBaseUrl(): string {
   const workerBindings = env as unknown as { CMS_API_URL?: string };
   const base = (workerBindings.CMS_API_URL || process.env.CMS_API_URL)?.replace(/\/$/, "");
   if (!base) throw new Error("The protected student API is not configured.");
-  return base;
+  return normalizeCmsApiBaseUrl(base);
 }
 
-async function accessToken(): Promise<string> {
+// React's request-local cache deduplicates token verification for the
+// courses, orders and video-request reads. It does not cache HTTP responses
+// or share credentials between users or requests.
+const accessToken = cache(async function accessToken(): Promise<string> {
   await requireVerifiedStudent();
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (error || !token) throw new Error("Your student session has expired. Please log in again.");
   return token;
-}
+});
 
 async function studentFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
@@ -154,10 +220,10 @@ export async function createStudentCheckout(courseSlug: string): Promise<Checkou
   });
 }
 
-async function liveClassCheckoutKey(slotId: string, topic: string): Promise<string> {
+async function liveClassCheckoutKey(slotId: string, topic: string, attempt: string): Promise<string> {
   const student = await requireVerifiedStudent();
   const normalizedTopic = topic.trim().replace(/\s+/g, " ").toLowerCase();
-  const bytes = new TextEncoder().encode(`${student.id}:${slotId}:${normalizedTopic}`);
+  const bytes = new TextEncoder().encode(`${student.id}:${slotId}:${normalizedTopic}:${attempt}`);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   const hex = Array.from(new Uint8Array(digest))
     .slice(0, 20)
@@ -169,13 +235,14 @@ async function liveClassCheckoutKey(slotId: string, topic: string): Promise<stri
 export async function createStudentLiveClassCheckout(
   slotId: string,
   topic: string,
+  attempt: string,
 ): Promise<LiveClassCheckoutSession> {
   return studentFetch<LiveClassCheckoutSession>("/student/live-classes/checkout/", {
     method: "POST",
     body: JSON.stringify({
       slot_id: slotId,
       topic: topic.trim(),
-      idempotency_key: await liveClassCheckoutKey(slotId, topic),
+      idempotency_key: await liveClassCheckoutKey(slotId, topic, attempt),
     }),
   });
 }
@@ -188,9 +255,99 @@ export async function getStudentLiveClassBooking(
   );
 }
 
-export async function getStudentCourses(): Promise<StudentCourse[]> {
+export async function createStudentVideoRequestCheckout(
+  formData: FormData,
+): Promise<VideoRequestCheckoutSession> {
+  const token = await accessToken();
+  const response = await fetch(`${cmsBaseUrl()}/student/video-requests/checkout/`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+    cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Video request failed (${response.status}): ${body.slice(0, 240)}`);
+  }
+  return response.json() as Promise<VideoRequestCheckoutSession>;
+}
+
+export async function getStudentVideoRequests(): Promise<StudentVideoRequest[]> {
   if (__E2E_SYNTHETIC_STUDENT__) return [];
+  return studentFetch<StudentVideoRequest[]>("/student/video-requests/");
+}
+
+export async function getStudentVideoRequest(reference: string): Promise<StudentVideoRequest> {
+  return studentFetch<StudentVideoRequest>(
+    `/student/video-requests/${encodeURIComponent(reference)}/`,
+  );
+}
+
+export async function downloadStudentVideoRequestInvoice(reference: string): Promise<Response> {
+  const token = await accessToken();
+  return fetch(
+    `${cmsBaseUrl()}/student/video-requests/${encodeURIComponent(reference)}/invoice/`,
+    {
+      headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    },
+  );
+}
+
+export async function streamStudentRequestedVideo(reference: string): Promise<Response> {
+  const token = await accessToken();
+  return fetch(
+    `${cmsBaseUrl()}/student/video-requests/${encodeURIComponent(reference)}/video/`,
+    {
+      headers: { Accept: "video/mp4", Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(30_000),
+    },
+  );
+}
+
+export async function downloadStudentLiveClassInvoice(reference: string): Promise<Response> {
+  const token = await accessToken();
+  return fetch(
+    `${cmsBaseUrl()}/student/live-classes/bookings/${encodeURIComponent(reference)}/invoice/`,
+    {
+      headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    },
+  );
+}
+
+export async function downloadStudentCourseInvoice(reference: string): Promise<Response> {
+  const token = await accessToken();
+  return fetch(
+    `${cmsBaseUrl()}/student/orders/${encodeURIComponent(reference)}/invoice/`,
+    {
+      headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    },
+  );
+}
+
+export async function getStudentCourses(): Promise<StudentCourse[]> {
+  if (__E2E_SYNTHETIC_STUDENT__) return __E2E_SYNTHETIC_WORKFLOWS__ ? visualTestCourses : [];
   return studentFetch<StudentCourse[]>("/student/courses/");
+}
+
+export async function getStudentOrders(): Promise<StudentOrder[]> {
+  if (__E2E_SYNTHETIC_STUDENT__) return __E2E_SYNTHETIC_WORKFLOWS__ ? visualTestOrders : [];
+  return studentFetch<StudentOrder[]>("/student/orders/");
+}
+
+export async function getStudentNotifications(): Promise<StudentNotification[]> {
+  if (__E2E_SYNTHETIC_STUDENT__) return [];
+  return studentFetch<StudentNotification[]>("/student/notifications/");
 }
 
 export async function getProtectedLesson(courseSlug: string, lessonSlug: string): Promise<ProtectedLesson> {
@@ -213,28 +370,5 @@ export async function saveStudentProgress(input: {
       position_seconds: input.positionSeconds,
       ...(typeof input.progressPercent === "number" ? { progress_percent: input.progressPercent } : {}),
     }),
-  });
-}
-
-export async function getStudentOrders(): Promise<StudentOrder[]> {
-  if (__E2E_SYNTHETIC_STUDENT__) return [];
-  return studentFetch<StudentOrder[]>("/student/orders/");
-}
-
-export async function downloadStudentCourseInvoice(reference: string): Promise<Response> {
-  const token = await accessToken();
-  return fetch(`${cmsBaseUrl()}/student/orders/${encodeURIComponent(reference)}/invoice/`, {
-    headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
-}
-
-export async function downloadStudentLiveClassInvoice(reference: string): Promise<Response> {
-  const token = await accessToken();
-  return fetch(`${cmsBaseUrl()}/student/live-classes/bookings/${encodeURIComponent(reference)}/invoice/`, {
-    headers: { Accept: "application/pdf", Authorization: `Bearer ${token}` },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
   });
 }

@@ -1,8 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-// @ts-expect-error Render installs this deployment-only Vite plugin before the Node build.
 import tailwindcss from "@tailwindcss/vite";
-// @ts-expect-error Render installs Nitro before the Node build.
 import { nitro } from "nitro/vite";
 import vinext from "vinext";
 import { defineConfig } from "vite";
@@ -15,6 +13,8 @@ export default defineConfig({
     // Render/Nitro must still replace the compile-time symbol so the
     // production server never evaluates an undefined global.
     __E2E_SYNTHETIC_STUDENT__: JSON.stringify(false),
+    // Never compile fake student workflow data into any Render production runtime.
+    __E2E_SYNTHETIC_WORKFLOWS__: JSON.stringify(false),
   },
   resolve: {
     alias: {

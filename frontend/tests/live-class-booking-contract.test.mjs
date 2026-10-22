@@ -35,7 +35,8 @@ test("booking page exposes the required programme and subject choices", () => {
 });
 
 test("checkout preserves server-owned pricing and PayFast verification language", () => {
-  assert.match(checkoutPage, /Pay R250 with PayFast/);
+  assert.match(checkoutPage, /Pay R\{booking\.amount\} with PayFast/);
+  assert.match(checkoutPage, /booking\.duration_minutes \/ 60/);
   assert.match(checkoutPage, /Server-priced/);
   assert.match(checkoutPage, /verified callback required/);
 });

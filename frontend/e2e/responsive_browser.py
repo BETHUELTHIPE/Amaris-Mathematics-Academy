@@ -6,6 +6,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from playwright.sync_api import Browser, Page, sync_playwright
 
@@ -14,6 +15,7 @@ ARTIFACT_DIR = Path(os.getenv("E2E_ARTIFACT_DIR", "artifacts/e2e"))
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 
 VIEWPORTS = {
+    "narrow-mobile": {"width": 320, "height": 700},
     "mobile": {"width": 390, "height": 844},
     "tablet": {"width": 834, "height": 1112},
     "desktop": {"width": 1440, "height": 1000},
@@ -55,7 +57,7 @@ def assert_no_horizontal_overflow(page: Page, surface: str) -> None:
 def check_navigation(page: Page, viewport_name: str) -> None:
     goto(page, "/")
     require(page.get_by_role("link", name="Amaris Mathematics Academy home").is_visible(), "Home link is not visible")
-    if viewport_name in {"mobile", "tablet"}:
+    if viewport_name in {"narrow-mobile", "mobile", "tablet"}:
         menu = page.locator("summary").filter(has_text="Menu")
         require(menu.is_visible(), f"Compact navigation menu is missing on {viewport_name}")
         menu.click()
@@ -69,7 +71,7 @@ def check_navigation(page: Page, viewport_name: str) -> None:
 
 
 def check_form(page: Page) -> None:
-    goto(page, "/contact")
+    goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
     page.locator("#fullName").fill("Responsive Test Student")
     page.locator("#email").fill("responsive.student@example.test")
     page.locator("#phone").fill("0710000000")
@@ -88,9 +90,10 @@ def check_form(page: Page) -> None:
 
 
 def check_offline_recovery(page: Page) -> None:
-    goto(page, "/contact")
+    goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
     page.locator("#fullName").fill("Offline Synthetic Student")
     page.locator("#email").fill("offline.student@example.test")
+    page.locator("#phone").fill("0710000000")
     page.locator("#enquiryType").select_option("technical-support")
     page.locator("#message").fill("Synthetic offline submission check with enough safe detail.")
     page.locator("#consent").check()
@@ -99,18 +102,15 @@ def check_offline_recovery(page: Page) -> None:
     require(submit_button.is_visible(), "Offline recovery submit button is not visible")
     require(submit_button.is_enabled(), "Offline recovery submit button is disabled before disconnect")
 
-    # Focus while still online. Firefox mobile emulation can stall Playwright
-    # actionability checks after the context is disconnected, but retaining
-    # focus across the offline transition still lets native keyboard activation
-    # exercise the real submit handler without bypassing application logic.
-    submit_button.focus()
-    require(
-        submit_button.evaluate("button => document.activeElement === button"),
-        "Offline recovery submit button did not receive focus before disconnect",
-    )
-
     page.context.set_offline(True)
     try:
+        # Confirm browser offline state before submitting. This keeps the test
+        # deterministic if Chromium dispatches its offline event asynchronously.
+        page.wait_for_function("() => navigator.onLine === false", timeout=5_000)
+        # Firefox mobile emulation can hold pointer-actionability checks while
+        # the browser is offline. Native keyboard activation still exercises
+        # the real form submit handler without bypassing the application logic.
+        submit_button.focus()
         page.keyboard.press("Enter")
         notice = page.locator("#connection-recovery")
         notice.wait_for(state="visible", timeout=5_000)
@@ -123,7 +123,7 @@ def check_offline_recovery(page: Page) -> None:
             "Nothing will be submitted until you reconnect." in notice.locator("[data-recovery-message]").inner_text(),
             "Offline submission protection message is missing",
         )
-        require(page.url.endswith("/contact"), "Offline form submission unexpectedly navigated away")
+        require(urlsplit(page.url).path == "/contact", "Offline form submission unexpectedly navigated away")
     finally:
         page.context.set_offline(False)
 
@@ -139,9 +139,10 @@ def check_offline_recovery(page: Page) -> None:
     )
 
 def check_slow_submission(page: Page) -> None:
-    goto(page, "/contact")
+    goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
     page.locator("#fullName").fill("Slow Network Synthetic Student")
     page.locator("#email").fill("slow.network.student@example.test")
+    page.locator("#phone").fill("0710000000")
     page.locator("#enquiryType").select_option("technical-support")
     page.locator("#message").fill("Synthetic delayed submission used to verify slow-network recovery without data loss.")
     page.locator("#consent").check()
@@ -160,7 +161,7 @@ def check_slow_submission(page: Page) -> None:
         elapsed = time.monotonic() - started
         require(elapsed >= 1.8, f"Slow-network delay was not exercised: elapsed={elapsed:.2f}s")
         require(success.is_visible(), "Delayed enquiry did not recover to a success state")
-        require(page.url.endswith("/contact"), "Delayed submission navigated away unexpectedly")
+        require(urlsplit(page.url).path == "/contact", "Delayed submission navigated away unexpectedly")
     finally:
         page.unroute("**/contact*", delay_contact_post)
 
@@ -170,8 +171,41 @@ def check_dashboard(page: Page) -> None:
     require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
     require(page.get_by_role("heading", name=re.compile(r"Welcome, Responsive\.")).is_visible(), "Synthetic student dashboard did not render")
     require(page.get_by_role("navigation", name="Dashboard navigation").is_visible(), "Dashboard navigation is not visible")
+    # On a 320px screen the shelf is below the fold. Scroll the actual
+    # anchor into view before asserting; do not treat offscreen content as missing.
+    shelf = page.locator("#my-courses")
+    require(shelf.count() == 1, "Dashboard needs exactly one My courses target")
+    shelf.scroll_into_view_if_needed(timeout=10000)
+    require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(),
+            "Dashboard course shelf is not visible after scrolling")
+
+    navigation = page.get_by_role("navigation", name="Dashboard navigation")
+    require(navigation.is_visible(), "Dashboard navigation is not visible")
+    course_link = navigation.get_by_role("link", name="My courses")
+    require(course_link.is_visible(), "My courses is not navigable on this viewport")
+    require(course_link.get_attribute("href") == "/dashboard#my-courses", "My courses does not link to its section")
+    require(page.locator("#my-courses").count() == 1, "Dashboard needs exactly one My courses target")
+    course_link.focus()
+    require(course_link.evaluate("(el) => document.activeElement === el"), "Dashboard course link is not keyboard focusable")
     require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(), "Dashboard course shelf is not visible")
     assert_no_horizontal_overflow(page, "dashboard")
+
+    orders_link = navigation.get_by_role("link", name="Orders & payments")
+    notifications_link = navigation.get_by_role("link", name="Notifications")
+    require(orders_link.get_attribute("href") == "/dashboard/orders", "Orders navigation has the wrong destination")
+    require(notifications_link.get_attribute("href") == "/dashboard/notifications", "Notifications navigation has the wrong destination")
+
+    goto(page, "/dashboard/orders")
+    require(page.get_by_role("heading", name="Orders & payments", exact=True).is_visible(), "Orders page is not visible")
+    require(page.get_by_role("heading", name="No orders yet.", exact=True).is_visible(), "Orders empty state is not visible")
+    assert_no_horizontal_overflow(page, "orders")
+
+    goto(page, "/dashboard/notifications")
+    require(page.get_by_role("heading", name="Notifications", exact=True).is_visible(), "Notifications page is not visible")
+    require(page.get_by_role("heading", name="You’re all caught up.", exact=True).is_visible(), "Notifications empty state is not visible")
+    assert_no_horizontal_overflow(page, "notifications")
+
+    goto(page, "/dashboard")
 
 
 def check_table(page: Page) -> None:
@@ -381,9 +415,10 @@ def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: s
         page.wait_for_url("**/courses*", wait_until="domcontentloaded")
         require("/courses" in page.url, "Navigation to courses failed without JavaScript")
 
-        goto(page, "/contact")
+        goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
         page.locator("#fullName").fill("No JS Synthetic Student")
         page.locator("#email").fill("nojs.student@example.test")
+        page.locator("#phone").fill("0710000000")
         page.locator("#enquiryType").select_option("course-guidance")
         page.locator("#message").fill("Synthetic no JavaScript enquiry used only for progressive enhancement verification.")
         page.locator("#consent").check(force=True)

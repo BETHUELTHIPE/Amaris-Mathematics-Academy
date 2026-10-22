@@ -1,5 +1,6 @@
 "use server";
 
+import { parseLocation } from "@/lib/location-server";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSiteUrl } from "@/lib/supabase/config";
@@ -26,7 +27,7 @@ const registrationSchema = z
       .string()
       .trim()
       .regex(/^\+?[0-9 ()-]{7,24}$/, "Enter a valid mobile number."),
-    province: z.string().trim().min(2).max(60),
+    province: z.string().trim().min(2).max(160),
     institution: z.string().trim().min(2).max(120),
     academicLevel: z.string().trim().min(2).max(80),
     password: passwordSchema,
@@ -47,12 +48,14 @@ const loginSchema = z.object({
 });
 
 export async function registerAction(formData: FormData) {
+  const location = await parseLocation(Object.fromEntries(formData));
+  if (!location.value) redirectWithMessage("/register", "error", Object.values(location.errors)[0] || "Please choose your location.");
   const parsed = registrationSchema.safeParse({
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
     email: formData.get("email"),
     mobile: formData.get("mobile"),
-    province: formData.get("province"),
+    province: location.value.province,
     institution: formData.get("institution"),
     academicLevel: formData.get("academicLevel"),
     password: formData.get("password"),
@@ -82,7 +85,7 @@ export async function registerAction(formData: FormData) {
           first_name: values.firstName,
           last_name: values.lastName,
           mobile: values.mobile,
-          province: values.province,
+          ...location.value,
           institution: values.institution,
           academic_level: values.academicLevel,
           terms_accepted_at: new Date().toISOString(),
@@ -246,6 +249,31 @@ export async function loginAction(formData: FormData) {
   redirect(safeRelativePath(parsed.data.next));
 }
 
+export async function googleAuthAction(formData: FormData) {
+  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
+    },
+  });
+
+  if (error || !data.url) {
+    console.error("student_google_auth_failed", {
+      code: safeAuthErrorCode(error?.code),
+      status: error?.status,
+    });
+    redirectWithMessage(
+      "/login",
+      "error",
+      "Google registration is temporarily unavailable. Please use email registration or try again shortly.",
+    );
+  }
+
+  redirect(data.url);
+}
+
 export async function forgotPasswordAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!z.string().email().safeParse(email).success) {
@@ -353,30 +381,3 @@ function safeAuthErrorCode(code: string | undefined): string {
 function redirectWithMessage(path: string, key: string, message: string): never {
   redirect(`${path}?${key}=${encodeURIComponent(message)}`);
 }
-
-
-export async function googleAuthAction(formData: FormData) {
-  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(next)}`,
-    },
-  });
-
-  if (error || !data.url) {
-    console.error("student_google_auth_failed", {
-      code: safeAuthErrorCode(error?.code),
-      status: error?.status,
-    });
-    redirectWithMessage(
-      "/login",
-      "error",
-      "Google registration is temporarily unavailable. Please use email registration or try again shortly.",
-    );
-  }
-
-  redirect(data.url);
-}
-

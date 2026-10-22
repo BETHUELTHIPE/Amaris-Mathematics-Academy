@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- header uses intentional full-page anchors to avoid public-route Link hydration */
 import { Mail, MapPin, Phone } from "lucide-react";
 import { AuthControls } from "@/components/site/auth-controls";
+import { ShareWebsiteButton } from "@/components/site/share-website-button";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
 
 export async function Header() {
@@ -16,17 +17,17 @@ export async function Header() {
             <a href={academyBrand.phoneHref} className="flex shrink-0 items-center gap-2 transition hover:text-white"><Phone className="size-3.5 text-[#ffcc66]" />{academyBrand.phoneDisplay}</a>
             <a href={academyBrand.emailHref} className="flex min-w-0 items-center gap-2 transition hover:text-white"><Mail className="size-3.5 shrink-0 text-[#ffcc66]" /><span className="hidden truncate sm:inline">{academyBrand.email}</span><span className="sm:hidden">Email us</span></a>
           </div>
-          <a href={academyBrand.addressHref} target="_blank" rel="noreferrer" className="hidden items-center gap-2 transition hover:text-white md:flex"><MapPin className="size-3.5 text-[#ffcc66]" />{academyBrand.addressShort}</a>
+          <div className="flex shrink-0 items-center gap-3">
+            <a href={academyBrand.addressHref} target="_blank" rel="noreferrer" className="hidden items-center gap-2 transition hover:text-white lg:flex"><MapPin className="size-3.5 text-[#ffcc66]" />{academyBrand.addressShort}</a>
+            <ShareWebsiteButton compact />
+          </div>
         </div>
       </div>
-      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
+      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-6 px-5 lg:px-8">
         <a href="/" className="relative z-10 flex shrink-0 items-center gap-3 font-semibold tracking-tight" aria-label="Amaris Mathematics Academy home">
           <span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-xl bg-[#ffcc66] text-base font-black text-[#07152d] shadow-[0_8px_22px_rgba(0,0,0,.22)] ring-1 ring-[#ffcc66]/70 sm:hidden">A</span><span aria-hidden="true" className="hidden size-14 shrink-0 rounded-xl bg-white bg-contain bg-center bg-no-repeat p-1 shadow-[0_8px_22px_rgba(0,0,0,.22)] ring-1 ring-[#ffcc66]/70 sm:block" style={{ backgroundImage: `url(${academyBrand.logoPath})` }} />
           <span className="leading-tight">Amaris <span className="hidden text-white/60 sm:inline">Mathematics Academy</span></span>
         </a>
-        <nav className="hidden items-center gap-6 text-sm text-white/75 lg:flex" aria-label="Main navigation">
-          {links.map(({ label, url, open_in_new_tab }) => <a key={url} href={url} target={open_in_new_tab ? "_blank" : undefined} rel={open_in_new_tab ? "noreferrer" : undefined} className="transition hover:text-white">{label}</a>)}
-        </nav>
         <AuthControls links={links} />
       </div>
     </header>

@@ -7,8 +7,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
-import { GoogleAuthButton } from "@/components/site/google-auth-button";
 import { getStudentIdentity, safeRelativePath } from "@/lib/auth";
+import { GoogleAuthButton } from "@/components/site/google-auth-button";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Log In" };
@@ -25,6 +25,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     {success && <Alert className="mt-6 border-[#9fddce] bg-[#effbf7] text-[#126854]"><CheckCircle2 /><AlertDescription className="text-[#126854]">{success}</AlertDescription></Alert>}
     <div className="mt-7"><GoogleAuthButton label="Sign in with Google" next={next} /></div>
     <div className="my-7 flex items-center gap-4 text-xs font-bold uppercase tracking-[.12em] text-[#60708a]"><span className="h-px flex-1 bg-[#dce4ef]" /><span>or use email</span><span className="h-px flex-1 bg-[#dce4ef]" /></div>
-    <form action={loginAction} className="mt-7 grid gap-5"><input type="hidden" name="next" value={next} /><label className="grid gap-2 text-sm font-semibold text-[#263852]">Email address<Input name="email" type="email" autoComplete="email" required className="h-12" /></label><label className="grid gap-2 text-sm font-semibold text-[#263852]"><span className="flex items-center justify-between gap-4">Password<Link href="/forgot-password" className="text-xs font-bold text-[#1f5bbd]">Forgot password?</Link></span><Input name="password" type="password" autoComplete="current-password" required className="h-12" /></label><button type="submit" className="min-h-12 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white transition hover:bg-[#123d79]">Log in securely</button></form>
+    <form action={loginAction} className="grid gap-5"><input type="hidden" name="next" value={next} /><label className="grid gap-2 text-sm font-semibold text-[#263852]">Email address<Input name="email" type="email" autoComplete="email" required className="h-12" /></label><label className="grid gap-2 text-sm font-semibold text-[#263852]"><span className="flex items-center justify-between gap-4">Password<Link href="/forgot-password" className="text-xs font-bold text-[#1f5bbd]">Forgot password?</Link></span><Input name="password" type="password" autoComplete="current-password" required className="h-12" /></label><button type="submit" className="min-h-12 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white transition hover:bg-[#123d79]">Log in securely</button></form>
     <p className="mt-6 text-center text-sm text-[#60708a]">New to Amaris? <Link href="/register" className="font-bold text-[#1f5bbd]">Create your profile</Link></p></div></section><Footer /></main>;
 }

@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
+import { registerHooks } from "node:module";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === "cloudflare:workers") {
+      return {
+        shortCircuit: true,
+        url: "data:text/javascript,export const env = {};",
+      };
+    }
+    return nextResolve(specifier, context);
+  },
+});
 
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
@@ -85,12 +98,12 @@ test("renders branded recovery pages without technical details", async () => {
   assert.doesNotMatch(`${recoverySource}\n${screenSource}\n${actionsSource}`, /SUPABASE_SERVICE_ROLE|stack trace/i);
 });
 
-test("keeps the homepage LCP hero eagerly loaded and synchronously decoded", async () => {
+test("keeps the optimized hero background photo visible on the homepage", async () => {
   const homepageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(homepageSource, /src="\/amaris-math-hero\.webp"/);
   assert.match(homepageSource, /fetchPriority="high"/);
   assert.match(homepageSource, /loading="eager"/);
-  assert.match(homepageSource, /decoding="sync"/);
+  assert.match(homepageSource, /decoding="async"/);
 });
 
 test("protected application responses are never publicly cacheable", async () => {

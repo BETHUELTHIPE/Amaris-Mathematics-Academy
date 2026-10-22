@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from .serializers import ErrorDetailSerializer, PayFastITNRequestSerializer, PayFastITNStatusSerializer
 from .services.live_classes import process_live_class_notification
 from .services.payments import HttpPayFastVerificationGateway, process_payfast_notification
+from .services.video_requests import process_video_request_notification
 
 DEFAULT_PAYFAST_NETWORKS = (
     "197.97.145.144/28",
@@ -64,8 +65,11 @@ class PayFastITNView(APIView):
 
         payload = {str(key): str(value) for key, value in request.data.items()}
         gateway = HttpPayFastVerificationGateway()
-        if str(payload.get("m_payment_id", "")).startswith("LCB-"):
+        local_reference = str(payload.get("m_payment_id", ""))
+        if local_reference.startswith("LCB-"):
             result = process_live_class_notification(payload, gateway=gateway)
+        elif local_reference.startswith("VRQ-"):
+            result = process_video_request_notification(payload, gateway=gateway)
         else:
             result = process_payfast_notification(payload, gateway=gateway)
         if result.accepted:
