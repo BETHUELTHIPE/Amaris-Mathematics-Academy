@@ -15,7 +15,7 @@ permissions:
 jobs:
   authentic-sandbox-itn:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'af53e328e449530abf2f30b08299421cbbf23daf' && contains(github.event.head_commit.message, '[FIX_BOOKING_CALLBACKS:751393e8]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'db791747f3e1a8650ee48a09a0a14edff49d7a55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de]')
     environment: staging
     name: Eight real sandbox wallets and provider callbacks; isolated database
     runs-on: ubuntu-24.04
@@ -64,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 751393e8fdd4eba96cec354b013bb6654431068c
+          ref: ffbcc7de4313b74f0845af6de9ebfac5ed72dc3d
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
@@ -107,6 +107,7 @@ jobs:
           cd backend
           python manage.py migrate --noinput >/dev/null
           python manage.py check
+          python manage.py test --noinput --verbosity=1 content.test_payfast_itn_wire content.test_payments content.test_payfast_security content.test_payfast_configuration content.test_live_classes content.test_video_requests content.test_tutor_finance content.test_tutor_dashboard content.test_student_api content.test_invoice_archive content.test_booking_migration
           celery -A amaris_cms worker --loglevel=WARNING --queues=critical,default,notifications --concurrency=2 --hostname=acceptance@%h > /tmp/amaris-ci-worker.log 2>&1 &
           echo $! > /tmp/amaris-ci-worker.pid
           celery -A amaris_cms beat --loglevel=WARNING --pidfile=/tmp/amaris-ci-beat.pid --schedule=/tmp/amaris-ci-beat-schedule > /tmp/amaris-ci-beat.log 2>&1 &
@@ -230,7 +231,7 @@ jobs:
 
   deployed-staging-prerequisites:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'af53e328e449530abf2f30b08299421cbbf23daf' && contains(github.event.head_commit.message, '[FIX_BOOKING_CALLBACKS:751393e8]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'db791747f3e1a8650ee48a09a0a14edff49d7a55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de]')
     name: Real staging configuration, SMTP and asynchronous delivery prerequisites
     environment: production
     runs-on: ubuntu-24.04
@@ -332,7 +333,7 @@ jobs:
 
   approved-staging-student:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'af53e328e449530abf2f30b08299421cbbf23daf' && contains(github.event.head_commit.message, '[FIX_BOOKING_CALLBACKS:751393e8]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'db791747f3e1a8650ee48a09a0a14edff49d7a55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de]')
     name: Real approved staging student authentication
     environment: staging
     runs-on: ubuntu-24.04
@@ -347,11 +348,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib,json,os,urllib.error,urllib.request
+          import hashlib,json,os,re,urllib.error,urllib.request
           keys=("STAGING_TEST_STUDENT_EMAIL","STAGING_TEST_STUDENT_PASSWORD","STAGING_SUPABASE_PUBLISHABLE_KEY")
           missing=[k for k in keys if not os.environ.get(k)]
           if missing:raise SystemExit("BLOCK: missing protected staging keys: "+", ".join(missing))
           email=os.environ[keys[0]].strip().lower()
+          print("STUDENT_SECRET_EMAIL_SYNTAX_VALID="+str(bool(re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+",email))))
+          print("STUDENT_SECRET_MATCHES_APPROVED_TUTOR="+str(email=="bethuelmoukangwe30@gmail.com"))
           if hashlib.sha256(email.encode()).hexdigest()!="dff017c2f812483ad01fbb1988d70e420ffd574b53b88c51a1c97d6a4f314d8d":
               raise SystemExit("BLOCK: dedicated approved staging test-student identity mismatch")
           class NoRedirect(urllib.request.HTTPRedirectHandler):
