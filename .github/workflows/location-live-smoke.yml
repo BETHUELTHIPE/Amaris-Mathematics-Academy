@@ -13,6 +13,7 @@ jobs:
       image: mcr.microsoft.com/playwright/python:v1.62.0-noble
       options: --init --ipc=host --user 1001
     env:
+      LOCATION_LAYOUT_ONLY: 'true'
       LOCATION_SITE: https://amaris-mathematics-academy-staging-x4ax.onrender.com
       LOCATION_API: https://amaris-mathematics-academy-staging.onrender.com
     steps:

@@ -14,6 +14,24 @@ for path in ("/health/live/", "/health/ready/"):
         assert response.status == 200
     print("PASS backend " + path, flush=True)
 
+if os.getenv("LOCATION_LAYOUT_ONLY") == "true":
+    import json
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        for width in (320, 390, 412, 640, 834, 1440):
+            context = browser.new_context(viewport={"width": width, "height": 900})
+            context.route("**/*", lambda route: route.abort() if route.request.method == "POST" else route.continue_())
+            page = context.new_page()
+            page.goto(SITE + "/", wait_until="networkidle")
+            for section in page.locator(".home-shell > section").all():
+                section.scroll_into_view_if_needed()
+            page.evaluate("window.scrollTo(0,0)")
+            print("HOME_LAYOUT", width, json.dumps(page.locator(".home-shell > section").evaluate_all("nodes => nodes.map(e => ({classes:e.className, height:Math.round(e.getBoundingClientRect().height), top:Math.round(e.getBoundingClientRect().top+scrollY)}))")), flush=True)
+            page.screenshot(path=str(OUT / ("home-layout-" + str(width) + ".png")), full_page=True)
+            context.close()
+        browser.close()
+    raise SystemExit(0)
+
 with sync_playwright() as p:
     for engine in ("chromium", "firefox", "webkit"):
         browser = getattr(p, engine).launch()
