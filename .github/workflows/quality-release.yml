@@ -361,6 +361,17 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           scanners: vuln
+      - name: Report dependency findings without weakening the vulnerability gate
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path("trivy-results.sarif").read_text())
+          for run in report.get("runs",[]):
+              for finding in run.get("results",[]):
+                  print(json.dumps({"rule":finding.get("ruleId"),"level":finding.get("level"),"message":finding.get("message",{}).get("text","")}))
+          PY
       - name: Upload container scan results
         if: always() && hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
@@ -371,7 +382,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: amaris-backend-sbom
-          path: amaris-backend-sbom.cdx.json
+          path: |
+            amaris-backend-sbom.cdx.json
+            trivy-results.sarif
           if-no-files-found: error
           retention-days: 90
 
