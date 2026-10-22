@@ -1,3 +1,5 @@
+import { SCHOOL_GRADES, isSchoolProgramme } from "./school-curriculum.mjs";
+
 /**
  * Student-facing grade/level choices are independent of tutor availability.
  * Tutor-specific labels can be added without hiding the standard curriculum choices.
@@ -16,8 +18,8 @@ export const subjects = [
 
 /** @type {Record<string, readonly string[]>} */
 export const gradeLevelsByProgramme = {
-  caps: ["Grade 10", "Grade 11", "Grade 12"],
-  ieb: ["Grade 10", "Grade 11", "Grade 12"],
+  caps: SCHOOL_GRADES,
+  ieb: SCHOOL_GRADES,
   tvet: [
     "N2",
     "N3",
@@ -34,14 +36,17 @@ export const gradeLevelsByProgramme = {
 /**
  * @param {string} programme
  * @param {string[]} [offeredLevels]
+ * @param {string} [subject]
  * @returns {string[]}
  */
-export function getGradeLevels(programme, offeredLevels = []) {
+export function getGradeLevels(programme, offeredLevels = [], subject = "") {
   const standard = gradeLevelsByProgramme[programme];
   if (!standard) return [];
   const additional = offeredLevels
     .filter((item) => typeof item === "string" && item.trim())
     .map((item) => item.trim())
     .sort((a, b) => a.localeCompare(b, "en-ZA", { numeric: true }));
-  return [...new Set([...standard, ...additional])];
+  return [...new Set([...standard, ...additional])].filter(level =>
+    !(isSchoolProgramme(programme) && subject === "mathematical_literacy" && ["Grade 7", "Grade 8", "Grade 9"].includes(level)),
+  );
 }

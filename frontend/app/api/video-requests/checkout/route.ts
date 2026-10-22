@@ -1,3 +1,4 @@
+import { resolveCurriculumFields } from "@/lib/school-curriculum.mjs";
 import { NextRequest, NextResponse } from "next/server";
 import { getStudentIdentity } from "@/lib/auth";
 import { createStudentVideoRequestCheckout } from "@/lib/student-api";
@@ -27,6 +28,9 @@ export async function POST(request: NextRequest) {
       );
     }
     const formData = await request.formData();
+    const selection = resolveCurriculumFields(formData);
+    formData.set("level", selection.level);
+    formData.set("topic", selection.topic);
     const checkout = await createStudentVideoRequestCheckout(formData);
     return NextResponse.json(checkout, {
       status: 201,
