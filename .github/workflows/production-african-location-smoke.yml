@@ -1,0 +1,32 @@
+name: Production African Location Browser Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-african-location-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-location-production-smoke
+  cancel-in-progress: false
+
+jobs:
+  readonly-location-forms:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble
+      options: --init --ipc=host
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install matching Playwright Python client
+        run: python -m pip install playwright==1.62.0
+      - name: Check real location dropdowns with GET-only Chromium; block all POSTs
+        run: python -u scripts/release/verify_live_african_location_forms.py
