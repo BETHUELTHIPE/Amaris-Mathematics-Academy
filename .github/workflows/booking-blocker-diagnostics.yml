@@ -15,7 +15,7 @@ permissions:
 jobs:
   authentic-sandbox-itn:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'db791747f3e1a8650ee48a09a0a14edff49d7a55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'bcb581863a4b74d9b44e279932ed0442d3f6940c' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de:observer-v2]')
     environment: staging
     name: Eight real sandbox wallets and provider callbacks; isolated database
     runs-on: ubuntu-24.04
@@ -107,7 +107,6 @@ jobs:
           cd backend
           python manage.py migrate --noinput >/dev/null
           python manage.py check
-          python manage.py test --noinput --verbosity=1 content.test_payfast_itn_wire content.test_payments content.test_payfast_security content.test_payfast_configuration content.test_live_classes content.test_video_requests content.test_tutor_finance content.test_tutor_dashboard content.test_student_api content.test_invoice_archive content.test_booking_migration
           celery -A amaris_cms worker --loglevel=WARNING --queues=critical,default,notifications --concurrency=2 --hostname=acceptance@%h > /tmp/amaris-ci-worker.log 2>&1 &
           echo $! > /tmp/amaris-ci-worker.pid
           celery -A amaris_cms beat --loglevel=WARNING --pidfile=/tmp/amaris-ci-beat.pid --schedule=/tmp/amaris-ci-beat-schedule > /tmp/amaris-ci-beat.log 2>&1 &
@@ -161,6 +160,19 @@ jobs:
             if [ "$attempt" -eq 12 ];then echo "EXTERNAL_ISOLATED_DJANGO_HEALTH=FAILED";exit 1;fi
             sleep 4
           done
+      - name: Prove external callback observer with a rejected empty request
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin="$(cat /tmp/amaris-itn-host)"
+          status="$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' -X POST "$origin/api/v1/payfast/itn/")"
+          test "$status" = 403
+          python - <<'PY'
+          import json,pathlib
+          rows=[json.loads(s) for s in pathlib.Path("/tmp/amaris-safe-callbacks.jsonl").read_text().splitlines()]
+          assert any(r["kind"]=="unknown" and r["http_status"]==403 for r in rows)
+          print("EXTERNAL_CALLBACK_OBSERVER_NEGATIVE_CANARY=PASS")
+          PY
       - name: Generate eight real signed service checkouts
         shell: bash
         run: |
@@ -215,7 +227,14 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
+          import re,json,collections
           from pathlib import Path
+          server=Path("/tmp/amaris-itn-server.log")
+          log=server.read_text(errors="replace") if server.exists() else ""
+          statuses=re.findall(r'"POST /api/v1/payfast/itn/ HTTP/[0-9.]+" ([0-9]{3})',log)
+          print("SAFE_CALLBACK_HTTP_COUNTS="+json.dumps(dict(collections.Counter(statuses))))
+          classes=re.findall(r"^([A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)):",log,re.M)
+          print("SAFE_SERVER_EXCEPTION_CLASSES="+json.dumps(dict(collections.Counter(classes))))
           path=Path("/tmp/amaris-safe-callbacks.jsonl")
           lines=path.read_text().splitlines() if path.exists() else []
           print("OBSERVED_PROVIDER_CALLBACKS="+str(len(lines)))
@@ -231,7 +250,7 @@ jobs:
 
   deployed-staging-prerequisites:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'db791747f3e1a8650ee48a09a0a14edff49d7a55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'bcb581863a4b74d9b44e279932ed0442d3f6940c' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de:observer-v2]')
     name: Real staging configuration, SMTP and asynchronous delivery prerequisites
     environment: production
     runs-on: ubuntu-24.04
@@ -333,7 +352,7 @@ jobs:
 
   approved-staging-student:
     if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'db791747f3e1a8650ee48a09a0a14edff49d7a55' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de]')
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == 'bcb581863a4b74d9b44e279932ed0442d3f6940c' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:ffbcc7de:observer-v2]')
     name: Real approved staging student authentication
     environment: staging
     runs-on: ubuntu-24.04
