@@ -27,8 +27,9 @@ The frontend booking change is a separate PR based on the live-student release b
 
 ## Render provisioning and live-worker verification
 
-The existing `render.yaml` already defines the production Redis broker/cache and the two **paid Starter background-worker services**:
-`amaris-production-notification-worker` and `amaris-production-beat`. A repository YAML declaration does not mean the services are running. In Render, use the **existing linked Blueprint's Sync action** if one exists; don't blindly create a second Blueprint because it can duplicate services and incur charges. Verify the resource list and billing before approving the sync. The currently available Render connector can inspect and deploy existing services, but it cannot provision a new background worker or trigger Blueprint sync.
+The dedicated `render-notifications.yaml` defines only these **two paid Starter background-worker services**: `amaris-production-notification-worker` and `amaris-production-beat`. It references the **existing** `amaris-production-web` Django application and `amaris-production-broker` Redis key-value store, without configuring or duplicating them. Use **Render Dashboard → New → Blueprint**, select this repository and production release branch, and set the Blueprint file path to **`render-notifications.yaml`**. Review the preview carefully: only these **two** worker services should be newly created, with no production web/Redis changes. Review and approve the additional Starter plan charges before selecting Apply. Do **not** sync the repository-wide `render.yaml` for this task; it also declares other production resources.
+
+A repository YAML declaration does not mean the workers are running. The available Render connector can inspect and redeploy *existing* workers, but it cannot create background workers or trigger a Blueprint sync. Do not treat Blueprint creation or a green GitHub test as proof of successful real email delivery.
 
 The notification worker uses the `notifications` Celery queue. Beat is the *only* scheduler and publishes the existing 30-second booking-confirmation and 60-second booking-reminder jobs. The production Redis broker `amaris-production-broker` already exists; never create an additional one.
 
