@@ -1,12 +1,9 @@
 from datetime import timedelta
-from zoneinfo import ZoneInfo
 from html import escape
 
 from botocore.exceptions import BotoCoreError, ClientError
 from celery import shared_task
 from django.apps import apps
-from django.conf import settings
-from django.contrib.auth import get_user_model
 from django.core.files.storage import storages
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
@@ -139,8 +136,8 @@ def _live_class_brand() -> tuple[str, str, str]:
 
 
 def _booking_when(booking: LiveClassBooking) -> str:
-    starts_at = timezone.localtime(booking.slot.starts_at, ZoneInfo("Africa/Johannesburg"))
-    return starts_at.strftime("%A, %d %B %Y at %H:%M SAST")
+    starts_at = timezone.localtime(booking.slot.starts_at)
+    return starts_at.strftime("%A, %d %B %Y at %H:%M")
 
 
 def _send_live_class_message(
@@ -150,8 +147,6 @@ def _send_live_class_message(
     heading: str,
     body_lines: list[str],
     attach_invoice: bool = False,
-    recipients: list[str] | None = None,
-    hide_recipients: bool = False,
 ) -> None:
     name, email, phone = _live_class_brand()
     text = "\n".join(
@@ -181,8 +176,7 @@ def _send_live_class_message(
         subject=subject,
         body=text,
         from_email=None,
-        to=[] if hide_recipients else (recipients if recipients is not None else [booking.student.email]),
-        bcc=recipients if hide_recipients else None,
+        to=[booking.student.email],
     )
     message.attach_alternative(html, "text/html")
     if attach_invoice and booking.invoice_number:
@@ -214,115 +208,42 @@ def deliver_live_class_confirmation(_self) -> int:
     return delivered
 
 
-def _live_class_admin_recipients() -> list[str]:
-    # Notify both configured school operators and active Django superusers.
-    # BCC prevents exposing administrators' personal email addresses.
-    configured = getattr(settings, "BOOKING_ADMIN_NOTIFICATION_EMAILS", ())
-    if isinstance(configured, str):
-        configured = configured.replace(";", ",").split(",")
-    addresses = [email for email in configured if email]
-    addresses.extend(
-        get_user_model().objects.filter(is_active=True, is_superuser=True)
-        .exclude(email="")
-        .values_list("email", flat=True)
-    )
-    addresses.append(_live_class_brand()[1])
-    return sorted({address.strip().lower() for address in addresses if address and address.strip()})
-
-
-def _live_class_staff_booking_details(booking: LiveClassBooking) -> list[str]:
-    ends_at = timezone.localtime(booking.slot.ends_at, ZoneInfo("Africa/Johannesburg"))
-    duration = (booking.slot.ends_at - booking.slot.starts_at).total_seconds() / 3600
-    return [
-        f"Booking reference: {booking.reference}",
-        "Payment status: VERIFIED / CONFIRMED",
-        f"Student: {booking.student.first_name} {booking.student.last_name}",
-        f"Student email: {booking.student.email}",
-        f"Student phone: {booking.student.mobile or 'Not provided'}",
-        f"Tutor: {booking.slot.tutor_display_name}",
-        f"Programme: {booking.get_programme_display()}",
-        f"Subject: {booking.get_subject_display()}",
-        f"Grade or level: {booking.level}",
-        f"Topic or chapter: {booking.topic}",
-        f"Start: {_booking_when(booking)}",
-        f"End: {ends_at:%A, %d %B %Y at %H:%M} SAST",
-        f"Session length: {duration:g} hour(s)",
-        f"Total paid: R{booking.amount:.2f} {booking.currency}",
-        f"Invoice number: {booking.invoice_number}",
-        f"Private Zoom link: {booking.slot.zoom_join_url}",
-    ]
-
-
 def _deliver_one_live_class_confirmation() -> bool:
-    # Each destination has its own durable marker. An SMTP outage for the tutor
-    # or admin must never cause duplicate student invoices on the next retry.
-    stages = (
-        ("confirmation_sent_at", "student"),
-        ("tutor_confirmation_sent_at", "tutor"),
-        ("admin_confirmation_sent_at", "admin"),
-    )
-    for sent_field, audience in stages:
-        with transaction.atomic():
-            bookings = (
-                LiveClassBooking.objects.select_for_update(skip_locked=True)
-                .select_related("student", "slot", "slot__tutor")
-                .filter(
-                    status=LiveClassBooking.Status.CONFIRMED,
-                    **{f"{sent_field}__isnull": True},
-                    **({"staff_notification_required": True} if audience != "student" else {}),
-                )
-                .order_by("paid_at", "created_at")
+    with transaction.atomic():
+        booking = (
+            LiveClassBooking.objects.select_for_update(skip_locked=True)
+            .select_related("student", "slot", "slot__tutor")
+            .filter(
+                status=LiveClassBooking.Status.CONFIRMED,
+                confirmation_sent_at__isnull=True,
             )
-            if audience == "tutor":
-                # Keep a missing tutor address visible as an undelivered
-                # notification; alert the admin rather than marking it sent.
-                bookings = bookings.exclude(slot__tutor__email="")
-            booking = bookings.first()
-            if booking is None:
-                continue
+            .order_by("paid_at", "created_at")
+            .first()
+        )
+        if booking is None:
+            return False
 
-            if audience == "student":
-                _send_live_class_message(
-                    booking,
-                    subject=f"Amaris live class confirmed — {booking.reference}",
-                    heading="Your Zoom live class is confirmed",
-                    body_lines=[
-                        f"Booking reference: {booking.reference}",
-                        f"Programme: {booking.get_programme_display()}",
-                        f"Subject: {booking.get_subject_display()}",
-                        f"Level: {booking.level}",
-                        f"Topic: {booking.topic}",
-                        f"Tutor: {booking.slot.tutor_display_name}",
-                        f"Date and time: {_booking_when(booking)}",
-                        f"Zoom link: {booking.slot.zoom_join_url}",
-                        f"Invoice: {booking.invoice_number}",
-                        f"Amount paid: R{booking.amount:.2f}",
-                    ],
-                    attach_invoice=True,
-                )
-            elif audience == "tutor":
-                _send_live_class_message(
-                    booking,
-                    subject=f"New paid Amaris lesson — {booking.reference}",
-                    heading="A student has booked a lesson with you",
-                    body_lines=_live_class_staff_booking_details(booking),
-                    recipients=[booking.slot.tutor.email],
-                )
-            else:
-                _send_live_class_message(
-                    booking,
-                    subject=f"New paid Amaris booking for Django Admin — {booking.reference}",
-                    heading="New verified student lesson booking",
-                    body_lines=_live_class_staff_booking_details(booking)
-                    + (["Action needed: tutor has no email address."] if not booking.slot.tutor.email else []),
-                    recipients=_live_class_admin_recipients(),
-                    hide_recipients=True,
-                )
+        _send_live_class_message(
+            booking,
+            subject=f"Amaris live class confirmed — {booking.reference}",
+            heading="Your Zoom live class is confirmed",
+            body_lines=[
+                f"Programme: {booking.get_programme_display()}",
+                f"Subject: {booking.get_subject_display()}",
+                f"Level: {booking.level}",
+                f"Topic: {booking.topic}",
+                f"Tutor: {booking.slot.tutor_display_name}",
+                f"Date and time: {_booking_when(booking)}",
+                f"Zoom link: {booking.slot.zoom_join_url}",
+                f"Invoice: {booking.invoice_number}",
+                f"Amount paid: R{booking.amount:.2f}",
+            ],
+            attach_invoice=True,
+        )
+        booking.confirmation_sent_at = timezone.now()
+        booking.save(update_fields=("confirmation_sent_at", "updated_at"))
+        return True
 
-            setattr(booking, sent_field, timezone.now())
-            booking.save(update_fields=(sent_field, "updated_at"))
-            return True
-    return False
 
 @shared_task(
     bind=True,
