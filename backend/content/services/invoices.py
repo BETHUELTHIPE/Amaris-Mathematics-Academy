@@ -164,10 +164,19 @@ def archive_invoice_pdf(
     document = render_invoice_pdf(invoice)
     invoice_number, _, _ = _invoice_details(invoice)
     key = student_invoice_key(invoice.student.supabase_user_id, invoice_number)
+    private_storage = storage or storages["student_private"]
     try:
-        saved = storages["student_private"].save(key, ContentFile(document))
+        # Booking recipients share one canonical private PDF; never generate an
+        # alternative object key for the same verified invoice on retries.
+        if private_storage.exists(key):
+            with private_storage.open(key, "rb") as archived:
+                existing = archived.read()
+            if not existing.startswith(b"%PDF-"):
+                raise OSError("Previously archived booking invoice is not a PDF.")
+            return existing
+        saved = private_storage.save(key, ContentFile(document))
+        if saved != key:
+            raise OSError("Student invoice archive did not use the expected object key.")
     except Exception as exc:
         raise OSError("Student invoice archive is unavailable.") from exc
-    if saved != key:
-        raise OSError("Student invoice archive did not use the expected object key.")
     return document

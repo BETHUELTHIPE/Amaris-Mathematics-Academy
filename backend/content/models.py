@@ -615,6 +615,8 @@ class LiveClassBooking(TimeStampedModel):
     gateway_verified_at = models.DateTimeField(blank=True, null=True)
     invoice_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
     confirmation_sent_at = models.DateTimeField(blank=True, null=True)
+    tutor_confirmation_sent_at = models.DateTimeField(blank=True, null=True)
+    admin_confirmation_sent_at = models.DateTimeField(blank=True, null=True)
     reminder_sent_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
