@@ -510,9 +510,7 @@ def _is_notifications_schedule_entry(entry: object) -> bool:
 
 if env_bool("CELERY_NOTIFICATIONS_ONLY_BEAT", False):
     CELERY_BEAT_SCHEDULE = {
-        name: entry
-        for name, entry in CELERY_BEAT_SCHEDULE.items()
-        if _is_notifications_schedule_entry(entry)
+        name: entry for name, entry in CELERY_BEAT_SCHEDULE.items() if _is_notifications_schedule_entry(entry)
     }
 
 
