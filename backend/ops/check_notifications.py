@@ -72,8 +72,7 @@ def main() -> int:
         _require(bool(settings.EMAIL_HOST_USER), "EMAIL_HOST_USER is not configured.")
         _require(bool(settings.EMAIL_HOST_PASSWORD), "EMAIL_HOST_PASSWORD is not configured.")
         _require(
-            bool(settings.DEFAULT_FROM_EMAIL)
-            and "example.invalid" not in settings.DEFAULT_FROM_EMAIL.lower(),
+            bool(settings.DEFAULT_FROM_EMAIL) and "example.invalid" not in settings.DEFAULT_FROM_EMAIL.lower(),
             "DEFAULT_FROM_EMAIL must be a real verified sending address.",
         )
         # SMTP handshake and authentication only; never sends any email.
