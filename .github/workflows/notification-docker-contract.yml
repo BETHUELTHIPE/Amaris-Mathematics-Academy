@@ -36,7 +36,7 @@ jobs:
               assert not service.get("ports"), "Notifications must not expose HTTP/TCP ports"
               assert service.get("read_only") is True
               assert service["restart"] == "unless-stopped"
-              assert service.get("mem_limit", 0) <= 536870912
+              assert str(service.get("mem_limit", "")) in {"512m", "256m", "536870912", "268435456"}
           assert "check_notifications.py --role notifications" in " ".join(worker["command"])
           assert "check_notifications.py --role beat" in " ".join(beat["command"])
           assert "--queues=notifications" in " ".join(worker["command"])
