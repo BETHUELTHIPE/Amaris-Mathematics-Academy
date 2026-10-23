@@ -39,6 +39,15 @@ def main() -> int:
         bool(broker) and broker != "redis://redis:6379/0",
         "The production Celery broker is not configured.",
     )
+    if os.getenv("AMARIS_EXTERNAL_WORKER", "").lower() in ("true", "1", "yes"):
+        _require(
+            broker.startswith("rediss://"),
+            "Remote notification containers require a TLS-authenticated rediss:// broker.",
+        )
+        _require(
+            settings.CELERY_RESULT_BACKEND.startswith("rediss://"),
+            "Remote notification containers require a TLS-authenticated rediss:// result backend.",
+        )
 
     # Prevent starting against the old booking schema or a wrong database.
     with connection.cursor() as cursor:
