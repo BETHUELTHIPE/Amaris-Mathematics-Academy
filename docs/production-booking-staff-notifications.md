@@ -2,6 +2,24 @@
 
 The frontend booking change is a separate PR based on the live-student release branch. **Deploy this backend before the frontend**, because the new tutor selector requires `tutor_id` from `GET /live-classes/slots/`.
 
+## Preferred zero-additional-service-cost deployment: existing Render web instance
+
+**Finding, verified in the connected account:** Production Django `amaris-production-web` already runs as **one paid Standard Render instance** (2 GB RAM limit), with recent usage of about 130–160 MB; the private `amaris-production-broker` already exists. No extra worker, scheduler, host, external Redis allowlist, or newly billed Render service is required if the existing instance can reliably support the load.
+
+The backend now has an **opt-in Gunicorn-master supervisor** in `amaris_cms/colocated_notifications.py`. With `AMARIS_COLOCATE_NOTIFICATIONS=true` set **only on the existing production Django web service**, its `gunicorn.conf.py` starts exactly one Celery worker (`notifications` queue, prefork concurrency 1) and one Beat scheduler after the web listener is ready. Each child requires the existing `ops/check_notifications.py` preflight: correct database migration `0017`, broker access and Beat routing, plus authenticated SMTP for the worker. The scheduler starts **only after the notification worker passes its checks**. A short-lived **private Redis lease** elects one Beat leader during rolling web deployments to avoid duplicate schedulers. The supervisor restarts failed children after a backoff without shutting down the student website. Child processes are terminated on Gunicorn shutdown.
+
+This implementation is **disabled by default**, and MUST NOT be enabled before the genuine production Supabase backup/restore and staging PayFast sandbox email acceptance. It shares CPU/RAM with Django; monitor Gunicorn latency, memory, email queue lag, and errors. Keep this web service at **exactly one instance** unless the singleton-leader and capacity controls have been independently load-tested. Its no-extra-charge operation is not a promise of limitless capacity, exactly-once SMTP delivery or zero infrastructure cost: it reuses the already-paid Standard web plan.
+
+**Release procedure:**
+1. Prove the production Supabase backup and isolated restore; test the additive migration `0017` safely on staging, and pass backend CI/payment regression checks.
+2. Verify the existing web service's production `CELERY_BROKER_URL` points at the **private Render broker**, and securely set `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, `EMAIL_PORT` and TLS options. Never disclose SMTP secrets.
+3. Merge and deploy backend PR #336 to `production-release-20260923`, verify migration `0017` is applied and Django serves healthy requests. Leave the opt-in switch off during this step.
+4. On **existing** Render web service `srv-dapn6b3tqb8s73d3r7n0`, set `AMARIS_COLOCATE_NOTIFICATIONS=true`. This changes only that service's runtime configuration; it does not provision or bill new services. Redeploy that same service once, inspect logs for `Amaris notifications started` and `Amaris beat started`, and verify queue/Beat lease health.
+5. Perform one verified synthetic PayFast **sandbox** booking through staging, check student/tutor/admin email inboxes and student-only PDF invoice, confirm 30-minute reminder and non-duplication. Only then deploy frontend PR #335.
+6. If web latency, memory, worker restarts or duplicate emails increase, set `AMARIS_COLOCATE_NOTIFICATIONS=false` and redeploy the existing service. The Django student website should remain available when a sidecar fails; treat lost emails as a critical operations issue and remediate before advertising 24/7 notifications.
+
+**Deployment status:** No switch was enabled, no production backup/restore was completed here, and the migration has not been applied. Both PRs remain draft and production still uses the previous booking code.
+
 ## API and recipients
 
 - `GET /live-classes/slots/?tutor_id=<id>` optionally limits availability to a tutor with published free slots. The response includes `tutor_id`, not the private Zoom link.
