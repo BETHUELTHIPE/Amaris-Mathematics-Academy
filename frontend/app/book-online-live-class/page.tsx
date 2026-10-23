@@ -27,6 +27,17 @@ function queryValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
+function inPreferredTime(startsAt: string, preference: string): boolean {
+  if (preference === "any") return true;
+  const hour = Number(new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit", hourCycle: "h23", timeZone: "Africa/Johannesburg",
+  }).format(new Date(startsAt)));
+  if (preference === "morning") return hour >= 5 && hour < 12;
+  if (preference === "afternoon") return hour >= 12 && hour < 17;
+  if (preference === "evening") return hour >= 17 && hour < 22;
+  return hour >= 22 || hour < 5;
+}
+
 function formatClassTime(value: string): string {
   return new Intl.DateTimeFormat("en-ZA", {
     dateStyle: "full",
@@ -45,6 +56,9 @@ export default async function BookOnlineLiveClassPage({
   const subject = queryValue(params.subject);
   const level = queryValue(params.level) === CUSTOM_CHOICE ? queryValue(params.customLevel).trim().slice(0, 80) : queryValue(params.level);
   const topic = (queryValue(params.topic) === CUSTOM_CHOICE ? queryValue(params.customTopic) : queryValue(params.topic)).trim().slice(0, 180);
+  const tutorId = queryValue(params.tutor).trim();
+  const requestedTime = queryValue(params.time);
+  const timePreference = ["morning", "afternoon", "evening", "overnight"].includes(requestedTime) ? requestedTime : "any";
 
   const validProgramme = programmes.some(([value]) => value === programme)
     ? programme
@@ -69,8 +83,19 @@ export default async function BookOnlineLiveClassPage({
   );
   // Never treat a stale or cross-programme grade as a valid selection.
   const chosenLevel = levels.includes(level) || (validProgramme && !isSchoolProgramme(validProgramme) && level.length > 0 && level.length <= 80) ? level : "";
-  const matchingSlots = chosenLevel
+  const levelSlots = chosenLevel
     ? availableSlots.filter((slot) => slot.level === chosenLevel)
+    : availableSlots;
+  const tutors = Array.from(
+    new Map(levelSlots.map((slot) => [slot.tutor_id, slot.tutor] as const)),
+    ([id, name]) => ({ id, name }),
+  ).sort((a, b) => a.name.localeCompare(b.name));
+  const selectedTutorId = tutors.some((tutor) => String(tutor.id) === tutorId) ? tutorId : "";
+  const matchingSlots = chosenLevel
+    ? levelSlots.filter((slot) =>
+        (!selectedTutorId || String(slot.tutor_id) === selectedTutorId)
+        && inPreferredTime(slot.starts_at, timePreference),
+      )
     : [];
 
   const readyForSlot = Boolean(
@@ -87,8 +112,10 @@ export default async function BookOnlineLiveClassPage({
             Choose your programme, topic and tutor time.
           </h1>
           <p className="mt-5 max-w-3xl text-base leading-8 text-[#60708a]">
-            Tutors offer 1 to 24-hour Zoom sessions at <strong>R250 per hour</strong>.
-            CAPS and IEB Mathematics support Grades 7–12, with a syllabus guide and chapter choices for each grade. Your booking is confirmed only after PayFast verifies the payment.
+            Our online booking desk is open <strong>24 hours a day, seven days a week</strong>.
+            Choose any tutor with an available slot, including early mornings, evenings and overnight.
+            CAPS and IEB Mathematics cover Grades 7–12. Sessions cost <strong>R250 per hour</strong>,
+            and your place is confirmed only after PayFast verifies payment.
           </p>
         </div>
       </section>
@@ -98,8 +125,8 @@ export default async function BookOnlineLiveClassPage({
           {[
             ["1", "Choose programme", "CAPS, IEB, TVET or University"],
             ["2", "Choose subject", "Mathematics or Mathematical Literacy"],
-            ["3", "Choose level & topic", "Then select an available tutor time"],
-            ["4", "Pay & receive Zoom details", "Hourly pricing, confirmation, invoice and 30-minute reminder"],
+            ["3", "Choose level, topic & tutor", "Find your ideal morning, daytime or overnight slot"],
+            ["4", "Pay & receive your class details", "Student, tutor and admin notifications after verified payment"],
           ].map(([number, title, detail]) => (
             <li key={number} className="rounded-2xl border border-[#dce4ef] bg-white p-5">
               <span className="grid size-9 place-items-center rounded-full bg-[#0b2a5b] text-sm font-bold text-white">
@@ -111,11 +138,19 @@ export default async function BookOnlineLiveClassPage({
           ))}
         </ol>
 
+        <div className="mt-8 rounded-2xl border border-[#bfd6ff] bg-[#edf3ff] p-5 text-sm leading-7 text-[#0b2a5b]">
+          <strong>Learning never closes at Amaris.</strong> Select your preferred tutor and a time that fits your life,
+          whether you work during the day or at night. Times are shown in South African Standard Time (SAST).
+          A slot is bookable only while that tutor is actually available.
+        </div>
         <LiveClassBookingFilters
           initialProgramme={validProgramme}
           initialSubject={validSubject}
           initialLevel={chosenLevel}
           initialTopic={topic}
+          initialTutorId={selectedTutorId}
+          initialTimePreference={timePreference}
+          tutors={tutors}
           offeredLevels={availableSlots.map((slot) => slot.level)}
         />
 
@@ -140,7 +175,7 @@ export default async function BookOnlineLiveClassPage({
             </div>
           ) : matchingSlots.length === 0 ? (
             <div className="mt-5 rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-6 text-sm leading-7 text-[#765314]">
-              No open tutor slot currently matches this selection. Choose another grade/level or check again later.
+              No tutor slot matches these choices just now. Try “Any available tutor” or “Any time”, or check back when new daytime and overnight slots are published.
             </div>
           ) : (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -152,6 +187,7 @@ export default async function BookOnlineLiveClassPage({
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-sm font-semibold text-[#1f5bbd]">{slot.tutor}</p>
+                        {slot.id === matchingSlots[0]?.id && <p className="mt-1 text-xs font-semibold text-[#13715f]">Earliest matching class</p>}
                         <h3 className="mt-2 text-xl font-semibold">{slot.level} · {slot.subject_label}</h3>
                       </div>
                       <span className="rounded-full bg-[#daf5ec] px-3 py-1 text-xs font-bold text-[#13715f]">
@@ -161,7 +197,7 @@ export default async function BookOnlineLiveClassPage({
                     <dl className="mt-5 grid gap-3 text-sm text-[#60708a]">
                       <div className="flex items-start gap-3">
                         <CalendarDays className="mt-0.5 size-4 shrink-0 text-[#1f5bbd]" />
-                        <div><dt className="sr-only">Date and time</dt><dd>{formatClassTime(slot.starts_at)}</dd></div>
+                        <div><dt className="sr-only">Date and time</dt><dd>{formatClassTime(slot.starts_at)} SAST</dd></div>
                       </div>
                       <div className="flex items-start gap-3">
                         <Clock3 className="mt-0.5 size-4 shrink-0 text-[#1f5bbd]" />
@@ -188,7 +224,7 @@ export default async function BookOnlineLiveClassPage({
         <section className="mt-10 grid gap-4 md:grid-cols-3">
           {[
             [CreditCard, "Secure payment", "The server calculates R250 per selected hour; PayFast must verify the total."],
-            [Mail, "Confirmation & invoice", "A confirmation email with your class details and invoice is sent after verification."],
+            [Mail, "Everyone is informed", "After verified payment, you receive your invoice and Zoom details; your tutor and the Django admin team receive the full booking details."],
             [CheckCircle2, "30-minute reminder", "A scheduled reminder includes your tutor, start time and Zoom link."],
           ].map(([Icon, title, detail]) => {
             const C = Icon as typeof CreditCard;
