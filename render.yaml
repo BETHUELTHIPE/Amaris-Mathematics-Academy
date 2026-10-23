@@ -117,22 +117,6 @@ services:
         sync: false
       - key: SUPABASE_S3_SECRET_ACCESS_KEY
         sync: false
-      # Shared SMTP sender configuration for the private notification worker.
-      # Values are entered in Render and never committed to source control.
-      - key: EMAIL_HOST
-        sync: false
-      - key: EMAIL_HOST_USER
-        sync: false
-      - key: EMAIL_HOST_PASSWORD
-        sync: false
-      - key: DEFAULT_FROM_EMAIL
-        sync: false
-      - key: EMAIL_PORT
-        value: "587"
-      - key: EMAIL_USE_TLS
-        value: "true"
-      - key: EMAIL_USE_SSL
-        value: "false"
 
   - type: worker
     name: amaris-production-critical-worker
@@ -218,10 +202,7 @@ services:
     branch: production-release-20260923
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: >-
-      python ops/check_notifications.py --role notifications &&
-      exec celery -A amaris_cms worker --loglevel=INFO
-      --queues=notifications --concurrency=1 --events --hostname=notifications@%h
+    startCommand: celery -A amaris_cms worker --loglevel=INFO --queues=notifications --concurrency=2 --events --hostname=notifications@%h
     autoDeployTrigger: off
     envVars:
       - key: PYTHON_VERSION
@@ -284,10 +265,7 @@ services:
       - key: EMAIL_BACKEND
         value: django.core.mail.backends.smtp.EmailBackend
       - key: EMAIL_HOST
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: EMAIL_HOST
+        sync: false
       - key: EMAIL_PORT
         value: "587"
       - key: VIDEO_REQUEST_DAILY_CAPACITY
@@ -295,24 +273,15 @@ services:
       - key: VIDEO_REQUEST_ETA_RANGE_DAYS
         value: "2"
       - key: EMAIL_HOST_USER
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: EMAIL_HOST_USER
+        sync: false
       - key: EMAIL_HOST_PASSWORD
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: EMAIL_HOST_PASSWORD
+        sync: false
       - key: EMAIL_USE_TLS
         value: "true"
       - key: EMAIL_USE_SSL
         value: "false"
       - key: DEFAULT_FROM_EMAIL
-        fromService:
-          type: web
-          name: amaris-production-web
-          envVarKey: DEFAULT_FROM_EMAIL
+        sync: false
 
   - type: worker
     name: amaris-production-beat
@@ -323,10 +292,7 @@ services:
     branch: production-release-20260923
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: >-
-      python ops/check_notifications.py --role beat &&
-      exec celery -A amaris_cms beat --loglevel=INFO
-      --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
+    startCommand: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
     autoDeployTrigger: off
     envVars:
       - key: PYTHON_VERSION
