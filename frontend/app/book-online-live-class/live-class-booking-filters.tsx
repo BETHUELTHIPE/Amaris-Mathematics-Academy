@@ -54,7 +54,7 @@ export function LiveClassBookingFilters(props: Props) {
         <p className="mt-2 text-xs leading-5 text-[#60708a]">Early-morning and overnight classes are welcome when a tutor has opened a slot.</p>
       </div>
       <p className="text-xs leading-6 text-[#60708a] lg:col-span-2">
-        Choose your grade, chapter and preferred tutor. You can book at any hour, subject to a tutor's published availability. Zoom details are kept private until payment is verified.
+        Choose your grade, chapter and preferred tutor. You can book at any hour, subject to a tutor&apos;s published availability. Zoom details are kept private until payment is verified.
       </p>
       <div className="flex flex-wrap gap-3 lg:col-span-2">
         <button type="submit" className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#0b2a5b] px-7 py-3 font-bold text-white">
