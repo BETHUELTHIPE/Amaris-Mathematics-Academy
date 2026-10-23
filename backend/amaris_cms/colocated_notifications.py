@@ -123,9 +123,7 @@ class NotificationSupervisor:
                 socket_connect_timeout=3,
                 socket_timeout=3,
             )
-            lease = redis.lock(
-                BEAT_LOCK_KEY, timeout=BEAT_LEASE_SECONDS, blocking=False, thread_local=False
-            )
+            lease = redis.lock(BEAT_LOCK_KEY, timeout=BEAT_LEASE_SECONDS, blocking=False, thread_local=False)
             if lease.acquire(blocking=False):
                 self.beat_lease = lease
                 return True
