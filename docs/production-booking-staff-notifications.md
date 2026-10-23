@@ -25,18 +25,41 @@ The frontend booking change is a separate PR based on the live-student release b
 
 **Current state:** Code prepared in a draft PR only. No production database changes, actual payments or external confirmation emails were performed.
 
-## Render provisioning and live-worker verification
+## No new paid Render services: optimized two-container Docker option
 
-The dedicated `render-notifications.yaml` defines only these **two paid Starter background-worker services**: `amaris-production-notification-worker` and `amaris-production-beat`. It references the **existing** `amaris-production-web` Django application and `amaris-production-broker` Redis key-value store, without configuring or duplicating them. Use **Render Dashboard → New → Blueprint**, select this repository and production release branch, and set the Blueprint file path to **`render-notifications.yaml`**. Review the preview carefully: only these **two** worker services should be newly created, with no production web/Redis changes. Review and approve the additional Starter plan charges before selecting Apply. Do **not** sync the repository-wide `render.yaml` for this task; it also declares other production resources.
+**Cost boundary:** Render does not have a Free plan for background workers or cron jobs. The paid `render-notifications.yaml` Blueprint was removed. **Do not create new paid Render services** for this release. Instead `backend/compose.notifications.yml` describes exactly two containers which can run on an **existing always-on host** (e.g., an owned computer/VM with Docker Engine and Compose). There is no evidence of an available always-on Docker host connected to this account. An owned host consumes electricity/network resources and does not inherit a Render uptime/SLA.
 
-A repository YAML declaration does not mean the workers are running. The available Render connector can inspect and redeploy *existing* workers, but it cannot create background workers or trigger a Blueprint sync. Do not treat Blueprint creation or a green GitHub test as proof of successful real email delivery.
+Only these processes run:
 
-The notification worker uses the `notifications` Celery queue. Beat is the *only* scheduler and publishes the existing 30-second booking-confirmation and 60-second booking-reminder jobs. The production Redis broker `amaris-production-broker` already exists; never create an additional one.
+- `notification_worker` listens to the `notifications` Celery queue, with one prefork child, one prefetched message, a 512 MiB RAM cap, 0.50 CPU, recycling after 100 jobs or 220 MB child RSS, and a queue-specific healthcheck.
+- `celery_beat` runs exactly once, with a 256 MiB RAM cap, 0.25 CPU, and `CELERY_NOTIFICATIONS_ONLY_BEAT=true` so this lightweight instance publishes **only** jobs scheduled for the `notifications` queue. Do not run a second Beat against the same Redis database. The critical/default queues need their *separate existing* consumers if those tasks are still required; this setup does **not** replace a payment reconciliation worker.
 
-Before a worker or Beat instance accepts jobs, `python ops/check_notifications.py --role notifications` or `--role beat` verifies the production connection, applied migration `0017`, broker reachability and routing. The notification worker additionally authenticates to SMTP without sending a message. A non-zero result prevents Celery startup, rather than falsely reporting that emails are being processed.
+Both containers share one prebuilt Django image; they have no public ports, read-only root filesystems, writable ephemeral `/tmp` only, dropped Linux capabilities, a non-root image user, restart policies, and fail-closed connection checks.
 
-Configure the following **on the production Django web service**, in its secured Render environment, so the Blueprint can inherit them without duplicating secret values: `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, and `DEFAULT_FROM_EMAIL`. Confirm `EMAIL_PORT=587`, `EMAIL_USE_TLS=true`, and `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`. The Blueprint resolves the four shared values with `fromService`; do not store credentials in GitHub files or show them in logs. If a required web environment value is missing, create it there before syncing. Optionally set `BOOKING_ADMIN_NOTIFICATION_EMAILS` on the notification worker for additional managed staff inboxes.
+### Production network and secrets
 
-The rollout order remains: (1) verified genuine production Supabase backup and isolated restore, (2) successful backend CI and staging sandbox three-inbox acceptance, (3) merge backend PR and verify Django migration `0017`/production readiness, (4) provision and verify notification worker plus a **single** Beat instance, (5) inspect Render worker and Beat logs and Celery queue health, (6) merge/deploy live-students frontend PR, (7) verify a new sandbox-origin booking's three recipient emails and 30-minute reminder. Never send a real-money production payment merely to test delivery.
+The existing Render `amaris-production-broker` uses an **internal-only** IP allowlist as currently configured. A separate host **cannot** use its internal URL. If a fixed public IPv4 exists for the Docker host, an authorized administrator can permit **only that /32 address** in Render Key Value networking and use its authenticated TLS external `rediss://` URL. **Never** allow `0.0.0.0/0`. This alters the broker's network exposure and must be security-reviewed before making a change. Alternatively use an already-authorized private-network broker reachable by both the production Django app and the Docker host. Do not point Django and Beat at different Redis instances: the scheduler must publish to the same broker the worker consumes.
 
-Verification must distinguish an SMTP handshake from actual inbox delivery: check that the worker reports registered notification tasks, that Beat schedules them, that one verified synthetic booking produces distinct student/tutor/admin receipt timestamps, that a duplicate callback produces no additional email, and that the messages really appear in all three inboxes. Monitoring-only workers and passing synthetic CI restore tests are not substitutes.
+Place real connection credentials (not in Git) in `backend/.env.notifications` using `backend/.env.notifications.example` as a template; this secret file is Git-ignored. Configure a genuine production Supabase pooler URL, the production Django secret, the same broker/result backend as the web app, authenticated SMTP sender, and private S3 storage credentials for invoice archival. Pin filesystem permissions: `chmod 600 backend/.env.notifications`. Never print the file in logs or expose Redis credentials.
+
+### Startup on the already-existing Docker host
+
+First complete **real production Supabase backup + isolated restore**, apply Django migration `0017_liveclass_recipient_notifications` through the approved backend release, and verify `django_migrations`. Once the external broker and SMTP credentials are securely configured:
+
+```sh
+cd Amaris-Mathematics-Academy
+cp backend/.env.notifications.example backend/.env.notifications
+# Edit backend/.env.notifications securely and restrict its access.
+chmod 600 backend/.env.notifications
+docker compose -f backend/compose.notifications.yml config --quiet
+docker compose -f backend/compose.notifications.yml build
+docker compose -f backend/compose.notifications.yml up -d --no-build
+docker compose -f backend/compose.notifications.yml ps
+docker compose -f backend/compose.notifications.yml logs --tail=80 notification_worker celery_beat
+```
+
+The two startup preflights validate migration `0017`, Postgres, TLS Redis, queues and SMTP login before Celery starts (no test mail is sent). The shell checks must be run **on the intended permanent host**, not in GitHub Actions or an ephemeral session; no host is provisioned here. Prevent automatic restart of old duplicate Beat processes.
+
+Finally, perform a real PayFast **sandbox** booking with synthetic tutor and student records and confirm actual delivery to three inboxes (student, tutor, admin). Check PDF invoice and the 30-minute reminder. Use Celery's queue-specific healthcheck, logs and database delivery timestamps; SMTP handshake alone does not prove that an inbox received a message.
+
+**Deployment status:** only configuration and CI tests are committed on draft PR #336. No Docker daemon was accessed, no external Redis allowlist changed, no paid Render service created, and no production payment/SMTP delivery verified.
