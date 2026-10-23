@@ -5,6 +5,9 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -26,6 +29,26 @@ class NotificationSupervisorTests(unittest.TestCase):
         with patch.dict(os.environ, {"AMARIS_COLOCATE_NOTIFICATIONS": "true"}):
             self.assertTrue(module.enabled())
 
+    def test_direct_preflight_execution_can_find_django_application(self):
+        preflight = MODULE_PATH.parent.parent / "ops" / "check_notifications.py"
+        probe = (
+            "import importlib.util, runpy, sys; "
+            "runpy.run_path(sys.argv[1]); "
+            "assert importlib.util.find_spec('amaris_cms') is not None"
+        )
+        env = os.environ.copy()
+        env.pop("PYTHONPATH", None)
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [sys.executable, "-c", probe, str(preflight)],
+                cwd=directory,
+                env=env,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+
     def test_only_the_notifications_queue_is_consumed(self):
         worker = " ".join(self.supervisor._command("notifications"))
         beat = " ".join(self.supervisor._command("beat"))
@@ -34,6 +57,24 @@ class NotificationSupervisorTests(unittest.TestCase):
         self.assertIn("--max-memory-per-child=220000", worker)
         self.assertIn(" beat ", " " + beat + " ")
         self.assertNotIn("--queues=critical", worker)
+
+    @patch.object(module.subprocess, "Popen")
+    def test_gunicorn_launches_an_independent_supervisor_process(self, popen):
+        supervisor = module.SupervisorProcess(logging.getLogger("notification-test"))
+        supervisor.start()
+        self.assertEqual(popen.call_args.args[0], [sys.executable, "-m", "amaris_cms.colocated_notifications"])
+        self.assertEqual(popen.call_args.kwargs["cwd"], module.BACKEND_DIR)
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
+    def test_master_gracefully_stops_supervisor_before_force_kill(self):
+        supervisor = module.SupervisorProcess(logging.getLogger("notification-test"))
+        process = Mock()
+        process.poll.return_value = None
+        supervisor.process = process
+        supervisor.stop()
+        process.terminate.assert_called_once()
+        process.wait.assert_called_once_with(timeout=28)
+        process.kill.assert_not_called()
 
     def test_beat_environment_excludes_critical_and_default_schedules(self):
         beat = self.supervisor._role_environment("beat")
