@@ -28,7 +28,6 @@ class LiveClassSlotFilterSerializer(serializers.Serializer):
         required=False,
     )
     level = serializers.CharField(max_length=80, required=False, trim_whitespace=True)
-    tutor_id = serializers.IntegerField(min_value=1, required=False)
 
 
 class LiveClassSlotResponseSerializer(serializers.Serializer):
@@ -39,7 +38,6 @@ class LiveClassSlotResponseSerializer(serializers.Serializer):
     subject_label = serializers.CharField()
     level = serializers.CharField()
     tutor = serializers.CharField()
-    tutor_id = serializers.IntegerField(min_value=1)
     starts_at = serializers.DateTimeField()
     ends_at = serializers.DateTimeField()
     duration_minutes = serializers.IntegerField()
@@ -86,8 +84,6 @@ class LiveClassSlotView(APIView):
             queryset = queryset.filter(subject=values["subject"])
         if values.get("level"):
             queryset = queryset.filter(level__iexact=values["level"])
-        if values.get("tutor_id"):
-            queryset = queryset.filter(tutor_id=values["tutor_id"])
         queryset = queryset.order_by("starts_at")[:100]
 
         payload = [
@@ -99,7 +95,6 @@ class LiveClassSlotView(APIView):
                 "subject_label": slot.get_subject_display(),
                 "level": slot.level,
                 "tutor": slot.tutor_display_name,
-                "tutor_id": slot.tutor_id,
                 "starts_at": slot.starts_at,
                 "ends_at": slot.ends_at,
                 "duration_minutes": max(
