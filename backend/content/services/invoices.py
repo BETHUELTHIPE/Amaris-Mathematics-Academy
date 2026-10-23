@@ -39,7 +39,7 @@ def student_invoice_key(student_id: object, invoice_number: str) -> str:
 
 def _invoice_details(invoice: Invoice | LiveClassBooking | VideoRequest) -> tuple[str, str, list[str]]:
     if isinstance(invoice, LiveClassBooking):
-        if invoice.status != LiveClassBooking.Status.CONFIRMED or not invoice.invoice_number:
+        if invoice.status not in (LiveClassBooking.Status.CONFIRMED, LiveClassBooking.Status.COMPLETED) or not invoice.invoice_number:
             raise ValueError("Only verified, confirmed bookings receive invoices.")
         starts_at = timezone.localtime(invoice.slot.starts_at).strftime("%d %B %Y at %H:%M SAST")
         return (
@@ -161,11 +161,20 @@ def archive_invoice_pdf(
                 return archived.read()
         except Exception as exc:
             raise OSError("Student invoice archive is unavailable.") from exc
-    document = render_invoice_pdf(invoice)
     invoice_number, _, _ = _invoice_details(invoice)
     key = student_invoice_key(invoice.student.supabase_user_id, invoice_number)
+    private_storage = storages["student_private"]
     try:
-        saved = storages["student_private"].save(key, ContentFile(document))
+        # Reuse the archived original so the student, admin and dashboard
+        # always receive precisely the same PDF, even across email retries.
+        if private_storage.exists(key):
+            with private_storage.open(key, "rb") as archived:
+                document = archived.read()
+            if not document.startswith(b"%PDF-"):
+                raise OSError("Stored student invoice is not a PDF.")
+            return document
+        document = render_invoice_pdf(invoice)
+        saved = private_storage.save(key, ContentFile(document))
     except Exception as exc:
         raise OSError("Student invoice archive is unavailable.") from exc
     if saved != key:
