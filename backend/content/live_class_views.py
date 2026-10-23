@@ -264,7 +264,7 @@ class LiveClassInvoiceDownloadView(LiveClassStudentAPIView):
         booking = LiveClassBooking.objects.filter(
             reference=reference,
             student=request.user.student,
-            status=LiveClassBooking.Status.CONFIRMED,
+            status__in=(LiveClassBooking.Status.CONFIRMED, LiveClassBooking.Status.COMPLETED),
             confirmation_sent_at__isnull=False,
         ).first()
         if booking is None or not booking.invoice_number:
