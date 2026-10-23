@@ -40,6 +40,8 @@ class ASGIProtocolTests(SimpleTestCase):
             return None
 
         scope = {"type": "http", "method": "GET", "path": "/health/live/"}
-        with patch("amaris_cms.asgi.django_application", new_callable=AsyncMock) as django_app:
+        with patch(
+            "amaris_cms.asgi.django_application", new_callable=AsyncMock
+        ) as django_app:
             asyncio.run(application(scope, receive, send))
             django_app.assert_awaited_once_with(scope, receive, send)
