@@ -62,7 +62,6 @@ class NotificationSupervisorTests(unittest.TestCase):
         self.assertTrue(popen.call_args.kwargs["start_new_session"])
         self.assertEqual(popen.call_args.kwargs["env"]["CELERY_WORKER_MAX_MEMORY_PER_CHILD_KB"], "220000")
 
-
     def test_beat_lease_renewal_and_release(self):
         lease = Mock()
         self.supervisor.beat_lease = lease
@@ -78,7 +77,6 @@ class NotificationSupervisorTests(unittest.TestCase):
         self.supervisor.beat_lease = lease
         self.assertFalse(self.supervisor._renew_beat())
         self.assertIsNone(self.supervisor.beat_lease)
-
 
 
 if __name__ == "__main__":
