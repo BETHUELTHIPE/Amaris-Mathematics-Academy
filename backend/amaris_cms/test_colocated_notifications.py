@@ -63,5 +63,23 @@ class NotificationSupervisorTests(unittest.TestCase):
         self.assertEqual(popen.call_args.kwargs["env"]["CELERY_WORKER_MAX_MEMORY_PER_CHILD_KB"], "220000")
 
 
+    def test_beat_lease_renewal_and_release(self):
+        lease = Mock()
+        self.supervisor.beat_lease = lease
+        self.assertTrue(self.supervisor._renew_beat())
+        lease.extend.assert_called_once_with(module.BEAT_LEASE_SECONDS, replace_ttl=True)
+        self.supervisor._release_beat()
+        lease.release.assert_called_once()
+        self.assertIsNone(self.supervisor.beat_lease)
+
+    def test_lost_beat_lease_prevents_unowned_scheduler(self):
+        lease = Mock()
+        lease.extend.side_effect = RuntimeError("lock no longer owned")
+        self.supervisor.beat_lease = lease
+        self.assertFalse(self.supervisor._renew_beat())
+        self.assertIsNone(self.supervisor.beat_lease)
+
+
+
 if __name__ == "__main__":
     unittest.main()
