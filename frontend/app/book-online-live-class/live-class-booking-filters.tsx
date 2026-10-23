@@ -58,7 +58,7 @@ export function LiveClassBookingFilters(props: Props) {
       </p>
       <div className="flex flex-wrap gap-3 lg:col-span-2">
         <button type="submit" className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#0b2a5b] px-7 py-3 font-bold text-white">
-          Find my tutor and time
+          Show available tutor times
         </button>
         <button type="submit" formNoValidate name="update_choices" value="1" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#b7c5d8] px-5 py-3 font-semibold text-[#0b2a5b]">
           Update grade and topic choices
