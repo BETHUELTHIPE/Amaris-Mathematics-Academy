@@ -15,7 +15,7 @@ This implementation is **disabled by default**, and MUST NOT be enabled before t
 2. Verify the existing web service's production `CELERY_BROKER_URL` points at the **private Render broker**, and securely set `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, `EMAIL_PORT` and TLS options. Never disclose SMTP secrets.
 3. Merge and deploy backend PR #336 to `production-release-20260923`, verify migration `0017` is applied and Django serves healthy requests. Leave the opt-in switch off during this step.
 4. On **existing** Render web service `srv-dapn6b3tqb8s73d3r7n0`, set `AMARIS_COLOCATE_NOTIFICATIONS=true`. This changes only that service's runtime configuration; it does not provision or bill new services. Redeploy that same service once, inspect logs for `Amaris notifications started` and `Amaris beat started`, and verify queue/Beat lease health.
-5. Perform one verified synthetic PayFast **sandbox** booking through staging, check student/tutor/admin email inboxes and student-only PDF invoice, confirm 30-minute reminder and non-duplication. Only then deploy frontend PR #335.
+5. Perform one verified synthetic PayFast **sandbox** booking through staging, check student/tutor/admin email inboxes and matching student/admin PDF invoices, confirm 30-minute reminder and non-duplication. Only then deploy frontend PR #335.
 6. If web latency, memory, worker restarts or duplicate emails increase, set `AMARIS_COLOCATE_NOTIFICATIONS=false` and redeploy the existing service. The Django student website should remain available when a sidecar fails; treat lost emails as a critical operations issue and remediate before advertising 24/7 notifications.
 
 **Deployment status:** No switch was enabled, no production backup/restore was completed here, and the migration has not been applied. Both PRs remain draft and production still uses the previous booking code.
@@ -24,7 +24,7 @@ This implementation is **disabled by default**, and MUST NOT be enabled before t
 
 - `GET /live-classes/slots/?tutor_id=<id>` optionally limits availability to a tutor with published free slots. The response includes `tutor_id`, not the private Zoom link.
 - The existing server-side PayFast verification, R250 per hour, 1–24 whole-hour sessions, booking holds, ownership permissions and 30-minute reminders remain in place.
-- Only after payment is provider-verified and the booking is **confirmed** does the existing notification worker email the student with PDF invoice and Zoom link, the selected tutor with full booking details, and Django administrators with full booking details.
+- Only after payment is provider-verified and the booking is **confirmed** does the notification worker email the student with PDF invoice and Zoom link, the selected tutor with full booking details, and Django administrators with full booking details and the same archived PDF invoice. The tutor receives no invoice attachment. The student's private invoice remains downloadable after lesson completion.
 - Admin notifications use BCC to active superusers, the SiteSettings contact email and optional `BOOKING_ADMIN_NOTIFICATION_EMAILS` (comma-separated) from Render configuration.
 - Details sent to the assigned tutor/admin: booking reference, verified payment status, student name/email/optional telephone, tutor, programme, subject, grade, topic, SAST start/end, duration, amount, invoice number and Zoom URL.
 - Individual `confirmation_sent_at`, `tutor_confirmation_sent_at`, `admin_confirmation_sent_at` receipt fields are read-only in Django Admin. Backend acceptance does **not** prove inbox receipt; staging SMTP tests remain mandatory.
@@ -37,11 +37,20 @@ This implementation is **disabled by default**, and MUST NOT be enabled before t
 3. Configure outbound SMTP for the notification worker and optionally a monitored `BOOKING_ADMIN_NOTIFICATION_EMAILS`. Confirm Django superuser accounts and SiteSettings use controlled email addresses.
 4. Run Django `manage.py check`, migration plan/check and `python manage.py test content.test_live_classes`; verify all existing tutor, finance, location and permission tests.
 5. Use a synthetic tutor with an overnight 23:30 SAST published slot and a separate daytime tutor. Verify the optional tutor query, hourly server pricing, no Zoom data in public responses, and checkout double-booking rejection.
-6. Perform one isolated real PayFast **sandbox** payment callback with synthetic student data; verify the student, tutor and admin inboxes each received the correct email, and that only the student got the PDF invoice. Retry the worker and ensure no duplicate invoice. Never use live money for acceptance.
+6. Perform one isolated real PayFast **sandbox** payment callback with synthetic student data; verify the student, tutor and admin inboxes each received the correct email, and that the student/admin received byte-identical PDF invoices while the tutor received booking details. Retry the worker and ensure no duplicate invoice. Never use live money for acceptance.
 7. Confirm the notification worker and scheduler are running; test the 30-minute student reminder, staged shutdown and retry.
 8. Deploy backend, verify runtime SHA, migrations, HTTP smoke checks and error logs; only then release the separately tested frontend PR. Keep the previous production backend SHA as rollback target, and stop if schema compatibility or SMTP is unresolved.
 
 **Current state:** Code prepared in a draft PR only. No production database changes, actual payments or external confirmation emails were performed.
+
+## Validation update — 24 October 2026 (SAST)
+
+- Local Python 3.12: the full 240-test Django suite completed successfully with five skips after collecting static assets. This includes booking/payment, invoice ownership, staff BCC privacy, independent delivery markers, identical student/admin invoice attachments and completed-lesson invoice downloads. Production's Python 3.13/PostgreSQL CI remains a separate gate.
+- All 11 colocated supervisor tests passed, including a regression that prevents Beat startup if its Redis lease expires during dependency preflight. Ruff, mypy (39 source files), formatting comparison and migration drift checks passed. Notifications-only Beat exposes seven schedules, all on the notifications queue.
+- Read-only Supabase checks confirmed that staging and production are both at `content.0016_separate_location_fields`. Migration `0017` has not been applied to either live database.
+- The preceding GitHub backup/restore job passed against disposable PostgreSQL databases with synthetic data. It does **not** prove that production has a retained encrypted backup or a verified restore.
+- Render lists a monitoring-only worker consuming `monitoring-verification`; it does not list a booking notification worker or Beat service. Colocated activation, production SMTP configuration and actual inbox delivery are not verified.
+- No new paid resources or external Redis access were added. Production deployment remains blocked by current release CI, the production backup/restore evidence and deployed staging sandbox email acceptance.
 
 ## No new paid Render services: optimized two-container Docker option
 

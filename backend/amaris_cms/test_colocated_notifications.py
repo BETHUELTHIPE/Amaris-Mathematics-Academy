@@ -75,6 +75,24 @@ class NotificationSupervisorTests(unittest.TestCase):
         start.assert_called_once_with("notifications")
         claim.assert_not_called()
 
+    @patch.object(module.subprocess, "Popen")
+    @patch.object(module.subprocess, "run")
+    def test_lease_lost_during_preflight_does_not_start_beat(self, run, popen):
+        run.return_value = Mock(returncode=0)
+        with patch.object(self.supervisor, "_renew_beat", return_value=False) as renew:
+            self.supervisor._start_role("beat")
+        renew.assert_called_once()
+        popen.assert_not_called()
+
+    @patch.object(module.subprocess, "Popen")
+    @patch.object(module.subprocess, "run")
+    def test_beat_renews_lease_after_preflight_before_starting(self, run, popen):
+        run.return_value = Mock(returncode=0)
+        with patch.object(self.supervisor, "_renew_beat", return_value=True) as renew:
+            self.supervisor._start_role("beat")
+        renew.assert_called_once()
+        popen.assert_called_once()
+
     def test_unowned_beat_lease_prevents_scheduler_start(self):
         worker = Mock()
         worker.poll.return_value = None

@@ -101,6 +101,10 @@ class NotificationSupervisor:
                 return
             if self.stop_event.is_set():
                 return
+            # Database/broker preflight can outlast a lease during an outage.
+            # Confirm ownership again immediately before starting the scheduler.
+            if role == "beat" and not self._renew_beat():
+                return
             self.children[role] = subprocess.Popen(
                 self._command(role),
                 cwd=BACKEND_DIR,

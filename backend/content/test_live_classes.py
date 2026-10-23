@@ -680,7 +680,10 @@ class LiveClassBookingTests(TestCase):
             self.client.force_login(self.admin)
             admin_response = self.client.get(admin_url, secure=True)
             self.assertEqual(admin_response.status_code, 200)
-            self.assertEqual(admin_response["Cache-Control"], "private, no-store")
+            # Django Admin adds its own no-cache directives around this view.
+            directives = {part.strip() for part in admin_response["Cache-Control"].split(",")}
+            self.assertTrue({"private", "no-store", "no-cache", "must-revalidate"}.issubset(directives))
+            self.assertNotIn("public", directives)
             self.assertEqual(b"".join(admin_response.streaming_content), archived)
             change_url = reverse("admin:content_liveclassbooking_change", args=[booking.pk])
             self.assertContains(self.client.get(change_url, secure=True), "Download invoice PDF")
