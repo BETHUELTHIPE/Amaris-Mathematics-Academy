@@ -62,6 +62,7 @@ services:
       SERVICE_ROLE: celery-beat
       AMARIS_EXTERNAL_WORKER: "true"
       CELERY_BROKER_POOL_LIMIT: "2"
+      CELERY_NOTIFICATIONS_ONLY_BEAT: "true"
     command:
       - /bin/sh
       - -ec
