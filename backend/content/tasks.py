@@ -331,7 +331,6 @@ def _deliver_one_live_class_confirmation() -> bool:
     return False
 
 
-
 @shared_task(
     bind=True,
     ignore_result=True,
