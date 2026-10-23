@@ -61,8 +61,7 @@ class NotificationSupervisorTests(unittest.TestCase):
     @patch.object(module.subprocess, "Popen")
     def test_gunicorn_launches_an_independent_supervisor_process(self, popen):
         supervisor = module.SupervisorProcess(logging.getLogger("notification-test"))
-        with patch.object(supervisor.stop_event, "wait", return_value=True):
-            supervisor._run()
+        supervisor.start()
         self.assertEqual(popen.call_args.args[0], [sys.executable, "-m", "amaris_cms.colocated_notifications"])
         self.assertEqual(popen.call_args.kwargs["cwd"], module.BACKEND_DIR)
         self.assertTrue(popen.call_args.kwargs["start_new_session"])
