@@ -427,6 +427,7 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
         "status",
         "paid_at",
         "confirmation_sent_at",
+        "staff_notification_required",
         "tutor_confirmation_sent_at",
         "admin_confirmation_sent_at",
         "reminder_sent_at",
