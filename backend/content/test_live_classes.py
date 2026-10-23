@@ -340,9 +340,7 @@ class LiveClassBookingTests(TestCase):
         self.assertEqual([slot["id"] for slot in response.json()], [night_slot.pk])
         self.assertEqual(response.json()[0]["tutor"], "Night Tutor")
         self.assertNotIn("zoom_join_url", response.json()[0])
-        self.assertEqual(
-            self.client.get(reverse("live-class-slots"), {"tutor_id": -5}, secure=True).status_code, 400
-        )
+        self.assertEqual(self.client.get(reverse("live-class-slots"), {"tutor_id": -5}, secure=True).status_code, 400)
 
     def test_partial_smtp_outage_keeps_student_invoice_idempotent(self):
         checkout = self.checkout(key="delivery-retry-0001")
