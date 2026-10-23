@@ -202,7 +202,10 @@ services:
     branch: production-release-20260923
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A amaris_cms worker --loglevel=INFO --queues=notifications --concurrency=2 --events --hostname=notifications@%h
+    startCommand: >-
+      python ops/check_notifications.py --role notifications &&
+      exec celery -A amaris_cms worker --loglevel=INFO
+      --queues=notifications --concurrency=1 --events --hostname=notifications@%h
     autoDeployTrigger: off
     envVars:
       - key: PYTHON_VERSION
@@ -265,7 +268,10 @@ services:
       - key: EMAIL_BACKEND
         value: django.core.mail.backends.smtp.EmailBackend
       - key: EMAIL_HOST
-        sync: false
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: EMAIL_HOST
       - key: EMAIL_PORT
         value: "587"
       - key: VIDEO_REQUEST_DAILY_CAPACITY
@@ -273,15 +279,24 @@ services:
       - key: VIDEO_REQUEST_ETA_RANGE_DAYS
         value: "2"
       - key: EMAIL_HOST_USER
-        sync: false
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: EMAIL_HOST_USER
       - key: EMAIL_HOST_PASSWORD
-        sync: false
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: EMAIL_HOST_PASSWORD
       - key: EMAIL_USE_TLS
         value: "true"
       - key: EMAIL_USE_SSL
         value: "false"
       - key: DEFAULT_FROM_EMAIL
-        sync: false
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: DEFAULT_FROM_EMAIL
 
   - type: worker
     name: amaris-production-beat
@@ -292,7 +307,10 @@ services:
     branch: production-release-20260923
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A amaris_cms beat --loglevel=INFO --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
+    startCommand: >-
+      python ops/check_notifications.py --role beat &&
+      exec celery -A amaris_cms beat --loglevel=INFO
+      --pidfile=/tmp/celerybeat.pid --schedule=/tmp/celerybeat-schedule
     autoDeployTrigger: off
     envVars:
       - key: PYTHON_VERSION
