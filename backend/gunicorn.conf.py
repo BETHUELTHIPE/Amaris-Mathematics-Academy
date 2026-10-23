@@ -21,7 +21,6 @@ errorlog = "-"
 capture_output = True
 
 
-
 def when_ready(server):
     # Opt-in only: never start a second scheduler in Gunicorn request workers.
     # Production Render has one web instance; no new service is provisioned.
