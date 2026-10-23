@@ -616,7 +616,10 @@ class LiveClassBookingTests(TestCase):
         self.assertIn(self.student.email, admin_message.body)
         self.assertIn(booking.reference, admin_message.body)
         self.assertIn(self.slot.zoom_join_url, admin_message.body)
-        self.assertEqual(admin_message.attachments, [])
+        self.assertEqual(len(admin_message.attachments), 1)
+        self.assertEqual(admin_message.attachments[0][0], f"{booking.invoice_number}.pdf")
+        self.assertEqual(admin_message.attachments[0][2], "application/pdf")
+        self.assertEqual(admin_message.attachments[0][1], message.attachments[0][1])
 
         self.assertEqual(deliver_live_class_confirmation.run(), 0)
         self.assertEqual(len(mail.outbox), 3)
@@ -668,11 +671,20 @@ class LiveClassBookingTests(TestCase):
             self.assertTrue(archived.startswith(b"%PDF"))
             self.assertFalse(Path(directory, "admin", key).exists())
             self.assertEqual(archived, mail.outbox[0].attachments[0][1])
+            self.assertEqual(archived, mail.outbox[2].attachments[0][1])
             self.assertEqual(other.get(url, secure=True).status_code, 404)
             response = owner.get(url, secure=True)
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response["Cache-Control"], "private, no-store")
             self.assertEqual(b"".join(response.streaming_content), archived)
+
+            # A completed lesson remains in student order history and its
+            # original PDF must remain available without regenerating it.
+            booking.status = LiveClassBooking.Status.COMPLETED
+            booking.save(update_fields=("status",))
+            completed = owner.get(url, secure=True)
+            self.assertEqual(completed.status_code, 200)
+            self.assertEqual(b"".join(completed.streaming_content), archived)
 
     def test_reminder_is_sent_once_inside_thirty_minute_window(self):
         checkout = self.checkout()
