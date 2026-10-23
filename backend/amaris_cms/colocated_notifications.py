@@ -118,25 +118,40 @@ class NotificationSupervisor:
                     self.children.pop(role, None)
                     self.next_attempt[role] = now + RESTART_DELAY_SECONDS
                     self.log.warning("Amaris %s exited; supervisor will restart it", role)
+                if role == "beat":
+                    # Do not enqueue messages while SMTP/worker preflight is failing.
+                    worker = self.children.get("notifications")
+                    if worker is None or worker.poll() is not None:
+                        if child is not None and child.poll() is None:
+                            self._terminate_child(child)
+                            self.children.pop(role, None)
+                        continue
                 if role not in self.children and now >= self.next_attempt.get(role, 0):
                     self._start_role(role)
             self.stop_event.wait(10)
+
+    @staticmethod
+    def _terminate_child(child):
+        if child.poll() is not None:
+            return
+        try:
+            os.killpg(child.pid, signal.SIGTERM)
+            child.wait(timeout=12)
+        except (ProcessLookupError, subprocess.TimeoutExpired):
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
     def stop(self):
         self.stop_event.set()
         if self.thread.is_alive():
             self.thread.join(timeout=2)
-        for role, child in list(self.children.items()):
-            if child.poll() is None:
-                try:
-                    os.killpg(child.pid, signal.SIGTERM)
-                    child.wait(timeout=12)
-                except (ProcessLookupError, subprocess.TimeoutExpired):
-                    try:
-                        os.killpg(child.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-            self.children.pop(role, None)
+        # Stop Beat first so new jobs are not published during worker shutdown.
+        for role in reversed(ROLES):
+            child = self.children.pop(role, None)
+            if child is not None:
+                self._terminate_child(child)
         self.log.info("Amaris colocated notification processes stopped")
 
 
