@@ -403,14 +403,6 @@ EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT_SECONDS", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@example.invalid>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
-# Optional additional recipients for verified live-class booking alerts.
-# Active Django superusers and the configured SiteSettings email are also notified.
-BOOKING_ADMIN_NOTIFICATION_EMAILS = tuple(
-    address.strip()
-    for address in os.getenv("BOOKING_ADMIN_NOTIFICATION_EMAILS", "").replace(";", ",").split(",")
-    if address.strip()
-)
-
 AI_ENQUIRY_AUTOREPLY_ENABLED = env_bool("AI_ENQUIRY_AUTOREPLY_ENABLED", True)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY") or os.getenv("OPENAI_APIKEY", "")
 OPENAI_ENQUIRY_MODEL = os.getenv("OPENAI_ENQUIRY_MODEL", "gpt-5.6-luna")
