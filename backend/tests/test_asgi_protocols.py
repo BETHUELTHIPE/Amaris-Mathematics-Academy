@@ -18,7 +18,9 @@ class ASGIProtocolTests(SimpleTestCase):
         async def send(message):
             messages.append(message)
 
-        with patch("amaris_cms.asgi.django_application", new_callable=AsyncMock) as django_app:
+        with patch(
+            "amaris_cms.asgi.django_application", new_callable=AsyncMock
+        ) as django_app:
             asyncio.run(
                 application(
                     {"type": "websocket", "path": "/ws/unsupported/"},
