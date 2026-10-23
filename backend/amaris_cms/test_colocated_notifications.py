@@ -11,8 +11,8 @@ from unittest.mock import Mock, patch
 
 MODULE_PATH = Path(__file__).with_name("colocated_notifications.py")
 spec = importlib.util.spec_from_file_location("colocated_notifications_under_test", MODULE_PATH)
-module = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
+module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
