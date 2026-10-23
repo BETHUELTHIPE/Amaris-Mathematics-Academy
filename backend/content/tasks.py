@@ -225,7 +225,8 @@ def _live_class_admin_recipients() -> list[str]:
         configured = configured.replace(";", ",").split(",")
     addresses = [email for email in configured if email]
     addresses.extend(
-        get_user_model().objects.filter(is_active=True, is_superuser=True)
+        get_user_model()
+        .objects.filter(is_active=True, is_superuser=True)
         .exclude(email="")
         .values_list("email", flat=True)
     )
