@@ -16,7 +16,7 @@ After a verified PayFast payment, the notification worker sends:
 2. Selected tutor: student name, email and optional phone; programme, subject, level, topic, start/end times in SAST, duration, amount paid, invoice, booking reference and Zoom details.
 3. Django admin: the same operational details and a missing-tutor-email alert if needed. The message is sent via **BCC** to active Django superusers, the configured SiteSettings contact email and any addresses in `BOOKING_ADMIN_NOTIFICATION_EMAILS`. Duplicate addresses are removed.
 
-The new `confirmation_sent_at`, `tutor_confirmation_sent_at`, and `admin_confirmation_sent_at` markers are visible (read-only) in Django Admin. Each is written only after its own email backend accepts the message. They protect the student from receiving duplicate invoices when a tutor/admin message fails.
+Existing bookings are marked `staff_notification_required=False` during migration 0011, so past classes never trigger misleading new-booking notifications. New ORM-created bookings default to `True`. The new `confirmation_sent_at`, `tutor_confirmation_sent_at`, and `admin_confirmation_sent_at` markers are visible (read-only) in Django Admin. Each is written only after its own email backend accepts the message. They protect the student from receiving duplicate invoices when a tutor/admin message fails.
 
 Mail submission is not proof of recipient inbox delivery. SMTP delivery and destination inbox receipt must be checked separately in staging. The student reminder remains scheduled 30 minutes before the session.
 
