@@ -323,6 +323,7 @@ def _deliver_one_live_class_confirmation() -> bool:
             sent_any = True
     return sent_any
 
+
 @shared_task(
     bind=True,
     ignore_result=True,
