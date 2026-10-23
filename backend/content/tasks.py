@@ -266,7 +266,11 @@ def _deliver_one_live_class_confirmation() -> bool:
             bookings = (
                 LiveClassBooking.objects.select_for_update(skip_locked=True)
                 .select_related("student", "slot", "slot__tutor")
-                .filter(status=LiveClassBooking.Status.CONFIRMED, **{f"{sent_field}__isnull": True})
+                .filter(
+                    status=LiveClassBooking.Status.CONFIRMED,
+                    **{f"{sent_field}__isnull": True},
+                    **({"staff_notification_required": True} if audience != "student" else {}),
+                )
                 .order_by("paid_at", "created_at")
             )
             if audience == "tutor":
