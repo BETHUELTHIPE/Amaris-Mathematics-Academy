@@ -497,6 +497,18 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+
+# A lightweight, two-container external deployment intentionally processes only
+# notifications. Do not let its singleton Beat publish critical/default jobs:
+# those queues require separate existing infrastructure and would build up.
+if env_bool("CELERY_NOTIFICATIONS_ONLY_BEAT", False):
+    CELERY_BEAT_SCHEDULE = {
+        name: entry
+        for name, entry in CELERY_BEAT_SCHEDULE.items()
+        if entry.get("options", {}).get("queue") == "notifications"
+    }
+
+
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
