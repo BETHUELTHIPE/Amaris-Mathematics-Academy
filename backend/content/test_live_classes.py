@@ -672,6 +672,22 @@ class LiveClassBookingTests(TestCase):
             self.assertFalse(Path(directory, "admin", key).exists())
             self.assertEqual(archived, mail.outbox[0].attachments[0][1])
             self.assertEqual(archived, mail.outbox[2].attachments[0][1])
+
+            # Django Admin downloads the exact same private object as the
+            # student's dashboard; staff without superuser rights cannot.
+            admin_url = reverse("admin:content_liveclassbooking_invoice", args=[booking.pk])
+            self.client.force_login(self.admin)
+            admin_response = self.client.get(admin_url, secure=True)
+            self.assertEqual(admin_response.status_code, 200)
+            self.assertEqual(admin_response["Cache-Control"], "private, no-store")
+            self.assertEqual(b"".join(admin_response.streaming_content), archived)
+            change_url = reverse("admin:content_liveclassbooking_change", args=[booking.pk])
+            self.assertContains(self.client.get(change_url, secure=True), "Download invoice PDF")
+            self.tutor.is_staff = True
+            self.tutor.save(update_fields=("is_staff",))
+            self.client.force_login(self.tutor)
+            self.assertEqual(self.client.get(admin_url, secure=True).status_code, 404)
+
             self.assertEqual(other.get(url, secure=True).status_code, 404)
             response = owner.get(url, secure=True)
             self.assertEqual(response.status_code, 200)
