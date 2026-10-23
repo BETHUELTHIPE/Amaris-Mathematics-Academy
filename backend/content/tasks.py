@@ -1,6 +1,6 @@
 from datetime import timedelta
-from zoneinfo import ZoneInfo
 from html import escape
+from zoneinfo import ZoneInfo
 
 from botocore.exceptions import BotoCoreError, ClientError
 from celery import shared_task
