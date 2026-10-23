@@ -20,6 +20,8 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 ROLES = ("notifications", "beat")
 RESTART_DELAY_SECONDS = 45
+BEAT_LEASE_SECONDS = 45
+BEAT_LOCK_KEY = "amaris:celery:notification-beat:singleton"
 _SUPERVISOR = None
 
 
@@ -33,6 +35,7 @@ class NotificationSupervisor:
         self.stop_event = threading.Event()
         self.children: dict[str, subprocess.Popen] = {}
         self.next_attempt: dict[str, float] = {}
+        self.beat_lease = None
         self.thread = threading.Thread(target=self._run, name="amaris-celery-supervisor", daemon=True)
 
     def start(self):
@@ -109,6 +112,48 @@ class NotificationSupervisor:
         except (OSError, subprocess.TimeoutExpired):
             self.log.warning("Amaris %s startup failed; retrying later", role)
 
+    def _claim_beat(self) -> bool:
+        # Prevent overlapping Beat processes during Render rolling deploys.
+        # Lease lives in the existing private production Redis broker.
+        try:
+            from redis import Redis
+
+            redis = Redis.from_url(
+                os.environ["CELERY_BROKER_URL"],
+                socket_connect_timeout=3,
+                socket_timeout=3,
+            )
+            lease = redis.lock(
+                BEAT_LOCK_KEY, timeout=BEAT_LEASE_SECONDS, blocking=False, thread_local=False
+            )
+            if lease.acquire(blocking=False):
+                self.beat_lease = lease
+                return True
+        except (KeyError, OSError, ValueError):
+            self.log.warning("Amaris Beat lease unavailable; web remains available")
+        except Exception:
+            self.log.warning("Amaris Beat lease check failed; web remains available")
+        return False
+
+    def _release_beat(self):
+        lease, self.beat_lease = self.beat_lease, None
+        if lease is not None:
+            try:
+                lease.release()
+            except Exception:
+                pass
+
+    def _renew_beat(self) -> bool:
+        if self.beat_lease is None:
+            return False
+        try:
+            self.beat_lease.extend(BEAT_LEASE_SECONDS, replace_ttl=True)
+            return True
+        except Exception:
+            self.log.warning("Amaris Beat lease lost; stopping duplicate scheduler")
+            self._release_beat()
+            return False
+
     def _run(self):
         while not self.stop_event.is_set():
             now = time.monotonic()
@@ -125,6 +170,18 @@ class NotificationSupervisor:
                         if child is not None and child.poll() is None:
                             self._terminate_child(child)
                             self.children.pop(role, None)
+                        self._release_beat()
+                        continue
+                    if child is not None and child.poll() is None and not self._renew_beat():
+                        self._terminate_child(child)
+                        self.children.pop(role, None)
+                        continue
+                    if child is None and now >= self.next_attempt.get(role, 0):
+                        if not self._claim_beat():
+                            continue
+                        self._start_role(role)
+                        if role not in self.children:
+                            self._release_beat()
                         continue
                 if role not in self.children and now >= self.next_attempt.get(role, 0):
                     self._start_role(role)
@@ -152,6 +209,7 @@ class NotificationSupervisor:
             child = self.children.pop(role, None)
             if child is not None:
                 self._terminate_child(child)
+        self._release_beat()
         self.log.info("Amaris colocated notification processes stopped")
 
 
