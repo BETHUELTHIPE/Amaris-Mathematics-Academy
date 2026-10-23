@@ -324,6 +324,7 @@ def _deliver_one_live_class_confirmation() -> bool:
                     + (["Action needed: tutor has no email address."] if not booking.slot.tutor.email else []),
                     recipients=_live_class_admin_recipients(),
                     hide_recipients=True,
+                    attach_invoice=True,
                 )
 
             setattr(booking, sent_field, timezone.now())
