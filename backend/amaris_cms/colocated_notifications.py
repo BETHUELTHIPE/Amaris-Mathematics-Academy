@@ -161,6 +161,9 @@ class NotificationSupervisor:
                 child = self.children.get(role)
                 if child is not None and child.poll() is not None:
                     self.children.pop(role, None)
+                    child = None
+                    if role == "beat":
+                        self._release_beat()
                     self.next_attempt[role] = now + RESTART_DELAY_SECONDS
                     self.log.warning("Amaris %s exited; supervisor will restart it", role)
                 if role == "beat":
@@ -182,7 +185,7 @@ class NotificationSupervisor:
                         self._start_role(role)
                         if role not in self.children:
                             self._release_beat()
-                        continue
+                    continue
                 if role not in self.children and now >= self.next_attempt.get(role, 0):
                     self._start_role(role)
             self.stop_event.wait(10)
