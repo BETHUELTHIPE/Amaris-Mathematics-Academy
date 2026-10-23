@@ -251,6 +251,11 @@ class LiveClassBookingTests(TestCase):
             last_name="Naidoo",
             email="tutor@example.test",
         )
+        self.admin = user_model.objects.create_superuser(
+            username="amaris.admin",
+            email="admin@example.test",
+            password="test-only-admin-password",
+        )
         self.student = StudentRecord.objects.create(
             supabase_user_id=uuid.UUID("00000000-0000-4000-8000-000000000201"),
             email="live.student@example.test",
@@ -311,8 +316,71 @@ class LiveClassBookingTests(TestCase):
         self.assertEqual(len(response.json()), 1)
         slot = response.json()[0]
         self.assertEqual(slot["tutor"], "Priya Naidoo")
+        self.assertEqual(slot["tutor_id"], self.tutor.pk)
         self.assertEqual(slot["price"], "250.00")
         self.assertNotIn("zoom_join_url", slot)
+
+    def test_overnight_named_tutor_filter_uses_published_slots(self):
+        night_tutor = get_user_model().objects.create_user(
+            username="tutor.night", first_name="Night", last_name="Tutor", email="night@example.test"
+        )
+        tomorrow = timezone.localtime(timezone.now()) + timedelta(days=2)
+        start = tomorrow.replace(hour=23, minute=30, second=0, microsecond=0)
+        night_slot = TutorAvailabilitySlot.objects.create(
+            tutor=night_tutor,
+            programme=TutorAvailabilitySlot.Programme.CAPS,
+            subject=TutorAvailabilitySlot.Subject.MATHEMATICS,
+            level="Grade 12",
+            starts_at=start,
+            ends_at=start + timedelta(hours=1),
+            zoom_join_url="https://zoom.example.test/j/overnight",
+        )
+        response = self.client.get(reverse("live-class-slots"), {"tutor_id": night_tutor.pk}, secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([slot["id"] for slot in response.json()], [night_slot.pk])
+        self.assertEqual(response.json()[0]["tutor"], "Night Tutor")
+        self.assertNotIn("zoom_join_url", response.json()[0])
+        self.assertEqual(
+            self.client.get(reverse("live-class-slots"), {"tutor_id": -5}, secure=True).status_code, 400
+        )
+
+    def test_partial_smtp_outage_keeps_student_invoice_idempotent(self):
+        checkout = self.checkout(key="delivery-retry-0001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+        from content import tasks
+
+        original = tasks._send_live_class_message
+
+        def fail_tutor(booking, **kwargs):
+            if kwargs.get("recipients") == [self.tutor.email]:
+                raise OSError("Synthetic tutor SMTP failure")
+            return original(booking, **kwargs)
+
+        with mock.patch("content.tasks._send_live_class_message", side_effect=fail_tutor):
+            with self.assertRaises(OSError):
+                deliver_live_class_confirmation.run()
+
+        booking.refresh_from_db()
+        self.assertIsNotNone(booking.confirmation_sent_at)
+        self.assertIsNone(booking.tutor_confirmation_sent_at)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(deliver_live_class_confirmation.run(), 2)
+        self.assertEqual(len(mail.outbox), 3)
+        self.assertEqual(
+            [m.to for m in mail.outbox if m.to == [self.student.email]],
+            [[self.student.email]],
+        )
+
+    def test_legacy_paid_booking_suppresses_new_tutor_admin_alerts(self):
+        checkout = self.checkout(key="legacy-booking-00001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+        booking.staff_notification_required = False
+        booking.save(update_fields=("staff_notification_required",))
+        self.assertEqual(deliver_live_class_confirmation.run(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.student.email])
 
     def test_public_availability_ignores_expired_holds_without_writing_booking_state(self):
         checkout = self.checkout(key="expired-read-only-slot-001")
@@ -349,9 +417,11 @@ class LiveClassBookingTests(TestCase):
         self.assertTrue(booking.invoice_number.startswith("INV-LIVE-"))
         self.assertEqual(len(mail.outbox), 0)
 
-        self.assertEqual(deliver_live_class_confirmation.run(), 1)
-        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(deliver_live_class_confirmation.run(), 3)
+        self.assertEqual(len(mail.outbox), 3)
         self.assertIn(booking.invoice_number, mail.outbox[0].body)
+        self.assertEqual(mail.outbox[1].to, [self.tutor.email])
+        self.assertIn(self.admin.email, mail.outbox[2].bcc)
         self.assertEqual(mail.outbox[0].attachments[0][2], "application/pdf")
 
         with mock.patch(
@@ -359,8 +429,8 @@ class LiveClassBookingTests(TestCase):
             return_value=self.slot.starts_at - timedelta(minutes=29),
         ):
             self.assertEqual(deliver_live_class_reminder.run(), 1)
-        self.assertEqual(len(mail.outbox), 2)
-        self.assertIn(self.slot.zoom_join_url, mail.outbox[1].body)
+        self.assertEqual(len(mail.outbox), 4)
+        self.assertIn(self.slot.zoom_join_url, mail.outbox[3].body)
         self.assertEqual(deliver_live_class_reminder.run(), 0)
 
     def test_checkout_is_server_priced_at_r250_and_holds_slot(self):
@@ -399,8 +469,8 @@ class LiveClassBookingTests(TestCase):
                     gateway=MockPayFastGateway(True),
                 )
                 self.assertTrue(result.accepted)
-                self.assertEqual(deliver_live_class_confirmation.run(), 1)
-                self.assertIn(f"Duration: {hours} hour(s)", mail.outbox[-1].body)
+                self.assertEqual(deliver_live_class_confirmation.run(), 3)
+                self.assertIn(f"Duration: {hours} hour(s)", mail.outbox[0].body)
                 # Remove the synthetic booking to test the next duration using the same slot.
                 LiveClassBooking.objects.filter(pk=booking.pk).delete()
                 mail.outbox.clear()
@@ -522,10 +592,12 @@ class LiveClassBookingTests(TestCase):
 
         delivered = deliver_live_class_confirmation.run()
 
-        self.assertEqual(delivered, 1)
+        self.assertEqual(delivered, 3)
         booking.refresh_from_db()
         self.assertIsNotNone(booking.confirmation_sent_at)
-        self.assertEqual(len(mail.outbox), 1)
+        self.assertIsNotNone(booking.tutor_confirmation_sent_at)
+        self.assertIsNotNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(len(mail.outbox), 3)
         message = mail.outbox[0]
         self.assertEqual(message.to, [self.student.email])
         self.assertIn("confirmed", message.subject.lower())
@@ -534,9 +606,22 @@ class LiveClassBookingTests(TestCase):
         self.assertEqual(len(message.attachments), 1)
         self.assertEqual(message.attachments[0][2], "application/pdf")
         self.assertTrue(message.attachments[0][1].startswith(b"%PDF"))
+        tutor_message, admin_message = mail.outbox[1:]
+        self.assertEqual(tutor_message.to, [self.tutor.email])
+        self.assertEqual(tutor_message.attachments, [])
+        self.assertIn(self.student.email, tutor_message.body)
+        self.assertIn("Differential calculus", tutor_message.body)
+        self.assertIn("SAST", tutor_message.body)
+        self.assertIn(self.slot.zoom_join_url, tutor_message.body)
+        self.assertEqual(admin_message.to, [])
+        self.assertIn(self.admin.email, admin_message.bcc)
+        self.assertIn(self.student.email, admin_message.body)
+        self.assertIn(booking.reference, admin_message.body)
+        self.assertIn(self.slot.zoom_join_url, admin_message.body)
+        self.assertEqual(admin_message.attachments, [])
 
         self.assertEqual(deliver_live_class_confirmation.run(), 0)
-        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(len(mail.outbox), 3)
 
     def test_invoice_archive_and_download_are_student_owned(self):
         checkout = self.checkout()
@@ -577,14 +662,14 @@ class LiveClassBookingTests(TestCase):
             )
             url = reverse("live-class-invoice-download", args=[booking.reference])
             self.assertEqual(owner.get(url, secure=True).status_code, 404)
-            self.assertEqual(deliver_live_class_confirmation.run(), 1)
+            self.assertEqual(deliver_live_class_confirmation.run(), 3)
             booking.refresh_from_db()
 
             key = Path("invoices") / str(self.student.supabase_user_id) / f"{booking.invoice_number}.pdf"
             archived = Path(directory, "student", key).read_bytes()
             self.assertTrue(archived.startswith(b"%PDF"))
             self.assertFalse(Path(directory, "admin", key).exists())
-            self.assertEqual(archived, mail.outbox[-1].attachments[0][1])
+            self.assertEqual(archived, mail.outbox[0].attachments[0][1])
             self.assertEqual(other.get(url, secure=True).status_code, 404)
             response = owner.get(url, secure=True)
             self.assertEqual(response.status_code, 200)
