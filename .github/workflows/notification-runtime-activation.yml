@@ -1,0 +1,35 @@
+name: Existing-instance notification runtime
+
+on:
+  pull_request:
+    paths:
+      - 'backend/amaris_cms/colocated_notifications.py'
+      - 'backend/amaris_cms/test_colocated_notifications.py'
+      - 'backend/ops/check_notifications.py'
+      - 'backend/gunicorn.conf.py'
+      - '.github/workflows/notification-runtime-activation.yml'
+  push:
+    branches:
+      - 'production-release-20260923'
+      - 'ops/staging-known-good-af8709c-20261019'
+    paths:
+      - 'backend/amaris_cms/colocated_notifications.py'
+      - 'backend/ops/check_notifications.py'
+      - 'backend/gunicorn.conf.py'
+      - '.github/workflows/notification-runtime-activation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  supervisor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - name: Verify notification supervision and shutdown contracts
+        run: |
+          python backend/amaris_cms/test_colocated_notifications.py
+          python -m compileall -q backend/amaris_cms/colocated_notifications.py backend/ops/check_notifications.py
