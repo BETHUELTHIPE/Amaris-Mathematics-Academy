@@ -262,8 +262,10 @@ def _deliver_one_live_class_confirmation() -> bool:
     # or admin must never cause duplicate student invoices on the next retry.
     stages = (
         ("confirmation_sent_at", "student"),
-        ("tutor_confirmation_sent_at", "tutor"),
+        # The school's invoice cannot be held back by an unrelated tutor
+        # mailbox outage: notify the Django administrator before the tutor.
         ("admin_confirmation_sent_at", "admin"),
+        ("tutor_confirmation_sent_at", "tutor"),
     )
     for sent_field, audience in stages:
         with transaction.atomic():
