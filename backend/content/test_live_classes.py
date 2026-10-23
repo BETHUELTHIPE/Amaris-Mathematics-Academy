@@ -362,8 +362,9 @@ class LiveClassBookingTests(TestCase):
         booking.refresh_from_db()
         self.assertIsNotNone(booking.confirmation_sent_at)
         self.assertIsNone(booking.tutor_confirmation_sent_at)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(deliver_live_class_confirmation.run(), 2)
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertIsNotNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(deliver_live_class_confirmation.run(), 1)
         self.assertEqual(len(mail.outbox), 3)
         self.assertEqual(
             [m.to for m in mail.outbox if m.to == [self.student.email]],
@@ -418,8 +419,8 @@ class LiveClassBookingTests(TestCase):
         self.assertEqual(deliver_live_class_confirmation.run(), 3)
         self.assertEqual(len(mail.outbox), 3)
         self.assertIn(booking.invoice_number, mail.outbox[0].body)
-        self.assertEqual(mail.outbox[1].to, [self.tutor.email])
-        self.assertIn(self.admin.email, mail.outbox[2].bcc)
+        self.assertEqual(mail.outbox[2].to, [self.tutor.email])
+        self.assertIn(self.admin.email, mail.outbox[1].bcc)
         self.assertEqual(mail.outbox[0].attachments[0][2], "application/pdf")
 
         with mock.patch(
@@ -604,7 +605,7 @@ class LiveClassBookingTests(TestCase):
         self.assertEqual(len(message.attachments), 1)
         self.assertEqual(message.attachments[0][2], "application/pdf")
         self.assertTrue(message.attachments[0][1].startswith(b"%PDF"))
-        tutor_message, admin_message = mail.outbox[1:]
+        admin_message, tutor_message = mail.outbox[1:]
         self.assertEqual(tutor_message.to, [self.tutor.email])
         self.assertEqual(tutor_message.attachments, [])
         self.assertIn(self.student.email, tutor_message.body)
@@ -671,7 +672,7 @@ class LiveClassBookingTests(TestCase):
             self.assertTrue(archived.startswith(b"%PDF"))
             self.assertFalse(Path(directory, "admin", key).exists())
             self.assertEqual(archived, mail.outbox[0].attachments[0][1])
-            self.assertEqual(archived, mail.outbox[2].attachments[0][1])
+            self.assertEqual(archived, mail.outbox[1].attachments[0][1])
 
             # Django Admin downloads the exact same private object as the
             # student's dashboard; staff without superuser rights cannot.
