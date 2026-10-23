@@ -62,6 +62,35 @@ class NotificationSupervisorTests(unittest.TestCase):
         self.assertTrue(popen.call_args.kwargs["start_new_session"])
         self.assertEqual(popen.call_args.kwargs["env"]["CELERY_WORKER_MAX_MEMORY_PER_CHILD_KB"], "220000")
 
+    def test_beat_is_not_started_without_a_ready_notification_worker(self):
+        def finish(_seconds):
+            self.supervisor.stop_event.set()
+
+        with (
+            patch.object(self.supervisor.stop_event, "wait", side_effect=finish),
+            patch.object(self.supervisor, "_start_role") as start,
+            patch.object(self.supervisor, "_claim_beat") as claim,
+        ):
+            self.supervisor._run()
+        start.assert_called_once_with("notifications")
+        claim.assert_not_called()
+
+    def test_unowned_beat_lease_prevents_scheduler_start(self):
+        worker = Mock()
+        worker.poll.return_value = None
+        self.supervisor.children["notifications"] = worker
+
+        def finish(_seconds):
+            self.supervisor.stop_event.set()
+
+        with (
+            patch.object(self.supervisor.stop_event, "wait", side_effect=finish),
+            patch.object(self.supervisor, "_claim_beat", return_value=False),
+            patch.object(self.supervisor, "_start_role") as start,
+        ):
+            self.supervisor._run()
+        start.assert_not_called()
+
     def test_beat_lease_renewal_and_release(self):
         lease = Mock()
         self.supervisor.beat_lease = lease
