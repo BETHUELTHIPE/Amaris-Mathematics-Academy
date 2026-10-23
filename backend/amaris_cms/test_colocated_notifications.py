@@ -58,6 +58,25 @@ class NotificationSupervisorTests(unittest.TestCase):
         self.assertIn(" beat ", " " + beat + " ")
         self.assertNotIn("--queues=critical", worker)
 
+    @patch.object(module.subprocess, "Popen")
+    def test_gunicorn_launches_an_independent_supervisor_process(self, popen):
+        supervisor = module.SupervisorProcess(logging.getLogger("notification-test"))
+        with patch.object(supervisor.stop_event, "wait", return_value=True):
+            supervisor._run()
+        self.assertEqual(popen.call_args.args[0], [sys.executable, "-m", "amaris_cms.colocated_notifications"])
+        self.assertEqual(popen.call_args.kwargs["cwd"], module.BACKEND_DIR)
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
+    def test_master_gracefully_stops_supervisor_before_force_kill(self):
+        supervisor = module.SupervisorProcess(logging.getLogger("notification-test"))
+        process = Mock()
+        process.poll.return_value = None
+        supervisor.process = process
+        supervisor.stop()
+        process.terminate.assert_called_once()
+        process.wait.assert_called_once_with(timeout=28)
+        process.kill.assert_not_called()
+
     def test_beat_environment_excludes_critical_and_default_schedules(self):
         beat = self.supervisor._role_environment("beat")
         worker = self.supervisor._role_environment("notifications")

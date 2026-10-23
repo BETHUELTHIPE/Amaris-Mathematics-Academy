@@ -10,6 +10,7 @@ Gunicorn owns this supervisor in its master process, not in ASGI workers.
 
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import subprocess
@@ -219,11 +220,78 @@ class NotificationSupervisor:
         self.log.info("Amaris colocated notification processes stopped")
 
 
+class SupervisorProcess:
+    """Keep Celery children outside Gunicorn's SIGCHLD/worker reaper."""
+
+    def __init__(self, log):
+        self.log = log
+        self.stop_event = threading.Event()
+        self.process: subprocess.Popen | None = None
+        self.thread = threading.Thread(target=self._run, name="amaris-supervisor-monitor", daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def _run(self):
+        while not self.stop_event.is_set():
+            if self.process is None or self.process.poll() is not None:
+                try:
+                    self.process = subprocess.Popen(
+                        [sys.executable, "-m", "amaris_cms.colocated_notifications"],
+                        cwd=BACKEND_DIR,
+                        env=os.environ.copy(),
+                        stdin=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                    self.log.info("Amaris notification supervisor process started")
+                except OSError:
+                    self.log.warning("Amaris supervisor startup failed; retrying later")
+                if self.stop_event.wait(RESTART_DELAY_SECONDS):
+                    break
+            self.stop_event.wait(5)
+
+    def stop(self):
+        self.stop_event.set()
+        if self.thread.is_alive():
+            self.thread.join(timeout=2)
+        process = self.process
+        if process is None or process.poll() is not None:
+            return
+        # The separate supervisor drains Beat and then the worker. Do not kill
+        # its group: Celery must receive its own graceful shutdown first.
+        try:
+            process.terminate()
+            process.wait(timeout=28)
+        except ProcessLookupError:
+            pass
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+
+
+def run_supervisor():
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    log = logging.getLogger("amaris.notifications")
+    shutdown = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_args: shutdown.set())
+    signal.signal(signal.SIGINT, lambda *_args: shutdown.set())
+    parent_pid = os.getppid()
+    supervisor = NotificationSupervisor(log)
+    supervisor.start()
+    try:
+        while not shutdown.wait(5):
+            # Also clean up after an unexpected Gunicorn master exit.
+            if os.getppid() != parent_pid:
+                break
+    finally:
+        supervisor.stop()
+
+
 def start_notifications(log):
     global _SUPERVISOR
     if not enabled() or _SUPERVISOR is not None:
         return
-    _SUPERVISOR = NotificationSupervisor(log)
+    _SUPERVISOR = SupervisorProcess(log)
     _SUPERVISOR.start()
 
 
@@ -232,3 +300,7 @@ def stop_notifications(log):
     if _SUPERVISOR is not None:
         _SUPERVISOR.stop()
         _SUPERVISOR = None
+
+
+if __name__ == "__main__":
+    run_supervisor()
