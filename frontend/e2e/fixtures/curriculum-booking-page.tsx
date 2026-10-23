@@ -9,7 +9,7 @@ const existing: TutorSlot = { id: 1, programme: "ieb", subject: "mathematics", l
 export default function CurriculumFixture() {
   return <main className="mx-auto max-w-5xl space-y-10 p-5">
     <h1>Isolated booking curriculum checks</h1>
-    <section id="live"><h2>Live booking</h2><LiveClassBookingFilters initialProgramme="" initialSubject="" initialLevel="" initialTopic="" offeredLevels={[]} /></section>
+    <section id="live"><h2>Live booking</h2><LiveClassBookingFilters initialProgramme="" initialSubject="" initialLevel="" initialTopic="" offeredLevels={[]} tutors={[{ id: 101, name: "Synthetic Day Tutor" }, { id: 102, name: "Synthetic Night Tutor" }]} /></section>
     <section id="video"><h2>Video request</h2><VideoRequestForm packages={[{ value: "chapter_topic", label: "Chapter or topic video", amount: "450.00", currency: "ZAR" }]} /></section>
     <section id="create-slot"><h2>Create availability</h2><form><TutorSlotFields /></form></section>
     <section id="edit-slot"><h2>Edit availability</h2><form><TutorSlotFields slot={existing} /></form></section>

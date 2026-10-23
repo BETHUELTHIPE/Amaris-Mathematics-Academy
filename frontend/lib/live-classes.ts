@@ -6,6 +6,7 @@ export type LiveClassSlot = {
   subject_label: string;
   level: string;
   tutor: string;
+  tutor_id: number;
   starts_at: string;
   ends_at: string;
   duration_minutes: number;
@@ -19,6 +20,7 @@ export async function getLiveClassSlots(filters: {
   programme?: string;
   subject?: string;
   level?: string;
+  tutor_id?: number;
 }): Promise<{ slots: LiveClassSlot[]; unavailable: boolean }> {
   if (!cmsBaseUrl) return { slots: [], unavailable: true };
 
@@ -26,6 +28,7 @@ export async function getLiveClassSlots(filters: {
   if (filters.programme) query.set("programme", filters.programme);
   if (filters.subject) query.set("subject", filters.subject);
   if (filters.level) query.set("level", filters.level);
+  if (filters.tutor_id) query.set("tutor_id", String(filters.tutor_id));
 
   try {
     const response = await fetch(
