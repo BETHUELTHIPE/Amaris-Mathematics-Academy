@@ -94,12 +94,16 @@ class NotificationSupervisor:
                 cwd=BACKEND_DIR,
                 env=env,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
                 timeout=25,
                 check=False,
             )
             if check.returncode != 0:
                 self.log.warning("Amaris %s preflight failed; retrying later (web remains available)", role)
+                diagnostic = check.stderr
+                if isinstance(diagnostic, str) and diagnostic.startswith("Amaris notification preflight failed"):
+                    self.log.warning("%s", diagnostic.strip())
                 return
             if self.stop_event.is_set():
                 return
@@ -221,39 +225,31 @@ class NotificationSupervisor:
 
 
 class SupervisorProcess:
-    """Keep Celery children outside Gunicorn's SIGCHLD/worker reaper."""
+    """Keep Celery children outside Gunicorn's SIGCHLD/worker reaper.
+
+    Spawn synchronously before Gunicorn forks request workers. Starting a
+    monitor thread in the master here can deadlock inherited logging locks.
+    The independent process supervises and restarts its Celery children.
+    """
 
     def __init__(self, log):
         self.log = log
-        self.stop_event = threading.Event()
         self.process: subprocess.Popen | None = None
-        self.thread = threading.Thread(target=self._run, name="amaris-supervisor-monitor", daemon=True)
 
     def start(self):
-        self.thread.start()
-
-    def _run(self):
-        while not self.stop_event.is_set():
-            if self.process is None or self.process.poll() is not None:
-                try:
-                    self.process = subprocess.Popen(
-                        [sys.executable, "-m", "amaris_cms.colocated_notifications"],
-                        cwd=BACKEND_DIR,
-                        env=os.environ.copy(),
-                        stdin=subprocess.DEVNULL,
-                        start_new_session=True,
-                    )
-                    self.log.info("Amaris notification supervisor process started")
-                except OSError:
-                    self.log.warning("Amaris supervisor startup failed; retrying later")
-                if self.stop_event.wait(RESTART_DELAY_SECONDS):
-                    break
-            self.stop_event.wait(5)
+        try:
+            self.process = subprocess.Popen(
+                [sys.executable, "-m", "amaris_cms.colocated_notifications"],
+                cwd=BACKEND_DIR,
+                env=os.environ.copy(),
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            self.log.info("Amaris notification supervisor process started")
+        except OSError:
+            self.log.warning("Amaris supervisor startup failed; web remains available")
 
     def stop(self):
-        self.stop_event.set()
-        if self.thread.is_alive():
-            self.thread.join(timeout=2)
         process = self.process
         if process is None or process.poll() is not None:
             return
@@ -283,6 +279,13 @@ def run_supervisor():
             # Also clean up after an unexpected Gunicorn master exit.
             if os.getppid() != parent_pid:
                 break
+            if not supervisor.thread.is_alive():
+                log.warning("Amaris supervisor loop exited; restarting after backoff")
+                supervisor.stop()
+                if shutdown.wait(RESTART_DELAY_SECONDS):
+                    break
+                supervisor = NotificationSupervisor(log)
+                supervisor.start()
     finally:
         supervisor.stop()
 
