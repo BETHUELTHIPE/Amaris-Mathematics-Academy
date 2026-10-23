@@ -173,6 +173,19 @@ class LiveClassBookingTests(TestCase):
         self.assertEqual(len(mail.outbox), 3)
         self.assertEqual([message.to for message in mail.outbox if message.to == [self.student.email]], [[self.student.email]])
 
+    def test_legacy_paid_booking_does_not_trigger_new_staff_alerts(self):
+        checkout = self.checkout(key="legacy-booking-00001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+        booking.staff_notification_required = False
+        booking.save(update_fields=("staff_notification_required",))
+        self.assertEqual(deliver_live_class_confirmation.run(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.student.email])
+        booking.refresh_from_db()
+        self.assertIsNone(booking.tutor_confirmation_sent_at)
+        self.assertIsNone(booking.admin_confirmation_sent_at)
+
     def test_public_availability_ignores_expired_holds_without_writing_booking_state(self):
         checkout = self.checkout(key="expired-read-only-slot-001")
         booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
