@@ -7,10 +7,10 @@ type Props = {
   initialSubject: string;
   initialLevel: string;
   initialTopic: string;
-  initialTutorId: string;
-  initialTimePreference: string;
+  initialTutorId?: string;
+  initialTimePreference?: string;
   offeredLevels: string[];
-  tutors: { id: number; name: string }[];
+  tutors?: { id: number; name: string }[];
 };
 
 export function LiveClassBookingFilters(props: Props) {
@@ -25,11 +25,11 @@ export function LiveClassBookingFilters(props: Props) {
           id="preferred-tutor"
           name="tutor"
           key={props.initialTutorId}
-          defaultValue={props.initialTutorId}
+          defaultValue={props.initialTutorId ?? ""}
           className="min-h-12 w-full rounded-xl border border-[#b7c5d8] bg-white px-4 py-3 text-[#263852]"
         >
           <option value="">Any available tutor — show me the earliest</option>
-          {props.tutors.map((tutor) => (
+          {(props.tutors ?? []).map((tutor) => (
             <option key={tutor.id} value={tutor.id}>{tutor.name}</option>
           ))}
         </select>
@@ -42,7 +42,7 @@ export function LiveClassBookingFilters(props: Props) {
         <select
           id="preferred-time"
           name="time"
-          defaultValue={props.initialTimePreference}
+          defaultValue={props.initialTimePreference ?? "any"}
           className="min-h-12 w-full rounded-xl border border-[#b7c5d8] bg-white px-4 py-3 text-[#263852]"
         >
           <option value="any">Any time — 24/7</option>
