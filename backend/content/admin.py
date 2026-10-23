@@ -6,6 +6,7 @@ from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils import timezone
 
+from .admin_invoice import LiveClassInvoiceAdminMixin
 from .models import (
     FAQ,
     LIVE_CLASS_MAX_HOURS,
@@ -539,9 +540,10 @@ class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
 
 
 @admin.register(LiveClassBooking)
-class LiveClassBookingAdmin(TimeStampedAdmin):
+class LiveClassBookingAdmin(LiveClassInvoiceAdminMixin, TimeStampedAdmin):
     list_display = (
         "reference",
+        "invoice_pdf",
         "student",
         "slot",
         "topic",
@@ -549,6 +551,9 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
         "status",
         "paid_at",
         "confirmation_sent_at",
+        "staff_notification_required",
+        "tutor_confirmation_sent_at",
+        "admin_confirmation_sent_at",
         "reminder_sent_at",
     )
     list_filter = ("status", "programme", "subject", "slot__starts_at")
@@ -578,7 +583,11 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
         "paid_at",
         "gateway_verified_at",
         "invoice_number",
+        "invoice_pdf",
         "confirmation_sent_at",
+        "staff_notification_required",
+        "tutor_confirmation_sent_at",
+        "admin_confirmation_sent_at",
         "reminder_sent_at",
         "created_at",
         "updated_at",

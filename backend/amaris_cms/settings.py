@@ -418,6 +418,14 @@ TUTOR_BANK_FERNET_KEY = os.getenv("TUTOR_BANK_FERNET_KEY", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@example.invalid>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
+# Additional recipients for paid class bookings; active Django superusers and
+# the SiteSettings contact email are always included.
+BOOKING_ADMIN_NOTIFICATION_EMAILS = tuple(
+    address.strip()
+    for address in os.getenv("BOOKING_ADMIN_NOTIFICATION_EMAILS", "").replace(";", ",").split(",")
+    if address.strip()
+)
+
 AI_ENQUIRY_AUTOREPLY_ENABLED = env_bool("AI_ENQUIRY_AUTOREPLY_ENABLED", True)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY") or os.getenv("OPENAI_APIKEY", "")
 # The website assistant needs a documented OpenAI API model, not a ChatGPT-only alias.
@@ -488,6 +496,23 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 300.0,
     },
 }
+
+
+# A lightweight, two-container external deployment intentionally processes only
+# notifications. Do not let its singleton Beat publish critical/default jobs:
+# those queues require separate existing infrastructure and would build up.
+def _is_notifications_schedule_entry(entry: object) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    options = entry.get("options")
+    return isinstance(options, dict) and options.get("queue") == "notifications"
+
+
+if env_bool("CELERY_NOTIFICATIONS_ONLY_BEAT", False):
+    CELERY_BEAT_SCHEDULE = {
+        name: entry for name, entry in CELERY_BEAT_SCHEDULE.items() if _is_notifications_schedule_entry(entry)
+    }
+
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = not DEBUG

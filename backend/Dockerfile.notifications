@@ -1,0 +1,28 @@
+# Lean notification-only image. Avoids the Go/restic build stage and
+# PostgreSQL client tools used by the full application recovery image.
+FROM python:3.13.15-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --upgrade --force-reinstall "setuptools>=78.1.1" "msgpack>=1.2.1,<2.0"
+
+# The Docker ignore file excludes credentials such as .env.notifications.
+COPY . ./
+RUN groupadd --system amaris \
+    && useradd --system --gid amaris --home-dir /app amaris \
+    && chmod +x /app/entrypoint.sh \
+    && chown -R amaris:amaris /app
+
+USER amaris
+ENTRYPOINT ["/app/entrypoint.sh"]

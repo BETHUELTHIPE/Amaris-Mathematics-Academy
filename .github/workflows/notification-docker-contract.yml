@@ -1,0 +1,73 @@
+name: Notification runtime (no extra Render service)
+
+on:
+  pull_request:
+    paths:
+      - "backend/compose.notifications.yml"
+      - "backend/.env.notifications.example"
+      - "backend/ops/check_notifications.py"
+      - "backend/amaris_cms/settings.py"
+      - "backend/amaris_cms/colocated_notifications.py"
+      - "backend/amaris_cms/test_colocated_notifications.py"
+      - "backend/gunicorn.conf.py"
+      - ".github/workflows/notification-docker-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-two-container-configuration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render secret-free Docker Compose config
+        run: |
+          set -euo pipefail
+          cp backend/.env.notifications.example backend/.env.notifications
+          docker compose -f backend/compose.notifications.yml config --quiet
+          docker compose -f backend/compose.notifications.yml config --format json > "$RUNNER_TEMP/notifications-compose.json"
+          python - "$RUNNER_TEMP/notifications-compose.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              services = json.load(stream)["services"]
+          assert set(services) == {"notification_worker", "celery_beat"}, set(services)
+          worker, beat = services["notification_worker"], services["celery_beat"]
+          for service in services.values():
+              assert not service.get("ports"), "Notifications must not expose HTTP/TCP ports"
+              assert service.get("read_only") is True
+              assert service["restart"] == "unless-stopped"
+              assert str(service.get("mem_limit", "")) in {"512m", "256m", "536870912", "268435456"}
+          assert "check_notifications.py --role notifications" in " ".join(worker["command"])
+          assert "check_notifications.py --role beat" in " ".join(beat["command"])
+          assert "--queues=notifications" in " ".join(worker["command"])
+          assert worker["environment"]["AMARIS_EXTERNAL_WORKER"] == "true"
+          assert beat["environment"]["CELERY_NOTIFICATIONS_ONLY_BEAT"] == "true"
+          assert not beat.get("ports")
+          print("Validated exactly two no-new-Render-service containers and resource limits.")
+          PY
+      - name: Compile preflight without opening Redis or sending email
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          compile(Path("backend/ops/check_notifications.py").read_text(), "check_notifications.py", "exec")
+          print("Notification preflight compiles successfully.")
+          PY
+      - name: Verify existing-instance fallback (no network or SMTP)
+        run: |
+          python backend/amaris_cms/test_colocated_notifications.py
+          python - <<'PY'
+          from pathlib import Path
+
+          config = Path("backend/gunicorn.conf.py").read_text()
+          assert "def when_ready(server):" in config
+          assert "def on_exit(server):" in config
+          assert "start_notifications(server.log)" in config
+          assert "stop_notifications(server.log)" in config
+          source = Path("backend/amaris_cms/colocated_notifications.py").read_text()
+          assert 'AMARIS_COLOCATE_NOTIFICATIONS' in source
+          assert 'RESTART_DELAY_SECONDS = 45' in source
+          print("Colocated Celery hooks are opt-in and supervised.")
+          PY

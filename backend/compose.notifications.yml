@@ -1,0 +1,89 @@
+# No new Render paid services: run exactly these two containers on an
+# already-available, always-on Docker host. Nothing here starts Postgres, Redis
+# or a web server. Needs a TLS-authenticated external broker and live SMTP.
+name: amaris-notifications
+
+x-notification-base: &notification-base
+  image: amaris-notifications:${AMARIS_NOTIFICATIONS_IMAGE_TAG:-local}
+  build:
+    context: .
+    dockerfile: Dockerfile.notifications
+  env_file:
+    - .env.notifications
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:rw,nosuid,nodev,size=32m
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  networks:
+    - outbound
+
+services:
+  notification_worker:
+    <<: *notification-base
+    hostname: amaris-mail
+    environment:
+      SERVICE_ROLE: celery-notifications
+      AMARIS_EXTERNAL_WORKER: "true"
+      CELERY_WORKER_MAX_TASKS_PER_CHILD: "100"
+      CELERY_WORKER_MAX_MEMORY_PER_CHILD_KB: "220000"
+      CELERY_BROKER_POOL_LIMIT: "2"
+    command:
+      - /bin/sh
+      - -ec
+      - >-
+        python ops/check_notifications.py --role notifications &&
+        exec celery -A amaris_cms worker
+        --loglevel=INFO --queues=notifications
+        --pool=prefork --concurrency=1
+        --prefetch-multiplier=1 --max-tasks-per-child=100
+        --max-memory-per-child=220000
+        --hostname=notifications@%h
+    mem_limit: 512m
+    cpus: 0.50
+    stop_grace_period: 90s
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - celery -A amaris_cms inspect ping --destination=notifications@amaris-mail --timeout=5 | grep -q pong
+      interval: 60s
+      timeout: 12s
+      retries: 3
+      start_period: 60s
+
+  celery_beat:
+    <<: *notification-base
+    hostname: amaris-beat
+    environment:
+      SERVICE_ROLE: celery-beat
+      AMARIS_EXTERNAL_WORKER: "true"
+      CELERY_BROKER_POOL_LIMIT: "2"
+      CELERY_NOTIFICATIONS_ONLY_BEAT: "true"
+    command:
+      - /bin/sh
+      - -ec
+      - >-
+        python ops/check_notifications.py --role beat &&
+        exec celery -A amaris_cms beat
+        --loglevel=INFO
+        --pidfile=/tmp/celerybeat.pid
+        --schedule=/tmp/celerybeat-schedule
+    mem_limit: 256m
+    cpus: 0.25
+    stop_grace_period: 60s
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -s /tmp/celerybeat.pid && kill -0 "$(cat /tmp/celerybeat.pid)"
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  outbound:
+    driver: bridge
