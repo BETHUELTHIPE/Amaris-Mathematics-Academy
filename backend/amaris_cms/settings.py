@@ -489,6 +489,7 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+
 # A lightweight, two-container external deployment intentionally processes only
 # notifications. Do not let its singleton Beat publish critical/default jobs:
 # those queues require separate existing infrastructure and would build up.
