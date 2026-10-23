@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from django.core import mail
 from django.core.exceptions import ValidationError
-from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.files.uploadedfile import SimpleUploadedFile, TemporaryUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -17,8 +17,12 @@ from content.authentication import SupabaseStudentPrincipal
 from content.models import StudentRecord, VideoRequest, VideoRequestDocument
 from content.services.payments import PaymentSecurityError
 from content.services.video_requests import (
+    DOCUMENT_CHUNK_SIZE,
+    MAX_DOCUMENT_SIZE,
+    MAX_TOTAL_DOCUMENT_SIZE,
     create_video_request_checkout,
     process_video_request_notification,
+    validate_documents,
     video_request_queue_position,
 )
 from content.tasks import deliver_video_request_notifications, expire_unpaid_video_requests
@@ -145,11 +149,67 @@ class VideoRequestWorkflowTests(TestCase):
             self.create_checkout(key="video-doc-bad-001", documents=[spoofed])
         oversized = SimpleUploadedFile(
             "large.pdf",
-            b"%PDF-" + b"x" * (10 * 1024 * 1024),
+            b"%PDF-small synthetic body",
             content_type="application/pdf",
         )
+        oversized.size = MAX_DOCUMENT_SIZE + 1
         with self.assertRaises(PaymentSecurityError):
             self.create_checkout(key="video-doc-big-001", documents=[oversized])
+
+    def test_exact_one_gib_file_validates_without_unbounded_reads(self):
+        # A sparse file checks the real boundary without allocating 1 GB of RAM.
+        upload = TemporaryUploadedFile("boundary.pdf", "application/pdf", MAX_DOCUMENT_SIZE, None)
+        self.addCleanup(upload.close)
+        upload.write(b"%PDF-")
+        upload.seek(MAX_DOCUMENT_SIZE - 1)
+        upload.write(b"\n")
+        upload.seek(0)
+        read = upload.read
+
+        def bounded_read(size=-1):
+            self.assertGreater(size, 0)
+            self.assertLessEqual(size, DOCUMENT_CHUNK_SIZE)
+            return read(size)
+
+        with patch.object(upload.file, "read", side_effect=bounded_read):
+            document = validate_documents([upload])[0]
+        self.assertIs(document.file, upload)
+        self.assertEqual(document.size_bytes, 1024 * 1024 * 1024)
+        self.assertEqual(len(document.sha256), 64)
+        self.assertEqual(upload.tell(), 0)
+
+    def test_combined_one_gib_quota_is_checked_before_reading_files(self):
+        first = SimpleUploadedFile("first.pdf", b"%PDF-first", content_type="application/pdf")
+        second = SimpleUploadedFile("second.pdf", b"%PDF-second", content_type="application/pdf")
+        first.size = MAX_TOTAL_DOCUMENT_SIZE
+        with patch.object(first.file, "read", side_effect=AssertionError("Must reject before reading")):
+            with self.assertRaises(PaymentSecurityError):
+                validate_documents([first, second])
+
+    @override_settings(FILE_UPLOAD_MAX_MEMORY_SIZE=1)
+    def test_disk_spooled_document_larger_than_old_limit_reaches_private_storage(self):
+        contents = b"%PDF-" + b"x" * (11 * 1024 * 1024)
+        upload = SimpleUploadedFile("large.pdf", contents, content_type="application/pdf")
+        response = self.authenticated_client().post(
+            reverse("video-request-checkout"),
+            {
+                "programme": "caps",
+                "subject": "mathematics",
+                "level": "Grade 12",
+                "topic": "Calculus",
+                "request_type": "chapter_topic",
+                "preferred_duration_minutes": "60",
+                "idempotency_key": "large-private-file-001",
+                "documents": [upload],
+            },
+            format="multipart",
+            secure=True,
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        document = VideoRequestDocument.objects.get()
+        self.assertEqual(document.size_bytes, len(contents))
+        self.assertEqual(Path(self.storage_directory.name, document.storage_path).read_bytes(), contents)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
 
     def test_verified_payment_creates_fifo_ticket_and_invoice(self):
         checkout = self.create_checkout()
