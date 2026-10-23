@@ -2,13 +2,15 @@
 
 No additional Render services and no external Redis access are required.
 This feature defaults off; enable only after the booking migration, live SMTP
-credentials, queue access and real production backup have been verified.
+credentials and queue access have been verified. This runtime-only release
+requires the existing 0016 schema and makes no database schema changes.
 
 Gunicorn owns this supervisor in its master process, not in ASGI workers.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import subprocess
@@ -92,12 +94,16 @@ class NotificationSupervisor:
                 cwd=BACKEND_DIR,
                 env=env,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
                 timeout=25,
                 check=False,
             )
             if check.returncode != 0:
                 self.log.warning("Amaris %s preflight failed; retrying later (web remains available)", role)
+                diagnostic = check.stderr
+                if isinstance(diagnostic, str) and diagnostic.startswith("Amaris notification preflight failed"):
+                    self.log.warning("%s", diagnostic.strip())
                 return
             if self.stop_event.is_set():
                 return
@@ -218,11 +224,77 @@ class NotificationSupervisor:
         self.log.info("Amaris colocated notification processes stopped")
 
 
+class SupervisorProcess:
+    """Keep Celery children outside Gunicorn's SIGCHLD/worker reaper.
+
+    Spawn synchronously before Gunicorn forks request workers. Starting a
+    monitor thread in the master here can deadlock inherited logging locks.
+    The independent process supervises and restarts its Celery children.
+    """
+
+    def __init__(self, log):
+        self.log = log
+        self.process: subprocess.Popen | None = None
+
+    def start(self):
+        try:
+            self.process = subprocess.Popen(
+                [sys.executable, "-m", "amaris_cms.colocated_notifications"],
+                cwd=BACKEND_DIR,
+                env=os.environ.copy(),
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            self.log.info("Amaris notification supervisor process started")
+        except OSError:
+            self.log.warning("Amaris supervisor startup failed; web remains available")
+
+    def stop(self):
+        process = self.process
+        if process is None or process.poll() is not None:
+            return
+        # The separate supervisor drains Beat and then the worker. Do not kill
+        # its group: Celery must receive its own graceful shutdown first.
+        try:
+            process.terminate()
+            process.wait(timeout=28)
+        except ProcessLookupError:
+            pass
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+
+
+def run_supervisor():
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    log = logging.getLogger("amaris.notifications")
+    shutdown = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_args: shutdown.set())
+    signal.signal(signal.SIGINT, lambda *_args: shutdown.set())
+    parent_pid = os.getppid()
+    supervisor = NotificationSupervisor(log)
+    supervisor.start()
+    try:
+        while not shutdown.wait(5):
+            # Also clean up after an unexpected Gunicorn master exit.
+            if os.getppid() != parent_pid:
+                break
+            if not supervisor.thread.is_alive():
+                log.warning("Amaris supervisor loop exited; restarting after backoff")
+                supervisor.stop()
+                if shutdown.wait(RESTART_DELAY_SECONDS):
+                    break
+                supervisor = NotificationSupervisor(log)
+                supervisor.start()
+    finally:
+        supervisor.stop()
+
+
 def start_notifications(log):
     global _SUPERVISOR
     if not enabled() or _SUPERVISOR is not None:
         return
-    _SUPERVISOR = NotificationSupervisor(log)
+    _SUPERVISOR = SupervisorProcess(log)
     _SUPERVISOR.start()
 
 
@@ -231,3 +303,7 @@ def stop_notifications(log):
     if _SUPERVISOR is not None:
         _SUPERVISOR.stop()
         _SUPERVISOR = None
+
+
+if __name__ == "__main__":
+    run_supervisor()

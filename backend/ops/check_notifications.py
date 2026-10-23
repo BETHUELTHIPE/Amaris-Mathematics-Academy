@@ -10,11 +10,20 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
+
+# Direct execution puts ops/, rather than backend/, on Python's import path.
+# Resolve the application root explicitly for Render and Docker startup.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+class NotificationPreflightError(RuntimeError):
+    """A controlled diagnostic containing no credential values."""
 
 
 def _require(condition: bool, message: str) -> None:
     if not condition:
-        raise RuntimeError(message)
+        raise NotificationPreflightError(message)
 
 
 def main() -> int:
@@ -101,5 +110,8 @@ if __name__ == "__main__":
     except Exception as exc:
         # No passwords or connection URLs are printed; unexpected exception
         # details may include infrastructure secrets.
-        print(f"Amaris notification preflight failed ({type(exc).__name__}).", file=sys.stderr)
+        if isinstance(exc, NotificationPreflightError):
+            print(f"Amaris notification preflight failed: {exc}", file=sys.stderr)
+        else:
+            print(f"Amaris notification preflight failed ({type(exc).__name__}).", file=sys.stderr)
         sys.exit(1)
