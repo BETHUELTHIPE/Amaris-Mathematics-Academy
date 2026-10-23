@@ -24,3 +24,18 @@ The frontend booking change is a separate PR based on the live-student release b
 8. Deploy backend, verify runtime SHA, migrations, HTTP smoke checks and error logs; only then release the separately tested frontend PR. Keep the previous production backend SHA as rollback target, and stop if schema compatibility or SMTP is unresolved.
 
 **Current state:** Code prepared in a draft PR only. No production database changes, actual payments or external confirmation emails were performed.
+
+## Render provisioning and live-worker verification
+
+The existing `render.yaml` already defines the production Redis broker/cache and the two **paid Starter background-worker services**:
+`amaris-production-notification-worker` and `amaris-production-beat`. A repository YAML declaration does not mean the services are running. In Render, use the **existing linked Blueprint's Sync action** if one exists; don't blindly create a second Blueprint because it can duplicate services and incur charges. Verify the resource list and billing before approving the sync. The currently available Render connector can inspect and deploy existing services, but it cannot provision a new background worker or trigger Blueprint sync.
+
+The notification worker uses the `notifications` Celery queue. Beat is the *only* scheduler and publishes the existing 30-second booking-confirmation and 60-second booking-reminder jobs. The production Redis broker `amaris-production-broker` already exists; never create an additional one.
+
+Before a worker or Beat instance accepts jobs, `python ops/check_notifications.py --role notifications` or `--role beat` verifies the production connection, applied migration `0017`, broker reachability and routing. The notification worker additionally authenticates to SMTP without sending a message. A non-zero result prevents Celery startup, rather than falsely reporting that emails are being processed.
+
+Configure the following **on the production Django web service**, in its secured Render environment, so the Blueprint can inherit them without duplicating secret values: `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, and `DEFAULT_FROM_EMAIL`. Confirm `EMAIL_PORT=587`, `EMAIL_USE_TLS=true`, and `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`. The Blueprint resolves the four shared values with `fromService`; do not store credentials in GitHub files or show them in logs. If a required web environment value is missing, create it there before syncing. Optionally set `BOOKING_ADMIN_NOTIFICATION_EMAILS` on the notification worker for additional managed staff inboxes.
+
+The rollout order remains: (1) verified genuine production Supabase backup and isolated restore, (2) successful backend CI and staging sandbox three-inbox acceptance, (3) merge backend PR and verify Django migration `0017`/production readiness, (4) provision and verify notification worker plus a **single** Beat instance, (5) inspect Render worker and Beat logs and Celery queue health, (6) merge/deploy live-students frontend PR, (7) verify a new sandbox-origin booking's three recipient emails and 30-minute reminder. Never send a real-money production payment merely to test delivery.
+
+Verification must distinguish an SMTP handshake from actual inbox delivery: check that the worker reports registered notification tasks, that Beat schedules them, that one verified synthetic booking produces distinct student/tutor/admin receipt timestamps, that a duplicate callback produces no additional email, and that the messages really appear in all three inboxes. Monitoring-only workers and passing synthetic CI restore tests are not substitutes.
