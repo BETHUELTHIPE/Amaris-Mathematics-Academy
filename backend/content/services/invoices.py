@@ -39,7 +39,10 @@ def student_invoice_key(student_id: object, invoice_number: str) -> str:
 
 def _invoice_details(invoice: Invoice | LiveClassBooking | VideoRequest) -> tuple[str, str, list[str]]:
     if isinstance(invoice, LiveClassBooking):
-        if invoice.status not in (LiveClassBooking.Status.CONFIRMED, LiveClassBooking.Status.COMPLETED) or not invoice.invoice_number:
+        if (
+            invoice.status not in (LiveClassBooking.Status.CONFIRMED, LiveClassBooking.Status.COMPLETED)
+            or not invoice.invoice_number
+        ):
             raise ValueError("Only verified, confirmed bookings receive invoices.")
         starts_at = timezone.localtime(invoice.slot.starts_at).strftime("%d %B %Y at %H:%M SAST")
         return (
