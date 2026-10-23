@@ -1,0 +1,108 @@
+name: Guarded production SMTP secret installation
+
+on:
+  push:
+    branches: [production-release-20260923]
+    paths: [.github/workflows/install-production-smtp.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-production-smtp-install
+  cancel-in-progress: false
+
+jobs:
+  install-smtp:
+    if: >-
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
+      contains(github.event.head_commit.message, '[install-production-smtp]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
+      EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
+      DEFAULT_FROM_EMAIL: ${{ secrets.DEFAULT_FROM_EMAIL }}
+    steps:
+      - name: Validate Gmail authentication and install exactly three existing secrets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import email.utils
+          import json
+          import os
+          import smtplib
+          import ssl
+          import sys
+          import urllib.request
+          from urllib.parse import quote
+
+          SERVICE = "srv-dapn6b3tqb8s73d3r7n0"
+          WORKSPACE = "tea-csppi8l6l47c73dk9c90"
+          EXPECTED_LIVE_SHA = "c92df599bed39cc887c03f3b86ccd2f71ed4446e"
+          KEYS = ("EMAIL_HOST_USER", "EMAIL_HOST_PASSWORD", "DEFAULT_FROM_EMAIL")
+
+          def main():
+              required = ("RENDER_API_KEY",) + KEYS
+              for key in required:
+                  if not os.environ.get(key):
+                      raise RuntimeError("Required protected credential is missing")
+              username = os.environ["EMAIL_HOST_USER"].strip()
+              password = os.environ["EMAIL_HOST_PASSWORD"].replace(" ", "").strip()
+              sender = os.environ["DEFAULT_FROM_EMAIL"].strip()
+              sender_address = email.utils.parseaddr(sender)[1]
+              if "@" not in username or "@" not in sender_address:
+                  raise RuntimeError("SMTP user and sender must be valid email addresses")
+              if any(c in username + sender for c in "\r\n") or "example.invalid" in sender:
+                  raise RuntimeError("SMTP sender configuration is invalid")
+              headers = {
+                  "Authorization": "Bearer " + os.environ["RENDER_API_KEY"],
+                  "Accept": "application/json",
+                  "Content-Type": "application/json",
+              }
+              base = "https://api.render.com/v1/services/" + SERVICE
+
+              def request(path, value=None):
+                  payload = None if value is None else json.dumps({"value": value}).encode()
+                  req = urllib.request.Request(
+                      base + path, headers=headers, data=payload,
+                      method="GET" if value is None else "PUT",
+                  )
+                  with urllib.request.urlopen(req, timeout=20) as response:
+                      if response.status != 200:
+                          raise RuntimeError("Render rejected the operation")
+                      return json.load(response)
+
+              service = request("")
+              if (service.get("id") != SERVICE or service.get("ownerId") != WORKSPACE
+                      or service.get("branch") != "production-release-20260923"):
+                  raise RuntimeError("Unexpected production service or workspace")
+              deployments = request("/deploys?limit=1")
+              latest = deployments[0].get("deploy", deployments[0])
+              if latest.get("status") != "live" or latest.get("commit", {}).get("id") != EXPECTED_LIVE_SHA:
+                  raise RuntimeError("Production artifact changed; review before installing secrets")
+
+              # Authentication only: never submits an email or writes a booking.
+              with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as smtp:
+                  smtp.ehlo()
+                  smtp.starttls(context=ssl.create_default_context())
+                  smtp.ehlo()
+                  smtp.login(username, password)
+              print("PASS Gmail TLS authentication; no email sent")
+
+              values = dict(zip(KEYS, (username, password, sender)))
+              for key, value in values.items():
+                  request("/env-vars/" + quote(key, safe=""), value)
+                  print("CONFIGURED " + key)
+              print("PASS three SMTP secrets installed; values were not logged")
+              print("DEPLOY_REQUIRED: redeploy via the Render connector, then verify worker and Beat")
+
+          try:
+              main()
+          except Exception as exc:
+              # Never print provider/API response bodies or credential values.
+              print("BLOCKED SMTP installation (" + type(exc).__name__ + ")", file=sys.stderr)
+              sys.exit(1)
+          PY
