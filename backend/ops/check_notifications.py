@@ -10,6 +10,11 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
+
+# Direct execution puts ops/, rather than backend/, on Python's import path.
+# Resolve the application root explicitly for Render and Docker startup.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def _require(condition: bool, message: str) -> None:

@@ -5,6 +5,9 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -25,6 +28,26 @@ class NotificationSupervisorTests(unittest.TestCase):
             self.assertFalse(module.enabled())
         with patch.dict(os.environ, {"AMARIS_COLOCATE_NOTIFICATIONS": "true"}):
             self.assertTrue(module.enabled())
+
+    def test_direct_preflight_execution_can_find_django_application(self):
+        preflight = MODULE_PATH.parent.parent / "ops" / "check_notifications.py"
+        probe = (
+            "import importlib.util, runpy, sys; "
+            "runpy.run_path(sys.argv[1]); "
+            "assert importlib.util.find_spec('amaris_cms') is not None"
+        )
+        env = os.environ.copy()
+        env.pop("PYTHONPATH", None)
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [sys.executable, "-c", probe, str(preflight)],
+                cwd=directory,
+                env=env,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
 
     def test_only_the_notifications_queue_is_consumed(self):
         worker = " ".join(self.supervisor._command("notifications"))
