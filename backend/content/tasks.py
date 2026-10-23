@@ -286,6 +286,7 @@ def _deliver_one_live_class_confirmation() -> bool:
                 continue
 
             if audience == "student":
+                end_local = timezone.localtime(booking.slot.ends_at, ZoneInfo("Africa/Johannesburg"))
                 _send_live_class_message(
                     booking,
                     subject=f"Amaris live class confirmed — {booking.reference}",
@@ -299,7 +300,7 @@ def _deliver_one_live_class_confirmation() -> bool:
                         f"Tutor: {booking.slot.tutor_display_name}",
                         f"Date and time: {_booking_when(booking)}",
                         f"Duration: {booking.slot.duration_hours} hour(s)",
-                        f"End time: {timezone.localtime(booking.slot.ends_at, ZoneInfo('Africa/Johannesburg')):%H:%M} SAST",
+                        f"End time: {end_local:%H:%M} SAST",
                         f"Zoom link: {booking.slot.zoom_join_url}",
                         f"Invoice: {booking.invoice_number}",
                         f"Amount paid: R{booking.amount:.2f}",
