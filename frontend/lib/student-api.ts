@@ -256,7 +256,9 @@ export async function getStudentLiveClassBooking(
 }
 
 export async function createStudentVideoRequestCheckout(
-  formData: FormData,
+  body: FormData | ReadableStream<Uint8Array>,
+  contentType?: string,
+  signal?: AbortSignal,
 ): Promise<VideoRequestCheckoutSession> {
   const token = await accessToken();
   const response = await fetch(`${cmsBaseUrl()}/student/video-requests/checkout/`, {
@@ -264,11 +266,13 @@ export async function createStudentVideoRequestCheckout(
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${token}`,
+      ...(contentType ? { "Content-Type": contentType } : {}),
     },
-    body: formData,
+    body,
+    ...(body instanceof FormData ? {} : { duplex: "half" }),
     cache: "no-store",
-    signal: AbortSignal.timeout(30_000),
-  });
+    signal: AbortSignal.any([AbortSignal.timeout(900_000), ...(signal ? [signal] : [])]),
+  } as RequestInit & { duplex?: "half" });
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Video request failed (${response.status}): ${body.slice(0, 240)}`);

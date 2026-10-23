@@ -1,7 +1,7 @@
-import { resolveCurriculumFields } from "@/lib/school-curriculum.mjs";
 import { NextRequest, NextResponse } from "next/server";
 import { getStudentIdentity } from "@/lib/auth";
 import { createStudentVideoRequestCheckout } from "@/lib/student-api";
+import { boundedVideoUpload, MAX_VIDEO_UPLOAD_BODY_BYTES } from "@/lib/video-document-limits.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
       { status: 403, headers: { "Cache-Control": "private, no-store" } },
     );
   }
+  let upload: ReturnType<typeof boundedVideoUpload> | undefined;
   try {
     const student = await getStudentIdentity();
     if (!student || !student.emailVerified) {
@@ -27,16 +28,31 @@ export async function POST(request: NextRequest) {
         { status: student ? 403 : 401, headers: { "Cache-Control": "private, no-store" } },
       );
     }
-    const formData = await request.formData();
-    const selection = resolveCurriculumFields(formData);
-    formData.set("level", selection.level);
-    formData.set("topic", selection.topic);
-    const checkout = await createStudentVideoRequestCheckout(formData);
+    const contentType = request.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("multipart/form-data;") || !request.body) {
+      return NextResponse.json({ detail: "Submit the video request form with your documents." }, {
+        status: 400, headers: { "Cache-Control": "private, no-store" },
+      });
+    }
+    if (Number(request.headers.get("content-length")) > MAX_VIDEO_UPLOAD_BODY_BYTES) {
+      return NextResponse.json({ detail: "Supporting documents must total no more than 1 GB." }, {
+        status: 413, headers: { "Cache-Control": "private, no-store" },
+      });
+    }
+    // The browser resolves curriculum fields; Django validates the submitted
+    // values. Pass the multipart boundary unchanged and stream file bytes.
+    upload = boundedVideoUpload(request.body);
+    const checkout = await createStudentVideoRequestCheckout(upload.body, contentType, request.signal);
     return NextResponse.json(checkout, {
       status: 201,
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {
+    if (upload?.exceeded) {
+      return NextResponse.json({ detail: "Supporting documents must total no more than 1 GB." }, {
+        status: 413, headers: { "Cache-Control": "private, no-store" },
+      });
+    }
     const message = error instanceof Error ? error.message : "Video request failed.";
     const status = /session|log in|verified/i.test(message) ? 401 : 400;
     return NextResponse.json(
