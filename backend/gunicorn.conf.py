@@ -19,3 +19,18 @@ accesslog = "-"
 access_log_format = '%(t)s "%(m)s %(U)s" %(s)s %(b)s %(L)s'
 errorlog = "-"
 capture_output = True
+
+
+
+def when_ready(server):
+    # Opt-in only: never start a second scheduler in Gunicorn request workers.
+    # Production Render has one web instance; no new service is provisioned.
+    from amaris_cms.colocated_notifications import start_notifications
+
+    start_notifications(server.log)
+
+
+def on_exit(server):
+    from amaris_cms.colocated_notifications import stop_notifications
+
+    stop_notifications(server.log)
