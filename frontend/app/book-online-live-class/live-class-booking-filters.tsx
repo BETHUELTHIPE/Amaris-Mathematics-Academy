@@ -29,6 +29,9 @@ export function LiveClassBookingFilters(props: Props) {
           className="min-h-12 w-full rounded-xl border border-[#b7c5d8] bg-white px-4 py-3 text-[#263852]"
         >
           <option value="">Any available tutor — show me the earliest</option>
+          {props.initialTutorId && !(props.tutors ?? []).some((tutor) => String(tutor.id) === props.initialTutorId) && (
+            <option value={props.initialTutorId}>Selected tutor — no matching slots available</option>
+          )}
           {(props.tutors ?? []).map((tutor) => (
             <option key={tutor.id} value={tutor.id}>{tutor.name}</option>
           ))}

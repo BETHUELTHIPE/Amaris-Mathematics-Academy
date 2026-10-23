@@ -13,6 +13,7 @@ import {
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { getLiveClassSlots } from "@/lib/live-classes";
+import { inPreferredTime } from "@/lib/live-class-time.mjs";
 import { getGradeLevels, programmes, subjects } from "@/lib/booking-grade-levels.mjs";
 import { LiveClassBookingFilters } from "./live-class-booking-filters";
 
@@ -25,17 +26,6 @@ export const metadata: Metadata = {
 
 function queryValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-}
-
-function inPreferredTime(startsAt: string, preference: string): boolean {
-  if (preference === "any") return true;
-  const hour = Number(new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit", hourCycle: "h23", timeZone: "Africa/Johannesburg",
-  }).format(new Date(startsAt)));
-  if (preference === "morning") return hour >= 5 && hour < 12;
-  if (preference === "afternoon") return hour >= 12 && hour < 17;
-  if (preference === "evening") return hour >= 17 && hour < 22;
-  return hour >= 22 || hour < 5;
 }
 
 function formatClassTime(value: string): string {
@@ -90,7 +80,9 @@ export default async function BookOnlineLiveClassPage({
     new Map(levelSlots.map((slot) => [slot.tutor_id, slot.tutor] as const)),
     ([id, name]) => ({ id, name }),
   ).sort((a, b) => a.name.localeCompare(b.name));
-  const selectedTutorId = tutors.some((tutor) => String(tutor.id) === tutorId) ? tutorId : "";
+  // Preserve a named choice when its last slot has just been taken. The
+  // student can explicitly choose another tutor instead of being switched.
+  const selectedTutorId = tutorId;
   const matchingSlots = chosenLevel
     ? levelSlots.filter((slot) =>
         (!selectedTutorId || String(slot.tutor_id) === selectedTutorId)
