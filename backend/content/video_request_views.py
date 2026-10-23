@@ -153,10 +153,9 @@ class VideoRequestCheckoutView(VideoRequestStudentAPIView):
         responses={201: VideoRequestCheckoutResponseSerializer},
     )
     def post(self, request):
-        data = request.data.copy()
-        if hasattr(data, "setlist"):
-            data.setlist("documents", request.FILES.getlist("documents"))
-        serializer = VideoRequestCheckoutSerializer(data=data)
+        # MultiPartParser already combines fields and files. Copying its QueryDict
+        # deep-copies TemporaryUploadedFile and fails for files spooled to disk.
+        serializer = VideoRequestCheckoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         values = serializer.validated_data
         try:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import os
 import re
 import uuid
@@ -12,7 +11,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlparse
 
-from django.core.files.base import ContentFile
+from django.core.files.base import File
 from django.core.files.storage import storages
 from django.db import transaction
 from django.db.models import Q
@@ -41,8 +40,9 @@ VIDEO_REQUEST_PRICES: dict[str, Decimal] = {
     VideoRequest.RequestType.COMPLETE_CONTENT: Decimal("1800.00"),
 }
 MAX_DOCUMENTS = 5
-MAX_DOCUMENT_SIZE = 10 * 1024 * 1024
-MAX_TOTAL_DOCUMENT_SIZE = 25 * 1024 * 1024
+MAX_DOCUMENT_SIZE = 1024 * 1024 * 1024
+MAX_TOTAL_DOCUMENT_SIZE = MAX_DOCUMENT_SIZE
+DOCUMENT_CHUNK_SIZE = 1024 * 1024
 ALLOWED_DOCUMENT_TYPES = {
     "application/pdf": ".pdf",
     "image/jpeg": ".jpg",
@@ -68,7 +68,8 @@ class VideoRequestCheckoutSession:
 class ValidatedDocument:
     original_name: str
     content_type: str
-    data: bytes
+    file: File
+    size_bytes: int
     sha256: str
     extension: str
 
@@ -80,24 +81,37 @@ def _clean_text(value: object, *, maximum: int, minimum: int = 0) -> str:
     return cleaned
 
 
-def _validate_document(upload) -> ValidatedDocument:
+def _validate_document(upload, *, max_file_size: int = MAX_DOCUMENT_SIZE) -> ValidatedDocument:
     original_name = Path(str(getattr(upload, "name", "document"))).name[:255]
     size = int(getattr(upload, "size", 0) or 0)
-    if size <= 0 or size > MAX_DOCUMENT_SIZE:
-        raise PaymentSecurityError("Each supporting document must be between 1 byte and 10 MB.")
+    if size <= 0 or size > max_file_size:
+        raise PaymentSecurityError("Each supporting document must be non-empty and within the file size limit.")
     content_type = str(getattr(upload, "content_type", "") or "").lower()
     if content_type not in ALLOWED_DOCUMENT_TYPES:
         raise PaymentSecurityError("Supporting documents must be PDF, JPEG or PNG files.")
-    data = upload.read(MAX_DOCUMENT_SIZE + 1)
-    if len(data) != size or len(data) > MAX_DOCUMENT_SIZE:
+    # Django spools large multipart files to disk. Keep validation and storage
+    # file-based rather than allocating a second, potentially 1 GB byte string.
+    upload.seek(0)
+    digest = hashlib.sha256()
+    actual_size = 0
+    header = b""
+    while chunk := upload.read(DOCUMENT_CHUNK_SIZE):
+        actual_size += len(chunk)
+        if actual_size > size or actual_size > max_file_size:
+            raise PaymentSecurityError("The supporting document could not be validated safely.")
+        if not header:
+            header = chunk[:5]
+        digest.update(chunk)
+    if actual_size != size:
         raise PaymentSecurityError("The supporting document could not be validated safely.")
+    upload.seek(0)
 
     if content_type == "application/pdf":
-        if not data.startswith(b"%PDF-"):
+        if header != b"%PDF-":
             raise PaymentSecurityError("The uploaded PDF is not valid.")
     else:
         try:
-            with Image.open(io.BytesIO(data)) as image:
+            with Image.open(upload) as image:
                 image.verify()
                 actual = (image.format or "").upper()
         except (UnidentifiedImageError, OSError, ValueError) as exc:
@@ -106,23 +120,30 @@ def _validate_document(upload) -> ValidatedDocument:
         if actual != expected:
             raise PaymentSecurityError("The uploaded image type does not match its content.")
 
+    upload.seek(0)
     return ValidatedDocument(
         original_name=original_name,
         content_type=content_type,
-        data=data,
-        sha256=hashlib.sha256(data).hexdigest(),
+        file=upload,
+        size_bytes=actual_size,
+        sha256=digest.hexdigest(),
         extension=ALLOWED_DOCUMENT_TYPES[content_type],
     )
 
 
-def validate_documents(documents: Iterable[object]) -> list[ValidatedDocument]:
+def validate_documents(
+    documents: Iterable[object],
+    *,
+    max_file_size: int = MAX_DOCUMENT_SIZE,
+    max_total_size: int = MAX_TOTAL_DOCUMENT_SIZE,
+) -> list[ValidatedDocument]:
     items = list(documents)
     if len(items) > MAX_DOCUMENTS:
         raise PaymentSecurityError(f"Upload no more than {MAX_DOCUMENTS} supporting documents.")
-    validated = [_validate_document(upload) for upload in items]
-    if sum(len(item.data) for item in validated) > MAX_TOTAL_DOCUMENT_SIZE:
-        raise PaymentSecurityError("Supporting documents may not exceed 25 MB in total.")
-    return validated
+    # Reject an oversized selection before reading or hashing any file.
+    if sum(int(getattr(upload, "size", 0) or 0) for upload in items) > max_total_size:
+        raise PaymentSecurityError("Supporting documents exceed the combined upload size limit.")
+    return [_validate_document(upload, max_file_size=max_file_size) for upload in items]
 
 
 def video_request_document_key(request: VideoRequest, document: ValidatedDocument) -> str:
@@ -253,7 +274,7 @@ def create_video_request_checkout(
             if validated_documents and not request.documents.exists():
                 for document in validated_documents:
                     path = video_request_document_key(request, document)
-                    saved = storage.save(path, ContentFile(document.data, name=Path(path).name))
+                    saved = storage.save(path, document.file)
                     if saved != path:
                         storage.delete(saved)
                         raise OSError("Private storage returned a non-deterministic document path.")
@@ -263,7 +284,7 @@ def create_video_request_checkout(
                         original_name=document.original_name,
                         storage_path=path,
                         content_type=document.content_type,
-                        size_bytes=len(document.data),
+                        size_bytes=document.size_bytes,
                         sha256=document.sha256,
                     )
     except Exception:

@@ -4,7 +4,6 @@ import uuid
 from dataclasses import dataclass
 
 from botocore.exceptions import BotoCoreError, ClientError
-from django.core.files.base import ContentFile
 from django.core.files.storage import storages
 from django.db import IntegrityError, transaction
 from django.http import FileResponse
@@ -172,7 +171,7 @@ class TutorApplicationView(ApplicantAPIView):
         ):
             raise serializers.ValidationError({"documents": "Use up to five files, 5 MB each and 15 MB total."})
         try:
-            documents = validate_documents(uploads)
+            documents = validate_documents(uploads, max_file_size=5 * 1024 * 1024, max_total_size=15 * 1024 * 1024)
         except PaymentSecurityError as exc:
             raise serializers.ValidationError({"documents": str(exc)}) from exc
         storage = storages["tutor_qualifications"]
@@ -186,14 +185,14 @@ class TutorApplicationView(ApplicantAPIView):
                     key = (
                         f"tutor-applications/{request.user.id}/{application.pk}/{uuid.uuid4().hex}{document.extension}"
                     )
-                    path = storage.save(key, ContentFile(document.data))
+                    path = storage.save(key, document.file)
                     saved.append(path)
                     TutorApplicationDocument.objects.create(
                         application=application,
                         storage_path=path,
                         original_name=document.original_name[:200],
                         content_type=document.content_type,
-                        size_bytes=len(document.data),
+                        size_bytes=document.size_bytes,
                         sha256=document.sha256,
                     )
         except Exception as exc:
