@@ -8,7 +8,7 @@ from django.core.files.storage import InMemoryStorage
 from django.test import TestCase
 from django.utils import timezone
 
-from content.models import Course, CourseCategory, Payment, StudentRecord
+from content.models import Course, CourseCategory, Payment, SiteSettings, StudentRecord
 from content.payment_models import Invoice
 from content.services.invoices import InvoiceArchiveError, archive_invoice_pdf, invoice_storage_path
 from content.services.payments import create_checkout, process_payfast_notification
@@ -116,6 +116,21 @@ class InvoiceArchiveTests(TestCase):
 
         with self.assertRaises(InvoiceArchiveError):
             archive_invoice_pdf(invoice.pk, storage=InMemoryStorage())
+
+    def test_issued_archive_is_preserved_when_brand_settings_change(self):
+        _payment, invoice = self._paid_invoice()
+        storage = InMemoryStorage()
+        path = archive_invoice_pdf(invoice.pk, storage=storage)
+        with storage.open(path, "rb") as archived:
+            original = archived.read()
+        invoice.refresh_from_db()
+        issued_at = invoice.pdf_generated_at
+        SiteSettings.objects.create(phone="010 000 0000")
+        self.assertEqual(archive_invoice_pdf(invoice.pk, storage=storage), path)
+        with storage.open(path, "rb") as archived:
+            self.assertEqual(archived.read(), original)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.pdf_generated_at, issued_at)
 
     def test_verified_payment_queues_pdf_archive_only_after_commit(self):
         checkout = create_checkout(

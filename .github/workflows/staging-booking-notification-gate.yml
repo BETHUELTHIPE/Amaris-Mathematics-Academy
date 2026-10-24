@@ -87,4 +87,4 @@ jobs:
           python manage.py migrate --noinput
       - name: Validate booking role receipts, PDF archive and PayFast security
         run: |
-          python manage.py test --noinput content.test_live_classes content.test_invoice_archive content.test_payfast_security content.test_payfast_configuration content.test_payfast_itn_diagnostics
+          python manage.py test --noinput content.test_live_classes content.test_invoice_archive content.test_invoice_letterhead content.test_payfast_security content.test_payfast_configuration content.test_payfast_itn_diagnostics
