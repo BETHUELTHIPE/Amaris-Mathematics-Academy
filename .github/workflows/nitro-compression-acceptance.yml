@@ -1,0 +1,62 @@
+name: Nitro Production Compression Acceptance
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/vite.node.config.ts'
+      - '.github/workflows/nitro-compression-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build exact Render Nitro node bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd frontend
+          NODE_ENV=development npm ci --include=dev
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Verify emitted Brotli/gzip static variants and content negotiation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd frontend
+          # Exercise the largest shipped JS asset, not a tiny error-handler chunk.
+          javascript_file=$(python3 -c 'from pathlib import Path; xs=[p for p in Path(".output/public").rglob("*.js") if p.stat().st_size>1024]; print(max(xs, key=lambda p:p.stat().st_size) if xs else "")')
+          test -n "$javascript_file"
+          test -s "$javascript_file.br"
+          test -s "$javascript_file.gz"
+          wc -c "$javascript_file" "$javascript_file.br" "$javascript_file.gz"
+          echo "PASS Nitro built Brotli and gzip representations for JavaScript"
+          PORT=18181 HOST=127.0.0.1 NODE_ENV=production node .output/server/index.mjs > /tmp/nitro-acceptance.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 40); do
+            curl --silent --fail --max-time 2 http://127.0.0.1:18181/ >/dev/null && break
+            sleep 1
+          done
+          path="/${javascript_file#.output/public/}"
+          curl --silent --show-error --fail --dump-header /tmp/br-headers -o /tmp/asset.br \
+            -H 'Accept-Encoding: br' "http://127.0.0.1:18181$path"
+          grep -iq '^content-encoding: br' /tmp/br-headers
+          grep -iq '^vary: .*accept-encoding' /tmp/br-headers
+          curl --silent --show-error --fail --dump-header /tmp/gz-headers -o /tmp/asset.gz \
+            -H 'Accept-Encoding: gzip' "http://127.0.0.1:18181$path"
+          grep -iq '^content-encoding: gzip' /tmp/gz-headers
+          echo "PASS Nitro negotiates compressed static JS with Vary: Accept-Encoding"

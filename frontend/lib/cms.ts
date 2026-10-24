@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { academyBrand, type AcademyBrand } from "@/lib/brand";
 import { courses, type Course } from "@/lib/courses";
+import { prepareAnnouncements } from "@/lib/announcements";
 
 type CmsNavigationItem = {
   label: string;
@@ -102,8 +103,13 @@ const requiredPublicNavigation: CmsNavigationItem[] = [
   { label: "Courses", url: "/courses", location: "both", order: 10, open_in_new_tab: false },
   { label: "How it works", url: "/how-it-works", location: "both", order: 20, open_in_new_tab: false },
   { label: "Pricing", url: "/pricing", location: "both", order: 30, open_in_new_tab: false },
+  { label: "Matric Upgrades", url: "/matric-upgrades", location: "both", order: 35, open_in_new_tab: false },
+  { label: "AI Software Developer", url: "/ai-software-developer", location: "both", order: 36, open_in_new_tab: false },
   { label: "About", url: "/about", location: "both", order: 40, open_in_new_tab: false },
+  { label: "Announcements", url: "/announcements", location: "both", order: 42, open_in_new_tab: false },
+  { label: "Request a topic video", url: "/request-a-video", location: "both", order: 44, open_in_new_tab: false },
   { label: "Book online live class", url: "/book-online-live-class", location: "both", order: 45, open_in_new_tab: false },
+  { label: "Become a tutor", url: "/tutor/apply", location: "both", order: 47, open_in_new_tab: false },
   { label: "Contact", url: "/contact", location: "both", order: 50, open_in_new_tab: false },
 ];
 
@@ -120,6 +126,7 @@ function mergeRequiredNavigation(
       ? {
           ...requiredItem,
           ...managedItem,
+          label: requiredItem.url === "/request-a-video" ? requiredItem.label : managedItem.label,
           order: requiredItem.order,
           location: "both" as const,
         }
@@ -173,6 +180,11 @@ function mapCourse(course: CmsCourse): Course {
 export async function getManagedCourses(): Promise<Course[]> {
   const response = await cmsFetch<Paginated<CmsCourse>>("/courses/?page_size=100");
   return response?.results?.length ? response.results.map(mapCourse) : courses;
+}
+
+export async function getManagedAnnouncements() {
+  const response = await cmsFetch<unknown>("/announcements/");
+  return prepareAnnouncements(response);
 }
 
 export async function getManagedCourse(slug: string): Promise<Course | undefined> {

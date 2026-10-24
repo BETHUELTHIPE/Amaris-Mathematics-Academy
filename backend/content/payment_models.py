@@ -53,6 +53,10 @@ class Invoice(TimeStampedModel):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=3, default="ZAR")
     issued_at = models.DateTimeField()
+    pdf_storage_path = models.CharField(max_length=512, blank=True, editable=False)
+    pdf_sha256 = models.CharField(max_length=64, blank=True, editable=False)
+    pdf_generated_at = models.DateTimeField(blank=True, null=True, editable=False)
+    pdf_last_error_code = models.CharField(max_length=120, blank=True, editable=False)
 
     class Meta:
         ordering = ["-issued_at"]

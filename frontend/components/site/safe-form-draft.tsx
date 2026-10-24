@@ -82,6 +82,7 @@ export function SafeFormDraft({ draftKey, allowedFields }: { draftKey: string; a
 export function ClearSafeFormDraft({ draftKey }: { draftKey: string }) {
   useEffect(() => {
     sessionStorage.removeItem(`amaris:safe-draft:${draftKey}`);
+    sessionStorage.removeItem(`amaris:safe-location:${draftKey}`);
   }, [draftKey]);
   return null;
 }

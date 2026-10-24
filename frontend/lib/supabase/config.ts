@@ -30,7 +30,7 @@ export function requireSupabaseConfig() {
 }
 
 export function getSiteUrl(): string {
-  return (readEnvironmentValue("SITE_URL") ?? DEFAULT_SITE_URL).replace(
+  return (readEnvironmentValue("SITE_URL") ?? readEnvironmentValue("RENDER_EXTERNAL_URL") ?? DEFAULT_SITE_URL).replace(
     /\/$/,
     "",
   );

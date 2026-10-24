@@ -1,0 +1,47 @@
+name: Live Student Dashboard Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-student-visual:
+    if: github.ref_name == 'render-live-current-20260918'
+    name: Live verified-student workflow screen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    environment: student-production-verification
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      AMARIS_LIVE_TEST_STUDENT_EMAIL: ${{ secrets.AMARIS_LIVE_TEST_STUDENT_EMAIL }}
+      AMARIS_LIVE_TEST_STUDENT_PASSWORD: ${{ secrets.AMARIS_LIVE_TEST_STUDENT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: frontend/e2e/requirements.txt
+      - name: Reject missing dedicated test-student credentials
+        shell: bash
+        run: |
+          test -n "$AMARIS_LIVE_TEST_STUDENT_EMAIL" || { echo "::error::Configure AMARIS_LIVE_TEST_STUDENT_EMAIL in protected GitHub environment"; exit 1; }
+          test -n "$AMARIS_LIVE_TEST_STUDENT_PASSWORD" || { echo "::error::Configure AMARIS_LIVE_TEST_STUDENT_PASSWORD in protected GitHub environment"; exit 1; }
+      - name: Install isolated browser
+        run: |
+          python -m pip install -r e2e/requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Sign in to deployed Render student dashboard and verify layout
+        run: python -u e2e/live_student_workflow_acceptance.py
+      - name: Preserve redacted test-only visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-live-student-dashboard-redacted
+          path: frontend/artifacts/live-student-dashboard/
+          if-no-files-found: warn
+          retention-days: 7

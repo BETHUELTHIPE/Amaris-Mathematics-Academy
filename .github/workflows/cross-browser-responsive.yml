@@ -1,0 +1,61 @@
+name: Safari and Firefox Sitewide Responsive Audit
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/e2e/cross_browser_responsive.py'
+      - 'frontend/e2e/sitewide_responsive_audit.py'
+      - 'frontend/e2e/test_sitewide_dynamic_routes.py'
+      - '.github/workflows/cross-browser-responsive.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  responsive-cross-browser:
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [webkit, firefox]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install frontend and test dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Install cross-browser engines and system libraries
+        run: |
+          python -m pip install -r frontend/e2e/requirements.txt
+          python -m playwright install --with-deps ${{ matrix.engine }}
+      - name: Verify dynamic route fixture coverage cannot count 404 as page success
+        run: python -m unittest discover -s frontend/e2e -p 'test_sitewide_dynamic_routes.py' -v
+      - name: Build Render-style Nitro server
+        working-directory: frontend
+        run: |
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Test every route at two screen sizes
+        env:
+          AMARIS_BROWSER_ENGINE: ${{ matrix.engine }}
+        run: python -u frontend/e2e/cross_browser_responsive.py
+      - name: Save browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-${{ matrix.engine }}-responsive
+          path: frontend/artifacts/sitewide-responsive/
+          retention-days: 7
+          if-no-files-found: warn

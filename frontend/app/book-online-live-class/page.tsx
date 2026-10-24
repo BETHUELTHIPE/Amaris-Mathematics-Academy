@@ -1,3 +1,4 @@
+import { CUSTOM_CHOICE, isSchoolProgramme } from "@/lib/school-curriculum.mjs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -12,25 +13,15 @@ import {
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { getLiveClassSlots } from "@/lib/live-classes";
+import { getGradeLevels, programmes, subjects } from "@/lib/booking-grade-levels.mjs";
+import { LiveClassBookingFilters } from "./live-class-booking-filters";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Book Online Live Class",
   description:
-    "Book a one-hour Amaris Mathematics Academy Zoom class with an available tutor.",
+    "Book a flexible-length Amaris Mathematics Academy Zoom class with an available tutor.",
 };
-
-const programmes = [
-  ["caps", "CAPS"],
-  ["ieb", "IEB"],
-  ["tvet", "TVET"],
-  ["university", "University"],
-] as const;
-
-const subjects = [
-  ["mathematics", "Mathematics"],
-  ["mathematical_literacy", "Mathematical Literacy"],
-] as const;
 
 function queryValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
@@ -52,8 +43,8 @@ export default async function BookOnlineLiveClassPage({
   const params = await searchParams;
   const programme = queryValue(params.programme);
   const subject = queryValue(params.subject);
-  const level = queryValue(params.level);
-  const topic = queryValue(params.topic).trim().slice(0, 180);
+  const level = queryValue(params.level) === CUSTOM_CHOICE ? queryValue(params.customLevel).trim().slice(0, 80) : queryValue(params.level);
+  const topic = (queryValue(params.topic) === CUSTOM_CHOICE ? queryValue(params.customTopic) : queryValue(params.topic)).trim().slice(0, 180);
 
   const validProgramme = programmes.some(([value]) => value === programme)
     ? programme
@@ -62,22 +53,29 @@ export default async function BookOnlineLiveClassPage({
     ? subject
     : "";
 
-  const availableSlots =
+  const availability =
     validProgramme && validSubject
       ? await getLiveClassSlots({
           programme: validProgramme,
           subject: validSubject,
         })
-      : [];
+      : { slots: [], unavailable: false };
+  const availableSlots = availability.slots;
 
-  const levels = [...new Set(availableSlots.map((slot) => slot.level))].sort(
-    (left, right) => left.localeCompare(right, "en-ZA", { numeric: true }),
+  const levels = getGradeLevels(
+    validProgramme,
+    availableSlots.map((slot) => slot.level),
+    validSubject,
   );
-  const matchingSlots = level
-    ? availableSlots.filter((slot) => slot.level === level)
+  // Never treat a stale or cross-programme grade as a valid selection.
+  const chosenLevel = levels.includes(level) || (validProgramme && !isSchoolProgramme(validProgramme) && level.length > 0 && level.length <= 80) ? level : "";
+  const matchingSlots = chosenLevel
+    ? availableSlots.filter((slot) => slot.level === chosenLevel)
     : [];
 
-  const readyForSlot = Boolean(validProgramme && validSubject && level && topic.length >= 2);
+  const readyForSlot = Boolean(
+    validProgramme && validSubject && chosenLevel && topic.length >= 2,
+  );
 
   return (
     <main className="min-h-screen bg-[#f5f7fb]">
@@ -89,8 +87,8 @@ export default async function BookOnlineLiveClassPage({
             Choose your programme, topic and tutor time.
           </h1>
           <p className="mt-5 max-w-3xl text-base leading-8 text-[#60708a]">
-            Each live Zoom class is one hour and costs <strong>R250</strong>.
-            Your booking is confirmed only after PayFast verifies the payment.
+            Tutors offer 1 to 24-hour Zoom sessions at <strong>R250 per hour</strong>.
+            CAPS and IEB Mathematics support Grades 7–12, with a syllabus guide and chapter choices for each grade. Your booking is confirmed only after PayFast verifies the payment.
           </p>
         </div>
       </section>
@@ -101,7 +99,7 @@ export default async function BookOnlineLiveClassPage({
             ["1", "Choose programme", "CAPS, IEB, TVET or University"],
             ["2", "Choose subject", "Mathematics or Mathematical Literacy"],
             ["3", "Choose level & topic", "Then select an available tutor time"],
-            ["4", "Pay & receive Zoom details", "R250, confirmation, invoice and 30-minute reminder"],
+            ["4", "Pay & receive Zoom details", "Hourly pricing, confirmation, invoice and 30-minute reminder"],
           ].map(([number, title, detail]) => (
             <li key={number} className="rounded-2xl border border-[#dce4ef] bg-white p-5">
               <span className="grid size-9 place-items-center rounded-full bg-[#0b2a5b] text-sm font-bold text-white">
@@ -113,84 +111,13 @@ export default async function BookOnlineLiveClassPage({
           ))}
         </ol>
 
-        <form
-          method="get"
-          className="mt-8 grid gap-5 rounded-3xl border border-[#dce4ef] bg-white p-6 sm:p-8 lg:grid-cols-2"
-        >
-          <label className="grid gap-2 text-sm font-semibold">
-            Programme
-            <select
-              name="programme"
-              required
-              defaultValue={validProgramme}
-              className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal"
-            >
-              <option value="">Choose programme</option>
-              {programmes.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="grid gap-2 text-sm font-semibold">
-            Subject
-            <select
-              name="subject"
-              required
-              defaultValue={validSubject}
-              className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal"
-            >
-              <option value="">Choose subject</option>
-              {subjects.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="grid gap-2 text-sm font-semibold">
-            Grade / level
-            <select
-              name="level"
-              required
-              defaultValue={level}
-              disabled={!validProgramme || !validSubject || levels.length === 0}
-              className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal disabled:bg-[#f1f4f8]"
-            >
-              <option value="">
-                {validProgramme && validSubject
-                  ? levels.length
-                    ? "Choose available grade / level"
-                    : "No tutor levels available yet"
-                  : "Choose programme and subject first"}
-              </option>
-              {levels.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="grid gap-2 text-sm font-semibold">
-            Topic
-            <input
-              name="topic"
-              required
-              minLength={2}
-              maxLength={180}
-              defaultValue={topic}
-              placeholder="e.g. Grade 12 Calculus — differentiation"
-              className="min-h-12 rounded-xl border border-[#c9d5e5] px-4 font-normal"
-            />
-          </label>
-
-          <div className="lg:col-span-2">
-            <button
-              type="submit"
-              className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#0b2a5b] px-7 py-3 font-bold text-white"
-            >
-              Show available tutor times
-            </button>
-          </div>
-        </form>
+        <LiveClassBookingFilters
+          initialProgramme={validProgramme}
+          initialSubject={validSubject}
+          initialLevel={chosenLevel}
+          initialTopic={topic}
+          offeredLevels={availableSlots.map((slot) => slot.level)}
+        />
 
         <section className="mt-8" aria-labelledby="available-slots">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -200,12 +127,16 @@ export default async function BookOnlineLiveClassPage({
                 Available Zoom slots
               </h2>
             </div>
-            <span className="text-sm font-semibold text-[#1f5bbd]">R250 per one-hour session</span>
+            <span className="text-sm font-semibold text-[#1f5bbd]">R250 per booked hour</span>
           </div>
 
           {!readyForSlot ? (
             <div className="mt-5 rounded-2xl border border-[#dce4ef] bg-white p-6 text-sm leading-7 text-[#60708a]">
               Complete the programme, subject, grade/level and topic fields above to choose a tutor slot.
+            </div>
+          ) : availability.unavailable ? (
+            <div className="mt-5 rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-6 text-sm leading-7 text-[#765314]">
+              Tutor availability is temporarily unavailable. Please try again later before making a payment.
             </div>
           ) : matchingSlots.length === 0 ? (
             <div className="mt-5 rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-6 text-sm leading-7 text-[#765314]">
@@ -215,7 +146,7 @@ export default async function BookOnlineLiveClassPage({
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               {matchingSlots.map((slot) => {
                 const checkoutUrl =
-                  `/book-online-live-class/checkout?slot=${encodeURIComponent(slot.id)}&topic=${encodeURIComponent(topic)}`;
+                  `/book-online-live-class/checkout?slot=${encodeURIComponent(String(slot.id))}&topic=${encodeURIComponent(topic)}&attempt=${crypto.randomUUID()}`;
                 return (
                   <article key={slot.id} className="rounded-2xl border border-[#dce4ef] bg-white p-6">
                     <div className="flex items-start justify-between gap-4">
@@ -234,7 +165,7 @@ export default async function BookOnlineLiveClassPage({
                       </div>
                       <div className="flex items-start gap-3">
                         <Clock3 className="mt-0.5 size-4 shrink-0 text-[#1f5bbd]" />
-                        <div><dt className="sr-only">Duration</dt><dd>{slot.duration_minutes} minutes</dd></div>
+                        <div><dt className="sr-only">Duration</dt><dd>{slot.duration_minutes / 60} hour(s) · R{slot.price} total</dd></div>
                       </div>
                       <div className="flex items-start gap-3">
                         <Video className="mt-0.5 size-4 shrink-0 text-[#1f5bbd]" />
@@ -256,7 +187,7 @@ export default async function BookOnlineLiveClassPage({
 
         <section className="mt-10 grid gap-4 md:grid-cols-3">
           {[
-            [CreditCard, "Secure payment", "The server fixes the price at R250 and PayFast must verify the payment."],
+            [CreditCard, "Secure payment", "The server calculates R250 per selected hour; PayFast must verify the total."],
             [Mail, "Confirmation & invoice", "A confirmation email with your class details and invoice is sent after verification."],
             [CheckCircle2, "30-minute reminder", "A scheduled reminder includes your tutor, start time and Zoom link."],
           ].map(([Icon, title, detail]) => {

@@ -33,15 +33,16 @@ export default async function LiveClassCheckoutPage({
   const params = await searchParams;
   const slotId = value(params.slot).trim();
   const topic = value(params.topic).trim().slice(0, 180);
-  if (!slotId || topic.length < 2) redirect("/book-online-live-class");
+  const attempt = value(params.attempt).trim();
+  if (!slotId || topic.length < 2 || !/^[0-9a-f-]{36}$/i.test(attempt)) redirect("/book-online-live-class");
 
   const returnTo =
-    `/book-online-live-class/checkout?slot=${encodeURIComponent(slotId)}&topic=${encodeURIComponent(topic)}`;
+    `/book-online-live-class/checkout?slot=${encodeURIComponent(slotId)}&topic=${encodeURIComponent(topic)}&attempt=${encodeURIComponent(attempt)}`;
   await requireVerifiedStudent(returnTo);
 
   let checkout: Awaited<ReturnType<typeof createStudentLiveClassCheckout>>;
   try {
-    checkout = await createStudentLiveClassCheckout(slotId, topic);
+    checkout = await createStudentLiveClassCheckout(slotId, topic, attempt);
   } catch {
     redirect("/book-online-live-class?booking=unavailable");
   }
@@ -72,7 +73,8 @@ export default async function LiveClassCheckoutPage({
             <div><dt className="font-semibold text-[#263852]">Class</dt><dd className="mt-1 text-[#60708a]">{booking.programme} · {booking.subject} · {booking.level}</dd></div>
             <div><dt className="font-semibold text-[#263852]">Topic</dt><dd className="mt-1 text-[#60708a]">{booking.topic}</dd></div>
             <div><dt className="font-semibold text-[#263852]">Date and time</dt><dd className="mt-1 text-[#60708a]">{formatClassTime(booking.starts_at)}</dd></div>
-            <div><dt className="font-semibold text-[#263852]">Price</dt><dd className="mt-1 text-lg font-bold text-[#0b2a5b]">R{booking.amount} for one hour</dd></div>
+            <div><dt className="font-semibold text-[#263852]">Duration</dt><dd className="mt-1 text-[#60708a]">{booking.duration_minutes / 60} hour(s)</dd></div>
+            <div><dt className="font-semibold text-[#263852]">Price</dt><dd className="mt-1 text-lg font-bold text-[#0b2a5b]">R{booking.amount} total (R250/hour)</dd></div>
           </dl>
 
           <p className="mt-5 text-sm leading-7 text-[#60708a]">
@@ -94,7 +96,7 @@ export default async function LiveClassCheckoutPage({
               type="submit"
               className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white"
             >
-              <CreditCard className="size-4" /> Pay R250 with PayFast
+              <CreditCard className="size-4" /> Pay R{booking.amount} with PayFast
             </button>
           </form>
 

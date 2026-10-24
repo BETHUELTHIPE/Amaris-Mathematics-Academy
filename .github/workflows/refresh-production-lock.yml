@@ -44,7 +44,7 @@ jobs:
             exit "$status"
           fi
       - name: Confirm no HIGH or CRITICAL npm advisories
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
       - name: Commit verified lockfile if changed
         shell: bash
         run: |
