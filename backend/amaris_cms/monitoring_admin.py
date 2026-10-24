@@ -1,5 +1,6 @@
 """Superuser-only, read-only gateway to private Render monitoring services."""
 
+import json
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
@@ -154,6 +155,20 @@ class AmarisAdminSite(AdminSite):
                 return HttpResponse(status=415)
             if len(request.body) > 128 * 1024:
                 return HttpResponse(status=413)
+            try:
+                payload = json.loads(request.body)
+            except (ValueError, UnicodeError):
+                return HttpResponse(status=400)
+            queries = payload.get("queries") if isinstance(payload, dict) else None
+            if not isinstance(queries, list) or not 1 <= len(queries) <= 32:
+                return HttpResponse(status=400)
+            allowed_sources = {
+                "amaris-prometheus", "amaris-pg-staging", "amaris-pg-production", "__expr__"
+            }
+            for query in queries:
+                source = query.get("datasource") if isinstance(query, dict) else None
+                if not isinstance(source, dict) or source.get("uid") not in allowed_sources:
+                    return HttpResponse("Monitoring datasource is not allowed.", status=400)
 
         upstream = _upstreams().get(tool, "").rstrip("/")
         if not upstream:
