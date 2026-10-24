@@ -100,6 +100,29 @@ def record_page(page, source, path, width, height, scan_axe):
 
     final = urlparse(page.url).path
     protected = path.startswith(GUARDED) or path == "/tutor/dashboard"
+    if path == "/tutor/dashboard" and final not in LOGIN_ROUTES:
+        # Server-rendered authentication can complete after DOMContentLoaded.
+        # Wait for a verified denial, redirect, or actual private content.
+        # A loading skeleton alone is NEVER accepted as proof of denial.
+        try:
+            page.wait_for_function(
+                """() => {
+                  const headings = [...document.querySelectorAll('h1')]
+                    .map((node) => node.textContent || '');
+                  const denied = headings.some((text) =>
+                    text.includes('Tutor service unavailable')
+                    || text.includes('Tutor access requires approval'));
+                  const privateContent = document.body?.innerText.includes('Private tutor workspace');
+                  return ['/login', '/verify-email', '/tutor/login', '/tutor/apply/login']
+                    .includes(location.pathname) || denied || privateContent;
+                }""",
+                timeout=10000,
+            )
+        except Exception as error:
+            raise AssertionError(
+                "Anonymous tutor dashboard did not reach a verified denial within 10 seconds"
+            ) from error
+        final = urlparse(page.url).path
     if protected:
         if final not in LOGIN_ROUTES:
             # When the tutor backend is down, a safe, data-free error page is
