@@ -79,7 +79,4 @@ def get_redis_snapshots():
         ("Django cache", settings.CACHES.get("default", {}).get("LOCATION", "")),
         ("Public content cache", settings.CACHES.get("public_content", {}).get("LOCATION", "")),
     )
-    return [
-        {"name": name, **_snapshot(url)}
-        for name, url in endpoints
-    ]
+    return [{"name": name, **_snapshot(url)} for name, url in endpoints]
