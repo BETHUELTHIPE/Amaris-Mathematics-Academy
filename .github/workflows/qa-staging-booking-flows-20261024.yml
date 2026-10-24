@@ -1,0 +1,113 @@
+name: QA staging booking and professional invoice letterhead
+on:
+  push:
+    branches: [qa/staging-booking-flows-isolated-20261024]
+    paths:
+      - .github/workflows/qa-staging-booking-flows-20261024.yml
+permissions:
+  contents: read
+jobs:
+  booking-backend-isolated:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/qa/staging-booking-flows-isolated-20261024'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_booking_qa
+          POSTGRES_USER: amaris_booking_qa
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U amaris_booking_qa -d amaris_booking_qa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: postgresql://amaris_booking_qa@127.0.0.1:5432/amaris_booking_qa
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      SUPABASE_STORAGE_ENABLED: "false"
+      SUPABASE_S3_REQUIRED: "false"
+      PAYFAST_MODE: sandbox
+      PAYFAST_ENV: sandbox
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+      CELERY_TASK_ALWAYS_EAGER: "true"
+      CELERY_TASK_EAGER_PROPAGATES: "true"
+      EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
+      DEFAULT_FROM_EMAIL: Amaris Test <qa@example.invalid>
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Reject real environment and production payment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$DATABASE_URL" = "postgresql://amaris_booking_qa@127.0.0.1:5432/amaris_booking_qa"
+          test "$PAYFAST_MODE" = sandbox
+          test "$SUPABASE_STORAGE_ENABLED" = false
+          test "$EMAIL_BACKEND" = django.core.mail.backends.locmem.EmailBackend
+          if env | grep -E '^PAYFAST_(LIVE|PRODUCTION|MERCHANT|PASSPHRASE)='; then
+            echo "Unexpected payment credentials; aborting" >&2
+            exit 1
+          fi
+          printf 'DJANGO_SECRET_KEY=%s\n' "$(openssl rand -hex 64)" >> "$GITHUB_ENV"
+      - name: Install test dependencies
+        working-directory: backend
+        run: |
+          python -m pip install -r requirements-dev.txt
+      - name: Validate models and migrations
+        working-directory: backend
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+          python manage.py migrate --noinput
+      - name: Test bookings, every duration, videos, courses, PayFast, email, invoice ownership, tutor finance and security
+        working-directory: backend
+        run: |
+          python manage.py test -v 2 \
+            content.test_live_classes \
+            content.test_video_requests \
+            content.test_payments \
+            content.test_payfast_security \
+            content.test_payfast_configuration \
+            content.test_invoice_archive \
+            content.test_invoice_letterhead \
+            content.test_payfast_itn_diagnostics \
+            content.test_tutor_finance \
+            content.test_tutor_dashboard \
+            content.test_booking_migration \
+            content.tests.PaymentReconciliationTests
+  booking-frontend-contract:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify public booking, checkout and confirmation contracts
+        working-directory: frontend
+        run: node --test tests/live-class-booking-contract.test.mjs tests/booking-staging-gate.test.mjs
