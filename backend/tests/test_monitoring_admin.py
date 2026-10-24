@@ -121,7 +121,7 @@ class MonitoringAdminTests(SimpleTestCase):
         opener_factory.return_value.open.return_value = Reply()
         request = self.factory.post(
             "/admin/monitoring/grafana/api/ds/query",
-            data='{"queries":[]}',
+            data='{"queries":[{"datasource":{"uid":"amaris-pg-staging"},"rawSql":"select 1"}]}',
             content_type="application/json",
             HTTP_ORIGIN="http://testserver",
             HTTP_COOKIE="sessionid=do-not-forward",
@@ -131,7 +131,7 @@ class MonitoringAdminTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         outbound = opener_factory.return_value.open.call_args.args[0]
         self.assertEqual(outbound.get_method(), "POST")
-        self.assertEqual(outbound.data, b'{"queries":[]}')
+        self.assertEqual(outbound.data, b'{"queries":[{"datasource":{"uid":"amaris-pg-staging"},"rawSql":"select 1"}]}')
         self.assertNotIn("Cookie", outbound.headers)
         self.assertEqual(outbound.full_url, "http://grafana-private:10000/admin/monitoring/grafana/api/ds/query")
 
@@ -142,7 +142,7 @@ class MonitoringAdminTests(SimpleTestCase):
     def test_grafana_post_rejects_cross_origin_and_unprivileged_users(self):
         bad_origin = self.factory.post(
             "/admin/monitoring/grafana/api/ds/query",
-            data='{"queries":[]}',
+            data='{"queries":[{"datasource":{"uid":"amaris-pg-staging"},"rawSql":"select 1"}]}',
             content_type="application/json",
             HTTP_ORIGIN="https://another.example",
         )
@@ -151,7 +151,7 @@ class MonitoringAdminTests(SimpleTestCase):
 
         denied = self.factory.post(
             "/admin/monitoring/grafana/api/ds/query",
-            data='{"queries":[]}',
+            data='{"queries":[{"datasource":{"uid":"amaris-pg-staging"},"rawSql":"select 1"}]}',
             content_type="application/json",
             HTTP_ORIGIN="http://testserver",
         )
