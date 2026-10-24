@@ -38,7 +38,7 @@ test("request form supports all programmes, secure files and server-priced check
   assert.deepEqual(programmes.map(([, label]) => label), ["CAPS", "IEB", "TVET", "University"]);
   assert.match(form, /<CurriculumFields/);
   assert.match(form, /application\/pdf,image\/jpeg,image\/png/);
-  assert.match(form, /Maximum 10 MB per file and 25 MB total/);
+  assert.match(form, /Maximum 1 GB per file and 1 GB total/);
   assert.match(form, /Server-priced/);
   assert.match(form, /Continue to PayFast/);
   assert.doesNotMatch(form, /localStorage|sessionStorage/);
@@ -46,7 +46,8 @@ test("request form supports all programmes, secure files and server-priced check
 
 test("checkout proxy forwards the authenticated multipart request without exposing credentials", () => {
   assert.match(proxy, /createStudentVideoRequestCheckout/);
-  assert.match(proxy, /request\.formData\(\)/);
+  assert.match(proxy, /boundedVideoUpload\(request.body\)/);
+  assert.doesNotMatch(proxy, /request\.formData\(\)/);
   assert.match(proxy, /await getStudentIdentity\(\)/);
   assert.match(proxy, /status: student \? 403 : 401/);
   assert.match(proxy, /Cross-site video requests are not allowed/);
