@@ -1,0 +1,53 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <h1>Redis / Valkey health</h1>
+  <p class="text-muted">
+    Read-only aggregate measurements from Amaris' configured cache and Celery services.
+    Metrics describe each Redis server, not an individual queue or database.
+    No credentials, client addresses, keys or stored values are displayed.
+  </p>
+  <div class="mb-3">
+    <a class="btn btn-primary" href="{% url 'admin:amaris_redis_monitor' %}">Refresh status</a>
+    <a class="btn btn-outline-secondary" href="{% url 'admin:amaris_monitoring_home' %}">Back to monitoring</a>
+  </div>
+  <div class="row">
+    {% for service in snapshots %}
+      <div class="col-12 col-xl-6">
+        <section class="card mb-3" aria-labelledby="redis-service-{{ forloop.counter }}">
+          <div class="card-header">
+            <strong id="redis-service-{{ forloop.counter }}">{{ service.name }}</strong>
+            {% if service.available %}
+              <span class="badge badge-success">Connected</span>
+            {% else %}
+              <span class="badge badge-warning">{{ service.status }}</span>
+            {% endif %}
+          </div>
+          <div class="card-body">
+            {% if service.available %}
+              <table class="table table-striped table-sm">
+                <caption class="sr-only">Redis server-wide metrics for {{ service.name }}</caption>
+                <tbody>
+                  <tr><th scope="row">Memory used</th><td>{{ service.stats.memory_mib }} MiB</td></tr>
+                  <tr><th scope="row">Memory limit</th><td>{% if service.stats.max_memory_mib is not None %}{{ service.stats.max_memory_mib }} MiB{% else %}Not set{% endif %}</td></tr>
+                  <tr><th scope="row">Memory utilisation</th><td>{% if service.stats.memory_percent is not None %}{{ service.stats.memory_percent }}%{% else %}N/A{% endif %}</td></tr>
+                  <tr><th scope="row">Connected clients</th><td>{{ service.stats.connected_clients }}</td></tr>
+                  <tr><th scope="row">Blocked clients</th><td>{{ service.stats.blocked_clients }}</td></tr>
+                  <tr><th scope="row">Commands / second</th><td>{{ service.stats.ops_per_sec }}</td></tr>
+                  <tr><th scope="row">Uptime</th><td>{{ service.stats.uptime_hours }} hours</td></tr>
+                  <tr><th scope="row">Cache hits</th><td>{{ service.stats.cache_hits }}</td></tr>
+                  <tr><th scope="row">Cache misses</th><td>{{ service.stats.cache_misses }}</td></tr>
+                  <tr><th scope="row">Hit rate</th><td>{% if service.stats.hit_rate is not None %}{{ service.stats.hit_rate }}%{% else %}N/A{% endif %}</td></tr>
+                  <tr><th scope="row">Evicted keys (count only)</th><td>{{ service.stats.evicted_keys }}</td></tr>
+                  <tr><th scope="row">Expired keys (count only)</th><td>{{ service.stats.expired_keys }}</td></tr>
+                </tbody>
+              </table>
+            {% else %}
+              <p role="status">Redis metrics are {{ service.status|lower }}. No cached data is shown.</p>
+            {% endif %}
+          </div>
+        </section>
+      </div>
+    {% endfor %}
+  </div>
+  <p class="text-muted">This page issues PING and allowlisted INFO queries only. It does not change Redis keys, restart workers or run arbitrary commands.</p>
+{% endblock %}
