@@ -98,3 +98,63 @@ class MonitoringAdminTests(SimpleTestCase):
             outbound.full_url,
             "http://prometheus-private:10000/admin/monitoring/prometheus/api/v1/query?query=up",
         )
+
+    @override_settings(
+        MONITORING_CONSOLE_ENABLED=True,
+        MONITORING_GRAFANA_URL="http://grafana-private:10000",
+    )
+    @patch("amaris_cms.monitoring_admin.urllib_request.build_opener")
+    def test_superuser_same_origin_grafana_query_post_is_read_only_forwarded(self, opener_factory):
+        class Reply:
+            status = 200
+            headers = {"Content-Type": "application/json"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def read(self, size):
+                return b'{"results":{}}'
+
+        opener_factory.return_value.open.return_value = Reply()
+        request = self.factory.post(
+            "/admin/monitoring/grafana/api/ds/query",
+            data='{"queries":[]}',
+            content_type="application/json",
+            HTTP_ORIGIN="http://testserver",
+            HTTP_COOKIE="sessionid=do-not-forward",
+        )
+        request.user = self.superuser
+        response = self.site.monitoring_console(request, "grafana", "api/ds/query")
+        self.assertEqual(response.status_code, 200)
+        outbound = opener_factory.return_value.open.call_args.args[0]
+        self.assertEqual(outbound.get_method(), "POST")
+        self.assertEqual(outbound.data, b'{"queries":[]}')
+        self.assertNotIn("Cookie", outbound.headers)
+        self.assertEqual(outbound.full_url, "http://grafana-private:10000/admin/monitoring/grafana/api/ds/query")
+
+    @override_settings(
+        MONITORING_CONSOLE_ENABLED=True,
+        MONITORING_GRAFANA_URL="http://grafana-private:10000",
+    )
+    def test_grafana_post_rejects_cross_origin_and_unprivileged_users(self):
+        bad_origin = self.factory.post(
+            "/admin/monitoring/grafana/api/ds/query",
+            data='{"queries":[]}',
+            content_type="application/json",
+            HTTP_ORIGIN="https://another.example",
+        )
+        bad_origin.user = self.superuser
+        self.assertEqual(self.site.monitoring_console(bad_origin, "grafana", "api/ds/query").status_code, 403)
+
+        denied = self.factory.post(
+            "/admin/monitoring/grafana/api/ds/query",
+            data='{"queries":[]}',
+            content_type="application/json",
+            HTTP_ORIGIN="http://testserver",
+        )
+        denied.user = self.staff
+        with self.assertRaises(PermissionDenied):
+            self.site.monitoring_console(denied, "grafana", "api/ds/query")
