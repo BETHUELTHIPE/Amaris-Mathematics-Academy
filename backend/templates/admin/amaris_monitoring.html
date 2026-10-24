@@ -23,6 +23,11 @@
     <p><strong>Unconfigured:</strong> monitoring services are not yet connected to this Django host.</p>
   {% endif %}
   <div class="card mb-3"><div class="card-body">
+    <h2>Redis / Valkey</h2>
+    <p>Live, read-only broker/cache health, memory use, connected clients and cache statistics for Django superusers.</p>
+    <a class="btn btn-outline-primary" href="{% url 'admin:amaris_redis_monitor' %}">Open Redis monitor</a>
+  </div></div>
+  <div class="card mb-3"><div class="card-body">
     <h2>Apache Airflow</h2>
     <p>Superuser-only, read-only workflow progress, latest execution state and task failures. The Airflow API must be configured separately.</p>
     <a class="btn btn-outline-primary" href="{% url 'admin:amaris_airflow_home' %}">Open Airflow workflow monitor</a>

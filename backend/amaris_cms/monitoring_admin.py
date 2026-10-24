@@ -14,6 +14,7 @@ from django.urls import path
 from django.views.decorators.csrf import csrf_exempt
 
 from .airflow_client import AirflowUnavailable, get_workflow, get_workflow_tasks, is_configured, monitored_dags
+from .redis_monitoring import get_redis_snapshots
 
 PROXY_PREFIX = "/admin/monitoring/"
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -51,6 +52,11 @@ class AmarisAdminSite(AdminSite):
                 "monitoring/",
                 self.admin_view(self.monitoring_home),
                 name="amaris_monitoring_home",
+            ),
+            path(
+                "monitoring/redis/",
+                self.admin_view(self.redis_home),
+                name="amaris_redis_monitor",
             ),
             path(
                 "monitoring/<slug:tool>/",
@@ -135,6 +141,23 @@ class AmarisAdminSite(AdminSite):
                 "monitoring_enabled": settings.MONITORING_CONSOLE_ENABLED,
             },
         )
+
+    def redis_home(self, request):
+        self._require_superuser(request)
+        if request.method != "GET":
+            return HttpResponseNotAllowed(["GET"])
+        response = TemplateResponse(
+            request,
+            "admin/amaris_redis.html",
+            {
+                **self.each_context(request),
+                "title": "Redis / Valkey monitoring",
+                "snapshots": get_redis_snapshots(),
+            },
+        )
+        response["Cache-Control"] = "private, no-store"
+        response["X-Robots-Tag"] = "noindex"
+        return response
 
     @csrf_exempt
     def monitoring_console(self, request, tool, subpath=""):
