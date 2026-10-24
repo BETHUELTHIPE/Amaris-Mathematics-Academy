@@ -8,6 +8,7 @@ on:
       - "backend/content/services/course_invoice_archive.py"
       - "backend/content/static/invoice-brand/**"
       - "backend/content/test_invoice_letterhead.py"
+      - "backend/requirements-dev.txt"
       - ".github/workflows/invoice-letterhead-release.yml"
   push:
     branches: [feat/approved-invoice-letterhead-prod-20261024]
@@ -15,6 +16,7 @@ on:
       - "backend/content/services/**"
       - "backend/content/static/invoice-brand/**"
       - "backend/content/test_invoice_letterhead.py"
+      - "backend/requirements-dev.txt"
       - ".github/workflows/invoice-letterhead-release.yml"
 permissions:
   contents: read
