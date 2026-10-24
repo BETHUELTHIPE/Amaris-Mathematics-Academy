@@ -1,0 +1,21 @@
+apiVersion: 1
+datasources:
+  - name: "Amaris Production DB (Aggregates Only)"
+    uid: amaris-pg-production
+    type: postgres
+    access: proxy
+    url: ${AMARIS_GRAFANA_PRODUCTION_DB_HOSTPORT}
+    user: ${AMARIS_GRAFANA_PRODUCTION_DB_USER}
+    secureJsonData:
+      password: ${AMARIS_GRAFANA_PRODUCTION_DB_PASSWORD}
+    jsonData:
+      database: postgres
+      sslmode: require
+      postgresVersion: 1700
+      timescaledb: false
+      maxOpenConns: 2
+      maxIdleConns: 1
+      maxIdleConnsAuto: true
+      connMaxLifetime: 600
+      tlsSkipVerify: false
+    editable: false

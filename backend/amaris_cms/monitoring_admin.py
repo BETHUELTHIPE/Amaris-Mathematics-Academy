@@ -1,5 +1,6 @@
 """Superuser-only, read-only gateway to private Render monitoring services."""
 
+import json
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
@@ -10,6 +11,7 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseNotFound
 from django.template.response import TemplateResponse
 from django.urls import path
+from django.views.decorators.csrf import csrf_exempt
 
 from .airflow_client import AirflowUnavailable, get_workflow, get_workflow_tasks, is_configured, monitored_dags
 
@@ -134,12 +136,37 @@ class AmarisAdminSite(AdminSite):
             },
         )
 
+    @csrf_exempt
     def monitoring_console(self, request, tool, subpath=""):
         self._require_superuser(request)
         if not settings.MONITORING_CONSOLE_ENABLED:
             return HttpResponse("Monitoring is not configured.", status=503)
-        if request.method != "GET":
-            return HttpResponseNotAllowed(["GET"])
+        if request.method not in ("GET", "POST"):
+            return HttpResponseNotAllowed(["GET", "POST"])
+        if request.method == "POST":
+            # Grafana uses POST for datasource queries. All Grafana writes stay blocked.
+            if tool != "grafana" or subpath != "api/ds/query":
+                return HttpResponseNotAllowed(["GET"])
+            # Grafana does not send Django CSRF tokens: require the exact same
+            # browser origin and an authenticated active Django superuser.
+            if request.headers.get("Origin") != request.build_absolute_uri("/").rstrip("/"):
+                return HttpResponse(status=403)
+            if request.content_type != "application/json":
+                return HttpResponse(status=415)
+            if len(request.body) > 128 * 1024:
+                return HttpResponse(status=413)
+            try:
+                payload = json.loads(request.body)
+            except (ValueError, UnicodeError):
+                return HttpResponse(status=400)
+            queries = payload.get("queries") if isinstance(payload, dict) else None
+            if not isinstance(queries, list) or not 1 <= len(queries) <= 32:
+                return HttpResponse(status=400)
+            allowed_sources = {"amaris-prometheus", "amaris-pg-staging", "amaris-pg-production", "__expr__"}
+            for query in queries:
+                source = query.get("datasource") if isinstance(query, dict) else None
+                if not isinstance(source, dict) or source.get("uid") not in allowed_sources:
+                    return HttpResponse("Monitoring datasource is not allowed.", status=400)
 
         upstream = _upstreams().get(tool, "").rstrip("/")
         if not upstream:
@@ -158,14 +185,18 @@ class AmarisAdminSite(AdminSite):
         if query:
             target += f"?{query}"
 
+        headers = {
+            "Accept-Encoding": "identity",
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Host": request.get_host(),
+        }
+        if request.method == "POST":
+            headers["Content-Type"] = "application/json"
         upstream_request = urllib_request.Request(
             target,
-            headers={
-                "Accept-Encoding": "identity",
-                "X-Forwarded-Proto": "https",
-                "X-Forwarded-Host": request.get_host(),
-            },
-            method="GET",
+            headers=headers,
+            data=request.body if request.method == "POST" else None,
+            method=request.method,
         )
         opener = urllib_request.build_opener(_NoRedirect())
         try:

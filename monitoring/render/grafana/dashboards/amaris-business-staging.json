@@ -1,0 +1,508 @@
+{
+  "id": null,
+  "uid": "amaris-supabase-staging",
+  "title": "Amaris Staging — Business Operations",
+  "tags": [
+    "amaris",
+    "supabase",
+    "staging",
+    "aggregated",
+    "read-only"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 40,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "editable": false,
+  "description": "Aggregate-only learner registration, verified payments, invoices and tutoring activity. No PII, payment payloads or student-level drilldowns.",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Verified revenue (R)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "amaris-pg-staging"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "amaris-pg-staging"
+          },
+          "format": "table",
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(sum(revenue_zar),0)::double precision AS value FROM amaris_reporting.payments_daily WHERE $__timeFilter(bucket)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyZAR",
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Verified transactions",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "amaris-pg-staging"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "amaris-pg-staging"
+          },
+          "format": "table",
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(sum(paid_transactions),0)::bigint AS value FROM amaris_reporting.payments_daily WHERE $__timeFilter(bucket)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Confirmed bookings",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "amaris-pg-staging"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "amaris-pg-staging"
+          },
+          "format": "table",
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(sum(confirmed),0)::bigint AS value FROM amaris_reporting.bookings_daily WHERE $__timeFilter(bucket)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Invoices issued",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "amaris-pg-staging"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "amaris-pg-staging"
+          },
+          "format": "table",
+          "editorMode": "code",
+          "rawSql": "SELECT COALESCE(sum(invoices_issued),0)::bigint AS value FROM amaris_reporting.invoices_daily WHERE $__timeFilter(bucket)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Verified revenue by service",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "amaris-pg-staging"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "amaris-pg-staging"
+          },
+          "format": "time_series",
+          "editorMode": "code",
+          "rawSql": "SELECT bucket AS time, service AS metric, revenue_zar::double precision AS value FROM amaris_reporting.payments_daily WHERE $__timeFilter(bucket) ORDER BY bucket"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyZAR",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Bookings by day",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "amaris-pg-staging"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "amaris-pg-staging"
+          },
+          "format": "time_series",
+          "editorMode": "code",
+          "rawSql": "SELECT bucket AS time, confirmed::double precision AS confirmed, awaiting_payment::double precision AS awaiting_payment, review_required::double precision AS review_required FROM amaris_reporting.bookings_daily WHERE $__timeFilter(bucket) ORDER BY bucket"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Confirmation emails dispatched",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "amaris-pg-staging"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "amaris-pg-staging"
+          },
+          "format": "time_series",
+          "editorMode": "code",
+          "rawSql": "SELECT bucket AS time, student_sent::double precision AS student_sent, tutor_sent::double precision AS tutor_sent, admin_sent::double precision AS admin_sent FROM amaris_reporting.email_status_daily WHERE $__timeFilter(bucket) ORDER BY bucket"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Student registrations",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "amaris-pg-staging"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "amaris-pg-staging"
+          },
+          "format": "time_series",
+          "editorMode": "code",
+          "rawSql": "SELECT bucket AS time, registrations::double precision AS registrations FROM amaris_reporting.students_daily WHERE $__timeFilter(bucket) ORDER BY bucket"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Invoices by service",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "amaris-pg-staging"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "amaris-pg-staging"
+          },
+          "format": "time_series",
+          "editorMode": "code",
+          "rawSql": "SELECT bucket AS time, service AS metric, invoices_issued::double precision AS value FROM amaris_reporting.invoices_daily WHERE $__timeFilter(bucket) ORDER BY bucket"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Video requests and payment verification",
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "amaris-pg-staging"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "amaris-pg-staging"
+          },
+          "format": "time_series",
+          "editorMode": "code",
+          "rawSql": "SELECT bucket AS time, requests::double precision AS requests, payments_verified::double precision AS payments_verified FROM amaris_reporting.video_requests_daily WHERE $__timeFilter(bucket) ORDER BY bucket"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    }
+  ]
+}
