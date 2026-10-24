@@ -191,6 +191,22 @@ class GrafanaQueryTests(SimpleTestCase):
         self.assertEqual(resolve(request.path).func(request).status_code, 415)
         opener_factory.assert_not_called()
 
+    @patch("amaris_cms.monitoring_admin.urllib_request.build_opener")
+    def test_aggregate_only_postgres_datasources_are_allowlisted(self, opener_factory):
+        from unittest.mock import MagicMock
+
+        reply = MagicMock(status=200, headers={"Content-Type": "application/json"})
+        reply.__enter__.return_value = reply
+        reply.read.return_value = b'{"results":{"A":{}}}'
+        opener_factory.return_value.open.return_value = reply
+        for uid in ("amaris-pg-staging", "amaris-pg-production"):
+            with self.subTest(uid=uid):
+                query = {"queries": [{"refId": "A", "datasource": {"uid": uid},
+                                      "rawSql": "SELECT bucket FROM amaris_reporting.bookings_daily LIMIT 1"}]}
+                response = resolve("/admin/monitoring/grafana/api/ds/query").func(self.request(query))
+                self.assertEqual(response.status_code, 200)
+        self.assertEqual(opener_factory.return_value.open.call_count, 2)
+
     def test_query_exception_does_not_allow_mutations(self):
         for tool, subpath in (
             ("grafana", "api/dashboards/db"),
