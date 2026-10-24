@@ -613,3 +613,12 @@ MONITORING_PROMETHEUS_URL = os.getenv("MONITORING_PROMETHEUS_URL", "").rstrip("/
 MONITORING_FLOWER_URL = os.getenv("MONITORING_FLOWER_URL", "").rstrip("/")
 MONITORING_FLOWER_BASIC_AUTH = os.getenv("MONITORING_FLOWER_BASIC_AUTH", "")
 MONITORING_RENDER_EXPORTER_URL = os.getenv("MONITORING_RENDER_EXPORTER_URL", "").rstrip("/")
+
+# Callback outcomes only: never log source addresses, student/payment IDs,
+# posted fields or credentials. Other application logging stays unchanged.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"payfast_console": {"class": "logging.StreamHandler"}},
+    "loggers": {"amaris.payfast": {"handlers": ["payfast_console"], "level": "INFO", "propagate": False}},
+}

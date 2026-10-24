@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 import os
 
 from drf_spectacular.utils import extend_schema
@@ -20,6 +21,8 @@ DEFAULT_PAYFAST_NETWORKS = (
     "102.216.36.128/28",
     "144.126.193.139/32",
 )
+
+logger = logging.getLogger("amaris.payfast")
 
 
 def _allowed_networks():
@@ -54,13 +57,19 @@ class PayFastITNView(APIView):
         auth=[],
     )
     def post(self, request):
+        # Deliberately omit IPs, identifiers, payloads and signatures. The ASGI
+        # access log is disabled for privacy, so these outcomes are the safe
+        # way to distinguish missing delivery from a rejected notification.
+        logger.info("payfast_itn received")
         remote_ip = _request_ip(request)
         try:
             source = ipaddress.ip_address(remote_ip)
         except ValueError:
+            logger.warning("payfast_itn rejected reason=invalid_source")
             return Response({"detail": "Invalid payment notification source."}, status=403)
 
         if not any(source in network for network in _allowed_networks()):
+            logger.warning("payfast_itn rejected reason=untrusted_source")
             return Response({"detail": "Payment notification source is not trusted."}, status=403)
 
         payload = {str(key): str(value) for key, value in request.data.items()}
@@ -73,7 +82,10 @@ class PayFastITNView(APIView):
         else:
             result = process_payfast_notification(payload, gateway=gateway)
         if result.accepted:
+            logger.info("payfast_itn accepted")
             return Response({"status": result.payment_status}, status=200)
         if result.retryable:
+            logger.warning("payfast_itn retryable reason=%s", result.reason)
             return Response({"detail": result.reason}, status=503)
+        logger.warning("payfast_itn rejected reason=%s", result.reason)
         return Response({"detail": result.reason}, status=400)
