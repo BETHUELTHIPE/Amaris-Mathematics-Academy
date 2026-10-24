@@ -143,7 +143,12 @@ class AmarisAdminSite(AdminSite):
                 return HttpResponse(status=400)
             for query in queries:
                 datasource = query.get("datasource") if isinstance(query, dict) else None
-                if not isinstance(datasource, dict) or datasource.get("uid") not in {"amaris-prometheus", "amaris-pg-staging", "amaris-pg-production", "__expr__"}:
+                if not isinstance(datasource, dict) or datasource.get("uid") not in {
+                    "amaris-prometheus",
+                    "amaris-pg-staging",
+                    "amaris-pg-production",
+                    "__expr__",
+                }:
                     return HttpResponse("Monitoring datasource is not allowed.", status=400)
 
         upstream = _upstreams().get(tool, "").rstrip("/")
