@@ -97,6 +97,8 @@ jobs:
           set -euo pipefail
           cp verification-harness/scripts/release/booking_acceptance_settings.py backend/
           cp verification-harness/scripts/release/booking_callback_diagnostics.py backend/
+          # Compatibility with renamed PayFast signature helper on the pinned production revision.
+          sed -i 's/generate_payfast_itn_signature/generate_payfast_signature/g' backend/booking_callback_diagnostics.py
           cd backend
           python manage.py migrate --noinput >/dev/null
           python manage.py check
