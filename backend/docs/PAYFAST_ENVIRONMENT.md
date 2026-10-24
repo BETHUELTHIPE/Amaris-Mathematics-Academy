@@ -47,6 +47,20 @@ emails need the application mail configuration and running job workers.
 
 ## Verification and limits
 
+Incoming ITN signatures use all posted fields except `signature`, preserving
+their order, empty values and whitespace. Do not reuse the checkout signature
+normalizer, which intentionally omits empty fields and trims checkout values.
+The server-to-server validation request must carry the same notification
+parameter string without the signature or passphrase. A fixed vector in
+`content.test_payfast_configuration` covers this difference, PHP-compatible
+URL encoding and rejection if an empty signed field is removed.
+
+The `amaris.payfast` logger emits only fixed callback outcomes and verification
+stages. It excludes IPs, identifiers, payloads, credentials and signatures; ASGI
+request access logging stays disabled. A `received` outcome distinguishes an
+ITN reaching Django from a provider-side delivery problem. This is diagnostic
+evidence, not proof of payment unless authoritative verification succeeds.
+
 Automated tests use synthetic credentials and mocked HTTP validation, check
 both mode names, conflicting settings, merchant binding, signatures,
 idempotent invoices/notifications and tutor settlement holds. These tests do

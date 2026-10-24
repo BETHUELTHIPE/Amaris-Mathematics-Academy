@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from hashlib import md5
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
@@ -83,5 +84,33 @@ class PayFastHttpVerifierTests(SimpleTestCase):
     def test_invalid_signature_never_reaches_provider(self, urlopen):
         payload = self.payload()
         payload["signature"] = "0" * 32
+        self.assertFalse(HttpPayFastVerificationGateway().verify_notification(payload))
+        urlopen.assert_not_called()
+
+    @patch("content.services.payments.urlopen")
+    def test_itn_keeps_empty_fields_and_exact_values_for_signature_and_server_validation(self, urlopen):
+        # PayFast's ITN sample includes empty optional fields. Its notification
+        # parameter string contains every posted field, unlike checkout signing.
+        payload = {
+            "merchant_id": "99990001",
+            "m_payment_id": "PF-notification-vector",
+            "pf_payment_id": "1234567",
+            "payment_status": "COMPLETE",
+            "item_name": " Revision ~ A+B ",
+            "amount_gross": "250.00",
+            "custom_str3": "",
+            "name_first": "",
+        }
+        expected_body = (
+            b"merchant_id=99990001&m_payment_id=PF-notification-vector&pf_payment_id=1234567"
+            b"&payment_status=COMPLETE&item_name=+Revision+%7E+A%2BB+&amount_gross=250.00"
+            b"&custom_str3=&name_first="
+        )
+        payload["signature"] = md5(expected_body + b"&passphrase=synthetic-test-passphrase").hexdigest()
+        urlopen.return_value.__enter__.return_value.read.return_value = b"VALID"
+        self.assertTrue(HttpPayFastVerificationGateway().verify_notification(payload))
+        self.assertEqual(urlopen.call_args.args[0].data, expected_body)
+        urlopen.reset_mock()
+        del payload["custom_str3"]
         self.assertFalse(HttpPayFastVerificationGateway().verify_notification(payload))
         urlopen.assert_not_called()
