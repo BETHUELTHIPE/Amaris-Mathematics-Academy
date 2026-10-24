@@ -1,4 +1,5 @@
 """Real-provider-shaped ITN signature regression tests; no external payment or secrets."""
+
 from __future__ import annotations
 
 import hashlib
@@ -41,8 +42,7 @@ def _provider_payload() -> dict[str, str]:
         "merchant_id": "10000100",
     }
     signature_source = "&".join(
-        f"{key}={quote_plus(value, safe='').replace('~', '%7E')}"
-        for key, value in data.items()
+        f"{key}={quote_plus(value, safe='').replace('~', '%7E')}" for key, value in data.items()
     )
     signature_source += "&passphrase=" + quote_plus("synthetic-passphrase", safe="").replace("~", "%7E")
     data["signature"] = hashlib.md5(signature_source.encode("utf-8"), usedforsecurity=False).hexdigest()
@@ -52,7 +52,10 @@ def _provider_payload() -> dict[str, str]:
 class PayFastProviderITNTests(SimpleTestCase):
     def verify(self, payload):
         with (
-            patch("content.services.payments._payfast_credentials", return_value=("10000100", "merchant-key", "synthetic-passphrase")),
+            patch(
+                "content.services.payments._payfast_credentials",
+                return_value=("10000100", "merchant-key", "synthetic-passphrase"),
+            ),
             patch("content.services.payments._payfast_mode", return_value="sandbox"),
             patch("content.services.payments.urlopen", return_value=_ProviderResponse()) as request,
         ):
