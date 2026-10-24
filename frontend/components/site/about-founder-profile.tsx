@@ -70,9 +70,11 @@ const stack = [
   { title: "Frontend", tools: ["Next.js", "React", "TypeScript", "Tailwind CSS", "shadcn/ui"] },
   { title: "Backend & APIs", tools: ["Python", "Django", "Django REST Framework", "Django Channels", "Gunicorn"] },
   { title: "Database & secure files", tools: ["PostgreSQL", "Supabase", "pgvector", "Private storage", "Signed URLs"] },
-  { title: "Cloud & deployment", tools: ["Render", "Docker", "Docker Compose", "Nginx", "GitHub Actions"] },
-  { title: "Jobs & integrations", tools: ["Celery", "Celery Beat", "Redis / Valkey", "PayFast", "Zoom", "Google OAuth"] },
+  { title: "Live cloud & deployment", tools: ["Render", "Docker", "Docker Compose", "Nginx", "GitHub Actions"] },
+  { title: "Redis & background processing", tools: ["Redis / Valkey broker", "Celery", "Celery Beat", "Asynchronous notifications", "Scheduled tasks"] },
+  { title: "Payments & integrations", tools: ["PayFast", "Zoom", "Google OAuth"] },
   { title: "AI, monitoring & quality", tools: ["LangChain", "KaTeX", "Prometheus", "Grafana", "Flower", "Lighthouse", "Locust / k6"] },
+  { title: "AWS architecture & cloud engineering experience", tools: ["Amazon S3", "Amazon ECS Fargate", "Amazon RDS PostgreSQL", "Amazon CloudFront", "AWS CloudFormation", "Amazon CloudWatch", "Amazon SNS", "AWS IAM", "AWS Secrets Manager"] },
 ];
 
 export function FounderProfile() {
@@ -134,8 +136,9 @@ export function FounderProfile() {
             Technology used to build Amaris Mathematics Academy
           </h2>
           <p className="mt-5 max-w-3xl leading-8 text-white/70">
-            The academy uses modern web, data and cloud tools to support digital learning, lesson bookings, payments and
-            platform operations. Some AI and workflow integrations are still in development or staging verification.
+            Amaris runs on Render and Supabase, with Redis/Valkey supporting its Celery background-task architecture.
+            Bethuel has also designed AWS cloud architectures using the services listed below; AWS is not presented as
+            the live hosting environment for Amaris. Some AI and workflow integrations are still in development or staging verification.
           </p>
           <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {stack.map(({ title, tools }) => (
