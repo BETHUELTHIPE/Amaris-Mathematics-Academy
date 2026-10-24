@@ -34,6 +34,7 @@ PAYMENT_WEBHOOK_MAX_AGE_HOURS = int(os.getenv("PAYMENT_WEBHOOK_MAX_AGE_HOURS", "
 
 
 logger = logging.getLogger(__name__)
+payfast_logger = logging.getLogger("amaris.payfast")
 
 
 class PaymentSecurityError(ValueError):
@@ -190,12 +191,15 @@ class HttpPayFastVerificationGateway:
     def verify_notification(self, payload: Mapping[str, str]) -> bool:
         merchant_id, _, passphrase = _payfast_credentials()
         if str(payload.get("merchant_id", "")).strip() != merchant_id:
+            payfast_logger.warning("payfast_itn verification_failed check=merchant")
             return False
         supplied_signature = str(payload.get("signature", "")).strip().lower()
         if not supplied_signature:
+            payfast_logger.warning("payfast_itn verification_failed check=missing_signature")
             return False
         expected_signature = generate_payfast_signature(payload, passphrase)
         if not hmac.compare_digest(supplied_signature, expected_signature):
+            payfast_logger.warning("payfast_itn verification_failed check=signature")
             return False
 
         encoded = urlencode(
@@ -210,10 +214,15 @@ class HttpPayFastVerificationGateway:
         )
         try:
             with urlopen(request, timeout=float(os.getenv("PAYFAST_VERIFY_TIMEOUT_SECONDS", "8"))) as response:
-                return response.read().decode("utf-8").strip() == "VALID"
+                valid = response.read().decode("utf-8").strip() == "VALID"
+                if not valid:
+                    payfast_logger.warning("payfast_itn verification_failed check=provider_response")
+                return valid
         except TimeoutError:
+            payfast_logger.warning("payfast_itn verification_failed check=provider_timeout")
             raise
         except OSError as exc:
+            payfast_logger.warning("payfast_itn verification_failed check=provider_network")
             raise ConnectionError("PayFast validation request failed.") from exc
 
 
