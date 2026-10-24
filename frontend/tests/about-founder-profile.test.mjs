@@ -29,3 +29,15 @@ test("About page accurately represents the Amaris platform technology", () => {
   }
   assert.match(profile, /in development or staging verification/);
 });
+
+test("About page explains Redis and separates AWS architecture experience from live hosting", () => {
+  for (const technology of [
+    "Redis / Valkey broker", "Celery Beat", "Asynchronous notifications",
+    "Amazon S3", "Amazon ECS Fargate", "Amazon RDS PostgreSQL", "Amazon CloudFront",
+    "AWS CloudFormation", "Amazon CloudWatch", "Amazon SNS", "AWS IAM", "AWS Secrets Manager",
+  ]) {
+    assert.ok(profile.includes(technology), "Missing Redis or AWS technology: " + technology);
+  }
+  assert.match(profile, /Amaris runs on Render and Supabase/);
+  assert.match(profile, /AWS is not presented as/);
+});
