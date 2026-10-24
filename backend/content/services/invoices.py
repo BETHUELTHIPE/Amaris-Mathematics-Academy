@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
-import io
 import re
-import textwrap
+from decimal import Decimal
 from typing import overload
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import Storage, storages
 from django.utils import timezone
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.utils import ImageReader
-from reportlab.pdfgen import canvas
 
-from content.models import LiveClassBooking, SiteSettings, VideoRequest
+from content.models import LiveClassBooking, VideoRequest
 from content.payment_models import Invoice
 from content.services.course_invoice_archive import (
     InvoiceArchiveError as InvoiceArchiveError,
@@ -23,12 +18,14 @@ from content.services.course_invoice_archive import (
 from content.services.course_invoice_archive import (
     archive_invoice_pdf as archive_course_invoice_pdf,
 )
+from content.services.course_invoice_archive import build_invoice_pdf
 from content.services.course_invoice_archive import (
     invoice_storage_path as invoice_storage_path,
 )
 from content.services.course_invoice_archive import (
     mark_invoice_archive_failure as mark_invoice_archive_failure,
 )
+from content.services.invoice_document import InvoiceDocument, InvoiceLine, render_document
 
 
 def student_invoice_key(student_id: object, invoice_number: str) -> str:
@@ -37,100 +34,57 @@ def student_invoice_key(student_id: object, invoice_number: str) -> str:
     return f"invoices/{student_id}/{invoice_number}.pdf"
 
 
-def _invoice_details(invoice: Invoice | LiveClassBooking | VideoRequest) -> tuple[str, str, list[str]]:
-    if isinstance(invoice, LiveClassBooking):
-        if invoice.status != LiveClassBooking.Status.CONFIRMED or not invoice.invoice_number:
-            raise ValueError("Only verified, confirmed bookings receive invoices.")
-        starts_at = timezone.localtime(invoice.slot.starts_at).strftime("%d %B %Y at %H:%M SAST")
-        return (
-            invoice.invoice_number,
-            invoice.student.email,
-            [
-                f"Student: {invoice.student.first_name} {invoice.student.last_name}",
-                f"Booking: {invoice.reference}",
-                f"Class: {invoice.get_programme_display()} / {invoice.get_subject_display()} / {invoice.level}",
-                f"Topic: {invoice.topic}",
-                f"Tutor: {invoice.slot.tutor_display_name}",
-                f"Date: {starts_at}",
-                f"Duration: {invoice.slot.duration_hours} hour(s) at R250.00 per hour",
-                f"Amount paid: R{invoice.amount:.2f} {invoice.currency}",
-            ],
-        )
-    if isinstance(invoice, VideoRequest):
-        if invoice.gateway_verified_at is None or not invoice.invoice_number:
-            raise ValueError("Only verified video requests receive invoices.")
-        return (
-            invoice.invoice_number,
-            invoice.student.email,
-            [
-                f"Student: {invoice.student.first_name} {invoice.student.last_name}",
-                f"Video request: {invoice.reference}",
-                f"Ticket: {invoice.ticket_number}",
-                f"Package: {invoice.get_request_type_display()}",
-                f"Subject: {invoice.get_programme_display()} / {invoice.get_subject_display()} / {invoice.level}",
-                f"Topic: {invoice.topic}",
-                f"Amount paid: R{invoice.amount:.2f} {invoice.currency}",
-            ],
-        )
-    return (
-        invoice.invoice_number,
-        invoice.student.email,
-        [
-            f"Student: {invoice.student.first_name} {invoice.student.last_name}",
-            f"Payment: {invoice.payment.reference}",
-            f"Course: {invoice.course.title}",
-            f"Date: {timezone.localtime(invoice.issued_at):%d %B %Y}",
-            f"Amount paid: R{invoice.amount:.2f} {invoice.currency}",
-        ],
-    )
+def _invoice_identity(invoice: LiveClassBooking | VideoRequest) -> tuple[str, str]:
+    if isinstance(invoice, LiveClassBooking) and invoice.status != LiveClassBooking.Status.CONFIRMED:
+        raise ValueError("Only verified, confirmed bookings receive invoices.")
+    if invoice.gateway_verified_at is None or not invoice.invoice_number:
+        raise ValueError("Only server-verified payments receive invoices.")
+    return invoice.invoice_number, invoice.student.email
 
 
 def render_invoice_pdf(invoice: Invoice | LiveClassBooking | VideoRequest) -> bytes:
-    invoice_number, student_email, details = _invoice_details(invoice)
-    site = SiteSettings.objects.first()
-    name = site.site_name if site else "Amaris Mathematics Academy"
-    contact = site.email if site else "bethuelmoukangwe8@gmail.com"
-    phone = site.phone if site else "071 415 6665"
-    address = site.address if site else "Pretoria, Gauteng, South Africa"
-    output = io.BytesIO()
-    page = canvas.Canvas(output, pagesize=A4)
-    page.setTitle(f"Invoice {invoice_number}")
-    width, height = A4
-    page.setFillColor(colors.HexColor("#07152d"))
-    page.rect(0, height - 122, width, 122, fill=1, stroke=0)
-    heading_x = 52
-    if site and site.logo:
-        try:
-            with site.logo.open("rb") as logo:
-                page.drawImage(ImageReader(io.BytesIO(logo.read())), 52, height - 100, 72, 72, mask="auto")
-            heading_x = 140
-        except (OSError, ValueError):
-            pass
-    page.setFillColor(colors.white)
-    page.setFont("Helvetica-Bold", 15)
-    page.drawString(heading_x, height - 60, name[:48])
-    page.setFont("Helvetica", 9)
-    page.drawString(heading_x, height - 79, f"{contact}  |  {phone}"[:75])
-    page.setFillColor(colors.HexColor("#07152d"))
-    page.setFont("Helvetica-Bold", 21)
-    page.drawString(52, height - 170, "PAID INVOICE")
-    page.setFont("Helvetica", 10)
-    page.drawString(52, height - 194, f"Invoice number: {invoice_number}")
-    page.drawString(52, height - 213, f"Issued to: {student_email}"[:100])
-    y = height - 255
-    for detail in details:
-        for line in textwrap.wrap(detail, width=91):
-            page.drawString(52, y, line)
-            y -= 18
-        y -= 7
-    page.setStrokeColor(colors.HexColor("#dce4ef"))
-    page.line(52, y - 4, width - 52, y - 4)
-    page.setFont("Helvetica", 9)
-    page.drawString(52, y - 25, "Payment verified through PayFast. Keep this invoice for your records.")
-    for index, line in enumerate(textwrap.wrap(address, width=105)[:3]):
-        page.drawString(52, 60 - index * 12, line)
-    page.save()
-    return output.getvalue()
+    if isinstance(invoice, Invoice):
+        return build_invoice_pdf(invoice)
+    number, email = _invoice_identity(invoice)
+    if invoice.gateway_verified_at is None:
+        raise ValueError("Only server-verified payments receive invoices.")
+    if isinstance(invoice, LiveClassBooking):
+        line = InvoiceLine(
+            description=(
+                f"{invoice.get_programme_display()} {invoice.get_subject_display()} - {invoice.level} live class"
+            ),
+            details=(
+                f"Topic: {invoice.topic}",
+                f"Tutor: {invoice.slot.tutor_display_name}",
+                f"Date: {timezone.localtime(invoice.slot.starts_at):%d %B %Y at %H:%M} SAST",
+                f"Duration: {invoice.slot.duration_hours} hour(s)",
+            ),
+            quantity=Decimal(invoice.slot.duration_hours),
+            unit_price=Decimal("250.00"),
+        )
+    else:
+        line = InvoiceLine(
+            description=invoice.get_request_type_display(),
+            details=(
+                f"Subject: {invoice.get_programme_display()} / {invoice.get_subject_display()} / {invoice.level}",
+                f"Topic: {invoice.topic}",
+                f"Ticket: {invoice.ticket_number}",
+            ),
+            quantity=Decimal("1"),
+            unit_price=invoice.amount,
+        )
+    return render_document(
+        InvoiceDocument(
+            number=number,
+            issue_date=timezone.localtime(invoice.paid_at or invoice.gateway_verified_at).strftime("%d %B %Y"),
+            student_name=f"{invoice.student.first_name} {invoice.student.last_name}".strip() or email,
+            student_email=email,
+            reference=invoice.reference,
+            currency=invoice.currency,
+            lines=(line,),
+            total=invoice.amount,
+        )
+    )
 
 
 @overload
@@ -162,12 +116,21 @@ def archive_invoice_pdf(
         except Exception as exc:
             raise OSError("Student invoice archive is unavailable.") from exc
     document = render_invoice_pdf(invoice)
-    invoice_number, _, _ = _invoice_details(invoice)
+    invoice_number, _ = _invoice_identity(invoice)
     key = student_invoice_key(invoice.student.supabase_user_id, invoice_number)
+    private_storage = storage or storages["student_private"]
     try:
-        saved = storages["student_private"].save(key, ContentFile(document))
+        # Booking recipients share one canonical private PDF; never generate an
+        # alternative object key for the same verified invoice on retries.
+        if private_storage.exists(key):
+            with private_storage.open(key, "rb") as archived:
+                existing = archived.read()
+            if not existing.startswith(b"%PDF-"):
+                raise OSError("Previously archived booking invoice is not a PDF.")
+            return existing
+        saved = private_storage.save(key, ContentFile(document))
+        if saved != key:
+            raise OSError("Student invoice archive did not use the expected object key.")
     except Exception as exc:
         raise OSError("Student invoice archive is unavailable.") from exc
-    if saved != key:
-        raise OSError("Student invoice archive did not use the expected object key.")
     return document
