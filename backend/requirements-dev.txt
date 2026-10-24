@@ -5,3 +5,4 @@ django-stubs==5.2.9
 mypy==1.19.1
 pip-audit>=2.7,<3
 ruff==0.16.6
+pypdf==6.10.0
