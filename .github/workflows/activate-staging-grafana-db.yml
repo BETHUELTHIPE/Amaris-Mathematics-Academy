@@ -1,0 +1,159 @@
+name: Activate private staging Grafana database
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: amaris-staging-grafana-db-activation
+  cancel-in-progress: false
+jobs:
+  activate-staging-only:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 12
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pinned PostgreSQL client
+        run: python -m pip install --disable-pip-version-check "psycopg[binary]==3.2.10"
+      - name: Provision restricted staging credential directly between Supabase and Render
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hmac
+          import json
+          import os
+          import secrets
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          import psycopg
+          from psycopg import sql
+
+          WORKSPACE = "tea-csppi8l6l47c73dk9c90"
+          STAGING = "srv-dam2iivcgkoc7383tq50"
+          GRAFANA = "srv-dbbveveq1p3s73f3oad0"
+          PROJECT = "atyhhjwwxgzeurnwayay"
+          ROLE = "amaris_grafana_ro"
+          API_KEY = os.environ.get("RENDER_API_KEY", "")
+          if not API_KEY:
+              raise SystemExit("BLOCK: protected Render API access is not configured")
+
+          def api(path, method="GET", payload=None):
+              req = urllib.request.Request(
+                  "https://api.render.com/v1" + path,
+                  method=method,
+                  data=None if payload is None else json.dumps(payload).encode(),
+                  headers={
+                      "Authorization": "Bearer " + API_KEY,
+                      "Accept": "application/json",
+                      "Content-Type": "application/json",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=25) as res:
+                      return json.load(res)
+              except urllib.error.HTTPError as exc:
+                  raise RuntimeError(f"Render API returned HTTP {exc.code}") from None
+              except Exception as exc:
+                  raise RuntimeError(f"Render API unavailable ({type(exc).__name__})") from None
+
+          staging = api(f"/services/{STAGING}")
+          grafana = api(f"/services/{GRAFANA}")
+          if (
+              staging.get("ownerId") != WORKSPACE
+              or staging.get("name") != "amaris-mathematics-academy-staging"
+              or staging.get("branch") != "ops/staging-known-good-af8709c-20261019"
+          ):
+              raise SystemExit("BLOCK: staging service does not match approved target")
+          if (
+              grafana.get("ownerId") != WORKSPACE
+              or grafana.get("name") != "amaris-monitoring-grafana"
+              or grafana.get("type") != "private_service"
+              or grafana.get("branch") != "main"
+          ):
+              raise SystemExit("BLOCK: private Grafana service does not match approved target")
+
+          original = api(f"/services/{STAGING}/env-vars/DATABASE_URL").get("value", "")
+          if not isinstance(original, str) or not original:
+              raise SystemExit("BLOCK: staging database connection is unavailable")
+          url = urllib.parse.urlsplit(original)
+          host = (url.hostname or "").lower()
+          account = urllib.parse.unquote(url.username or "")
+          if not (
+              url.scheme in ("postgres", "postgresql")
+              and host.endswith(".pooler.supabase.com")
+              and PROJECT in account
+              and url.port == 5432
+              and url.path == "/postgres"
+          ):
+              raise SystemExit("BLOCK: database is not the approved staging session pooler")
+
+          password = secrets.token_urlsafe(48)
+          grafana_user = ROLE + "." + PROJECT
+          role_enabled = False
+          try:
+              with psycopg.connect(original, connect_timeout=12, sslmode="require") as connection:
+                  with connection.cursor() as cur:
+                      cur.execute("SELECT current_database()")
+                      if cur.fetchone()[0] != "postgres":
+                          raise RuntimeError("Unexpected PostgreSQL database")
+                      cur.execute(
+                          "SELECT rolcanlogin, rolbypassrls FROM pg_roles WHERE rolname=%s", (ROLE,)
+                      )
+                      if cur.fetchone() != (False, False):
+                          raise RuntimeError("Staging reporting role requires manual review")
+                      cur.execute(
+                          sql.SQL("ALTER ROLE {} LOGIN PASSWORD {}").format(
+                              sql.Identifier(ROLE), sql.Literal(password)
+                          )
+                      )
+                      cur.execute(
+                          sql.SQL("GRANT CONNECT ON DATABASE postgres TO {}").format(sql.Identifier(ROLE))
+                      )
+              role_enabled = True
+
+              vars_to_set = {
+                  "AMARIS_GRAFANA_STAGING_DB_HOSTPORT": host + ":5432",
+                  "AMARIS_GRAFANA_STAGING_DB_USER": grafana_user,
+                  "AMARIS_GRAFANA_STAGING_DB_PASSWORD": password,
+              }
+              for key, value in vars_to_set.items():
+                  api(f"/services/{GRAFANA}/env-vars/{key}", method="PUT", payload={"value": value})
+              for key, value in vars_to_set.items():
+                  returned = api(f"/services/{GRAFANA}/env-vars/{key}").get("value", "")
+                  if not hmac.compare_digest(str(returned), value):
+                      raise RuntimeError("Render setting mismatch")
+
+              with psycopg.connect(
+                  host=host, port=5432, dbname="postgres", user=grafana_user,
+                  password=password, sslmode="require", connect_timeout=12,
+              ) as con:
+                  with con.cursor() as cur:
+                      cur.execute("SELECT count(*) FROM amaris_reporting.bookings_daily")
+                      cur.fetchone()
+                      cur.execute(
+                          "SELECT has_table_privilege(current_user,'public.content_studentrecord','SELECT')"
+                      )
+                      if cur.fetchone()[0]:
+                          raise RuntimeError("Unsafe raw student data permissions")
+
+              print("PASS: staging reporting login and private Render secrets match")
+              print("PASS: aggregate data available while raw student table access is denied")
+              print("NEXT: manually deploy merged Grafana dashboard revision from main")
+          except Exception:
+              if role_enabled:
+                  try:
+                      with psycopg.connect(original, connect_timeout=12, sslmode="require") as con:
+                          with con.cursor() as cur:
+                              cur.execute(sql.SQL("ALTER ROLE {} NOLOGIN").format(sql.Identifier(ROLE)))
+                  except Exception:
+                      print("WARNING: reporting role may need manual disable; inspect staging SQL role")
+              raise SystemExit("BLOCK: staging credential activation incomplete; secrets suppressed") from None
+          PY
