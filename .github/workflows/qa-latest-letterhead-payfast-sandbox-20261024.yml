@@ -8,8 +8,7 @@ permissions:
   contents: read
 jobs:
   authentic-sandbox-itn:
-    if: >-
-      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/main' && github.event.before == '0d867c599a9d17077599e0d7c730a2a982ed2901' && contains(github.event.head_commit.message, '[VERIFY_ITN_WIRE:011e467c:mailbox-v5]')
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/qa/latest-letterhead-payfast-sandbox-20261024'
     environment: staging
     name: New letterhead PDF with provider sandbox ITN and isolated receipts
     runs-on: ubuntu-24.04
