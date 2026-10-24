@@ -201,8 +201,15 @@ class GrafanaQueryTests(SimpleTestCase):
         opener_factory.return_value.open.return_value = reply
         for uid in ("amaris-pg-staging", "amaris-pg-production"):
             with self.subTest(uid=uid):
-                query = {"queries": [{"refId": "A", "datasource": {"uid": uid},
-                                      "rawSql": "SELECT bucket FROM amaris_reporting.bookings_daily LIMIT 1"}]}
+                query = {
+                    "queries": [
+                        {
+                            "refId": "A",
+                            "datasource": {"uid": uid},
+                            "rawSql": "SELECT bucket FROM amaris_reporting.bookings_daily LIMIT 1",
+                        }
+                    ]
+                }
                 response = resolve("/admin/monitoring/grafana/api/ds/query").func(self.request(query))
                 self.assertEqual(response.status_code, 200)
         self.assertEqual(opener_factory.return_value.open.call_count, 2)
