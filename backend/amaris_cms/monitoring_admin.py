@@ -162,9 +162,7 @@ class AmarisAdminSite(AdminSite):
             queries = payload.get("queries") if isinstance(payload, dict) else None
             if not isinstance(queries, list) or not 1 <= len(queries) <= 32:
                 return HttpResponse(status=400)
-            allowed_sources = {
-                "amaris-prometheus", "amaris-pg-staging", "amaris-pg-production", "__expr__"
-            }
+            allowed_sources = {"amaris-prometheus", "amaris-pg-staging", "amaris-pg-production", "__expr__"}
             for query in queries:
                 source = query.get("datasource") if isinstance(query, dict) else None
                 if not isinstance(source, dict) or source.get("uid") not in allowed_sources:
