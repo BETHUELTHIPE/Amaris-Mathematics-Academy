@@ -9,9 +9,9 @@ from django.conf import settings
 from django.contrib.admin import AdminSite
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseNotFound
-from django.views.decorators.csrf import csrf_exempt
 from django.template.response import TemplateResponse
 from django.urls import path
+from django.views.decorators.csrf import csrf_exempt
 
 from .airflow_client import AirflowUnavailable, get_workflow, get_workflow_tasks, is_configured, monitored_dags
 
