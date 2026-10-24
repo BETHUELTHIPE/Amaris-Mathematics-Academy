@@ -1,0 +1,39 @@
+name: QA public booking entrypoint smoke
+on:
+  push:
+    branches: [qa/staging-booking-flows-isolated-20261024]
+    paths:
+      - .github/workflows/qa-booking-pages-live-smoke-20261024.yml
+permissions:
+  contents: read
+jobs:
+  public-pages-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: GET booking, video, courses and health without credentials or mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            "book-online-live-class|https://amaris-mathematics-academy-live-students.onrender.com/book-online-live-class"
+            "request-a-video|https://amaris-mathematics-academy-live-students.onrender.com/request-a-video"
+            "courses|https://amaris-mathematics-academy-live-students.onrender.com/courses"
+            "production-ready|https://amaris-production-web.onrender.com/health/ready/"
+            "staging-ready|https://amaris-mathematics-academy-staging.onrender.com/health/ready/"
+          )
+          for item in "${urls[@]}"; do
+            name="${item%%|*}"
+            url="${item#*|}"
+            tmp="$(mktemp)"
+            code="$(curl --location --silent --show-error --max-time 50 --retry 4 --retry-delay 4 -o "$tmp" -w '%{http_code}' "$url")"
+            echo "GET ${name}: HTTP ${code}"
+            test "$code" = 200
+            test -s "$tmp"
+            if grep -Eiq '(Traceback \(most recent call|DJANGO_SECRET_KEY|postgresql://)' "$tmp"; then
+              echo "Unacceptable sensitive diagnostic on public endpoint: ${name}" >&2
+              exit 1
+            fi
+            rm -f "$tmp"
+          done
+          echo "PUBLIC_BOOKING_ENTRYPOINTS=PASS (GET only; no checkout or payment)"
