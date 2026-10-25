@@ -161,6 +161,7 @@ class AirflowUiUrlTests(SimpleTestCase):
         forbidden = (
             "http://airflow.example.internal",
             "https://user:password@airflow.example.internal",
+            "https://@airflow.example.internal",
             "https://airflow.example.internal/?token=secret",
             "https://airflow.example.internal/#access_token",
             "javascript:alert(1)",
