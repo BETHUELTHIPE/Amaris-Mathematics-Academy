@@ -13,12 +13,14 @@ import {
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { getLiveClassSlots } from "@/lib/live-classes";
+import { requireVerifiedStudent } from "@/lib/auth";
 import { getGradeLevels, programmes, subjects } from "@/lib/booking-grade-levels.mjs";
 import { LiveClassBookingFilters } from "./live-class-booking-filters";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Book Online Live Class",
+  robots: { index: false, follow: false },
   description:
     "Book a flexible-length Amaris Mathematics Academy Zoom class with an available tutor.",
 };
@@ -41,6 +43,16 @@ export default async function BookOnlineLiveClassPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  // Preserve only the supported booking choices across the verification/login
+  // redirect. Untrusted query data never becomes an external redirect URL.
+  const savedChoices = new URLSearchParams();
+  for (const field of ["programme", "subject", "level", "customLevel", "topic", "customTopic"] as const) {
+    const choice = queryValue(params[field]).trim();
+    if (choice && choice.length <= 180) savedChoices.set(field, choice);
+  }
+  const savedQuery = savedChoices.toString();
+  await requireVerifiedStudent(`/book-online-live-class${savedQuery ? `?${savedQuery}` : ""}`);
+
   const programme = queryValue(params.programme);
   const subject = queryValue(params.subject);
   const level = queryValue(params.level) === CUSTOM_CHOICE ? queryValue(params.customLevel).trim().slice(0, 80) : queryValue(params.level);
