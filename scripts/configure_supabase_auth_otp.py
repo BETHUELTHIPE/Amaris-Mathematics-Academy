@@ -73,7 +73,7 @@ def status_of(config: dict) -> dict[str, bool]:
     expected = desired_config()
     result = {field: config.get(field) == value for field, value in expected.items()}
     # Custom SMTP is configured outside this script; presence does NOT prove inbox receipt.
-    result["auth_email_enabled"] = config.get("external_email_enabled") is not False
+    result["auth_email_enabled"] = config.get("external_email_enabled") is True
     result["smtp_host_configured"] = bool(config.get("smtp_host"))
     result["smtp_sender_configured"] = bool(config.get("smtp_admin_email"))
     return result
