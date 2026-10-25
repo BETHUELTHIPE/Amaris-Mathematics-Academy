@@ -116,7 +116,7 @@ jobs:
               "mailer_autoconfirm":False,
               "smtp_admin_email":sender,
               "smtp_host":"smtp.gmail.com",
-              "smtp_port":587,
+              "smtp_port":"587",
               "smtp_user":username,
               "smtp_pass":password,
               "smtp_sender_name":"Amaris Mathematics Academy",
@@ -126,7 +126,7 @@ jobs:
           for key,value in payload.items():
               if key=="smtp_pass":
                   continue
-              if actual.get(key)!=value:
+              if (str(actual.get(key)) if key=="smtp_port" else actual.get(key))!=value:
                   raise SystemExit("BLOCK: Supabase Auth readback differs: "+key)
           print("PASS: custom staging Supabase Auth SMTP installed; OTP templates still need separate apply")
           print("STAGING_ONLY=YES; EMAIL_INBOX_RECEIPT=NOT_TESTED; PRODUCTION_UNCHANGED=YES")
