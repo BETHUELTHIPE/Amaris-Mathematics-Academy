@@ -49,7 +49,7 @@ jobs:
               code,headers,body=request(path)
               if code not in (302,303,307,308,401,403):
                   raise SystemExit(f"FAIL: private route {path} unexpectedly returned {code}")
-              if code in (302,303,307,308) and "/login" not in headers.get("Location",""):
+              if code in (302,303,307,308) and "/login" not in next((value for key,value in headers.items() if key.lower()=="location"),""):
                   raise SystemExit(f"FAIL: private route {path} redirected to unexpected location")
               print(f"PASS: private {path} rejects anonymous access")
           print("PASS: no synthetic users created or email addresses exposed")
