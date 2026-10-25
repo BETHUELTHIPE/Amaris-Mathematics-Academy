@@ -40,7 +40,8 @@ jobs:
           print("PASS: direct reset-password requires recovery proof")
           for route in ["/book-online-live-class","/book-online-live-class?programme=caps&subject=mathematics",
               "/book-online-live-class/checkout?slot=123&topic=Algebra&attempt=11111111-1111-4111-8111-111111111111",
-              "/book-online-live-class/confirmation?reference=SYNTHETIC-ONLY"]:
+              "/book-online-live-class/confirmation?reference=SYNTHETIC-ONLY",
+              "/book-online-live-class/invoice?reference=SYNTHETIC-ONLY"]:
               status,location,body=probe(route)
               dest=urllib.parse.urlsplit(urllib.parse.urljoin(base,location))
               if status not in (302,303,307,308) or dest.path!="/login" or dest.netloc!=urllib.parse.urlsplit(base).netloc or "/book-online-live-class" not in urllib.parse.parse_qs(dest.query).get("next",[""])[0]:
