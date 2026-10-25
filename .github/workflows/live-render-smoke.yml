@@ -124,13 +124,16 @@ jobs:
                           print(f"  - {item}")
 
                   if path in ("/login", "/register"):
+                      # Student signup intentionally requires a registration form and email
+                      # verification. Google is available for returning students at login.
                       expected_google = "Sign in with Google" if path == "/login" else "Register with Google"
                       google_button = page.get_by_role("button", name=expected_google, exact=True)
                       count = google_button.count()
-                      if count != 1:
-                          failures.append(f"{path}: expected one student Google sign-in button; found {count}")
+                      required_count = 1 if path == "/login" else 0
+                      if count != required_count:
+                          failures.append(f"{path}: expected {required_count} {expected_google} button(s); found {count}")
                       else:
-                          print(f"PASS {path}: {expected_google} visible")
+                          print(f"PASS {path}: correct Google sign-in/signup policy")
                       # Never expose GitHub social sign-in on student authentication pages.
                       social_options = page.locator("button, a").all_inner_texts()
                       unexpected = [text for text in social_options if "github" in text.lower() and
