@@ -1,0 +1,32 @@
+name: Amaris Staging Verified Email Template Apply
+on:
+  push:
+    branches: ["ops/staging-email-verification-template-fix-20261025"]
+    paths: ["ops/staging-verified-email-template-request.txt"]
+permissions:
+  contents: read
+jobs:
+  update-staging-email-template:
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 8
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard project and verification template
+        run: |
+          python -m unittest discover -s tests -p test_configure_supabase_auth_otp.py -v
+          python - <<'PY'
+          from pathlib import Path
+          files=['frontend/email-templates/confirm-signup.html','frontend/email-templates/magic-link-login.html']
+          for file in files:
+              html=Path(file).read_text()
+              if '{{ .Token }}' not in html or '{{ .ConfirmationURL }}' not in html or 'localhost' in html or '{{ .SiteURL }}' in html:
+                  raise SystemExit('BLOCK: staging verification template still has an unsafe link')
+          print('PASS: staging OTP template has provider-issued verification link and six-digit code')
+          PY
+      - name: Apply and read back staging OTP and email confirmation settings
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "BLOCK: missing staging token"; exit 2; }
+          python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode apply
