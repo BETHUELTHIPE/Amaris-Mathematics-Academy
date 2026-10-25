@@ -45,3 +45,14 @@ test("confirmation page releases Zoom only for confirmed bookings", () => {
   assert.match(confirmationPage, /booking\.zoom_join_url/);
   assert.match(confirmationPage, /confirmation email and invoice/);
 });
+
+
+test("available tutor times submission navigates to the timetable", () => {
+  assert.match(
+    bookingPage,
+    /action="\/book-online-live-class#available-slots"/,
+  );
+  assert.match(bookingPage, /id="available-slots"/);
+  assert.match(bookingPage, /scroll-mt-28/);
+  assert.match(bookingPage, /Show available tutor times/);
+});

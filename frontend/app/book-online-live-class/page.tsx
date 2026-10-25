@@ -114,6 +114,7 @@ export default async function BookOnlineLiveClassPage({
         </ol>
 
         <form
+          action="/book-online-live-class#available-slots"
           method="get"
           className="mt-8 grid gap-5 rounded-3xl border border-[#dce4ef] bg-white p-6 sm:p-8 lg:grid-cols-2"
         >
@@ -196,7 +197,7 @@ export default async function BookOnlineLiveClassPage({
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
             <div>
               <p className="eyebrow">Tutor timetable</p>
-              <h2 id="available-slots" className="mt-2 text-3xl font-semibold tracking-[-.035em]">
+              <h2 id="available-slots" className="scroll-mt-28 mt-2 text-3xl font-semibold tracking-[-.035em]">
                 Available Zoom slots
               </h2>
             </div>
