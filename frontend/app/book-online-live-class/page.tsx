@@ -1,6 +1,5 @@
 import { CUSTOM_CHOICE, isSchoolProgramme } from "@/lib/school-curriculum.mjs";
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
   ArrowRight,
   CalendarDays,
@@ -172,12 +171,13 @@ export default async function BookOnlineLiveClassPage({
                         <div><dt className="sr-only">Delivery</dt><dd>Zoom link is released after verified payment.</dd></div>
                       </div>
                     </dl>
-                    <Link
+                    {/* A native link prevents speculative router prefetch from reserving unselected slots. */}
+                    <a
                       href={checkoutUrl}
                       className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white"
                     >
                       Choose this slot <ArrowRight className="size-4" />
-                    </Link>
+                    </a>
                   </article>
                 );
               })}

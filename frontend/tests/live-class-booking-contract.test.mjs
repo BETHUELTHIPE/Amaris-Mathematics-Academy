@@ -46,3 +46,14 @@ test("confirmation page releases Zoom only for confirmed bookings", () => {
   assert.match(confirmationPage, /booking\.zoom_join_url/);
   assert.match(confirmationPage, /confirmation email and invoice/);
 });
+
+// Checkout GET pages create payment sessions; discovering a slot must not fetch one.
+test("checkout entry links cannot trigger router prefetch reservations", () => {
+  const slotLink = bookingPage.match(/<(\w+)\s+href=\{checkoutUrl\}/);
+  assert.equal(slotLink?.[1], "a", "Browsing tutor availability must not prefetch checkout");
+  const coursePage = fs.readFileSync(
+    new URL("../app/courses/[slug]/page.tsx", import.meta.url), "utf8",
+  );
+  const courseLink = coursePage.match(/<(\w+)\s+href=\{canEnrol \?/);
+  assert.equal(courseLink?.[1], "a", "Viewing a course must not pre-create an order");
+});
