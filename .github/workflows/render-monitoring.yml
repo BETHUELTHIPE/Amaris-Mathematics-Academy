@@ -13,7 +13,7 @@ on:
       - ".github/workflows/render-monitoring.yml"
   push:
     branches:
-      - "feature/render-native-monitoring-20261014"
+      - "main"
     paths:
       - "monitoring/render/**"
       - "monitoring/self-hosted/**"
@@ -90,6 +90,13 @@ jobs:
 
       - name: Validate Blueprint YAML
         run: ruby -e 'require "yaml"; YAML.load_file("monitoring/render/render.yaml")'
+
+      - name: Validate Blueprint against Render schema
+        run: |
+          python -m pip install "check-jsonschema==0.35.0"
+          check-jsonschema \
+            --schemafile https://render.com/schema/render.yaml.json \
+            monitoring/render/render.yaml
 
       - name: Validate exporter Python
         run: python -m py_compile monitoring/render/render-metrics-exporter/exporter.py
