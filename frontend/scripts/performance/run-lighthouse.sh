@@ -59,10 +59,14 @@ run_lighthouse_with_retry() {
       "${output_path}.report.json" \
       "${output_path}.report.html"
 
-    if npx --no-install lighthouse "$url" \
+    # Kill Chromium and its child processes when a trace hangs; otherwise
+    # orphaned Chrome processes can exhaust the Actions runner and cause
+    # repeated NO_NAVSTART errors on later routes. Scores are never retried.
+    if timeout --signal=TERM --kill-after=10s 180s \
+      npx --no-install lighthouse "$url" \
       --quiet \
       "${mode_args[@]}" \
-      --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+      --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage --disable-gpu --disable-extensions --disable-background-networking" \
       "${output_args[@]}" \
       --output-path="$output_path"; then
       return 0
@@ -70,7 +74,7 @@ run_lighthouse_with_retry() {
 
     if [[ "$attempt" -lt 3 ]]; then
       echo "Lighthouse runtime failed for $url ($mode), retrying process attempt $((attempt + 1))/3..." >&2
-      sleep 2
+      sleep "$((attempt * 5))"
     fi
   done
 
