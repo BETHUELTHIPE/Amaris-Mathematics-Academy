@@ -85,19 +85,20 @@ jobs:
         run: |
           python scripts/configure_supabase_auth_otp.py --project-ref "$TARGET_PROJECT_REF" --mode "$ACTION_MODE"
 
-  # Read-only audit for this branch. No environment overrides the valid repository-scoped secret.
+  # Read-only production audit using its protected, production-specific environment secret.
   # This job can only GET config, never PATCH, and cannot deploy.
   production-readonly-audit:
     needs: contract-tests
     if: github.event_name == 'push' && github.ref == 'refs/heads/ops/production-supabase-otp-audit-20261025'
     runs-on: ubuntu-24.04
+    environment: production
     permissions:
       contents: read
     env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_PRODUCTION_AUTH_MANAGEMENT_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - name: Read and compare production Auth SMTP and OTP settings (NO WRITE)
         run: |
-          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "BLOCK: repository secret missing"; exit 1; }
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "BLOCK: production Auth management token unavailable"; exit 1; }
           python scripts/configure_supabase_auth_otp.py --project-ref epkcuseloinygkakxxdu --mode check
