@@ -24,3 +24,30 @@ jobs:
             exit 1
           fi
           python scripts/configure_supabase_auth_otp.py --project-ref epkcuseloinygkakxxdu --mode check
+      - name: Explicitly verify the hosted password recovery template and reset URL
+        run: |
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          token=os.getenv("SUPABASE_ACCESS_TOKEN","")
+          if not token: raise SystemExit("BLOCK: production Management API credential missing")
+          url="https://api.supabase.com/v1/projects/epkcuseloinygkakxxdu/config/auth"
+          try:
+              with urlopen(Request(url,headers={"Authorization":"Bearer "+token}),timeout=20) as response:
+                  settings=json.load(response)
+          except (HTTPError,URLError):
+              raise SystemExit("BLOCK: production Auth config query failed") from None
+          html=Path("frontend/email-templates/recovery.html").read_text()
+          checks={
+            "recovery_subject_matches":settings.get("mailer_subjects_recovery")=="Amaris | Reset your password",
+            "recovery_template_matches":settings.get("mailer_templates_recovery_content")==html,
+            "recovery_email_six_digit_placeholder":"{{ .Token }}" in str(settings.get("mailer_templates_recovery_content") or ""),
+            "recovery_email_preview_safe_link":"{{ .TokenHash }}" in str(settings.get("mailer_templates_recovery_content") or "") and "{{ .RedirectTo }}" in str(settings.get("mailer_templates_recovery_content") or ""),
+            "site_url_is_live_students":str(settings.get("site_url","")).rstrip("/")=="https://amaris-mathematics-academy-live-students.onrender.com",
+          }
+          for key,value in checks.items(): print(f"{key}: {'PASS' if value else 'BLOCK'}")
+          if not all(checks.values()):
+              raise SystemExit("BLOCK: production password recovery template settings require correction")
+          PY
