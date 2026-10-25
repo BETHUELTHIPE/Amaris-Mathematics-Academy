@@ -24,7 +24,7 @@ export async function createSupabaseServerClient() {
     signInWithPassword: async (input) => { state.passwordLogin = input; return { error: state.passwordError ?? null }; },
     resetPasswordForEmail: async (email, options) => { state.recoveryRequest = { email, options }; if (state.recoveryNetworkError) throw Error("Private network details"); return { error: state.recoveryError ?? null }; },
     updateUser: async (input) => { state.updatedPassword = input; return { error: state.passwordUpdateError ?? null }; },
-    getUser: async () => ({ data: { user: { email_confirmed_at: state.unverified ? null : "2026-10-25" } }, error: state.userError }),
+    getUser: async () => ({ data: { user: { id: "synthetic-user", email_confirmed_at: state.unverified ? null : "2026-10-25" } }, error: state.userError }),
     verifyOtp: async (input) => { state.otp = input; return { data: state.otpData, error: state.otpError }; },
     signOut: async (input) => { state.signOut = input; return { error: null }; }
   } };
@@ -50,12 +50,12 @@ const vite = await createServer({
   server: { middlewareMode: true, hmr: false, ws: false },
 });
 const { state } = await vite.ssrLoadModule("test:auth-state");
-const { registerAction, resendVerificationAction, verifyEmailAction, loginAction, sendLoginCodeAction, verifyLoginCodeAction, forgotPasswordAction, resetPasswordAction } = await vite.ssrLoadModule("/app/auth/actions.ts");
+const { registerAction, resendVerificationAction, verifyEmailAction, loginAction, sendLoginCodeAction, verifyLoginCodeAction, forgotPasswordAction, verifyRecoveryCodeAction, resetPasswordAction } = await vite.ssrLoadModule("/app/auth/actions.ts");
 after(() => vite.close());
 beforeEach(() => {
   for (const key of Object.keys(state)) delete state[key];
   state.response = { data: { user: { id: "synthetic-user", identities: [{ id: "synthetic-identity" }] }, session: null }, error: null };
-  state.otpData = { session: { access_token: "verified-login-session" }, user: { email_confirmed_at: "2026-10-25T10:00:00Z" } };
+  state.otpData = { session: { access_token: "verified-login-session" }, user: { id: "synthetic-user", email_confirmed_at: "2026-10-25T10:00:00Z" } };
 });
 
 function registration(overrides = {}) {
@@ -83,7 +83,7 @@ test("forgot password sends branded Supabase recovery to restricted route withou
   assert.equal(url.pathname, "/forgot-password");
   assert.equal(url.searchParams.get("sent"), "1");
   assert.equal(state.recoveryRequest.email, "student@example.test");
-  assert.equal(state.recoveryRequest.options.redirectTo, "https://academy.example.test/auth/confirm?next=/reset-password&flow=password-recovery");
+  assert.equal(state.recoveryRequest.options.redirectTo, "https://academy.example.test/reset-password/verify");
 });
 
 test("forgot password rejects invalid email and never claims a failed reset email was sent", async () => {
@@ -101,6 +101,39 @@ test("forgot password rejects invalid email and never claims a failed reset emai
   const unavailable = await redirectUrl(forgotPasswordAction, form);
   assert.equal(unavailable.searchParams.has("sent"), false);
   assert.match(unavailable.searchParams.get("error"), /temporarily unavailable/);
+});
+
+test("reset link uses a POST-only verification step and grants short-lived proof", async () => {
+  const form = registration();
+  form.set("token_hash", "pkce_abcdefghijklmnopqrstuvwxyz1234567890");
+  const redirectTo = await redirectUrl(verifyRecoveryCodeAction, form);
+  assert.equal(redirectTo.pathname, "/reset-password");
+  assert.deepEqual(state.otp, { token_hash: "pkce_abcdefghijklmnopqrstuvwxyz1234567890", type: "recovery" });
+  assert.equal(state.cookieSet.name, "amaris-password-recovery");
+  assert.equal(state.cookieSet.options.path, "/reset-password");
+  assert.equal(state.cookieSet.options.httpOnly, true);
+  assert.equal(state.cookieSet.options.maxAge, 900);
+});
+
+test("manual six-digit recovery verification works when email scanners prefetch links", async () => {
+  const form = registration({ token: "123456" });
+  const result = await redirectUrl(verifyRecoveryCodeAction, form);
+  assert.equal(result.pathname, "/reset-password");
+  assert.deepEqual(state.otp, { email: "student@example.test", token: "123456", type: "recovery" });
+});
+
+test("recovery rejects invalid, expired and unverified identities", async () => {
+  const form = registration({ token: "1234" });
+  assert.equal((await redirectUrl(verifyRecoveryCodeAction, form)).pathname, "/reset-password/verify");
+  assert.equal(state.otp, undefined);
+  form.set("token", "123456");
+  state.otpError = { code: "otp_expired" };
+  assert.equal((await redirectUrl(verifyRecoveryCodeAction, form)).pathname, "/reset-password/verify");
+  state.otpError = null;
+  state.unverified = true;
+  assert.equal((await redirectUrl(verifyRecoveryCodeAction, form)).pathname, "/reset-password/verify");
+  assert.equal(state.cookieSet, undefined);
+  assert.deepEqual(state.signOut, { scope: "local" });
 });
 
 test("unverified or expired recovery links cannot update a student's password", async () => {
