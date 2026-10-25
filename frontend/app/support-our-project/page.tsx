@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { Footer } from "@/components/site/footer";
+import { DonationCheckoutForm } from "@/components/site/donation-checkout-form";
 import { Header } from "@/components/site/header";
 import { ShareSupportProject } from "@/components/site/share-support-project";
 import { PUBLIC_SUPPORT_URL } from "@/lib/support-sharing";
@@ -129,6 +130,15 @@ export default async function SupportOurProjectPage() {
         </div>
       </section>
 
+      <section className="mx-auto max-w-7xl px-5 pb-16 lg:px-8 lg:pb-20" aria-labelledby="donations-section">
+        <div className="max-w-3xl">
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#1f5bbd]">Secure support</p>
+          <h2 id="donations-section" className="mt-3 text-3xl font-semibold tracking-[-.04em] sm:text-4xl">Make a once-off contribution.</h2>
+          <p className="mt-4 text-base leading-8 text-[#526781]">When online payments are enabled, supporters can contribute by PayFast. The checkout shows the final amount before payment. You can also contact us for organisational sponsorships or partnerships.</p>
+        </div>
+        <div className="mt-8 max-w-2xl"><DonationCheckoutForm /></div>
+      </section>
+
       <section className="bg-white px-5 py-16 lg:px-8 lg:py-20" aria-labelledby="support-process">
         <div className="mx-auto max-w-7xl">
           <div className="grid gap-12 lg:grid-cols-[.9fr_1.1fr] lg:items-start">
@@ -160,7 +170,7 @@ export default async function SupportOurProjectPage() {
           <div className="mt-8 flex items-start gap-3 rounded-2xl border border-[#dce4ef] bg-[#f5f7fb] p-5">
             <ShieldCheck className="mt-0.5 size-6 shrink-0 text-[#1f5bbd]" aria-hidden="true" />
             <p className="text-sm leading-7 text-[#526781]">
-              <strong className="text-[#07152d]">Payment safety:</strong> This page does not collect donations or card details. Do not send banking information, passwords or payment details in an enquiry. Any future payment method will be confirmed through an official Amaris channel.
+              <strong className="text-[#07152d]">Payment safety:</strong> Amaris never collects card details on this page. When enabled, contribution payments are processed on PayFast and confirmed only after PayFast sends a verified server notification. Contributions are voluntary and not advertised as tax deductible; no Section 18A receipt is issued.
             </p>
           </div>
         </div>
