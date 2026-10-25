@@ -59,7 +59,7 @@ def get_airflow_ui_url():
         _ = parsed.port
     except ValueError:
         return ""
-    if not parsed.hostname or parsed.username or parsed.password:
+    if not parsed.hostname or "@" in parsed.netloc or parsed.username or parsed.password:
         return ""
     if parsed.query or parsed.fragment:
         return ""
