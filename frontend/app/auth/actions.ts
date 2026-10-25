@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getSiteUrl } from "@/lib/supabase/config";
 import { getPasswordRecoveryCookieStore } from "@/lib/password-recovery-cookies";
 import { PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS } from "@/lib/password-recovery";
+import { getVerifiedRecoveryIdentity, issuePasswordRecoveryProof, isValidPasswordRecoveryProof } from "@/lib/password-recovery-proof";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeRelativePath } from "@/lib/auth";
 import { hasVerifiedAccountEmail } from "@/lib/verified-account-email";
@@ -400,28 +401,30 @@ export async function verifyRecoveryCodeAction(formData: FormData) {
     redirectWithMessage("/reset-password/verify", "error", "Enter the six-digit code from your email, or open the latest recovery link.");
   }
 
-  let verified = false;
+  let recoveryProof: string | null = null;
   try {
     const supabase = await createSupabaseServerClient();
     const result = validHash
       ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" })
       : await supabase.auth.verifyOtp({ email, token, type: "recovery" });
     if (!result.error && result.data.session && result.data.user?.email_confirmed_at) {
-      const account = await supabase.auth.getUser();
-      verified = !account.error && Boolean(account.data.user?.email_confirmed_at) && account.data.user?.id === result.data.user.id;
+      const identity = await getVerifiedRecoveryIdentity(supabase.auth);
+      if (identity && identity.userId === result.data.user.id) {
+        recoveryProof = await issuePasswordRecoveryProof(identity);
+      }
     }
-    if (!verified && result.data?.session) {
+    if (!recoveryProof && result.data?.session) {
       await supabase.auth.signOut({ scope: "local" });
     }
   } catch {
-    verified = false;
+    recoveryProof = null;
   }
-  if (!verified) {
-    redirectWithMessage("/reset-password/verify", "error", "The recovery code or link is invalid or expired. Request a new email and use the newest code.");
+  if (!recoveryProof) {
+    redirectWithMessage("/reset-password/verify", "error", "The recovery code or link is invalid or expired, or the secure reset service is unavailable. Request a fresh email.");
   }
 
   const recoveryCookies = await getPasswordRecoveryCookieStore();
-  recoveryCookies.set(PASSWORD_RECOVERY_COOKIE, "1", {
+  recoveryCookies.set(PASSWORD_RECOVERY_COOKIE, recoveryProof, {
     path: "/reset-password",
     httpOnly: true,
     sameSite: "lax",
@@ -433,8 +436,10 @@ export async function verifyRecoveryCodeAction(formData: FormData) {
 
 export async function resetPasswordAction(formData: FormData) {
   const recoveryCookies = await getPasswordRecoveryCookieStore();
-  if (recoveryCookies.get(PASSWORD_RECOVERY_COOKIE)?.value !== "1") {
-    redirectWithMessage("/forgot-password", "error", "Your password reset link has expired. Request a new one.");
+  const supabase = await createSupabaseServerClient();
+  const identity = await getVerifiedRecoveryIdentity(supabase.auth);
+  if (!(await isValidPasswordRecoveryProof(recoveryCookies.get(PASSWORD_RECOVERY_COOKIE)?.value, identity))) {
+    redirectWithMessage("/forgot-password", "error", "Your password reset authorization has expired. Request a new one.");
   }
 
   const password = String(formData.get("password") ?? "");
@@ -451,12 +456,8 @@ export async function resetPasswordAction(formData: FormData) {
     redirectWithMessage("/reset-password", "error", "The passwords do not match.");
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user?.email_confirmed_at) {
-    redirectWithMessage("/forgot-password", "error", "Your password reset link has expired. Request a new one.");
-  }
-
+  // The signed reset proof is already bound to this authenticated and
+  // verified user and session; never accept an ordinary signed-in session.
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
     redirectWithMessage(
