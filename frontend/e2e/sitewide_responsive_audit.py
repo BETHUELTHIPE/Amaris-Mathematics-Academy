@@ -37,7 +37,7 @@ CONDITIONAL = (
     "/checkout/",
     "/learn/",
     "/errors/",
-    "/book-online-live-class/checkout",
+    "/book-online-live-class",
     "/book-online-live-class/confirmation",
     "/request-a-video/confirmation",
     "/documents/invoice",
