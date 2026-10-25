@@ -1,0 +1,67 @@
+name: Amaris Recovery Proof and Booking Access Security
+on:
+  push:
+    branches: ["fix/recovery-proof-and-booking-acceptance-20261026"]
+    paths:
+      - "frontend/app/auth/**"
+      - "frontend/app/reset-password/**"
+      - "frontend/lib/password-recovery-proof.ts"
+      - "frontend/tests/password-recovery*.test.mjs"
+      - "frontend/tests/registration-actions.test.mjs"
+      - ".github/workflows/recovery-and-booking-access-security.yml"
+permissions:
+  contents: read
+jobs:
+  recovery-and-booking:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend locked dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: TypeScript check
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Run password recovery and student and tutor authentication tests
+        working-directory: frontend
+        run: node --test tests/password-recovery-proof.test.mjs tests/password-recovery.test.mjs tests/registration-actions.test.mjs tests/universal-email-verification.test.mjs tests/live-class-booking-contract.test.mjs tests/booking-staging-gate.test.mjs
+      - name: External GET-only live guest booking access probe
+        run: |
+          python3 - <<'PY'
+          import urllib.request, urllib.error
+          from urllib.parse import urlsplit,parse_qs
+          base="https://amaris-mathematics-academy-live-students.onrender.com"
+          class NoFollow(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,request,fp,code,msg,headers,newurl): return None
+          browser=urllib.request.build_opener(NoFollow())
+          paths=[
+            "/book-online-live-class",
+            "/book-online-live-class?programme=caps&subject=mathematics",
+            "/book-online-live-class/checkout?slot=123&topic=Algebra&attempt=11111111-1111-4111-8111-111111111111",
+            "/book-online-live-class/confirmation?reference=SYNTHETIC-NOT-REAL",
+            "/book-online-live-class/invoice?reference=SYNTHETIC-NOT-REAL",
+          ]
+          for path in paths:
+              req=urllib.request.Request(base+path,headers={"User-Agent":"AmarisBookingGuestGate/1.0"})
+              try:
+                  with browser.open(req,timeout=40) as result:
+                      status=result.status
+                      location=result.headers.get("Location","")
+              except urllib.error.HTTPError as error:
+                  status=error.code
+                  location=error.headers.get("Location","")
+              if status not in (302,303,307,308):
+                  raise SystemExit(f"FAIL: booking route exposed without verified user ({path}, status {status})")
+              target=urlsplit(urllib.parse.urljoin(base,location))
+              if target.netloc!=urlsplit(base).netloc or target.path!="/login":
+                  raise SystemExit(f"FAIL: unsafe guest booking redirect ({path})")
+              if "/book-online-live-class" not in parse_qs(target.query).get("next",[""])[0]:
+                  raise SystemExit(f"FAIL: booking route lost return path ({path})")
+              print("PASS: anonymous booking request safely redirected before data access")
+          PY
