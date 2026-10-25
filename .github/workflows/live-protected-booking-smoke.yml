@@ -1,0 +1,55 @@
+name: Verify Live Booking Requires Email-Verified Login
+on:
+  push:
+    branches: ["ops/live-protected-booking-smoke-20261025"]
+    paths: ["ops/run-live-verified-booking-smoke.txt"]
+permissions:
+  contents: read
+jobs:
+  anonymous-access:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify live anonymous booking returns login challenge
+        run: |
+          python3 - <<'PY'
+          from urllib.request import Request, HTTPRedirectHandler, build_opener
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlparse, parse_qs
+          from time import sleep
+          class BlockRedirect(HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          base="https://amaris-mathematics-academy-live-students.onrender.com"
+          samples=[
+             ("/book-online-live-class","/book-online-live-class"),
+             ("/book-online-live-class?programme=caps&subject=mathematics&level=Grade%2012","/book-online-live-class?programme=caps&subject=mathematics&level=Grade+12"),
+          ]
+          opener=build_opener(BlockRedirect)
+          for page,safe_target in samples:
+              status=0
+              for attempt in range(4):
+                  req=Request(base+page,headers={"User-Agent":"AmarisProtectedBookingSmoke/1.0"})
+                  try:
+                      with opener.open(req,timeout=30) as response:
+                          status=response.status
+                          location=response.headers.get("Location","")
+                  except HTTPError as err:
+                      status=err.code
+                      location=err.headers.get("Location","")
+                  except URLError:
+                      status=503
+                      location=""
+                  if status not in (502,503,504):
+                      break
+                  if attempt<3:sleep(5)
+              if status not in (301,302,303,307,308):
+                  raise SystemExit(f"FAIL: Anonymous booking page did not challenge access: HTTP {status}")
+              parsed=urlparse(location)
+              nextpath=parse_qs(parsed.query).get("next",[""])[0]
+              if parsed.path!="/login" or (parsed.netloc and parsed.netloc!=urlparse(base).netloc):
+                  raise SystemExit("FAIL: Booking redirect is not local verified login")
+              if nextpath!=safe_target:
+                  raise SystemExit("FAIL: Booking redirect did not preserve safe selections")
+              print("PASS: Guest booking access redirects to login with safe return path; no private timetable served")
+          PY
