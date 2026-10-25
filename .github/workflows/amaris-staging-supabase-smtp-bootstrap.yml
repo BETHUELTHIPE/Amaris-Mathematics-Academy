@@ -1,4 +1,4 @@
-name: Amaris Staging Supabase Auth SMTP Bootstrap
+name: Amaris Staging Auth Templates Only
 on:
   push:
     branches: ["ops/otp-staging-apply-20261025"]
@@ -6,132 +6,71 @@ on:
 permissions:
   contents: read
 jobs:
-  setup-staging-auth-email:
+  apply-staging-auth-templates:
     runs-on: ubuntu-24.04
     environment: staging
-    timeout-minutes: 8
+    timeout-minutes: 5
     env:
-      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+      SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Validate isolated staging Gmail transport; install custom Auth SMTP and six-digit email templates
+      - name: Apply only Supabase signup/login email templates and six-digit defaults
         shell: bash
         run: |
           python3 - <<'PY'
-          import email.utils, json, os, re, smtplib, ssl, sys, urllib.error, urllib.request
+          import json, os, re, urllib.error, urllib.request
           from pathlib import Path
-          from urllib.parse import urlsplit
+          PROJECT="atyhhjwwxgzeurnwayay"
+          if os.getenv("GITHUB_REF")!="refs/heads/ops/otp-staging-apply-20261025" or os.getenv("GITHUB_REPOSITORY")!="BETHUELTHIPE/Amaris-Mathematics-Academy":
+              raise SystemExit("BLOCK: wrong GitHub branch or repository")
+          token=os.environ.get("SUPABASE_ACCESS_TOKEN","")
+          if not token:
+              raise SystemExit("BLOCK: missing scoped Supabase GitHub secret")
+          url=f"https://api.supabase.com/v1/projects/{PROJECT}/config/auth"
 
-          SERVICE = "srv-dam2iivcgkoc7383tq50"
-          OWNER = "tea-csppi8l6l47c73dk9c90"
-          STAGING = "atyhhjwwxgzeurnwayay"
-          BRANCH = "ops/staging-known-good-af8709c-20261019"
-          assert os.environ.get("GITHUB_REF") == "refs/heads/ops/otp-staging-apply-20261025"
-          assert os.environ.get("GITHUB_REPOSITORY") == "BETHUELTHIPE/Amaris-Mathematics-Academy"
-          render_token = os.getenv("RENDER_API_KEY", "")
-          auth_token = os.getenv("SUPABASE_ACCESS_TOKEN", "")
-          if not render_token or not auth_token:
-              raise SystemExit("BLOCK: protected Render or Supabase GitHub secret unavailable")
-
-          def json_request(url, key, method="GET", payload=None):
-              headers={"Authorization":"Bearer "+key, "Accept":"application/json"}
+          def api(method,payload=None):
+              head={"Authorization":"Bearer "+token,"Accept":"application/json"}
               data=None
               if payload is not None:
-                  headers["Content-Type"]="application/json"
-                  data=json.dumps(payload).encode("utf-8")
-              request=urllib.request.Request(url, method=method, headers=headers, data=data)
+                  head["Content-Type"]="application/json"
+                  data=json.dumps(payload).encode()
+              req=urllib.request.Request(url,headers=head,method=method,data=data)
               try:
-                  with urllib.request.urlopen(request,timeout=22) as resp:
+                  with urllib.request.urlopen(req,timeout=20) as resp:
                       return json.load(resp)
-              except urllib.error.HTTPError as ex:
-                  # Report only sanitized provider validation details; never return credentials.
+              except urllib.error.HTTPError as exc:
                   try:
-                      detail=json.loads(ex.read(4096).decode("utf-8"))
+                      obj=json.loads(exc.read(2048).decode("utf-8"))
                   except (ValueError,UnicodeError):
-                      detail={}
-                  if isinstance(detail,dict):
-                      for label in ("code","error","message"):
-                          value=detail.get(label)
-                          if not isinstance(value,str):
-                              continue
-                          for secret in (render_token,auth_token,env.get("EMAIL_HOST_PASSWORD","") if "env" in globals() else "",env.get("EMAIL_HOST_USER","") if "env" in globals() else "",env.get("DEFAULT_FROM_EMAIL","") if "env" in globals() else ""):
-                              if secret and len(secret)>3:
-                                  value=value.replace(secret,"[REDACTED]")
-                          value=re.sub(r"[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}","[EMAIL]",value)
-                          value=re.sub(r"[^\\x20-\\x7E]"," ",value)[:280]
-                          if value:
-                              print("SAFE_PROVIDER_"+label.upper()+"="+value)
-                  raise SystemExit(f"BLOCK: provider API {method} returned HTTP {ex.code} (no secrets logged)")
-              except (urllib.error.URLError,TimeoutError):
-                  raise SystemExit("BLOCK: provider API unavailable")
-
-          base="https://api.render.com/v1/services/"+SERVICE
-          svc=json_request(base,render_token)
-          if svc.get("id")!=SERVICE or svc.get("ownerId")!=OWNER or svc.get("branch")!=BRANCH:
-              raise SystemExit("BLOCK: unexpected staging Render service / owner / branch")
-          records=json_request(base+"/env-vars?limit=100",render_token)
-          if isinstance(records,dict):
-              records=records.get("envVars",records.get("data",[]))
-          if not isinstance(records,list):
-              raise SystemExit("BLOCK: malformed staging environment result")
-          env={}
-          for entry in records:
-              item=entry.get("envVar",entry) if isinstance(entry,dict) else {}
-              if isinstance(item,dict) and isinstance(item.get("key"),str):
-                  env[item["key"]]=item.get("value") or ""
-          db=urlsplit(env.get("DATABASE_URL",""))
-          valid_db=db.hostname==f"db.{STAGING}.supabase.co" or (
-              (db.hostname or "").endswith(".pooler.supabase.com")
-              and STAGING in (db.username or ""))
-          if not valid_db or env.get("SUPABASE_PROJECT_REF") != STAGING:
-              raise SystemExit("BLOCK: staging Django database identity mismatch")
-          if (env.get("PAYFAST_MODE") or env.get("PAYFAST_ENV") or "sandbox").lower()!="sandbox":
-              raise SystemExit("BLOCK: staging environment is not in sandbox mode")
-          sender=email.utils.parseaddr(env.get("DEFAULT_FROM_EMAIL",""))[1]
-          username=env.get("EMAIL_HOST_USER","")
-          password=(env.get("EMAIL_HOST_PASSWORD","")).replace(" ","")
-          if (env.get("EMAIL_HOST","").lower()!="smtp.gmail.com"
-              or str(env.get("EMAIL_PORT",""))!="587"
-              or env.get("EMAIL_USE_TLS","").lower()!="true"
-              or env.get("EMAIL_USE_SSL","").lower()!="false"
-              or not sender.lower().endswith("@gmail.com")
-              or sender.lower()!=username.lower()
-              or not sender.isascii()
-              or not re.fullmatch(r"[A-Za-z0-9]{16}",password)):
-              raise SystemExit("BLOCK: staging Gmail sender, TLS or app password not verified")
-          print("PASS: isolated staging Render service, project and Gmail configuration validated")
-          try:
-              with smtplib.SMTP("smtp.gmail.com",587,timeout=18) as smtp:
-                  smtp.ehlo()
-                  smtp.starttls(context=ssl.create_default_context())
-                  smtp.ehlo()
-                  smtp.login(username,password)
-          except (smtplib.SMTPException,OSError,ssl.SSLError):
-              raise SystemExit("BLOCK: staging Gmail SMTP authentication failed; no Supabase changes")
-          print("PASS: Gmail SMTP login authenticated; no email sent by this test")
-
-          url=f"https://api.supabase.com/v1/projects/{STAGING}/config/auth"
-          current=json_request(url,auth_token)
-          if current.get("smtp_host") or current.get("smtp_admin_email"):
-              raise SystemExit("BLOCK: custom Supabase Auth SMTP is already present; do not overwrite")
-          payload={
-              "external_email_enabled":True,
-              "mailer_autoconfirm":False,
-              "smtp_admin_email":sender,
-              "smtp_host":"smtp.gmail.com",
-              "smtp_port":587,
-              "smtp_user":username,
-              "smtp_pass":password,
-              "smtp_sender_name":"Amaris Mathematics Academy",
+                      obj={}
+                  if isinstance(obj,dict):
+                      for field in ("code","message","error"):
+                          val=obj.get(field)
+                          if not isinstance(val,str): continue
+                          val=val.replace(token,"[REDACTED]")
+                          val=re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}","[EMAIL]",val)
+                          val=re.sub(r"[^\x20-\x7E]"," ",val)[:300]
+                          print("PROVIDER_"+field.upper()+"="+val)
+                  raise SystemExit(f"BLOCK: Supabase Auth {method} returned HTTP {exc.code}")
+          expected={
+              "mailer_templates_confirmation_content":Path("frontend/email-templates/confirm-signup.html").read_text(),
+              "mailer_templates_magic_link_content":Path("frontend/email-templates/magic-link-login.html").read_text(),
+              "mailer_subjects_confirmation":"Amaris | Verify your student email",
+              "mailer_subjects_magic_link":"Amaris | Your six-digit sign-in code",
           }
-          json_request(url,auth_token,"PATCH",payload)
-          actual=json_request(url,auth_token)
-          for key,value in payload.items():
-              if key=="smtp_pass":
-                  continue
-              if actual.get(key)!=value:
-                  raise SystemExit("BLOCK: Supabase Auth readback differs: "+key)
-          print("PASS: custom staging Supabase Auth SMTP installed; OTP templates still need separate apply")
-          print("STAGING_ONLY=YES; EMAIL_INBOX_RECEIPT=NOT_TESTED; PRODUCTION_UNCHANGED=YES")
+          if any("{{ .Token }}" not in expected[k] for k in ("mailer_templates_confirmation_content","mailer_templates_magic_link_content")):
+              raise SystemExit("BLOCK: missing Supabase token placeholder")
+          api("GET")
+          api("PATCH",expected)
+          now=api("GET")
+          for field,wanted in expected.items():
+              if now.get(field)!=wanted: raise SystemExit("BLOCK: post-update template readback mismatch: "+field)
+          print("PASS: both staging Auth email templates applied and checked (no SMTP settings touched)")
+          otp_settings={"mailer_autoconfirm":False,"mailer_otp_length":6,"mailer_otp_exp":600,"external_email_enabled":True}
+          api("PATCH",otp_settings)
+          after=api("GET")
+          for field,wanted in otp_settings.items():
+              if after.get(field)!=wanted: raise SystemExit("BLOCK: OTP config readback mismatch: "+field)
+          print("PASS: staging six-digit email confirmation and 10-minute OTP expiry configured")
+          print("EMAIL_INBOX_RECEIPT=NOT_TESTED; SMTP_UNCHANGED=YES; PRODUCTION_UNCHANGED=YES")
           PY
