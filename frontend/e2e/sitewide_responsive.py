@@ -33,7 +33,7 @@ DYNAMIC = {
     "learn/[courseSlug]/[lessonSlug]": "/learn/caps-grade-12-mathematics/algebra-and-equations",
     "errors/[code]": "/errors/404",
 }
-GUARDED = ("/dashboard", "/checkout/", "/learn/", "/documents/", "/request-a-video/")
+GUARDED = ("/dashboard", "/checkout/", "/learn/", "/documents/", "/request-a-video/", "/book-online-live-class")
 LOGIN_ROUTES = ("/login", "/verify-email", "/tutor/login", "/tutor/apply/login")
 AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]
 VITALS = """(() => {
