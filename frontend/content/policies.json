@@ -1,0 +1,169 @@
+{
+  "payment": {
+    "title": "Payment Policy",
+    "summary": "Prices, checkout, course access, cancellations and refunds.",
+    "effectiveDate": "30 September 2026",
+    "sections": [
+      {
+        "heading": "Prices and what you receive",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "Course prices are displayed in South African rand (ZAR) on the relevant course and pricing pages. Review the course description, curriculum, level, included learning materials, price and any stated access period before placing an order. The price shown at checkout is the price for that order. We do not add a separate platform charge. If a different service, such as an individually arranged live lesson, is offered, its price and booking terms must be shown or agreed before payment."
+          },
+          {
+            "type": "paragraph",
+            "text": "A purchased course provides personal access to the learning content and features described for that course, which may include structured video lessons, worked examples, practice activities, progress tracking and a private student dashboard. A course purchase does not include private tutoring or a guaranteed examination result unless the offer expressly says so."
+          }
+        ]
+      },
+      {
+        "heading": "Checkout and access",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "Create your own student account and verify your email address before paid course access. Online course payments are processed through PayFast. Any additional payment option, such as Google Pay, is available only when it appears in the checkout for your device and transaction."
+          },
+          {
+            "type": "paragraph",
+            "text": "We activate the purchased course after PayFast verifies the payment. A bank notification, screenshot or return to our site alone does not confirm an order. If money has left your account but access remains pending, please do not immediately pay again; contact us with the order reference so we can trace the transaction. We will correct a verified payment or access error."
+          },
+          {
+            "type": "paragraph",
+            "text": "Keep your receipt or transaction reference. Course access is linked to the student account used for the purchase and is for that student's use only."
+          }
+        ]
+      },
+      {
+        "heading": "Cancellation and refunds",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "Contact us through the Contact page to request a cancellation or refund. Include the student account email, course name, order reference, purchase date and a short explanation. Do not send card numbers, passwords or one-time PINs."
+          },
+          {
+            "type": "list",
+            "items": [
+              "Before access begins: If payment is verified but we have not provided access, you may request cancellation and a refund.",
+              "Cooling-off rights: Where the South African Electronic Communications and Transactions Act gives you a seven-day right to cancel an online service purchase, we will honour it. Whether that right applies can depend on whether the service began with your consent before the seven days ended. Other statutory rights continue to apply.",
+              "Duplicate or incorrect charge: We will investigate and refund a verified duplicate or incorrect charge to the extent it was collected by us. An authorisation that was never captured may instead be released by the payment provider or bank.",
+              "Course unavailable or materially different from its description: Tell us what is missing. We will seek to restore the promised access or provide a suitable remedy, including a refund where required by law. You do not have to accept a substitute course.",
+              "Change of mind after access begins: Please contact us promptly. We will consider the request in light of the access and service supplied and your applicable legal rights. Opening a course does not, by itself, remove a statutory remedy. Where no cancellation or refund right applies and the course was supplied as described, we may decline a change-of-mind refund."
+            ]
+          },
+          {
+            "type": "paragraph",
+            "text": "For a separately booked future lesson or session, you may cancel an advance booking. Any cancellation charge must be disclosed, reasonable in the circumstances and permitted by law. We will not charge a cancellation fee where the person for whom the booking was made cannot attend because of death or hospitalisation. If we cancel a paid session, we will offer a suitable rescheduling option or refund the undelivered session."
+          },
+          {
+            "type": "paragraph",
+            "text": "We will explain the outcome of a refund request and any amount payable. Approved refunds are normally sent back through the original payment channel where possible. Processing time can depend on PayFast and your bank; any legally required refund deadline takes priority. We will not ask you to share full card details by email or in a contact form."
+          }
+        ]
+      },
+      {
+        "heading": "Payment problems and disputes",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "If an order is pending, a payment was taken twice, or the wrong course was activated, contact us first with the order reference so we can investigate. If you dispute a card transaction with your bank, tell us as well so that we can identify the order and avoid conflicting refund steps. A disputed or reversed payment may cause the corresponding course access to be paused while the transaction is resolved, subject to your legal rights."
+          }
+        ]
+      },
+      {
+        "heading": "Contact and changes",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "For payment, refund and account support, use the Contact page. Current phone, email and support hours are displayed there."
+          },
+          {
+            "type": "paragraph",
+            "text": "We may update this policy for future purchases by publishing a new version and date. The version provided at the time of purchase governs that order, subject to applicable law and any more favourable remedy we agree to provide. This policy should be read with our Student Terms; it does not limit rights that cannot lawfully be excluded."
+          }
+        ]
+      }
+    ]
+  },
+  "working": {
+    "title": "How We Work and Learn",
+    "summary": "How students join, study, get support and use the academy.",
+    "effectiveDate": "30 September 2026",
+    "sections": [
+      {
+        "heading": "Our teaching approach",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "We help students build mathematical understanding through clear explanations, worked examples and deliberate practice. Our website offers pathways for CAPS, IEB, TVET and university mathematics. Each course page identifies its level, focus and learning offer so you can choose the right course. We do not promise a particular mark or qualification: your progress depends in part on completing the lessons and practising the work."
+          }
+        ]
+      },
+      {
+        "heading": "Joining and studying",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "Register with accurate information, use your own student account and verify your email address. Choose a course after reviewing its outcomes, structure, price and any stated access period. Once payment is verified, the purchased course appears in your private dashboard. You can work through the available videos, notes, examples and activities, and use the dashboard to continue learning and track completed work."
+          },
+          {
+            "type": "paragraph",
+            "text": "Course learning is designed for independent online study. A listed number of lessons or guided hours describes the course content; it is not a promise of one-to-one teaching time. Any live lesson, individual tutoring or other additional service must be expressly offered and arranged separately."
+          },
+          {
+            "type": "paragraph",
+            "text": "Students need a suitable device and internet connection to use online lessons. Tell us if a lesson, activity or paid course does not load as expected. We will investigate an access problem and provide an appropriate remedy if a service we promised cannot be supplied."
+          }
+        ]
+      },
+      {
+        "heading": "Support and communication",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "We handle course guidance, registration, payment, account and technical enquiries through the Contact page. The current phone number, email address and support hours are listed there. Support hours describe when the team is available; the self-paced course dashboard may be used outside those hours when the service is available."
+          },
+          {
+            "type": "paragraph",
+            "text": "To help us respond, include your curriculum and level for course guidance; an order reference for payment enquiries; or your device and a description of the issue for technical help. Never send a password, one-time PIN or full card details. We will use enquiry details to respond and handle the matter in line with our privacy information. We have not promised an exact response time; urgent access problems should be described clearly in the enquiry."
+          }
+        ]
+      },
+      {
+        "heading": "Respectful learning and account use",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "Treat students and staff respectfully in all academy communications and activities. Submit your own work where an activity asks for an individual response. Do not share an account or paid materials, copy or redistribute videos and notes, enter another student's account, bypass access controls or interfere with the learning service. Course materials belong to the academy or its licensors."
+          },
+          {
+            "type": "paragraph",
+            "text": "We may investigate misuse and take proportionate steps to protect students and the service, including restricting an affected account where necessary. We will give the account holder a reasonable opportunity to raise an error or concern, except where immediate action is needed to protect the service or others. Payment and refund questions remain governed by our Payment Policy and applicable law."
+          }
+        ]
+      },
+      {
+        "heading": "Course and service changes",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "We may correct errors, improve examples and update lessons as curricula and teaching needs change. If a material part of a paid course becomes unavailable or materially different from what was offered at purchase, contact us. We will explain the change and seek an appropriate remedy, including restored access, a suitable alternative you accept or a refund where applicable."
+          },
+          {
+            "type": "paragraph",
+            "text": "If a separately arranged live session is offered, its schedule, format and any preparation requirements should be confirmed before the session. If we need to change or cancel it, we will contact the affected student and arrange a suitable alternative or refund for the undelivered session."
+          }
+        ]
+      },
+      {
+        "heading": "Questions and policy updates",
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "Questions about how we work can be sent through the Contact page. Current phone and email details are displayed there. This policy works with the Student Terms and the Payment Policy. We may publish updated working practices with a new effective date; changes to a purchased course do not remove applicable consumer rights."
+          }
+        ]
+      }
+    ]
+  }
+}
