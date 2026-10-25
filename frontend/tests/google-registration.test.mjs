@@ -11,11 +11,11 @@ const callback = source("../app/auth/callback/route.ts");
 const button = source("../components/site/google-auth-button.tsx");
 const identity = source("../lib/auth.ts");
 
-test("students can choose Google registration while email registration remains available", () => {
-  assert.match(registration, /GoogleAuthButton label="Register with Google"/);
+test("students register by email only, without a Google registration button", () => {
+  assert.doesNotMatch(registration, /GoogleAuthButton|Register with Google|or register with email/);
   assert.match(registration, /<form action=\{registerAction\}/);
   assert.match(registration, /name="terms"/);
-  assert.match(button, /By continuing with Google, you agree/);
+  assert.match(registration, /name="password"/);
 });
 
 test("returning Google students can sign in and email login remains available", () => {
@@ -64,9 +64,10 @@ test("Google callback uses the current Render service origin unless SITE_URL ove
   }
 });
 
-test("student login and registration use Google, never GitHub, for social sign-in", () => {
+test("Google sign-in remains on login, with no Google signup or GitHub social options", () => {
+  assert.match(login, /GoogleAuthButton label="Sign in with Google"/);
+  assert.doesNotMatch(registration, /GoogleAuthButton|Register with Google/);
   for (const page of [login, registration]) {
-    assert.match(page, /GoogleAuthButton/);
     assert.doesNotMatch(page, /GitHubAuthButton|GithubAuthButton|githubAuthAction/i);
     assert.doesNotMatch(page, /provider:\s*["']github["']/i);
     assert.doesNotMatch(page, /(?:Sign in|Continue|Register) with GitHub/i);

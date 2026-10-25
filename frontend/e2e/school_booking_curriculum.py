@@ -76,6 +76,15 @@ with sync_playwright() as p:
             expect(edit.get_by_role("combobox", name="Grade / level", exact=True)).to_have_value("Grade 11")
             for name in ("live", "video", "create-slot", "edit-slot"):
                 verify(page.locator("#" + name), name in ("live", "video"))
+            live = page.locator("#live")
+            tutor = live.get_by_role("combobox", name="Choose your tutor", exact=True)
+            time = live.get_by_role("combobox", name="Your preferred time (South African time)", exact=True)
+            tutor.select_option("102")
+            time.select_option("overnight")
+            values = live.locator("form").evaluate("e => Object.fromEntries(new FormData(e))")
+            assert values["tutor"] == "102" and values["time"] == "overnight", values
+            tutor.select_option("")
+            time.select_option("any")
             page.add_script_tag(path="node_modules/axe-core/axe.min.js")
             violations = page.evaluate("async () => (await axe.run(document.querySelector('main'), {runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}})).violations")
             assert not violations, json.dumps(violations)
@@ -99,4 +108,11 @@ with sync_playwright() as p:
     values = parse_qs(urlparse(page.url).query)
     assert values["level"] == ["Grade 7"] and values["topic"] == ["Whole-number calculations"], values
     print("PASS JavaScript-disabled Grade 7 CAPS chapter selection and GET search", flush=True)
+    # A saved tutor link must not silently fall back to a different tutor when
+    # its last slot is taken or the availability API is empty/unavailable.
+    page.goto(BASE + "/book-online-live-class?programme=caps&subject=mathematics&level=Grade+7&topic=Fractions&tutor=999999&time=overnight", wait_until="networkidle")
+    expect(page.get_by_role("combobox", name="Choose your tutor", exact=True)).to_have_value("999999")
+    expect(page.get_by_role("combobox", name="Your preferred time (South African time)", exact=True)).to_have_value("overnight")
+    expect(page.get_by_role("option", name="Selected tutor — no matching slots available", exact=True)).to_have_count(1)
+    print("PASS JavaScript-disabled unavailable tutor choice and overnight preference preserved", flush=True)
     browser.close()

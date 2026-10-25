@@ -14,6 +14,14 @@ const confirmationPage = fs.readFileSync(
   new URL("../app/book-online-live-class/confirmation/page.tsx", import.meta.url),
   "utf8",
 );
+const filtersSource = fs.readFileSync(
+  new URL("../app/book-online-live-class/live-class-booking-filters.tsx", import.meta.url),
+  "utf8",
+);
+const slotsApiSource = fs.readFileSync(
+  new URL("../lib/live-classes.ts", import.meta.url),
+  "utf8",
+);
 const cmsSource = fs.readFileSync(
   new URL("../lib/cms.ts", import.meta.url),
   "utf8",
@@ -45,4 +53,20 @@ test("confirmation page releases Zoom only for confirmed bookings", () => {
   assert.match(confirmationPage, /booking\?\.status === "confirmed"/);
   assert.match(confirmationPage, /booking\.zoom_join_url/);
   assert.match(confirmationPage, /confirmation email and invoice/);
+});
+
+test("named tutor selection and 24-hour South African time filters are available", () => {
+  assert.match(filtersSource, /name="tutor"/);
+  assert.match(filtersSource, /Any available tutor/);
+  assert.match(filtersSource, /name="time"/);
+  assert.match(filtersSource, /overnight/);
+  assert.match(bookingPage, /Africa\/Johannesburg/);
+  assert.match(bookingPage, /selectedTutorId/);
+  assert.match(bookingPage, /inPreferredTime/);
+  assert.match(slotsApiSource, /tutor_id/);
+});
+
+test("booking page promises staff notifications only after payment verification", () => {
+  assert.match(bookingPage, /Django admin team/);
+  assert.match(bookingPage, /PayFast verifies payment/);
 });
