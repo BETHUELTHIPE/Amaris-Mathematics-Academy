@@ -1,6 +1,10 @@
 name: Amaris Supabase Auth OTP Config
 
 on:
+  # Read-only production audit only, scoped to dedicated ops branch
+  push:
+    branches: ['ops/production-supabase-otp-audit-20261025']
+    paths: ['ops/production-supabase-otp-audit-request.txt']
   pull_request:
     paths:
       - "scripts/configure_supabase_auth_otp.py"
@@ -52,15 +56,15 @@ jobs:
 
   configure:
     needs: contract-tests
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/ops/production-supabase-otp-audit-20261025')
     runs-on: ubuntu-24.04
     # Configure required production reviewers on GitHub Environments for final approval.
-    environment: ${{ inputs.project }}
+    environment: ${{ github.event_name == 'push' && 'production' || inputs.project }}
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
-      TARGET_PROJECT_REF: ${{ inputs.project == 'production' && 'epkcuseloinygkakxxdu' || 'atyhhjwwxgzeurnwayay' }}
-      ACTION_MODE: ${{ inputs.operation }}
-      PROJECT_CHOICE: ${{ inputs.project }}
+      TARGET_PROJECT_REF: ${{ github.event_name == 'push' && 'epkcuseloinygkakxxdu' || (inputs.project == 'production' && 'epkcuseloinygkakxxdu' || 'atyhhjwwxgzeurnwayay') }}
+      ACTION_MODE: ${{ github.event_name == 'push' && 'check' || inputs.operation }}
+      PROJECT_CHOICE: ${{ github.event_name == 'push' && 'production' || inputs.project }}
       PRODUCTION_CONFIRMATION: ${{ inputs.production_confirmation }}
     steps:
       - uses: actions/checkout@v4
