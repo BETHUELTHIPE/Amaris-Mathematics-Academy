@@ -4,7 +4,7 @@ import { parseLocation } from "@/lib/location-server";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSiteUrl } from "@/lib/supabase/config";
-import { cookies } from "next/headers";
+import { getPasswordRecoveryCookieStore } from "@/lib/password-recovery-cookies";
 import { PASSWORD_RECOVERY_COOKIE } from "@/lib/password-recovery";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeRelativePath } from "@/lib/auth";
