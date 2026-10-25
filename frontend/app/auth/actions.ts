@@ -392,10 +392,10 @@ export async function forgotPasswordAction(formData: FormData) {
  */
 export async function verifyRecoveryCodeAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const token = String(formData.get("token") ?? "").replace(/\\s/g, "");
+  const token = String(formData.get("token") ?? "").replace(/\s/g, "");
   const tokenHash = String(formData.get("token_hash") ?? "").trim();
   const validHash = /^[A-Za-z0-9._-]{24,256}$/.test(tokenHash);
-  const validCode = z.string().email().safeParse(email).success && /^\\d{6}$/.test(token);
+  const validCode = z.string().email().safeParse(email).success && /^\d{6}$/.test(token);
   if (!validHash && !validCode) {
     redirectWithMessage("/reset-password/verify", "error", "Enter the six-digit code from your email, or open the latest recovery link.");
   }
