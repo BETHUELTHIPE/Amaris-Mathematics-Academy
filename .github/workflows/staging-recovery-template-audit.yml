@@ -1,0 +1,44 @@
+name: Staging Password Reset Email and SMTP Audit
+on:
+  push:
+    branches: ["ops/staging-recovery-template-audit-20261026"]
+    paths: ["ops/staging-recovery-template-audit.txt"]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect staging recovery SMTP, code and safe recovery link without writes
+        run: |
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          from urllib.error import URLError,HTTPError
+          from urllib.request import Request,urlopen
+          secret=os.environ.get("SUPABASE_ACCESS_TOKEN","")
+          if not secret: raise SystemExit("BLOCK: staging Management API token not configured")
+          url="https://api.supabase.com/v1/projects/atyhhjwwxgzeurnwayay/config/auth"
+          try:
+              with urlopen(Request(url,headers={"Authorization":"Bearer "+secret}),timeout=20) as response:
+                  settings=json.load(response)
+          except (HTTPError,URLError):
+              raise SystemExit("BLOCK: staging Auth configuration unavailable") from None
+          html=Path("frontend/email-templates/recovery.html").read_text()
+          checks={
+            "staging_custom_smtp_host":bool(settings.get("smtp_host")),
+            "staging_custom_smtp_sender":bool(settings.get("smtp_admin_email")),
+            "recovery_subject":settings.get("mailer_subjects_recovery")=="Amaris | Reset your password",
+            "recovery_template":settings.get("mailer_templates_recovery_content")==html,
+            "six_digit_code": "{{ .Token }}" in str(settings.get("mailer_templates_recovery_content") or ""),
+            "preview_safe_link":"{{ .RedirectTo }}" in str(settings.get("mailer_templates_recovery_content") or "") and "{{ .TokenHash }}" in str(settings.get("mailer_templates_recovery_content") or ""),
+          }
+          for key,ok in checks.items(): print(f"{key}: {'PASS' if ok else 'BLOCK'}")
+          if not all(checks.values()): raise SystemExit("BLOCK: Staging password reset email settings not accepted")
+          print("PASS: Staging hosted recovery template and SMTP verified, with no production changes")
+          PY
