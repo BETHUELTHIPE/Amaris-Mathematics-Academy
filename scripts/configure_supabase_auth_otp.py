@@ -21,10 +21,12 @@ TEMPLATE_DIR = REPO_ROOT / "frontend" / "email-templates"
 FIELDS = {
     "mailer_templates_confirmation_content": "confirm-signup.html",
     "mailer_templates_magic_link_content": "magic-link-login.html",
+    "mailer_templates_recovery_content": "recovery.html",
 }
 SUBJECTS = {
     "mailer_subjects_confirmation": "Amaris | Verify your student email",
     "mailer_subjects_magic_link": "Amaris | Your six-digit sign-in code",
+    "mailer_subjects_recovery": "Amaris | Reset your password",
 }
 PROJECT_REF = re.compile(r"^[a-z0-9]{20}$")
 API_ORIGIN = "https://api.supabase.com"
@@ -41,6 +43,10 @@ def desired_config() -> dict[str, object]:
         value = (TEMPLATE_DIR / filename).read_text(encoding="utf-8")
         if "{{ .Token }}" not in value:
             raise ValueError(f"{filename} is missing Supabase's .Token placeholder")
+        if filename == "recovery.html" and (
+            "{{ .TokenHash }}" not in value or "{{ .RedirectTo }}" not in value
+        ):
+            raise ValueError("Recovery email is missing preview-safe recovery link placeholders")
         config[setting] = value
     return config
 

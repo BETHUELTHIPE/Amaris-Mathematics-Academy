@@ -18,7 +18,7 @@ export const config = {
     "/login",
     "/register",
     "/forgot-password",
-    "/reset-password",
+    "/reset-password/:path*",
     "/verify-email",
     "/auth/:path*",
     "/session-expired",
