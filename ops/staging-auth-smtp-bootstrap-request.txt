@@ -3,3 +3,5 @@ Source: verified Render staging Gmail SMTP settings; target: Supabase staging Au
 Never log SMTP credentials or update production.
 
 Retry 2: authenticated SMTP-only PATCH with provider-documented fields.
+
+Diagnostic run: capture redacted provider validation error on staging-only SMTP PATCH.
