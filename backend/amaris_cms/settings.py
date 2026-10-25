@@ -5,6 +5,8 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
+from amaris_cms.beat_schedule import build_beat_schedule
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -314,6 +316,8 @@ CELERY_WORKER_MAX_MEMORY_PER_CHILD = int(os.getenv("CELERY_WORKER_MAX_MEMORY_PER
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 CELERY_BROKER_POOL_LIMIT = int(os.getenv("CELERY_BROKER_POOL_LIMIT", "10"))
 CELERY_RESULT_EXPIRES = int(os.getenv("CELERY_RESULT_EXPIRES_SECONDS", "86400"))
+# Limit queued email and reminder work per scheduler tick; hard cap remains 25.
+CELERY_NOTIFICATION_BATCH_SIZE = max(1, min(25, int(os.getenv("CELERY_NOTIFICATION_BATCH_SIZE", "10"))))
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_TASK_PUBLISH_RETRY = True
 CELERY_TASK_PUBLISH_RETRY_POLICY = {
@@ -362,35 +366,13 @@ OPENAI_ENQUIRY_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ENQUIRY_TIMEOUT_SECONDS
 OPENAI_ASSISTANT_MODEL = os.getenv("OPENAI_ASSISTANT_MODEL", OPENAI_ENQUIRY_MODEL)
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
-CELERY_BEAT_SCHEDULE = {
-    "publish-scheduled-content": {
-        "task": "content.tasks.publish_scheduled_content",
-        "schedule": 60.0,
-    },
-    "reconcile-verified-payments": {
-        "task": "content.tasks.reconcile_payments",
-        "schedule": 300.0,
-    },
-    "deliver-transactional-email": {
-        "task": "content.tasks.deliver_transactional_email",
-        "schedule": 30.0,
-        "options": {"queue": "notifications"},
-    },
-    "deliver-live-class-confirmation": {
-        "task": "content.tasks.deliver_live_class_confirmation",
-        "schedule": 30.0,
-        "options": {"queue": "notifications"},
-    },
-    "deliver-live-class-reminder": {
-        "task": "content.tasks.deliver_live_class_reminder",
-        "schedule": 60.0,
-        "options": {"queue": "notifications"},
-    },
-    "expire-live-class-holds": {
-        "task": "content.tasks.expire_live_class_holds",
-        "schedule": 300.0,
-    },
-}
+# Docker Compose uses a dedicated payment watchdog. Disable its duplicate
+# Beat tick only in that deployment; Render/standalone Beat retains reconciliation.
+CELERY_BEAT_RECONCILIATION_ENABLED = env_bool("CELERY_BEAT_RECONCILIATION_ENABLED", True)
+CELERY_BEAT_MAX_LOOP_INTERVAL = 30
+CELERY_BEAT_SCHEDULE = build_beat_schedule(
+    include_reconciliation=CELERY_BEAT_RECONCILIATION_ENABLED,
+)
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = not DEBUG

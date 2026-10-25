@@ -26,6 +26,23 @@ jobs:
             fi
             if [ "$attempt" -eq 30 ]; then
               echo "staging readiness failed live=$live ready=$ready" >&2
+              # Public health diagnostics expose only component booleans. Never
+              # dump raw response bodies, URLs with credentials or Render env.
+              dep_code=$(curl --silent --show-error --output /tmp/dependencies.json --write-out '%{http_code}' --max-time 15 "$base/health/dependencies/" || true)
+              python - "$dep_code" <<'PY'
+          import json
+          import sys
+          try:
+              with open("/tmp/dependencies.json", encoding="utf-8") as stream:
+                  payload = json.load(stream)
+              dependencies = payload.get("dependencies", {})
+          except (OSError, ValueError, TypeError):
+              dependencies = {}
+          for name in ("postgresql", "redis"):
+              state = dependencies.get(name)
+              print(f"staging dependency {name}=" + (str(state).lower() if isinstance(state, bool) else "unknown"))
+          print(f"dependency HTTP status={sys.argv[1]}")
+          PY
               exit 1
             fi
             sleep 10
