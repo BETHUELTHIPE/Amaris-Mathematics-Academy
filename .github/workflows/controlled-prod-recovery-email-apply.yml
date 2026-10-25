@@ -46,5 +46,5 @@ jobs:
               raise SystemExit("BLOCK: production Auth SMTP/email missing")
           print("PASS: production Auth URL and SMTP verified; secrets not exposed")
           PY
-      - name: Apply vetted Amaris recovery template to production and read back
-        run: python scripts/configure_supabase_auth_otp.py --project-ref epkcuseloinygkakxxdu --mode apply
+      - name: Verify applied Amaris recovery configuration (read-only)
+        run: python scripts/configure_supabase_auth_otp.py --project-ref epkcuseloinygkakxxdu --mode check
