@@ -18,6 +18,10 @@ test("tutor access is visible without mixing into student dashboard", () => {
 });
 
 test("tutor dashboard requires verified Supabase identity and backend role gate", () => {
+  assert.match(page, /await getStudentIdentity\(\)/);
+  assert.match(page, /if \(!identity\) redirect\("\/tutor\/login"\)/);
+  assert.match(page, /if \(!identity\.emailVerified\)/);
+  assert.ok(page.indexOf("await getStudentIdentity()") < page.indexOf("getTutorEarnings().catch"));
   assert.match(api, /supabase\.auth\.getUser\(\)/);
   assert.match(api, /user\.email_confirmed_at/);
   assert.match(api, /Authorization: `Bearer \$\{token\}`/);
