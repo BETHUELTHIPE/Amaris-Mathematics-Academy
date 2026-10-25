@@ -3,3 +3,5 @@ Production Supabase project: epkcuseloinygkakxxdu
 Expected: Custom SMTP and exact branded six-digit login/verification templates.
 
 Second read-only production Auth config audit using repository-scoped token.
+
+Production environment secret added by owner; perform GET-only audit with the separate production-scoped credential.
