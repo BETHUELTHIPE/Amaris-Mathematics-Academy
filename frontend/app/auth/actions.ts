@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSiteUrl } from "@/lib/supabase/config";
 import { getPasswordRecoveryCookieStore } from "@/lib/password-recovery-cookies";
-import { PASSWORD_RECOVERY_COOKIE } from "@/lib/password-recovery";
+import { PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS } from "@/lib/password-recovery";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeRelativePath } from "@/lib/auth";
 import { hasVerifiedAccountEmail } from "@/lib/verified-account-email";
@@ -358,7 +358,7 @@ export async function forgotPasswordAction(formData: FormData) {
   try {
     const supabase = await createSupabaseServerClient();
     ({ error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${getSiteUrl()}/auth/confirm?next=/reset-password&flow=password-recovery`,
+      redirectTo: `${getSiteUrl()}/reset-password/verify`,
     }));
   } catch {
     // No addresses, links, passwords or recovery tokens in logs.
@@ -384,6 +384,51 @@ export async function forgotPasswordAction(formData: FormData) {
 
   // Do not reveal whether an account exists.
   redirect("/forgot-password?sent=1");
+}
+
+/**
+ * Redeem password recovery only after the user actively submits the link or
+ * the six-digit email code. GET link previews must not consume recovery tokens.
+ */
+export async function verifyRecoveryCodeAction(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const token = String(formData.get("token") ?? "").replace(/\\s/g, "");
+  const tokenHash = String(formData.get("token_hash") ?? "").trim();
+  const validHash = /^[A-Za-z0-9._-]{24,256}$/.test(tokenHash);
+  const validCode = z.string().email().safeParse(email).success && /^\\d{6}$/.test(token);
+  if (!validHash && !validCode) {
+    redirectWithMessage("/reset-password/verify", "error", "Enter the six-digit code from your email, or open the latest recovery link.");
+  }
+
+  let verified = false;
+  try {
+    const supabase = await createSupabaseServerClient();
+    const result = validHash
+      ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" })
+      : await supabase.auth.verifyOtp({ email, token, type: "recovery" });
+    if (!result.error && result.data.session && result.data.user?.email_confirmed_at) {
+      const account = await supabase.auth.getUser();
+      verified = !account.error && Boolean(account.data.user?.email_confirmed_at) && account.data.user?.id === result.data.user.id;
+    }
+    if (!verified && result.data?.session) {
+      await supabase.auth.signOut({ scope: "local" });
+    }
+  } catch {
+    verified = false;
+  }
+  if (!verified) {
+    redirectWithMessage("/reset-password/verify", "error", "The recovery code or link is invalid or expired. Request a new email and use the newest code.");
+  }
+
+  const recoveryCookies = await getPasswordRecoveryCookieStore();
+  recoveryCookies.set(PASSWORD_RECOVERY_COOKIE, "1", {
+    path: "/reset-password",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: getSiteUrl().startsWith("https:"),
+    maxAge: PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS,
+  });
+  redirect("/reset-password");
 }
 
 export async function resetPasswordAction(formData: FormData) {
