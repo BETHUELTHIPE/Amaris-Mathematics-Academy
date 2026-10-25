@@ -1,0 +1,56 @@
+name: Staging Verified Email Anonymous Access Smoke
+on:
+  push:
+    branches: ["ops/staging-verified-email-browser-smoke-20261025"]
+    paths: ["ops/staging-email-verification-smoke-request.txt"]
+permissions:
+  contents: read
+jobs:
+  verify-public-and-private-routes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Check verified-email pages and unauthenticated private access
+        run: |
+          python3 - <<'PY'
+          import json
+          from urllib.request import Request, urlopen, build_opener, HTTPRedirectHandler
+          from urllib.error import HTTPError, URLError
+          BASE="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=build_opener(NoRedirect())
+          def request(path):
+              req=Request(BASE+path,headers={"User-Agent":"AmarisVerifiedEmailStagingAcceptance/1.0","Accept":"text/html,application/json"})
+              try:
+                  with opener.open(req,timeout=30) as r: return r.status,dict(r.headers),r.read(250000)
+              except HTTPError as e: return e.code,dict(e.headers),e.read(10000)
+              except URLError: raise SystemExit(f"FAIL: staging route unreachable: {path}") from None
+          for path,needle in [
+              ("/login",b"Sign in with a six-digit email code"),
+              ("/register",b"Create student profile"),
+              ("/tutor/login",b"Tutor sign in"),
+              ("/tutor/register",b"Create applicant account"),
+              ("/tutor/verify-email",b"Verify your email"),
+              ("/support-our-project",b"Support Our Project"),
+          ]:
+              code,headers,body=request(path)
+              if code!=200 or needle not in body:
+                  raise SystemExit(f"FAIL: expected public page {path}")
+              print(f"PASS: {path} HTTP 200")
+          code,headers,body=request("/api/auth-state")
+          if code!=200: raise SystemExit("FAIL: auth-state did not return HTTP 200")
+          try: status=json.loads(body)
+          except ValueError: raise SystemExit("FAIL: malformed auth-state") from None
+          if status.get("authenticated") is not False or status.get("emailVerified") is not False:
+              raise SystemExit("FAIL: anonymous session was reported as verified")
+          print("PASS: anonymous Auth state is not authenticated or verified")
+          for path in ["/dashboard", "/tutor/dashboard"]:
+              code,headers,body=request(path)
+              if code not in (302,303,307,308,401,403):
+                  raise SystemExit(f"FAIL: private route {path} unexpectedly returned {code}")
+              if code in (302,303,307,308) and "/login" not in headers.get("Location",""):
+                  raise SystemExit(f"FAIL: private route {path} redirected to unexpected location")
+              print(f"PASS: private {path} rejects anonymous access")
+          print("PASS: no synthetic users created or email addresses exposed")
+          PY
