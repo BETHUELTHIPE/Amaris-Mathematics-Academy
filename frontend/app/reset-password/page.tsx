@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { getPasswordRecoveryCookieStore } from "@/lib/password-recovery-cookies";
 import { PASSWORD_RECOVERY_COOKIE } from "@/lib/password-recovery";
 import { LockKeyhole } from "lucide-react";
 import { resetPasswordAction } from "@/app/auth/actions";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Choose New Password", robots: { index: false, follow: false } };
 
 export default async function ResetPasswordPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const store = await cookies();
+  const store = await getPasswordRecoveryCookieStore();
   if (store.get(PASSWORD_RECOVERY_COOKIE)?.value !== "1") {
     redirect("/forgot-password?error=Your%20reset%20link%20has%20expired.%20Request%20a%20new%20one.");
   }
