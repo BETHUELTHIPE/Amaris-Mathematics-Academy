@@ -28,7 +28,9 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (userError || !user?.email_confirmed_at) {
-    return redirectToLogin("Google registration could not be verified. Please try again.");
+    // Do not retain a session created by an unverified OAuth identity.
+    await supabase.auth.signOut({ scope: "local" });
+    return redirectToLogin("Google registration could not be verified. Please verify your email first.");
   }
 
   return NextResponse.redirect(new URL(next, getSiteUrl()));
