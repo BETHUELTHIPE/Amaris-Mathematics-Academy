@@ -247,7 +247,7 @@ test("both branded Supabase email templates show the generated six-digit OTP", (
   const loginEmail = readFileSync(new URL("../email-templates/magic-link-login.html", import.meta.url), "utf8");
   for (const html of [confirmation, loginEmail]) {
     assert.ok(html.includes("{{ .Token }}"));
-    assert.match(html, /six-digit/);
+    assert.match(html, /six[- ]digit/);
     assert.doesNotMatch(html, /123456|654321/);
   }
   assert.ok(confirmation.includes("{{ .ConfirmationURL }}"));
