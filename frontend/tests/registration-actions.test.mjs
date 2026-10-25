@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, beforeEach } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -239,4 +240,16 @@ test("login code redirects reject unsafe return paths", async () => {
   form.set("token", "123456");
   form.set("next", "https://attacker.example.test/steal");
   assert.equal((await redirectUrl(verifyLoginCodeAction, form)).pathname, "/dashboard");
+});
+
+test("both branded Supabase email templates show the generated six-digit OTP", () => {
+  const confirmation = readFileSync(new URL("../email-templates/confirm-signup.html", import.meta.url), "utf8");
+  const loginEmail = readFileSync(new URL("../email-templates/magic-link-login.html", import.meta.url), "utf8");
+  for (const html of [confirmation, loginEmail]) {
+    assert.match(html, /{{\\s*\\.Token\\s*}}/);
+    assert.match(html, /six-digit/);
+    assert.doesNotMatch(html, /123456|654321/);
+  }
+  assert.match(confirmation, /{{\\s*\\.ConfirmationURL\\s*}}/);
+  assert.match(loginEmail, /type=email/);
 });
