@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Amaris password recovery</title></head>
+  <body style="font-family:Arial,sans-serif;background:#f5f7fb;color:#263852;padding:28px">
+    <div style="max-width:560px;margin:0 auto;background:#fff;padding:30px;border-radius:18px">
+      <h1 style="color:#0b2a5b">Amaris Mathematics Academy</h1>
+      <h2>Reset your password</h2>
+      <p>Use this six-digit code to reset your Amaris account password.</p>
+      <p style="font-size:34px;font-weight:800;letter-spacing:8px;text-align:center;color:#0b2a5b">{{ .Token }}</p>
+      <p>Or <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}">continue securely to the password reset page</a>. This link does not use your code until you select Continue.</p>
+      <p>If you did not request a password reset, ignore this email. For security, use the latest code and never share it with another person.</p>
+      <p style="font-size:12px;color:#667">Amaris Mathematics Academy — Account security</p>
+    </div>
+  </body>
+</html>
