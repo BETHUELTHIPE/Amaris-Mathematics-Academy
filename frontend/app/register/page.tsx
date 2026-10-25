@@ -13,7 +13,6 @@ import { SafeFormDraft } from "@/components/site/safe-form-draft";
 import { LocationFields } from "@/components/site/location-fields";
 import { initialLocation } from "@/lib/location-server";
 import type { LocationValues } from "@/lib/location-data";
-import { GoogleAuthButton } from "@/components/site/google-auth-button";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Registration" };
@@ -40,11 +39,9 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
         <div className="mt-8 flex items-start gap-3 rounded-2xl border border-[#dce4ef] bg-white p-5 text-sm leading-6 text-[#60708a]"><ShieldCheck className="mt-0.5 size-5 shrink-0 text-[#1f5bbd]" />Your password is handled by Supabase Auth and is never stored in the Amaris course database.</div>
       </div>
       <div className="rounded-[2rem] border border-[#dce4ef] bg-white p-6 shadow-[0_25px_75px_rgba(7,21,45,.1)] sm:p-9">
-        <div className="flex items-center gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LockKeyhole className="size-6" /></span><div><h2 className="text-2xl font-semibold tracking-[-.03em]">Student details</h2><p className="mt-1 text-sm text-[#60708a]">All fields below are required for email registration.</p></div></div>
+        <div className="flex items-center gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LockKeyhole className="size-6" /></span><div><h2 className="text-2xl font-semibold tracking-[-.03em]">Student details</h2><p className="mt-1 text-sm text-[#60708a]">All fields below are required.</p></div></div>
         {error && <Alert variant="destructive" className="mt-6"><AlertDescription>{error}</AlertDescription></Alert>}
-        <div className="mt-7"><GoogleAuthButton label="Register with Google" /></div>
-        <div className="my-7 flex items-center gap-4 text-xs font-bold uppercase tracking-[.12em] text-[#60708a]"><span className="h-px flex-1 bg-[#dce4ef]" /><span>or register with email</span><span className="h-px flex-1 bg-[#dce4ef]" /></div>
-        <form action={registerAction} className="grid gap-5">
+        <form action={registerAction} className="mt-7 grid gap-5">
           <SafeFormDraft draftKey="student-registration-v1" allowedFields={["firstName", "lastName", "email", "mobile", "academicLevel", "institution"]} />
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="First name" name="firstName" autoComplete="given-name" /><AuthField label="Last name" name="lastName" autoComplete="family-name" /></div>
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="Email address" name="email" type="email" autoComplete="email" /><AuthField label="Mobile number" name="mobile" type="tel" autoComplete="tel" placeholder="071 234 5678" /></div>
