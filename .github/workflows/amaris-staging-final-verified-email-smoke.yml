@@ -1,0 +1,46 @@
+name: Staging Live Email Verification Route Guard
+on:
+  push:
+    branches: [ops/verified-email-staging-live-smoke-20261025]
+    paths: [ops/verified-email-staging-live-smoke.txt]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Assert staging public verification pages and private route protection
+        run: |
+          python3 - <<'PY'
+          import json
+          from urllib.request import Request,build_opener,HTTPRedirectHandler
+          from urllib.error import HTTPError
+          from urllib.parse import urlparse
+          base="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
+          class NoFollow(HTTPRedirectHandler):
+              def redirect_request(self,req,fp,code,msg,headers,newurl): return None
+          opener=build_opener(NoFollow())
+          def fetch(path):
+              req=Request(base+path,headers={"User-Agent":"Amaris-Verified-Email-QA/1.0"})
+              try:
+                  r=opener.open(req,timeout=25)
+              except HTTPError as error:
+                  r=error
+              with r:
+                  return r.status,r.headers.get("Location",""),r.read(60000)
+          for path in ("/register","/login","/verify-email","/tutor/register","/tutor/login","/tutor/verify-email"):
+              status,location,_=fetch(path)
+              if status!=200: raise SystemExit(f"FAIL: public email verification route {path} was HTTP {status}")
+              print(f"PASS: {path} is accessible")
+          code,_,payload=fetch("/api/auth-state")
+          if code!=200 or json.loads(payload).get("authenticated") is not False:
+              raise SystemExit("FAIL: anonymous auth state must be unauthenticated")
+          print("PASS: anonymous auth-state is false")
+          for path,expected in (("/dashboard","/login"),("/tutor/dashboard","/tutor/login")):
+              code,location,body=fetch(path)
+              next_path=urlparse(location).path
+              if code not in (301,302,303,307,308) or next_path!=expected:
+                  raise SystemExit(f"FAIL: {path} did not redirect to protected login")
+              print(f"PASS: {path} redirects to its login before rendering protected content")
+          PY
