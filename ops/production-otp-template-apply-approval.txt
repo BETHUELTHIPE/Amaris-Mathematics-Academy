@@ -1,0 +1,1 @@
+Approval: production Auth project epkcuseloinygkakxxdu, apply only approved Amaris six-digit email templates and code expiry on October 25 2026. No frontend deployment. Must verify live student Site URL and custom Auth SMTP; no secrets logged.
