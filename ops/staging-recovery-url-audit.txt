@@ -1,0 +1,1 @@
+Read-only check of staging site URL, email provider and SMTP before any recovery email configuration.
