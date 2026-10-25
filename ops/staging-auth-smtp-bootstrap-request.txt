@@ -5,3 +5,5 @@ Never log SMTP credentials or update production.
 Retry 2: authenticated SMTP-only PATCH with provider-documented fields.
 
 Diagnostic run: capture redacted provider validation error on staging-only SMTP PATCH.
+
+Final separated configuration: staging templates and OTP only. SMTP unchanged.
