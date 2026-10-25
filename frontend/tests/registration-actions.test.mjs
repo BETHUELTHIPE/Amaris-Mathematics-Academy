@@ -9,6 +9,12 @@ const mockModule = `
 export const state = {};
 export function getSiteUrl() { return "https://academy.example.test"; }
 export function safeRelativePath(path) { if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) return "/dashboard"; return path; }
+export async function cookies() {
+  return {
+    get: name => { state.cookieLookedUp = name; return state.recoveryCookie ? { value: state.recoveryCookie } : undefined; },
+    set: (name, value, options) => { state.cookieSet = { name, value, options }; },
+  };
+}
 export async function createSupabaseServerClient() {
   if (state.unavailable) throw new Error("private configuration details");
   return { auth: {
@@ -16,6 +22,8 @@ export async function createSupabaseServerClient() {
     resend: async (input) => { state.resend = input; return { error: state.resendError }; },
     signInWithOtp: async (input) => { state.loginOtp = input; return { error: state.loginOtpError }; },
     signInWithPassword: async (input) => { state.passwordLogin = input; return { error: state.passwordError ?? null }; },
+    resetPasswordForEmail: async (email, options) => { state.recoveryRequest = { email, options }; if (state.recoveryNetworkError) throw Error("Private network details"); return { error: state.recoveryError ?? null }; },
+    updateUser: async (input) => { state.updatedPassword = input; return { error: state.passwordUpdateError ?? null }; },
     getUser: async () => ({ data: { user: { email_confirmed_at: state.unverified ? null : "2026-10-25" } }, error: state.userError }),
     verifyOtp: async (input) => { state.otp = input; return { data: state.otpData, error: state.otpError }; },
     signOut: async (input) => { state.signOut = input; return { error: null }; }
@@ -30,19 +38,19 @@ export function getDb() {
 `;
 const stubbed = new Set([
   "@/lib/supabase/config", "@/lib/supabase/server",
-  "@/lib/auth", "@/db", "@/db/schema",
+  "@/lib/auth", "@/db", "@/db/schema", "next/headers",
 ]);
 const vite = await createServer({
   appType: "custom", configFile: false, root,
   plugins: [{
     name: "isolated-auth-dependencies", enforce: "pre",
-    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
+    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email" || id === "@/lib/password-recovery") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
     load(id) { if (id === "\0test:auth-state") return mockModule; },
   }],
   server: { middlewareMode: true, hmr: false, ws: false },
 });
 const { state } = await vite.ssrLoadModule("test:auth-state");
-const { registerAction, resendVerificationAction, verifyEmailAction, loginAction, sendLoginCodeAction, verifyLoginCodeAction } = await vite.ssrLoadModule("/app/auth/actions.ts");
+const { registerAction, resendVerificationAction, verifyEmailAction, loginAction, sendLoginCodeAction, verifyLoginCodeAction, forgotPasswordAction, resetPasswordAction } = await vite.ssrLoadModule("/app/auth/actions.ts");
 after(() => vite.close());
 beforeEach(() => {
   for (const key of Object.keys(state)) delete state[key];
@@ -68,6 +76,66 @@ async function redirectUrl(action, form) {
   });
   return state.destination;
 }
+
+test("forgot password sends branded Supabase recovery to restricted route without account disclosure", async () => {
+  const form = registration();
+  const url = await redirectUrl(forgotPasswordAction, form);
+  assert.equal(url.pathname, "/forgot-password");
+  assert.equal(url.searchParams.get("sent"), "1");
+  assert.equal(state.recoveryRequest.email, "student@example.test");
+  assert.equal(state.recoveryRequest.options.redirectTo, "https://academy.example.test/auth/confirm?next=/reset-password&flow=password-recovery");
+});
+
+test("forgot password rejects invalid email and never claims a failed reset email was sent", async () => {
+  const form = registration({ email: "invalid" });
+  assert.equal((await redirectUrl(forgotPasswordAction, form)).pathname, "/forgot-password");
+  assert.equal(state.recoveryRequest, undefined);
+  form.set("email", "student@example.test");
+  state.recoveryError = { code: "unexpected_failure", status: 500, message: "SMTP failed" };
+  const failed = await redirectUrl(forgotPasswordAction, form);
+  assert.equal(failed.pathname, "/forgot-password");
+  assert.equal(failed.searchParams.has("sent"), false);
+  assert.match(failed.searchParams.get("error"), /could not be requested/);
+  state.recoveryError = null;
+  state.recoveryNetworkError = true;
+  const unavailable = await redirectUrl(forgotPasswordAction, form);
+  assert.equal(unavailable.searchParams.has("sent"), false);
+  assert.match(unavailable.searchParams.get("error"), /temporarily unavailable/);
+});
+
+test("unverified or expired recovery links cannot update a student's password", async () => {
+  const form = registration({ password: "Replacement-Password-218!", confirmPassword: "Replacement-Password-218!" });
+  const noProof = await redirectUrl(resetPasswordAction, form);
+  assert.equal(noProof.pathname, "/forgot-password");
+  assert.equal(state.updatedPassword, undefined);
+  state.recoveryCookie = "1";
+  state.unverified = true;
+  const noVerifiedUser = await redirectUrl(resetPasswordAction, form);
+  assert.equal(noVerifiedUser.pathname, "/forgot-password");
+  assert.equal(state.updatedPassword, undefined);
+});
+
+test("valid password reset enforces strength and matching confirmation, then revokes sessions", async () => {
+  const form = registration({ password: "weak", confirmPassword: "weak" });
+  state.recoveryCookie = "1";
+  assert.equal((await redirectUrl(resetPasswordAction, form)).pathname, "/reset-password");
+  assert.equal(state.updatedPassword, undefined);
+  form.set("password", "Secure-New-Password-218!");
+  assert.equal((await redirectUrl(resetPasswordAction, form)).pathname, "/reset-password");
+  assert.equal(state.updatedPassword, undefined);
+  form.set("confirmPassword", "Secure-New-Password-218!");
+  state.passwordUpdateError = { message: "Unable to update password" };
+  assert.equal((await redirectUrl(resetPasswordAction, form)).pathname, "/reset-password");
+  state.passwordUpdateError = null;
+  const success = await redirectUrl(resetPasswordAction, form);
+  assert.equal(success.pathname, "/login");
+  assert.equal(success.searchParams.get("password_updated"), "1");
+  assert.deepEqual(state.updatedPassword, { password: "Secure-New-Password-218!" });
+  assert.deepEqual(state.signOut, { scope: "global" });
+  assert.equal(state.cookieSet.name, "amaris-password-recovery");
+  assert.equal(state.cookieSet.options.path, "/reset-password");
+  assert.equal(state.cookieSet.options.maxAge, 0);
+});
 
 test("valid registration passes all profile fields and waits for email verification", async () => {
   const url = await redirectUrl(registerAction, registration());
