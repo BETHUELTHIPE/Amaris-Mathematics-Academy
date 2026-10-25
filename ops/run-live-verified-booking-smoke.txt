@@ -1,0 +1,1 @@
+Verify unauthenticated production booking requests redirect to login and preserve safe curriculum selections. Read-only. No student data or payments.
