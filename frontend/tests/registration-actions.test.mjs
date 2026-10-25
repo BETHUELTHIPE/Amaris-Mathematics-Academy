@@ -36,7 +36,7 @@ const vite = await createServer({
   appType: "custom", configFile: false, root,
   plugins: [{
     name: "isolated-auth-dependencies", enforce: "pre",
-    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
+    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
     load(id) { if (id === "\0test:auth-state") return mockModule; },
   }],
   server: { middlewareMode: true, hmr: false, ws: false },
