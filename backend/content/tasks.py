@@ -8,7 +8,7 @@ from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
 
-from content.models import LiveClassBooking, SiteSettings
+from content.models import LiveClassBooking, SiteSettings, VideoRequest
 from content.payment_models import NotificationOutbox
 from content.services.reconciliation import reconcile_verified_payments
 
@@ -307,3 +307,196 @@ def expire_live_class_holds(_self) -> int:
         status=LiveClassBooking.Status.PENDING_PAYMENT,
         hold_expires_at__lte=timezone.now(),
     ).update(status=LiveClassBooking.Status.EXPIRED)
+
+
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    autoretry_for=(OperationalError, InterfaceError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 6},
+)
+def complete_live_class_bookings(_self) -> int:
+    """Close out confirmed bookings whose scheduled slot has already ended.
+
+    Without this the booking stays ``CONFIRMED`` forever, so the lifecycle
+    never reaches ``COMPLETED`` and finished classes keep appearing as active
+    in reporting and student history.
+    """
+
+    return LiveClassBooking.objects.filter(
+        status=LiveClassBooking.Status.CONFIRMED,
+        slot__ends_at__lte=timezone.now(),
+    ).update(status=LiveClassBooking.Status.COMPLETED)
+
+
+def _send_video_request_message(
+    request_obj: VideoRequest,
+    *,
+    subject: str,
+    heading: str,
+    body_lines: list[str],
+    attach_invoice: bool = False,
+) -> None:
+    name, email, phone = _live_class_brand()
+    text = "\n".join(
+        [
+            name,
+            f"{email} | {phone}",
+            "",
+            heading,
+            "",
+            *body_lines,
+        ]
+    )
+    html_lines = "".join(f"<p>{escape(line)}</p>" for line in body_lines)
+    html = (
+        '<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;'
+        'border:1px solid #dce4ef;border-radius:18px;overflow:hidden">'
+        '<div style="background:#07152d;color:#fff;padding:24px">'
+        f'<div style="font-size:22px;font-weight:700">{escape(name)}</div>'
+        f'<div style="margin-top:6px;color:#dce4ef">{escape(email)} \u00b7 {escape(phone)}</div>'
+        "</div>"
+        '<div style="padding:28px;color:#1d2d44">'
+        f'<h1 style="font-size:24px;margin-top:0">{escape(heading)}</h1>'
+        f"{html_lines}"
+        "</div></div>"
+    )
+    message = EmailMultiAlternatives(
+        subject=subject,
+        body=text,
+        from_email=None,
+        to=[request_obj.student.email],
+    )
+    message.attach_alternative(html, "text/html")
+    if attach_invoice and request_obj.invoice_number:
+        invoice_text = "\n".join(
+            [
+                name,
+                "VIDEO REQUEST INVOICE",
+                f"Invoice: {request_obj.invoice_number}",
+                f"Request: {request_obj.reference}",
+                f"Student: {request_obj.student.first_name} {request_obj.student.last_name}",
+                f"Programme: {request_obj.get_programme_display()}",
+                f"Subject: {request_obj.get_subject_display()}",
+                f"Level: {request_obj.level}",
+                f"Topic: {request_obj.topic}",
+                f"Amount: R{request_obj.amount:.2f}",
+                f"Currency: {request_obj.currency}",
+                "Payment status: Paid and verified by PayFast",
+            ]
+        )
+        message.attach(
+            f"{request_obj.invoice_number}.txt",
+            invoice_text,
+            "text/plain",
+        )
+    sent = message.send(fail_silently=False)
+    if sent != 1:
+        raise OSError("Transactional email backend did not accept the video-request message.")
+
+
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    autoretry_for=(OSError, OperationalError, InterfaceError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 6},
+)
+def deliver_video_request_confirmation(_self) -> int:
+    """Email the student once PayFast has verified their video-request payment."""
+    with transaction.atomic():
+        request_obj = (
+            VideoRequest.objects.select_for_update(skip_locked=True)
+            .select_related("student")
+            .filter(
+                status=VideoRequest.Status.PAID,
+                confirmation_sent_at__isnull=True,
+            )
+            .order_by("paid_at", "created_at")
+            .first()
+        )
+        if request_obj is None:
+            return 0
+
+        _send_video_request_message(
+            request_obj,
+            subject=f"Amaris video request received \u2014 {request_obj.reference}",
+            heading="We are producing your custom maths video",
+            body_lines=[
+                "Thank you \u2014 your payment is confirmed and your video request is in our production queue.",
+                f"Programme: {request_obj.get_programme_display()}",
+                f"Subject: {request_obj.get_subject_display()}",
+                f"Level: {request_obj.level}",
+                f"Topic: {request_obj.topic}",
+                f"Invoice: {request_obj.invoice_number}",
+                f"Amount paid: R{request_obj.amount:.2f}",
+                "We will email you again as soon as your video is ready to watch.",
+            ],
+            attach_invoice=True,
+        )
+        request_obj.confirmation_sent_at = timezone.now()
+        request_obj.save(update_fields=("confirmation_sent_at", "updated_at"))
+        return 1
+
+
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    autoretry_for=(OSError, OperationalError, InterfaceError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 6},
+)
+def deliver_video_request_delivery(_self) -> int:
+    """Notify the student once a tutor has fulfilled their request with a video."""
+    with transaction.atomic():
+        request_obj = (
+            VideoRequest.objects.select_for_update(skip_locked=True)
+            .select_related("student", "video")
+            .filter(
+                status=VideoRequest.Status.FULFILLED,
+                video__isnull=False,
+                delivery_sent_at__isnull=True,
+            )
+            .order_by("fulfilled_at", "created_at")
+            .first()
+        )
+        if request_obj is None:
+            return 0
+
+        _send_video_request_message(
+            request_obj,
+            subject=f"Your Amaris maths video is ready \u2014 {request_obj.reference}",
+            heading="Your custom maths video is ready to watch",
+            body_lines=[
+                f"Topic: {request_obj.topic}",
+                f"Video: {request_obj.video.title}",
+                f"Request reference: {request_obj.reference}",
+                "Log in to your Amaris student dashboard and open your video request to watch it securely.",
+            ],
+        )
+        request_obj.delivery_sent_at = timezone.now()
+        request_obj.save(update_fields=("delivery_sent_at", "updated_at"))
+        return 1
+
+
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    autoretry_for=(OperationalError, InterfaceError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 6},
+)
+def expire_video_request_holds(_self) -> int:
+    return VideoRequest.objects.filter(
+        status=VideoRequest.Status.PENDING_PAYMENT,
+        hold_expires_at__lte=timezone.now(),
+    ).update(status=VideoRequest.Status.EXPIRED)

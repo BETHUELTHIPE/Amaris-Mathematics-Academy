@@ -28,9 +28,9 @@ services:
       - key: DJANGO_ALLOWED_HOSTS
         value: amaris-production-web.onrender.com
       - key: DJANGO_CSRF_TRUSTED_ORIGINS
-        value: https://amaris-production-web.onrender.com,https://amaris-mathematics-academy.bethuelthipe.chatgpt.site
+        value: https://amaris-production-web.onrender.com,https://amaris-mathematics-academy-live-students.onrender.com
       - key: CORS_ALLOWED_ORIGINS
-        value: https://amaris-mathematics-academy.bethuelthipe.chatgpt.site
+        value: https://amaris-mathematics-academy-live-students.onrender.com
       - key: SUPABASE_URL
         value: https://epkcuseloinygkakxxdu.supabase.co
       - key: SUPABASE_PUBLISHABLE_KEY
@@ -56,13 +56,13 @@ services:
       - key: PAYFAST_PASSPHRASE
         sync: false
       - key: PUBLIC_SITE_URL
-        value: https://amaris-mathematics-academy.bethuelthipe.chatgpt.site
+        value: https://amaris-mathematics-academy-live-students.onrender.com
       - key: PUBLIC_API_URL
         value: https://amaris-production-web.onrender.com/api/v1
       - key: PAYFAST_RETURN_URL
-        value: https://amaris-mathematics-academy.bethuelthipe.chatgpt.site/payments/pending
+        value: https://amaris-mathematics-academy-live-students.onrender.com/payments/pending
       - key: PAYFAST_CANCEL_URL
-        value: https://amaris-mathematics-academy.bethuelthipe.chatgpt.site/payments/cancelled
+        value: https://amaris-mathematics-academy-live-students.onrender.com/payments/cancelled
       - key: PAYFAST_NOTIFY_URL
         value: https://amaris-production-web.onrender.com/api/v1/payfast/itn/
       - key: DATABASE_URL

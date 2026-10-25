@@ -54,7 +54,7 @@ scrape_configs:
       module: [http_2xx]
     static_configs:
       - targets:
-          - https://amaris-mathematics-academy.bethuelthipe.chatgpt.site/
+          - https://amaris-mathematics-academy-live-students.onrender.com/
           - http://nginx/health/ready/
     relabel_configs:
       - source_labels: [__address__]

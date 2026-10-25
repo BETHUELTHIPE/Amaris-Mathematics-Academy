@@ -21,7 +21,7 @@ class LoadTestSafetyTests(unittest.TestCase):
     def test_live_amaris_site_is_blocked_without_authorisation(self):
         with self.assertRaisesRegex(ValueError, "live Amaris Site"):
             validate_target(
-                "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site",
+                "https://amaris-mathematics-academy-live-students.onrender.com",
                 environment_name="production",
                 allowed_hosts=(),
                 allow_production=False,

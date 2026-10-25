@@ -19,6 +19,7 @@ from content.services.live_classes import (
     process_live_class_notification,
 )
 from content.tasks import (
+    complete_live_class_bookings,
     deliver_live_class_confirmation,
     deliver_live_class_reminder,
     expire_live_class_holds,
@@ -230,3 +231,31 @@ class LiveClassBookingTests(TestCase):
             replacement_booking.status,
             LiveClassBooking.Status.PENDING_PAYMENT,
         )
+
+    def test_confirmed_booking_is_completed_only_after_class_ends(self):
+        checkout = self.checkout()
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        process_live_class_notification(
+            self.callback(booking),
+            gateway=MockPayFastGateway(True),
+        )
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, LiveClassBooking.Status.CONFIRMED)
+
+        # The scheduled slot is still in the future, so nothing is completed.
+        self.assertEqual(complete_live_class_bookings.run(), 0)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, LiveClassBooking.Status.CONFIRMED)
+
+        past_start = timezone.now() - timedelta(hours=2)
+        TutorAvailabilitySlot.objects.filter(pk=self.slot.pk).update(
+            starts_at=past_start,
+            ends_at=past_start + timedelta(hours=1),
+        )
+
+        self.assertEqual(complete_live_class_bookings.run(), 1)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, LiveClassBooking.Status.COMPLETED)
+
+        # The lifecycle is terminal: a second run is a no-op.
+        self.assertEqual(complete_live_class_bookings.run(), 0)

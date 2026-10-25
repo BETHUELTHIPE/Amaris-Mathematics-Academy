@@ -21,7 +21,7 @@ ERROR_CONTENT = {
         "We could not safely process the request.",
         "Check the information you entered, then return and try once more.",
         "Return to the website",
-        "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site/",
+        "https://amaris-mathematics-academy-live-students.onrender.com/",
     ),
     403: ErrorContent(
         "Access restricted",
@@ -45,7 +45,7 @@ ERROR_CONTENT = {
         "New attempts are temporarily paused to protect the academy.",
         "Wait a few minutes, then try once. Repeated attempts will not shorten the wait.",
         "Return to the website",
-        "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site/",
+        "https://amaris-mathematics-academy-live-students.onrender.com/",
     ),
     500: ErrorContent(
         "Something went wrong",

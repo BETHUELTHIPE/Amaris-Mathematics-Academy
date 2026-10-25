@@ -131,7 +131,7 @@ def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: 
 
     merchant_id, merchant_key, passphrase = _payfast_credentials()
     mode = _payfast_mode()
-    site_url = os.getenv("PUBLIC_SITE_URL", "https://amaris-mathematics-academy.bethuelthipe.chatgpt.site").rstrip("/")
+    site_url = os.getenv("PUBLIC_SITE_URL", "https://amaris-mathematics-academy-live-students.onrender.com").rstrip("/")
     api_url = os.getenv("PUBLIC_API_URL", "").rstrip("/")
     return_url = os.getenv("PAYFAST_RETURN_URL", f"{site_url}/payments/pending").strip()
     cancel_url = os.getenv("PAYFAST_CANCEL_URL", f"{site_url}/payments/cancelled").strip()

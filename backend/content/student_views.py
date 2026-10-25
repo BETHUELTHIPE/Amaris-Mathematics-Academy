@@ -110,6 +110,12 @@ class StudentLessonView(StudentAPIView):
                             "youtube_video_id": (
                                 video.youtube_video_id if video.provider == video.Provider.YOUTUBE else ""
                             ),
+                            "vimeo_video_id": (
+                                video.vimeo_video_id if video.provider == video.Provider.VIMEO else ""
+                            ),
+                            "vimeo_hash": (
+                                video.vimeo_hash if video.provider == video.Provider.VIMEO else ""
+                            ),
                             "duration_seconds": video.duration_seconds,
                         }
                         if video

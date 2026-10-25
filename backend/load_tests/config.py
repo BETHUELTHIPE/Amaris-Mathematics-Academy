@@ -101,7 +101,7 @@ AUTHENTICATED_REQUESTS = {"07 Student dashboard", "08 Lesson access", "11 Paymen
 WRITE_REQUESTS = {"05b Registration submit", "06b Login submit", "09 Progress update", "10 Checkout creation"}
 
 PAYFAST_HOSTS = {"www.payfast.co.za", "sandbox.payfast.co.za", "api.payfast.co.za"}
-KNOWN_PRODUCTION_HOSTS = {"amaris-mathematics-academy.bethuelthipe.chatgpt.site"}
+KNOWN_PRODUCTION_HOSTS = {"amaris-mathematics-academy-live-students.onrender.com"}
 
 
 def validate_target(
