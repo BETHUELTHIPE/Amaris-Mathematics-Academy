@@ -47,3 +47,13 @@ On staging, create a synthetic student with a **controlled test inbox** and use 
 Verify the **inbox receipt**, not merely an API success or an SMTP accepted response. After staging acceptance and passing CI, promote the front end through its release process and repeat a labelled production test using an authorized controlled test account and inbox. No real student account, existing payment or private record needs to be changed to complete this feature.
 
 Official docs: https://supabase.com/docs/guides/auth/auth-email-templates and https://supabase.com/docs/guides/auth/auth-email-passwordless
+
+### Production Management API credential gate (required)
+
+Staging credential `SUPABASE_AUTH_MANAGEMENT_TOKEN` was verified on staging, but returned HTTP **401** against production's Supabase Auth configuration. Do **not** reuse it for production. In GitHub **Settings → Environments → production → Environment secrets**, add `SUPABASE_PRODUCTION_AUTH_MANAGEMENT_TOKEN` containing a separate, scoped Supabase personal access token granting **read/write Auth configuration** access specifically to production project `epkcuseloinygkakxxdu`. Do not commit or share the token. Protect the GitHub production environment with reviewers. The workflow now selects the staging or production secret explicitly and fails closed when the corresponding secret is missing. Run `project=production, operation=check` before requesting any `apply`. Do not publish the student frontend until this check, subsequent production apply, actual inbox receipt and real OTP redemption all pass.
+
+### Inbox proof nuance and email-link correction
+
+The Gmail account connected to ChatGPT is `bethuelmoukangwe8@gmail.com`; the previously observed message addressed to the staging student `bethuelmoukangwe30@gmail.com` was stored under **SENT** in the connected Gmail account, not its recipient Inbox. That is independent proof of dispatch, **not** independent recipient inbox delivery. To independently certify the recipient Inbox, connect/read that destination mailbox with authorization, or complete a separate controlled-inbox production test to the connected mailbox. No six-digit code should be posted in comments or chat.
+
+The original optional Magic Link used `{{ .SiteURL }}` and rendered as `http://localhost:3000` in the staging email. The template now uses Supabase's issued `{{ .ConfirmationURL }}`; the six-digit `{{ .Token }}` remains in place. Hosted staging and production templates must be re-applied explicitly before certifying the **link** as well as the OTP code.
