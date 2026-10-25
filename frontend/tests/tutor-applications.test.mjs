@@ -15,14 +15,16 @@ export async function applicationRequest(path, init, token) {
 export async function createSupabaseServerClient() { return { auth: {
   signUp: async input => { state.signup = input; return { error: state.authError }; },
   signInWithPassword: async input => { state.login = input; return { data: { user: { id: "synthetic" } }, error: state.authError }; },
-  verifyOtp: async input => { state.otp = input; return { error: state.authError }; },
+  verifyOtp: async input => { state.otp = input; return { data: state.otpData ?? { session: { access_token: "test" }, user: { email_confirmed_at: "2026-10-25" } }, error: state.authError }; },
+  getUser: async () => ({ data: { user: { email_confirmed_at: state.unverified ? null : "2026-10-25" } }, error: state.userError }),
+  signOut: async options => { state.signOut = options; return { error: null }; },
   resend: async input => { state.resend = input; return { error: state.authError }; }
 } }; }
 `;
 const stubs = new Set(["@/lib/supabase/config", "@/lib/supabase/server", "@/lib/tutor-applications", "test:applicants"]);
 const vite = await createServer({
   root: fileURLToPath(new URL("..", import.meta.url)), configFile: false, appType: "custom",
-  plugins: [{ name: "applicant-test-services", enforce: "pre", resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubs.has(id)) return "\0test:applicants"; }, load(id) { if (id === "\0test:applicants") return mock; } }],
+  plugins: [{ name: "applicant-test-services", enforce: "pre", resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubs.has(id)) return "\0test:applicants"; }, load(id) { if (id === "\0test:applicants") return mock; } }],
   server: { middlewareMode: true, hmr: false, ws: false },
 });
 const { state } = await vite.ssrLoadModule("test:applicants");
@@ -54,6 +56,25 @@ test("applicants register, verify and sign in without claiming approved tutor me
   assert.equal(state.otp.type, "signup");
   assert.equal((await destination(actions.loginApplicant, signup())).pathname, "/tutor/apply");
 });
+test("tutor applicant is blocked until email is confirmed even with correct password", async () => {
+  state.unverified = true;
+  const location = await destination(actions.loginApplicant, signup());
+  assert.equal(location.pathname, "/tutor/verify-email");
+  assert.deepEqual(state.signOut, { scope: "local" });
+  state.signOut = undefined;
+  const verify = await destination(actions.verifyApplicant, new Map([["email", "applicant@example.test"], ["token", "123456"]]));
+  assert.equal(verify.pathname, "/tutor/verify-email");
+  assert.deepEqual(state.signOut, { scope: "local" });
+});
+
+test("tutor OTP confirmation must return a session and a confirmed account", async () => {
+  state.otpData = { session: null, user: { email_confirmed_at: "2026-10-25" } };
+  assert.equal((await destination(actions.verifyApplicant, new Map([["email", "applicant@example.test"], ["token", "123456"]]))).pathname, "/tutor/verify-email");
+  state.otpData = { session: { access_token: "test" }, user: { email_confirmed_at: null } };
+  assert.equal((await destination(actions.verifyApplicant, new Map([["email", "applicant@example.test"], ["token", "123456"]]))).pathname, "/tutor/verify-email");
+  assert.deepEqual(state.signOut, { scope: "local" });
+});
+
 test("invalid registration and failed login never advance to the application", async () => {
   for (const override of [{ consent: "" }, { confirmPassword: "wrong" }, { password: "weak" }, { email: "bad" }]) {
     assert.equal((await destination(actions.registerApplicant, signup(override))).pathname, "/tutor/register");

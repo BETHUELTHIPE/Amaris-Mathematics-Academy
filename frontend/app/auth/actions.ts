@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getSiteUrl } from "@/lib/supabase/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeRelativePath } from "@/lib/auth";
+import { hasVerifiedAccountEmail } from "@/lib/verified-account-email";
 import { getDb } from "@/db";
 import { studentProfiles } from "@/db/schema";
 
@@ -234,7 +235,7 @@ export async function loginAction(formData: FormData) {
 
   if (error) {
     if (/rate limit|too many/i.test(error.message)) redirect("/errors/429");
-    if (/email not confirmed/i.test(error.message)) {
+    if (error.code === "email_not_confirmed" || /email not confirmed/i.test(error.message)) {
       redirect(
         `/verify-email?email=${encodeURIComponent(parsed.data.email)}&error=${encodeURIComponent("Verify your email before logging in.")}`,
       );
@@ -246,6 +247,10 @@ export async function loginAction(formData: FormData) {
     );
   }
 
+  // The password exchange alone never proves ownership of the email.
+  if (!(await hasVerifiedAccountEmail(supabase.auth))) {
+    redirect(`/verify-email?email=${encodeURIComponent(parsed.data.email)}&error=${encodeURIComponent("Verify your email before logging in.")}`);
+  }
   redirect(safeRelativePath(parsed.data.next));
 }
 

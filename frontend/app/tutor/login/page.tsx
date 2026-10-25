@@ -59,6 +59,8 @@ export default async function TutorLoginPage({ searchParams }: { searchParams: P
           <p className="mt-6 text-sm text-[#60708a]">
             <Link href="/forgot-password" className="font-semibold text-[#1f5bbd]">Forgot password?</Link>
             <span className="mx-2">·</span>
+            <Link href="/tutor/verify-email" className="font-semibold text-[#1f5bbd]">Verify your email</Link>
+            <span className="mx-2">·</span>
             <Link href="/book-online-live-class" className="font-semibold text-[#1f5bbd]">Student booking page</Link>
           </p>
         </div>

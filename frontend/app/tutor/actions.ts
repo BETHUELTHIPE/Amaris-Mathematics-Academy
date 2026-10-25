@@ -4,6 +4,7 @@ import { resolveCurriculumFields } from "@/lib/school-curriculum.mjs";
 import { redirect } from "next/navigation";
 import { createTutorSlot, TutorApiError, updateTutorSlot, type SlotInput } from "@/lib/tutor-api";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { hasVerifiedAccountEmail } from "@/lib/verified-account-email";
 
 function cleanStart(value: string): string {
   // Native datetime-local fields have no timezone. Amaris sessions use SAST (UTC+02:00).
@@ -89,12 +90,20 @@ export async function tutorLoginAction(form: FormData): Promise<void> {
     redirect("/tutor/login?error=credentials");
   }
   let credentialsInvalid = false;
+  let verificationRequired = false;
   try {
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     credentialsInvalid = Boolean(error);
+    verificationRequired = error?.code === "email_not_confirmed";
+    if (!credentialsInvalid) {
+      verificationRequired = !(await hasVerifiedAccountEmail(supabase.auth));
+    }
   } catch {
     redirect("/tutor/login?error=unavailable");
+  }
+  if (verificationRequired) {
+    redirect(`/tutor/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("Verify your email before tutor login.")}`);
   }
   if (credentialsInvalid) redirect("/tutor/login?error=credentials");
   redirect("/tutor/dashboard");
