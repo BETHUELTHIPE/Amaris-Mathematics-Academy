@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CheckCircle2, LayoutDashboard } from "lucide-react";
-import { loginAction } from "@/app/auth/actions";
+import { loginAction, sendLoginCodeAction } from "@/app/auth/actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Footer } from "@/components/site/footer";
@@ -26,5 +26,16 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <div className="mt-7"><GoogleAuthButton label="Sign in with Google" next={next} /></div>
     <div className="my-7 flex items-center gap-4 text-xs font-bold uppercase tracking-[.12em] text-[#60708a]"><span className="h-px flex-1 bg-[#dce4ef]" /><span>or use email</span><span className="h-px flex-1 bg-[#dce4ef]" /></div>
     <form action={loginAction} className="grid gap-5"><input type="hidden" name="next" value={next} /><label className="grid gap-2 text-sm font-semibold text-[#263852]">Email address<Input name="email" type="email" autoComplete="email" required className="h-12" /></label><label className="grid gap-2 text-sm font-semibold text-[#263852]"><span className="flex items-center justify-between gap-4">Password<Link href="/forgot-password" className="text-xs font-bold text-[#1f5bbd]">Forgot password?</Link></span><Input name="password" type="password" autoComplete="current-password" required className="h-12" /></label><button type="submit" className="min-h-12 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white transition hover:bg-[#123d79]">Log in securely</button></form>
+    <section className="mt-8 rounded-2xl border border-[#dce4ef] bg-[#f5f7fb] p-5" aria-labelledby="email-code-heading">
+      <h2 id="email-code-heading" className="text-lg font-semibold text-[#263852]">Sign in with a six-digit email code</h2>
+      <p className="mt-2 text-sm leading-6 text-[#60708a]">Already registered? We can email a temporary code to your verified address. You can still sign in using your password above.</p>
+      <form action={sendLoginCodeAction} className="mt-4 grid gap-3">
+        <input type="hidden" name="next" value={next} />
+        <label className="grid gap-2 text-sm font-semibold text-[#263852]">Email address
+          <Input name="email" type="email" autoComplete="email" required className="h-12 bg-white" />
+        </label>
+        <button type="submit" className="min-h-12 rounded-full border border-[#0b2a5b] px-5 py-3 font-bold text-[#0b2a5b] transition hover:bg-[#e9f0fc]">Email me a six-digit code</button>
+      </form>
+    </section>
     <p className="mt-6 text-center text-sm text-[#60708a]">New to Amaris? <Link href="/register" className="font-bold text-[#1f5bbd]">Create your profile</Link></p></div></section><Footer /></main>;
 }

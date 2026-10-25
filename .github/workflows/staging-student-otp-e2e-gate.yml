@@ -1,0 +1,32 @@
+name: Staging Student Six-Digit Email OTP Gate
+on:
+  push:
+    branches:
+      - test/staging-six-digit-email-otp-20261025
+    paths:
+      - "frontend/app/auth/actions.ts"
+      - "frontend/app/login/page.tsx"
+      - "frontend/app/login/code/page.tsx"
+      - "frontend/tests/registration-actions.test.mjs"
+      - "frontend/email-templates/**"
+      - ".github/workflows/staging-student-otp-e2e-gate.yml"
+permissions:
+  contents: read
+jobs:
+  student-otp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Type-check staging frontend
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Test registration verification and six-digit login
+        working-directory: frontend
+        run: node --test tests/registration-actions.test.mjs tests/google-registration.test.mjs
