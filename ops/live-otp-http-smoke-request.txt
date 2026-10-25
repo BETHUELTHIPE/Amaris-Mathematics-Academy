@@ -1,0 +1,1 @@
+Run external GET-only checks of live six-digit email OTP request and entry pages; do not send OTP or write data.
