@@ -1,0 +1,34 @@
+name: Live Published Course Subpages
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/e2e/live_course_subpages.py'
+      - '.github/workflows/live-course-subpages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-course-detail-pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check all public Django course-slug detail URLs on live Render
+        run: python -u frontend/e2e/live_course_subpages.py
+      - name: Preserve course-detail route report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-live-course-subpages
+          path: frontend/artifacts/live-site-pages/course-detail-subpages.json
+          retention-days: 14
+          if-no-files-found: warn
