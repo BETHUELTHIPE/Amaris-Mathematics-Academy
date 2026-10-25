@@ -251,5 +251,6 @@ test("both branded Supabase email templates show the generated six-digit OTP", (
     assert.doesNotMatch(html, /123456|654321/);
   }
   assert.ok(confirmation.includes("{{ .ConfirmationURL }}"));
-  assert.match(loginEmail, /type=email/);
+  assert.ok(loginEmail.includes("{{ .ConfirmationURL }}"));
+  assert.doesNotMatch(loginEmail, /localhost:3000/);
 });
