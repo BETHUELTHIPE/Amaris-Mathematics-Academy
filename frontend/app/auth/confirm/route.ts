@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { safeRelativePath } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasVerifiedAccountEmail } from "@/lib/verified-account-email";
+import { isPasswordRecoveryCallback, PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS } from "@/lib/password-recovery";
 
 const allowedOtpTypes = new Set<EmailOtpType>([
   "signup",
@@ -18,7 +19,8 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const suppliedType = searchParams.get("type") as EmailOtpType | null;
-  const next = safeRelativePath(searchParams.get("next"));
+  const recovery = isPasswordRecoveryCallback(searchParams.get("next"), searchParams.get("flow"), suppliedType);
+  const next = recovery ? "/reset-password" : safeRelativePath(searchParams.get("next"));
   const supabase = await createSupabaseServerClient();
 
   let error: Error | null = null;
@@ -52,5 +54,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.redirect(new URL(next, request.url));
+  const response = NextResponse.redirect(new URL(next, request.url));
+  if (recovery) {
+    // Server-only, short-lived proof that Supabase accepted this recovery link.
+    response.cookies.set(PASSWORD_RECOVERY_COOKIE, "1", {
+      httpOnly: true,
+      secure: request.nextUrl.protocol === "https:",
+      sameSite: "lax",
+      path: "/reset-password",
+      maxAge: PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS,
+    });
+  }
+  return response;
 }
