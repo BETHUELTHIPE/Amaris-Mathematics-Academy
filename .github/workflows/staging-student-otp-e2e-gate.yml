@@ -8,6 +8,7 @@ on:
       - "frontend/app/login/page.tsx"
       - "frontend/app/login/code/page.tsx"
       - "frontend/tests/registration-actions.test.mjs"
+      - "frontend/email-templates/**"
       - ".github/workflows/staging-student-otp-e2e-gate.yml"
 permissions:
   contents: read
