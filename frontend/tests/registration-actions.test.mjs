@@ -9,7 +9,7 @@ const mockModule = `
 export const state = {};
 export function getSiteUrl() { return "https://academy.example.test"; }
 export function safeRelativePath(path) { if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) return "/dashboard"; return path; }
-export async function cookies() {
+export async function getPasswordRecoveryCookieStore() {
   return {
     get: name => { state.cookieLookedUp = name; return state.recoveryCookie ? { value: state.recoveryCookie } : undefined; },
     set: (name, value, options) => { state.cookieSet = { name, value, options }; },
@@ -38,7 +38,7 @@ export function getDb() {
 `;
 const stubbed = new Set([
   "@/lib/supabase/config", "@/lib/supabase/server",
-  "@/lib/auth", "@/db", "@/db/schema", "next/headers",
+  "@/lib/auth", "@/db", "@/db/schema", "@/lib/password-recovery-cookies",
 ]);
 const vite = await createServer({
   appType: "custom", configFile: false, root,
