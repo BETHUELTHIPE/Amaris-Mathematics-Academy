@@ -1,0 +1,23 @@
+name: Amaris Staging Recovery Email Template Apply
+on:
+  push:
+    branches: [ops/staging-recovery-template-apply-20261026]
+    paths: ["ops/staging-recovery-template-apply-request.txt"]
+permissions:
+  contents: read
+jobs:
+  apply-recovery-staging-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment: staging
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Offline contract tests
+        run: python -m unittest discover -s tests -p test_configure_supabase_auth_otp.py -v
+      - name: Confirm staging Management API credential present
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "BLOCK: staging Auth token missing"; exit 1; }
+      - name: Apply exact recovery, signup and login templates to staging only
+        run: python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode apply
