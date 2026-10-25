@@ -7,3 +7,5 @@ Retry 2: authenticated SMTP-only PATCH with provider-documented fields.
 Diagnostic run: capture redacted provider validation error on staging-only SMTP PATCH.
 
 Final separated configuration: staging templates and OTP only. SMTP unchanged.
+
+Final SMTP-only staging validation run; provider errors sanitized and no production access.
