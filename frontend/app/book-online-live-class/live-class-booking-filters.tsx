@@ -7,6 +7,7 @@ import {
   programmes,
   subjects,
 } from "@/lib/booking-grade-levels.mjs";
+import { FormCloseLink } from "@/components/site/form-close-link";
 
 type Props = {
   initialProgramme: string;
@@ -128,8 +129,9 @@ export function LiveClassBookingFilters({
           type="submit"
           className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#0b2a5b] px-7 py-3 font-bold text-white"
         >
-          Show available tutor times
+          Next: Show available tutor times
         </button>
+        <div className="mt-3"><FormCloseLink href="/" /></div>
       </div>
     </form>
   );

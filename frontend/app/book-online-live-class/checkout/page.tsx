@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, CreditCard, ShieldCheck, Video } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
+import { FormCloseLink } from "@/components/site/form-close-link";
 import { requireVerifiedStudent } from "@/lib/auth";
 import { createStudentLiveClassCheckout } from "@/lib/student-api";
 
@@ -95,8 +96,9 @@ export default async function LiveClassCheckoutPage({
               type="submit"
               className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white"
             >
-              <CreditCard className="size-4" /> Pay R250 with PayFast
+              <CreditCard className="size-4" /> Next: Pay R250 with PayFast
             </button>
+            <div className="mt-3 flex justify-center"><FormCloseLink href="/book-online-live-class" /></div>
           </form>
 
           <div className="mt-5 flex items-center justify-center gap-2 text-center text-xs text-[#60708a]">

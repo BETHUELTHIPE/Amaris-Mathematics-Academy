@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Clock3, Save } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
+import { FormCloseLink } from "@/components/site/form-close-link";
 import { requireVerifiedStudent } from "@/lib/auth";
 import { getProtectedLesson } from "@/lib/student-api";
 import { saveLessonProgressAction } from "@/app/learn/actions";
@@ -58,7 +59,8 @@ export default async function LessonPage({
           <input type="hidden" name="lessonSlug" value={lessonSlug} />
           <input type="hidden" name="positionSeconds" value={requestedPosition} />
           <input type="hidden" name="progressPercent" value={Math.max(data.resume.progress_percent, 1)} />
-          <button type="submit" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white sm:w-auto"><Save className="size-4" />Save progress</button>
+          <button type="submit" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white sm:w-auto"><Save className="size-4" />Next: Save progress</button>
+          <FormCloseLink href={`/courses/${courseSlug}`} />
         </form>
       </div>
     </section><Footer /></main>;

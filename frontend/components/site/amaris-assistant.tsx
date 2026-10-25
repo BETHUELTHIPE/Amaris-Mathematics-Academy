@@ -360,12 +360,13 @@ export function AmarisAssistant({ initialOpen = false }: { initialOpen?: boolean
                     <button
                       type="submit"
                       disabled={busy || !draft.trim()}
-                      className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#ffcc66] text-[#07152d] transition hover:bg-[#ffd780] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"
-                      aria-label="Send question"
+                      className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-xl bg-[#ffcc66] px-3 text-[#07152d] transition hover:bg-[#ffd780] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]"
+                      aria-label="Next: send question"
                     >
-                      <Send className="size-4" />
+                      <span className="text-xs font-bold">Next</span><Send className="size-4" />
                     </button>
                   </div>
+                  <button type="button" onClick={() => setOpen(false)} className="mt-2 min-h-11 rounded-lg border border-[#cbd5e1] px-4 text-xs font-semibold text-[#0b2a5b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f5bbd]">Close</button>
                   <p className="mt-2 text-[11px] leading-4 text-[#6b7b90]">
                     Do not send passwords, card details, OTPs, or other secrets.
                   </p>
