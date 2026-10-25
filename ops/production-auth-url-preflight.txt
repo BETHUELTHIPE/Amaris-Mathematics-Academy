@@ -1,0 +1,1 @@
+Read-only production Auth redirect and SMTP check requested 2026-10-25. No configuration mutation allowed.
