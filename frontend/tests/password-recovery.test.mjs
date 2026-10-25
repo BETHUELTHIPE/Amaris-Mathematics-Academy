@@ -1,0 +1,63 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test, { after } from "node:test";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const vite = await createServer({ root, configFile: false, appType: "custom", server: { middlewareMode: true, hmr: false, ws: false } });
+const { isPasswordRecoveryCallback, PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS } = await vite.ssrLoadModule("/lib/password-recovery.ts");
+after(() => vite.close());
+
+const read = rel => readFileSync(new URL(rel, import.meta.url), "utf8");
+
+test("only a real recovery callback with the exact local path can open the reset form", () => {
+  assert.equal(isPasswordRecoveryCallback("/reset-password", "password-recovery", null), true);
+  assert.equal(isPasswordRecoveryCallback("/reset-password", null, "recovery"), true);
+  for (const [next, flow, type] of [
+    ["/reset-password", null, "signup"],
+    ["/reset-password", null, null],
+    ["/reset-password", "normal-signin", "email"],
+    ["//attacker.example/reset-password", "password-recovery", null],
+    ["https://attacker.example/reset-password", "password-recovery", null],
+    ["/dashboard", "password-recovery", null],
+  ]) {
+    assert.equal(isPasswordRecoveryCallback(next, flow, type), false);
+  }
+});
+
+test("confirmed reset callback issues 15-minute HttpOnly path-limited recovery proof", () => {
+  const callback = read("../app/auth/confirm/route.ts");
+  assert.match(callback, /isPasswordRecoveryCallback\(/);
+  assert.match(callback, /hasVerifiedAccountEmail\(supabase\.auth\)/);
+  assert.match(callback, /if \(recovery\)/);
+  assert.match(callback, /httpOnly: true/);
+  assert.match(callback, /sameSite: "lax"/);
+  assert.match(callback, /path: "\/reset-password"/);
+  assert.match(callback, /PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS/);
+  assert.equal(PASSWORD_RECOVERY_COOKIE, "amaris-password-recovery");
+  assert.equal(PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS, 900);
+});
+
+test("only a verified account with a recovery marker may view or submit new password", () => {
+  const page = read("../app/reset-password/page.tsx");
+  const actions = read("../app/auth/actions.ts");
+  assert.match(page, /get\(PASSWORD_RECOVERY_COOKIE\)/);
+  assert.match(page, /student\?\.emailVerified/);
+  assert.match(actions, /get\(PASSWORD_RECOVERY_COOKIE\)/);
+  assert.match(actions, /user\?\.email_confirmed_at/);
+  assert.match(actions, /auth\.updateUser\(\{ password \}\)/);
+  assert.match(actions, /auth\.signOut\(\{ scope: "global" \}\)/);
+  assert.match(actions, /maxAge: 0/);
+});
+
+test("forgot password is available from student and tutor login without disclosing accounts", () => {
+  const student = read("../app/login/page.tsx");
+  const tutor = read("../app/tutor/login/page.tsx");
+  const form = read("../app/forgot-password/page.tsx");
+  assert.match(student, /href="\/forgot-password"/);
+  assert.match(tutor, /href="\/forgot-password"/);
+  assert.match(form, /forgotPasswordAction/);
+  assert.match(form, /type="email"/);
+  assert.match(form, /sent/);
+});
