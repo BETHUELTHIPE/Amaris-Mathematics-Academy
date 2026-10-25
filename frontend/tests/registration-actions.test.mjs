@@ -101,14 +101,15 @@ test("only a verified authenticated signup can reach the dashboard", async () =>
   assert.equal((await redirectUrl(registerAction, registration())).pathname, "/verify-email");
   state.response.data.user.email_confirmed_at = "2026-09-22T10:00:00Z";
   assert.equal((await redirectUrl(registerAction, registration())).pathname, "/dashboard");
-  assert.equal(state.mirror.userId, "synthetic-user");
+  assert.equal(state.mirrorCalls, undefined, "Supabase must be the sole profile store");
 });
 
-test("optional mirror failure does not fail verified signup", async () => {
+test("verified signup never accesses Cloudflare D1 even if unavailable", async () => {
   state.response.data.session = { access_token: "synthetic-token" };
   state.response.data.user.email_confirmed_at = "2026-09-22T10:00:00Z";
   state.mirrorUnavailable = true;
   assert.equal((await redirectUrl(registerAction, registration())).pathname, "/dashboard");
+  assert.equal(state.mirrorCalls, undefined);
 });
 
 for (const [code, expected] of [

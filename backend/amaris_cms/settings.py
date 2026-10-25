@@ -125,6 +125,17 @@ TEMPLATES = [
 WSGI_APPLICATION = "amaris_cms.wsgi.application"
 ASGI_APPLICATION = "amaris_cms.asgi.application"
 
+# Production must never silently fall back to SQLite or a separate Render database.
+# Keep local development/CI compatible by opting in explicitly via the Render Blueprint.
+if env_bool("SUPABASE_ONLY_DATABASE", False):
+    from amaris_cms.database_guard import validate_supabase_database_url
+
+    validate_supabase_database_url(
+        os.getenv("DATABASE_URL", ""),
+        ssl_required=env_bool("DATABASE_SSL_REQUIRED", False),
+        project_ref=os.getenv("SUPABASE_PROJECT_REF", "epkcuseloinygkakxxdu"),
+    )
+
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",

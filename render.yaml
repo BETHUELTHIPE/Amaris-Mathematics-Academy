@@ -65,10 +65,11 @@ services:
         value: https://amaris-mathematics-academy.bethuelthipe.chatgpt.site/payments/cancelled
       - key: PAYFAST_NOTIFY_URL
         value: https://amaris-production-web.onrender.com/api/v1/payfast/itn/
+      # Set Supabase session-pooler (port 5432) DATABASE_URL in Render secrets.
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        sync: false
+      - key: SUPABASE_ONLY_DATABASE
+        value: "true"
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: DATABASE_CONN_MAX_AGE
@@ -127,10 +128,14 @@ services:
           type: web
           name: amaris-production-web
           envVarKey: DJANGO_SECRET_KEY
+      # Share the same secret Supabase URL used by Django.
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: DATABASE_URL
+      - key: SUPABASE_ONLY_DATABASE
+        value: "true"
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: DJANGO_CACHE_URL
@@ -188,10 +193,14 @@ services:
           type: web
           name: amaris-production-web
           envVarKey: DJANGO_SECRET_KEY
+      # Share the same secret Supabase URL used by Django.
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: DATABASE_URL
+      - key: SUPABASE_ONLY_DATABASE
+        value: "true"
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: CELERY_BROKER_URL
@@ -271,10 +280,14 @@ services:
           type: web
           name: amaris-production-web
           envVarKey: DJANGO_SECRET_KEY
+      # Share the same secret Supabase URL used by Django.
       - key: DATABASE_URL
-        fromDatabase:
-          name: amaris-production-postgres
-          property: connectionString
+        fromService:
+          type: web
+          name: amaris-production-web
+          envVarKey: DATABASE_URL
+      - key: SUPABASE_ONLY_DATABASE
+        value: "true"
       - key: DATABASE_SSL_REQUIRED
         value: "true"
       - key: CELERY_BROKER_URL
@@ -324,6 +337,8 @@ services:
     persistenceMode: off
     ipAllowList: []
 
+# Retain legacy Render database resource temporarily: automatic deletion risks data loss.
+# No application service uses it after the Supabase cutover; decommission only after verified backup.
 databases:
   - name: amaris-production-postgres
     plan: basic-1gb
