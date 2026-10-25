@@ -1,0 +1,57 @@
+name: Staging PayFast to Inbox Readiness
+
+on:
+  pull_request:
+    branches: [staging]
+    paths: [.github/workflows/staging-payfast-email-inbox-readiness.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    name: Staging Django, PayFast ITN, PDF email preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify live staging Django availability (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://amaris-mathematics-academy-staging.onrender.com"
+          for route in "/health/live/" "/health/ready/"; do
+            code="$(curl --silent --show-error --output /tmp/stage-health.json --write-out '%{http_code}' --max-time 25 "$base$route" || true)"
+            echo "STAGING_ENDPOINT=$route HTTP=$code"
+            if [ "$code" != "200" ]; then
+              echo "::error::Staging health endpoint $route did not return 200"
+              exit 1
+            fi
+          done
+          # Safe GET only: never attempt to forge a PayFast notification or create a purchase.
+          code="$(curl --silent --show-error --output /tmp/itn-readonly.txt --write-out '%{http_code}' --max-time 25 "$base/api/v1/payfast/itn/" || true)"
+          echo "ITN_ROUTE_SAFE_GET_HTTP=$code"
+          if [ "$code" != "405" ]; then
+            echo "::error::Expected payment ITN to reject GET with 405; no POST attempted"
+            exit 1
+          fi
+      - name: Verify deployed staging code supports attached PDF after payment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          tasks=Path("backend/content/tasks.py").read_text()
+          urls=Path("backend/content/urls.py").read_text()
+          checks={
+             "course_email_attaches_pdf": "attach" in tasks[tasks.index("def deliver_transactional_email"):tasks.index("def _live_class_brand")],
+             "class_email_attaches_pdf": "application/pdf" in tasks[tasks.index("def _send_live_class_message"):tasks.index("def deliver_live_class_confirmation")],
+             "student_invoice_download_endpoint": "student/orders/<str:reference>/invoice/" in urls,
+             "sandbox_payfast_itn": "payfast/itn/" in urls,
+          }
+          for k,v in checks.items():print(f"STAGING_REQUIREMENT_{k.upper()}={'PASS' if v else 'BLOCKED'}")
+          if not all(checks.values()):
+             raise SystemExit("RESULT=STAGING_PDF_RECEIPT_RELEASE_PARITY_BLOCKED; must upgrade tested staging code before full PayFast-SMTP-inbox E2E")
+          print("RESULT=STAGING_RECEIPT_CODE_READY")
+          PY
