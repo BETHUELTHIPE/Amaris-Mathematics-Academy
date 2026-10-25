@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
@@ -55,25 +55,18 @@ class LiveClassSlotView(APIView):
         values = filters.validated_data
         now = timezone.now()
 
-        LiveClassBooking.objects.filter(
-            status=LiveClassBooking.Status.PENDING_PAYMENT,
-            hold_expires_at__lte=now,
-        ).update(status=LiveClassBooking.Status.EXPIRED)
-
+        # Availability is a read-only hot path. The Celery expiry task and the
+        # atomic checkout operation own hold expiry; never mutate every booking
+        # when an anonymous visitor browses tutor slots.
+        blocking_bookings = LiveClassBooking.objects.filter(slot_id=OuterRef("pk")).filter(
+            Q(status=LiveClassBooking.Status.CONFIRMED)
+            | Q(status=LiveClassBooking.Status.PENDING_PAYMENT, hold_expires_at__gt=now)
+        )
         queryset = (
-            TutorAvailabilitySlot.objects.filter(
-                is_active=True,
-                starts_at__gt=now,
-            )
+            TutorAvailabilitySlot.objects.filter(is_active=True, starts_at__gt=now)
             .select_related("tutor")
-            .exclude(
-                Q(bookings__status=LiveClassBooking.Status.CONFIRMED)
-                | Q(
-                    bookings__status=LiveClassBooking.Status.PENDING_PAYMENT,
-                    bookings__hold_expires_at__gt=now,
-                )
-            )
-            .distinct()
+            .alias(has_blocking_booking=Exists(blocking_bookings))
+            .filter(has_blocking_booking=False)
         )
         if values.get("programme"):
             queryset = queryset.filter(programme=values["programme"])

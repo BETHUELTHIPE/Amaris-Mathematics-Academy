@@ -4,7 +4,9 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -111,6 +113,64 @@ class LiveClassBookingTests(TestCase):
         self.assertEqual(slot["tutor"], "Priya Naidoo")
         self.assertEqual(slot["price"], "250.00")
         self.assertNotIn("zoom_join_url", slot)
+
+    def test_availability_ignores_expired_holds_without_writing_on_get(self):
+        checkout = self.checkout()
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        LiveClassBooking.objects.filter(pk=booking.pk).update(hold_expires_at=timezone.now() - timedelta(seconds=1))
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse("live-class-slots"), secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([slot["id"] for slot in response.json()], [str(self.slot.pk)])
+        self.assertFalse(
+            any(query["sql"].lstrip().upper().startswith(("UPDATE ", "INSERT ", "DELETE ")) for query in queries),
+            "Anonymous availability requests must not modify the booking table.",
+        )
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, LiveClassBooking.Status.PENDING_PAYMENT)
+
+        # Checkout, not the read endpoint, expires the stale hold under a slot lock.
+        new_checkout = self.checkout(student=self.other_student, key="liveclass-checkout-007")
+        self.assertTrue(LiveClassBooking.objects.filter(reference=new_checkout.booking_reference).exists())
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, LiveClassBooking.Status.EXPIRED)
+
+    def test_availability_excludes_active_pending_and_confirmed_bookings(self):
+        checkout = self.checkout()
+        pending = self.client.get(reverse("live-class-slots"), secure=True)
+        self.assertEqual(pending.status_code, 200)
+        self.assertEqual(pending.json(), [])
+
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        result = process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+        self.assertTrue(result.accepted)
+        confirmed = self.client.get(reverse("live-class-slots"), secure=True)
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(confirmed.json(), [])
+
+    def test_availability_uses_one_slot_query_for_multiple_tutor_slots(self):
+        for hour in (4, 5):
+            start = timezone.now() + timedelta(hours=hour)
+            TutorAvailabilitySlot.objects.create(
+                tutor=self.tutor,
+                programme=TutorAvailabilitySlot.Programme.CAPS,
+                subject=TutorAvailabilitySlot.Subject.MATHEMATICS,
+                level="Grade 12",
+                starts_at=start,
+                ends_at=start + timedelta(hours=1),
+                zoom_join_url="https://zoom.example.test/j/123456789",
+                is_active=True,
+            )
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse("live-class-slots"), secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 3)
+        slot_queries = [query["sql"] for query in queries if 'FROM "content_tutoravailabilityslot"' in query["sql"]]
+        self.assertEqual(len(slot_queries), 1, "Available slots and tutor names must use one database query.")
 
     def test_checkout_is_server_priced_at_r250_and_holds_slot(self):
         checkout = self.checkout()
