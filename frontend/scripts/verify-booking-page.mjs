@@ -1,46 +1,65 @@
 import { pathToFileURL } from "node:url";
 
+const protectedStatuses = new Set([301, 302, 303, 307, 308]);
+
+function redirectsToVerifiedLogin(response, requestedUrl) {
+  if (!protectedStatuses.has(response.status)) return false;
+  const destination = response.headers.get("location");
+  if (!destination) return false;
+
+  let login;
+  try {
+    login = new URL(destination, requestedUrl);
+  } catch {
+    return false;
+  }
+
+  const source = new URL(requestedUrl);
+  const returnTo = login.searchParams.get("next");
+  if (login.origin !== source.origin || login.pathname !== "/login" || !returnTo) return false;
+  if (!returnTo.startsWith("/book-online-live-class")) return false;
+  // Reject a nested malicious redirect or a different target.
+  try {
+    const saved = new URL(returnTo, source.origin);
+    return saved.origin === source.origin && saved.pathname === "/book-online-live-class";
+  } catch {
+    return false;
+  }
+}
+
 export async function verifyBookingPage(url, {
   fetchPage = fetch,
   wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   log = console.log,
 } = {}) {
+  // This probe is anonymous by design. A public booking page is now a security
+  // regression, even when it renders perfectly and responds with HTTP 200.
   for (let attempt = 1; attempt <= 4; attempt += 1) {
     let response;
-    let body;
     try {
       response = await fetchPage(url, {
-        redirect: "follow",
+        redirect: "manual",
         signal: AbortSignal.timeout(30_000),
       });
-      body = await response.text();
     } catch (error) {
       if (!["TimeoutError", "AbortError", "TypeError"].includes(error.name)) throw error;
-      log(`Booking frontend attempt ${attempt}: ${error.name}`);
-      if (attempt === 4) throw new Error("Booking frontend did not respond within the cold-start window");
+      log(`Protected booking attempt ${attempt}: ${error.name}`);
+      if (attempt === 4) throw new Error("Booking authentication gate did not respond within the cold-start window");
       await wait(5_000);
       continue;
     }
 
     if ([502, 503, 504].includes(response.status)) {
-      log(`Booking frontend attempt ${attempt}: HTTP ${response.status}`);
-      if (attempt === 4) throw new Error(`Booking frontend remained unavailable: HTTP ${response.status}`);
+      log(`Booking authentication attempt ${attempt}: HTTP ${response.status}`);
+      if (attempt === 4) throw new Error(`Booking authentication gate remained unavailable: HTTP ${response.status}`);
       await wait(5_000);
       continue;
     }
-    if (response.status !== 200) throw new Error(`Booking page returned HTTP ${response.status}`);
-    // React includes unused not-found boundaries in its serialized RSC data.
-    // Check server-rendered text, not scripts that describe fallback components.
-    const renderedText = body
-      .replace(/<!--[^]*?-->/g, " ")
-      .replace(/<(script|style)\b[^>]*>[^]*?<\/\1\s*>/gi, " ")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/\s+/g, " ");
-    if (/We could not find that page/i.test(renderedText)) throw new Error("Booking page rendered the branded 404 response");
-    for (const content of [/Choose your programme/i, /Available Zoom slots/i, /R250/i]) {
-      if (!content.test(renderedText)) throw new Error(`Booking page is missing required content: ${content.source}`);
+
+    if (!redirectsToVerifiedLogin(response, url)) {
+      throw new Error(`Booking authentication gate bypassed or returned an unsafe login redirect: HTTP ${response.status}`);
     }
-    log(`Booking page passed on attempt ${attempt}: HTTP 200 with programme, slots and R250 content`);
+    log(`Protected booking page passed on attempt ${attempt}: anonymous visitor redirected to login with a safe booking return path`);
     return;
   }
 }
