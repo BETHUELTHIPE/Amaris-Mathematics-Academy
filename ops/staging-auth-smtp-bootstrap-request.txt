@@ -1,0 +1,3 @@
+One-time staging-only Supabase Auth SMTP bootstrap authorized 2026-10-25.
+Source: verified Render staging Gmail SMTP settings; target: Supabase staging Auth only.
+Never log SMTP credentials or update production.
