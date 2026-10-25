@@ -1,2 +1,4 @@
 Approved read-only inspection: production Supabase password recovery email content, code expiration, and SMTP. Do not PATCH.
 Audit hosted recovery email six-digit token and preview-safe link placeholders.
+
+Retry exact recovery email template check with live-branch source fixture.
