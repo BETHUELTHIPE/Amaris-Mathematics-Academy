@@ -29,7 +29,8 @@ class SupabaseAuthOtpTests(unittest.TestCase):
         recovery = desired["mailer_templates_recovery_content"]
         self.assertIn("{{ .TokenHash }}", recovery)
         self.assertIn("type=recovery", recovery)
-        self.assertIn("next=/reset-password", recovery)
+        self.assertIn("{{ .RedirectTo }}", recovery)
+        self.assertNotIn("{{ .SiteURL }}", recovery)
         self.assertNotIn("{{ .ConfirmationURL }}", recovery)
         self.assertNotIn("localhost", recovery)
         self.assertEqual(desired["mailer_subjects_recovery"], "Amaris | Reset your password")
