@@ -1,0 +1,1 @@
+Read-only authenticated access gate verification on LIVE production after PR #363. No emails, passwords or session data.
