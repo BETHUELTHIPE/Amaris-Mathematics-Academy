@@ -139,6 +139,34 @@ class VideoRequestWorkflowTests(TestCase):
         self.assertEqual(VideoRequest.objects.get(reference=exam.request_reference).amount, Decimal("1800.00"))
         self.assertEqual(VideoRequest.objects.get(reference=content.request_reference).amount, Decimal("1800.00"))
 
+    def test_chapter_and_assignment_checkout_retries_reuse_one_payable_request(self):
+        client = self.authenticated_client()
+        for request_type in ("chapter_topic", "previous_assignment"):
+            with self.subTest(request_type=request_type):
+                payload = {
+                    "programme": "caps",
+                    "subject": "mathematics",
+                    "level": "Grade 12",
+                    "topic": "Sequences and series",
+                    "request_type": request_type,
+                    "preferred_duration_minutes": 60,
+                    "idempotency_key": f"retry-{request_type}",
+                }
+                references = set()
+                for _ in range(3):
+                    response = client.post(reverse("video-request-checkout"), payload, format="multipart", secure=True)
+                    self.assertEqual(response.status_code, 201, response.data)
+                    self.assertEqual(response.data["fields"]["amount"], "450.00")
+                    references.add(response.data["request_reference"])
+                self.assertEqual(len(references), 1)
+                request = VideoRequest.objects.get(idempotency_key=payload["idempotency_key"])
+                self.assertTrue(self.pay(request).accepted)
+                invoice_number = request.invoice_number
+                self.assertEqual(request.status, VideoRequest.Status.QUEUED)
+                self.assertTrue(invoice_number)
+                self.assertTrue(self.pay(request).accepted)
+                self.assertEqual(request.invoice_number, invoice_number)
+
     def test_rejects_spoofed_or_oversized_documents(self):
         spoofed = SimpleUploadedFile("fake.pdf", b"not a pdf", content_type="application/pdf")
         with self.assertRaises(PaymentSecurityError):

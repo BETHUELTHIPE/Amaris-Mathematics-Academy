@@ -34,7 +34,7 @@ class ASGIDatabaseLifecycleTests(TransactionTestCase):
                 "asgi": {"version": "3.0"},
                 "http_version": "1.1",
                 "method": "GET",
-                "scheme": "http",
+                "scheme": "https",
                 "path": "/session/",
                 "raw_path": b"/session/",
                 "query_string": b"",
