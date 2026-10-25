@@ -32,6 +32,8 @@ class QualificationInline(admin.TabularInline):
 
 @admin.register(TutorApplication)
 class TutorApplicationAdmin(admin.ModelAdmin):
+    list_per_page = 30
+    show_full_result_count = False
     list_display = ("reference", "full_name", "qualification", "status", "submitted_at", "acknowledgement_sent_at")
     list_filter = ("status", "submitted_at", "acknowledgement_sent_at")
     search_fields = ("full_name", "email", "qualification", "institution")
@@ -70,6 +72,7 @@ class TutorApplicationAdmin(admin.ModelAdmin):
 
 @admin.register(TutorApplicationDocument)
 class TutorApplicationDocumentAdmin(admin.ModelAdmin):
+    list_select_related = ("application",)
     list_display = ("original_name", "application", "size_bytes")
     readonly_fields = tuple(field.name for field in TutorApplicationDocument._meta.fields)
 

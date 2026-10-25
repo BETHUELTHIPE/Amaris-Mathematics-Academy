@@ -18,6 +18,9 @@ from .tutor_finance_models import (
 
 
 class FinanceSuperuserAdmin(admin.ModelAdmin):
+    list_per_page = 30
+    show_full_result_count = False
+
     def has_module_permission(self, request):
         return bool(request.user.is_active and request.user.is_superuser)
 
@@ -80,6 +83,7 @@ class TutorPaymentProfileForm(forms.ModelForm):
 
 @admin.register(TutorPaymentProfile)
 class TutorPaymentProfileAdmin(FinanceSuperuserAdmin):
+    list_select_related = ("tutor",)
     form = TutorPaymentProfileForm
     list_display = ("tutor", "bank_name", "masked_account", "is_active", "recipient_verified_at")
     search_fields = ("tutor__username", "tutor__email", "bank_name")
@@ -110,6 +114,7 @@ class TutorPaymentProfileAdmin(FinanceSuperuserAdmin):
 
 @admin.register(TutorContract)
 class TutorContractAdmin(FinanceSuperuserAdmin):
+    list_select_related = ("tutor",)
     list_display = (
         "tutor",
         "service",
@@ -130,12 +135,14 @@ class TutorContractAdmin(FinanceSuperuserAdmin):
 
 @admin.register(TutorCourseAssignment)
 class TutorCourseAssignmentAdmin(FinanceSuperuserAdmin):
+    list_select_related = ("course", "tutor")
     list_display = ("course", "tutor", "is_active")
     autocomplete_fields = ("course", "tutor")
 
 
 @admin.register(TutorEarning)
 class TutorEarningAdmin(FinanceSuperuserAdmin):
+    list_select_related = ("tutor",)
     list_display = (
         "tutor",
         "service",
@@ -159,6 +166,7 @@ class TutorEarningAdmin(FinanceSuperuserAdmin):
 
 @admin.register(TutorPayout)
 class TutorPayoutAdmin(FinanceSuperuserAdmin):
+    list_select_related = ("earning",)
     list_display = ("earning", "state", "provider_name", "provider_reference", "confirmed_at", "receipt_emailed_at")
     list_filter = ("state",)
     readonly_fields = [field.name for field in TutorPayout._meta.fields]

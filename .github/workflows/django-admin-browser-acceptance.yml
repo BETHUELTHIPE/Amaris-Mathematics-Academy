@@ -1,0 +1,115 @@
+name: Authenticated Django Admin Chrome Acceptance
+
+on:
+  pull_request:
+    branches: [production-release-20260923]
+    paths:
+      - "backend/**"
+      - "scripts/release/verify_django_admin_browser.py"
+      - ".github/workflows/django-admin-browser-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-jazzmin-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      DJANGO_DEBUG: "true"
+      DATABASE_URL: "sqlite:////tmp/amaris-admin-browser-293.sqlite3"
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "http://127.0.0.1:8765"
+      DJANGO_CACHE_URL: "redis://127.0.0.1:6399/0"
+      DJANGO_PUBLIC_CACHE_URL: "redis://127.0.0.1:6399/1"
+      PYTHONPATH: ${{ github.workspace }}/backend
+      DJANGO_SETTINGS_MODULE: "amaris_cms.settings"
+      AMARIS_ADMIN_BROWSER_SUPERUSER: "local-visual-superuser"
+      AMARIS_ADMIN_BROWSER_STAFF: "local-visual-staff"
+      AMARIS_ADMIN_BROWSER_ARTIFACTS: ${{ github.workspace }}/backend/artifacts/admin-browser
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            frontend/e2e/requirements.txt
+      - name: Generate ephemeral, masked test-only credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          secret=$(openssl rand -hex 64)
+          password=$(openssl rand -hex 30)
+          echo "::add-mask::$secret"
+          echo "::add-mask::$password"
+          printf 'DJANGO_SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
+          printf 'AMARIS_ADMIN_BROWSER_PASSWORD=%s\n' "$password" >> "$GITHUB_ENV"
+      - name: Install backend dependencies and pinned Playwright
+        run: python -m pip install -r backend/requirements.txt -r frontend/e2e/requirements.txt
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Create isolated SQLite tables and collect Jazzmin assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python backend/manage.py migrate --noinput
+          python backend/manage.py collectstatic --noinput
+      - name: Create synthetic superuser, ordinary staff and paginated catalogue
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import django
+          django.setup()
+          from django.db import connection
+          from django.contrib.auth import get_user_model
+          from content.models import CourseCategory
+          if connection.vendor != "sqlite":
+              raise SystemExit("BLOCK: browser fixtures must use isolated SQLite")
+          User = get_user_model()
+          User.objects.create_superuser(
+              os.environ["AMARIS_ADMIN_BROWSER_SUPERUSER"],
+              "admin-browser@example.invalid",
+              os.environ["AMARIS_ADMIN_BROWSER_PASSWORD"])
+          User.objects.create_user(
+              os.environ["AMARIS_ADMIN_BROWSER_STAFF"],
+              "staff-browser@example.invalid",
+              os.environ["AMARIS_ADMIN_BROWSER_PASSWORD"], is_staff=True)
+          for number in range(65):
+              CourseCategory.objects.create(
+                  name=f"Synthetic Category {number:02}",
+                  slug=f"synthetic-category-{number:02}",
+                  order=number)
+          print("PASS synthetic-only test identities and 65 local categories created")
+          PY
+      - name: Test authenticated mobile dashboard, tables, permissions and save flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python backend/manage.py runserver 127.0.0.1:8765 --noreload --insecure > /tmp/amaris-admin-browser-server.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:8765/admin/login/ >/dev/null; then break; fi
+            if [ "$attempt" -eq 45 ]; then
+              cat /tmp/amaris-admin-browser-server.log
+              exit 1
+            fi
+            sleep 1
+          done
+          python -u scripts/release/verify_django_admin_browser.py
+      - name: Preserve synthetic visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-django-admin-chrome-evidence
+          path: backend/artifacts/admin-browser/
+          retention-days: 14
+          if-no-files-found: warn
