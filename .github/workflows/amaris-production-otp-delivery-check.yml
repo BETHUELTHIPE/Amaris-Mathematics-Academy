@@ -1,0 +1,21 @@
+name: Amaris Production OTP Delivery Acceptance
+on:
+  push:
+    branches: [ops/prod-existing-account-otp-email-test-20261025]
+    paths: [ops/request-one-production-otp.txt]
+permissions:
+  contents: read
+jobs:
+  deliver:
+    runs-on: ubuntu-24.04
+    environment: production
+    env:
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PRODUCTION_PUBLISHABLE_KEY }}
+    steps:
+      - name: Check production publishable credential availability
+        run: |
+          if [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "BLOCK: add SUPABASE_PRODUCTION_PUBLISHABLE_KEY environment secret for genuine Auth OTP email test"
+            exit 1
+          fi
+          echo "PASS: Production public Auth key available for email test"
