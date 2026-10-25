@@ -1,0 +1,1 @@
+Perform staging GET-only recovery page acceptance after approved staging deployment. No real token sent or redeemed.
