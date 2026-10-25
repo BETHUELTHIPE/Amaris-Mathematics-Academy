@@ -1,0 +1,3 @@
+Read-only production Supabase Auth configuration check; DO NOT PATCH or modify.
+Production Supabase project: epkcuseloinygkakxxdu
+Expected: Custom SMTP and exact branded six-digit login/verification templates.
