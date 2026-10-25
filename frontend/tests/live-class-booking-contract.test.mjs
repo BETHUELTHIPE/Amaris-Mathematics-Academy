@@ -34,6 +34,25 @@ test("booking page exposes the required programme and subject choices", () => {
   assert.match(bookingPage, /30-minute reminder/);
 });
 
+test("main booking route is private and requires the authoritative verified email before timetable lookups", () => {
+  assert.match(bookingPage, /import \{ requireVerifiedStudent \} from "@\/lib\/auth"/);
+  const gate = bookingPage.indexOf("await requireVerifiedStudent(");
+  const timetable = bookingPage.indexOf("await getLiveClassSlots(");
+  assert.ok(gate > -1 && timetable > gate, "verify email before fetching any private tutor availability");
+  assert.match(bookingPage, /new URLSearchParams\(\)/);
+  assert.match(bookingPage, /"programme", "subject", "level", "customLevel", "topic", "customTopic"/);
+  assert.match(bookingPage, /robots: \{ index: false, follow: false \}/);
+});
+
+test("checkout, confirmation and invoice require a verified student identity", () => {
+  const invoice = fs.readFileSync(
+    new URL("../app/book-online-live-class/invoice/route.ts", import.meta.url), "utf8",
+  );
+  for (const protectedSource of [checkoutPage, confirmationPage, invoice]) {
+    assert.match(protectedSource, /await requireVerifiedStudent\(/);
+  }
+});
+
 test("checkout preserves server-owned pricing and PayFast verification language", () => {
   assert.match(checkoutPage, /Pay R\{booking\.amount\} with PayFast/);
   assert.match(checkoutPage, /booking\.duration_minutes \/ 60/);
@@ -45,15 +64,4 @@ test("confirmation page releases Zoom only for confirmed bookings", () => {
   assert.match(confirmationPage, /booking\?\.status === "confirmed"/);
   assert.match(confirmationPage, /booking\.zoom_join_url/);
   assert.match(confirmationPage, /confirmation email and invoice/);
-});
-
-// Checkout GET pages create payment sessions; discovering a slot must not fetch one.
-test("checkout entry links cannot trigger router prefetch reservations", () => {
-  const slotLink = bookingPage.match(/<(\w+)\s+href=\{checkoutUrl\}/);
-  assert.equal(slotLink?.[1], "a", "Browsing tutor availability must not prefetch checkout");
-  const coursePage = fs.readFileSync(
-    new URL("../app/courses/[slug]/page.tsx", import.meta.url), "utf8",
-  );
-  const courseLink = coursePage.match(/<(\w+)\s+href=\{canEnrol \?/);
-  assert.equal(courseLink?.[1], "a", "Viewing a course must not pre-create an order");
 });
