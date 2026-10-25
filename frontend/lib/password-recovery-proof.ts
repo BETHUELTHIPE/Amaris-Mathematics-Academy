@@ -9,7 +9,7 @@
  * the server; missing/weak secrets fail closed. Never send this proof to
  * client-side JavaScript, logs or analytics.
  */
-import { PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS } from "@/lib/password-recovery";
+import { PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS } from "./password-recovery";
 
 export type RecoveryIdentity = { userId: string; sessionId: string };
 
