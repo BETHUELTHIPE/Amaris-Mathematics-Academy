@@ -6,6 +6,7 @@ on:
       - "frontend/app/book-online-live-class/page.tsx"
       - "frontend/tests/live-class-booking-contract.test.mjs"
       - "frontend/tests/booking-staging-gate.test.mjs"
+      - "frontend/scripts/verify-booking-page.mjs"
       - ".github/workflows/staging-booking-gate-release.yml"
 permissions:
   contents: read
