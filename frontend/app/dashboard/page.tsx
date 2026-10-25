@@ -6,6 +6,7 @@ import {
   BookOpen,
   CheckCircle2,
   CreditCard,
+  FileText,
   LayoutDashboard,
   ShieldCheck,
   UserRound,
@@ -61,6 +62,7 @@ export default async function DashboardPage() {
             [LayoutDashboard, "Overview", null],
             [BookOpen, "My courses", null],
             [CreditCard, "Orders & payments", null],
+            [FileText, "Documents & invoices", "/documents"],
             [Bell, "Notifications", null],
             [UserRound, "Profile & security", "/reset-password"],
           ].map(([Icon, label, href], i) => {

@@ -11,6 +11,10 @@ const authControlsSource = await readFile(
   new URL("../components/site/auth-controls.tsx", import.meta.url),
   "utf8",
 );
+const dashboardSource = await readFile(
+  new URL("../app/dashboard/page.tsx", import.meta.url),
+  "utf8",
+);
 
 const requiredLinks = [
   ["/courses", "Courses"],
@@ -44,4 +48,17 @@ test("renders managed links in desktop and mobile header navigation", () => {
   assert.match(headerSource, /getManagedNavigation\("header"\)/);
   assert.match(headerSource, /links\.map/);
   assert.match(authControlsSource, /links\.map/);
+});
+
+
+test("keeps student documents private to the student dashboard", () => {
+  assert.match(cmsSource, /function isStudentDocumentUrl/);
+  assert.match(
+    cmsSource,
+    /\.filter\(\(item\) => !isStudentDocumentUrl\(item\.url\)\)/,
+  );
+  assert.match(
+    dashboardSource,
+    /\[FileText, "Documents & invoices", "\/documents"\]/,
+  );
 });
