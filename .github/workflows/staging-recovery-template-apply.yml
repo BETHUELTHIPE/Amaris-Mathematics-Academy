@@ -19,5 +19,5 @@ jobs:
       - name: Confirm staging Management API credential present
         run: |
           test -n "$SUPABASE_ACCESS_TOKEN" || { echo "BLOCK: staging Auth token missing"; exit 1; }
-      - name: Apply exact recovery, signup and login templates to staging only
-        run: python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode apply
+      - name: Verify recovery, signup and login templates (read-only)
+        run: python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode check
