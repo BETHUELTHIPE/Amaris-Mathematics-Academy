@@ -177,6 +177,15 @@ class AirflowUiUrlTests(SimpleTestCase):
         self.assertEqual(get_airflow_ui_url(), "http://localhost:8080")
 
 
+@override_settings(
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "student_data": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        # Browser/template unit tests do not run collectstatic: bypass only
+        # the hashed manifest lookup, not the production storage configuration.
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
 class AirflowUiAdminAccessTests(TestCase):
     def setUp(self):
         users = get_user_model()
