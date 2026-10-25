@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+process.env.PASSWORD_RECOVERY_SIGNING_SECRET = "synthetic-testing-only-secret-" + "x".repeat(48);
 const mockModule = `
 export const state = {};
 export function getSiteUrl() { return "https://academy.example.test"; }
@@ -25,6 +26,7 @@ export async function createSupabaseServerClient() {
     resetPasswordForEmail: async (email, options) => { state.recoveryRequest = { email, options }; if (state.recoveryNetworkError) throw Error("Private network details"); return { error: state.recoveryError ?? null }; },
     updateUser: async (input) => { state.updatedPassword = input; return { error: state.passwordUpdateError ?? null }; },
     getUser: async () => ({ data: { user: { id: "synthetic-user", email_confirmed_at: state.unverified ? null : "2026-10-25" } }, error: state.userError }),
+    getClaims: async () => ({ data: { claims: { sub: "synthetic-user", session_id: state.otherSession ? "22222222-2222-4222-8222-222222222222" : "11111111-1111-4111-8111-111111111111" } }, error: state.claimsError }),
     verifyOtp: async (input) => { state.otp = input; return { data: state.otpData, error: state.otpError }; },
     signOut: async (input) => { state.signOut = input; return { error: null }; }
   } };
@@ -44,13 +46,15 @@ const vite = await createServer({
   appType: "custom", configFile: false, root,
   plugins: [{
     name: "isolated-auth-dependencies", enforce: "pre",
-    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email" || id === "@/lib/password-recovery") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
+    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email" || id === "@/lib/password-recovery" || id === "@/lib/password-recovery-proof") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
     load(id) { if (id === "\0test:auth-state") return mockModule; },
   }],
   server: { middlewareMode: true, hmr: false, ws: false },
 });
 const { state } = await vite.ssrLoadModule("test:auth-state");
 const { registerAction, resendVerificationAction, verifyEmailAction, loginAction, sendLoginCodeAction, verifyLoginCodeAction, forgotPasswordAction, verifyRecoveryCodeAction, resetPasswordAction } = await vite.ssrLoadModule("/app/auth/actions.ts");
+const { issuePasswordRecoveryProof } = await vite.ssrLoadModule("/lib/password-recovery-proof.ts");
+const recoveryIdentity = { userId: "synthetic-user", sessionId: "11111111-1111-4111-8111-111111111111" };
 after(() => vite.close());
 beforeEach(() => {
   for (const key of Object.keys(state)) delete state[key];
@@ -110,6 +114,7 @@ test("reset link uses a POST-only verification step and grants short-lived proof
   assert.equal(redirectTo.pathname, "/reset-password");
   assert.deepEqual(state.otp, { token_hash: "pkce_abcdefghijklmnopqrstuvwxyz1234567890", type: "recovery" });
   assert.equal(state.cookieSet.name, "amaris-password-recovery");
+  assert.match(state.cookieSet.value, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
   assert.equal(state.cookieSet.options.path, "/reset-password");
   assert.equal(state.cookieSet.options.httpOnly, true);
   assert.equal(state.cookieSet.options.maxAge, 900);
@@ -142,6 +147,9 @@ test("unverified or expired recovery links cannot update a student's password", 
   assert.equal(noProof.pathname, "/forgot-password");
   assert.equal(state.updatedPassword, undefined);
   state.recoveryCookie = "1";
+  // A manually forged plain marker never grants a password change.
+  assert.equal((await redirectUrl(resetPasswordAction, form)).pathname, "/forgot-password");
+  state.recoveryCookie = await issuePasswordRecoveryProof(recoveryIdentity);
   state.unverified = true;
   const noVerifiedUser = await redirectUrl(resetPasswordAction, form);
   assert.equal(noVerifiedUser.pathname, "/forgot-password");
@@ -150,7 +158,7 @@ test("unverified or expired recovery links cannot update a student's password", 
 
 test("valid password reset enforces strength and matching confirmation, then revokes sessions", async () => {
   const form = registration({ password: "weak", confirmPassword: "weak" });
-  state.recoveryCookie = "1";
+  state.recoveryCookie = await issuePasswordRecoveryProof(recoveryIdentity);
   assert.equal((await redirectUrl(resetPasswordAction, form)).pathname, "/reset-password");
   assert.equal(state.updatedPassword, undefined);
   form.set("password", "Secure-New-Password-218!");
