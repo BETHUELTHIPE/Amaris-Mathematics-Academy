@@ -5,6 +5,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BookOpen, CalendarDays, CheckCircle2, Clock3, LogOut, Plus, ShieldCheck, Video } from "lucide-react";
 import { signOutAction } from "@/app/auth/actions";
+import { getStudentIdentity } from "@/lib/auth";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { createTutorSlotAction, pauseTutorSlotAction, updateTutorSlotAction } from "@/app/tutor/actions";
@@ -44,6 +45,15 @@ export default async function TutorDashboardPage({
 }: {
   searchParams: Promise<{ error?: string; success?: string; slots_page?: string; bookings_page?: string }>;
 }) {
+  // Authorize the verified identity before starting even a private tutor API fetch.
+  // An anonymous or unverified visitor must not render the dashboard route,
+  // including the insufficient-permissions page shown to verified students.
+  const identity = await getStudentIdentity();
+  if (!identity) redirect("/tutor/login");
+  if (!identity.emailVerified) {
+    redirect(`/tutor/verify-email?email=${encodeURIComponent(identity.email)}`);
+  }
+
   const notices = await searchParams;
   // Start independently scoped financial read while loading the timetable.
   // Django still verifies tutor permissions on each no-store API request.

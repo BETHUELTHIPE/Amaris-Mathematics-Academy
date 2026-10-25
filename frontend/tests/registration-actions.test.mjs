@@ -15,6 +15,8 @@ export async function createSupabaseServerClient() {
     signUp: async (input) => { state.signup = input; if (state.networkFailure) throw new Error("private network details"); return state.response; },
     resend: async (input) => { state.resend = input; return { error: state.resendError }; },
     signInWithOtp: async (input) => { state.loginOtp = input; return { error: state.loginOtpError }; },
+    signInWithPassword: async (input) => { state.passwordLogin = input; return { error: state.passwordError ?? null }; },
+    getUser: async () => ({ data: { user: { email_confirmed_at: state.unverified ? null : "2026-10-25" } }, error: state.userError }),
     verifyOtp: async (input) => { state.otp = input; return { data: state.otpData, error: state.otpError }; },
     signOut: async (input) => { state.signOut = input; return { error: null }; }
   } };
@@ -34,13 +36,13 @@ const vite = await createServer({
   appType: "custom", configFile: false, root,
   plugins: [{
     name: "isolated-auth-dependencies", enforce: "pre",
-    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
+    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
     load(id) { if (id === "\0test:auth-state") return mockModule; },
   }],
   server: { middlewareMode: true, hmr: false, ws: false },
 });
 const { state } = await vite.ssrLoadModule("test:auth-state");
-const { registerAction, resendVerificationAction, verifyEmailAction, sendLoginCodeAction, verifyLoginCodeAction } = await vite.ssrLoadModule("/app/auth/actions.ts");
+const { registerAction, resendVerificationAction, verifyEmailAction, loginAction, sendLoginCodeAction, verifyLoginCodeAction } = await vite.ssrLoadModule("/app/auth/actions.ts");
 after(() => vite.close());
 beforeEach(() => {
   for (const key of Object.keys(state)) delete state[key];
@@ -180,6 +182,23 @@ test("six-digit verification rejects invalid or expired codes and accepts valid 
   state.otpError = null;
   assert.equal((await redirectUrl(verifyEmailAction, form)).pathname, "/dashboard");
   assert.deepEqual(state.otp, { email: "student@example.test", token: "123456", type: "signup" });
+});
+
+test("every student password login checks authoritative verified email and clears unverified sessions", async () => {
+  const form = registration();
+  form.set("next", "/dashboard/courses");
+  assert.equal((await redirectUrl(loginAction, form)).pathname, "/dashboard/courses");
+  assert.equal(state.passwordLogin.email, "student@example.test");
+
+  state.unverified = true;
+  const blocked = await redirectUrl(loginAction, form);
+  assert.equal(blocked.pathname, "/verify-email");
+  assert.deepEqual(state.signOut, { scope: "local" });
+
+  state.unverified = false;
+  state.userError = { message: "Auth server unavailable" };
+  assert.equal((await redirectUrl(loginAction, form)).pathname, "/verify-email");
+  assert.deepEqual(state.signOut, { scope: "local" });
 });
 
 test("email sign-in sends a code only for an existing student account", async () => {
