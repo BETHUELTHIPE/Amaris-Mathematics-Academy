@@ -45,6 +45,23 @@ jobs:
                   with urllib.request.urlopen(request,timeout=22) as resp:
                       return json.load(resp)
               except urllib.error.HTTPError as ex:
+                  # Report only sanitized provider validation details; never return credentials.
+                  try:
+                      detail=json.loads(ex.read(4096).decode("utf-8"))
+                  except (ValueError,UnicodeError):
+                      detail={}
+                  if isinstance(detail,dict):
+                      for label in ("code","error","message"):
+                          value=detail.get(label)
+                          if not isinstance(value,str):
+                              continue
+                          for secret in (render_token,auth_token,env.get("EMAIL_HOST_PASSWORD","") if "env" in globals() else "",env.get("EMAIL_HOST_USER","") if "env" in globals() else "",env.get("DEFAULT_FROM_EMAIL","") if "env" in globals() else ""):
+                              if secret and len(secret)>3:
+                                  value=value.replace(secret,"[REDACTED]")
+                          value=re.sub(r"[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}","[EMAIL]",value)
+                          value=re.sub(r"[^\\x20-\\x7E]"," ",value)[:280]
+                          if value:
+                              print("SAFE_PROVIDER_"+label.upper()+"="+value)
                   raise SystemExit(f"BLOCK: provider API {method} returned HTTP {ex.code} (no secrets logged)")
               except (urllib.error.URLError,TimeoutError):
                   raise SystemExit("BLOCK: provider API unavailable")
