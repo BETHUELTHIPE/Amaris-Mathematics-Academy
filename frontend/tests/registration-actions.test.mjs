@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const mockModule = `
 export const state = {};
 export function getSiteUrl() { return "https://academy.example.test"; }
-export function safeRelativePath(path) { return path || "/dashboard"; }
+export function safeRelativePath(path) { if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) return "/dashboard"; return path; }
 export async function createSupabaseServerClient() {
   if (state.unavailable) throw new Error("private configuration details");
   return { auth: {
@@ -246,10 +246,10 @@ test("both branded Supabase email templates show the generated six-digit OTP", (
   const confirmation = readFileSync(new URL("../email-templates/confirm-signup.html", import.meta.url), "utf8");
   const loginEmail = readFileSync(new URL("../email-templates/magic-link-login.html", import.meta.url), "utf8");
   for (const html of [confirmation, loginEmail]) {
-    assert.match(html, /{{\\s*\\.Token\\s*}}/);
+    assert.ok(html.includes("{{ .Token }}"));
     assert.match(html, /six-digit/);
     assert.doesNotMatch(html, /123456|654321/);
   }
-  assert.match(confirmation, /{{\\s*\\.ConfirmationURL\\s*}}/);
+  assert.ok(confirmation.includes("{{ .ConfirmationURL }}"));
   assert.match(loginEmail, /type=email/);
 });
