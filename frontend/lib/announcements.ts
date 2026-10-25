@@ -29,6 +29,7 @@ export type Announcement = {
   priority: number;
   expires_at: string | null;
   media?: AnnouncementMedia[];
+  youtube_url?: string;
 };
 
 export function safeAnnouncementLink(value: string): string | null {
