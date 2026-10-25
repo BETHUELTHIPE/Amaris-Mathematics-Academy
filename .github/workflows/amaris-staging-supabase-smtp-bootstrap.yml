@@ -98,20 +98,9 @@ jobs:
           current=json_request(url,auth_token)
           if current.get("smtp_host") or current.get("smtp_admin_email"):
               raise SystemExit("BLOCK: custom Supabase Auth SMTP is already present; do not overwrite")
-          templates={
-              "mailer_templates_confirmation_content":Path("frontend/email-templates/confirm-signup.html").read_text(),
-              "mailer_templates_magic_link_content":Path("frontend/email-templates/magic-link-login.html").read_text(),
-          }
-          if any("{{ .Token }}" not in html for html in templates.values()):
-              raise SystemExit("BLOCK: missing Supabase OTP placeholder")
           payload={
               "external_email_enabled":True,
               "mailer_autoconfirm":False,
-              "mailer_otp_length":6,
-              "mailer_otp_exp":600,
-              "mailer_subjects_confirmation":"Amaris | Verify your student email",
-              "mailer_subjects_magic_link":"Amaris | Your six-digit sign-in code",
-              **templates,
               "smtp_admin_email":sender,
               "smtp_host":"smtp.gmail.com",
               "smtp_port":587,
@@ -126,6 +115,6 @@ jobs:
                   continue
               if actual.get(key)!=value:
                   raise SystemExit("BLOCK: Supabase Auth readback differs: "+key)
-          print("PASS: staging Supabase Auth SMTP configured and both six-digit OTP templates match readback")
+          print("PASS: custom staging Supabase Auth SMTP installed; OTP templates still need separate apply")
           print("STAGING_ONLY=YES; EMAIL_INBOX_RECEIPT=NOT_TESTED; PRODUCTION_UNCHANGED=YES")
           PY
