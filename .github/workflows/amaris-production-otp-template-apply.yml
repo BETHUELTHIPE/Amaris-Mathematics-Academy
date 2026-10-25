@@ -1,4 +1,4 @@
-name: Controlled Production Six-Digit Auth Template Apply
+name: Completed Production Six-Digit Auth Template Audit
 on:
   push:
     branches: ["ops/prod-otp-template-apply-20261025"]
@@ -53,6 +53,6 @@ jobs:
               raise SystemExit("BLOCK: Production Auth custom SMTP missing")
           print("PASS: Production Auth preflight verified; no sensitive settings disclosed")
           PY
-      - name: Apply exactly the authorized OTP template and expiry settings, then re-read
+      - name: Verify previously applied OTP templates and expiry settings (read only)
         run: |
-          python scripts/configure_supabase_auth_otp.py --project-ref epkcuseloinygkakxxdu --mode apply
+          python scripts/configure_supabase_auth_otp.py --project-ref epkcuseloinygkakxxdu --mode check
