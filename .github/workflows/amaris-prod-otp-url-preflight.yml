@@ -1,0 +1,50 @@
+name: Amaris Production OTP Redirect URL Preflight
+on:
+  push:
+    branches: [ops/prod-supabase-otp-url-check-20261025]
+    paths: [ops/production-auth-url-preflight.txt]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_PRODUCTION_AUTH_MANAGEMENT_TOKEN }}
+    steps:
+      - name: Read-only production Auth URL and SMTP checks (no mutations)
+        run: |
+          python3 - <<'PY'
+          import os
+          import json
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          token=os.environ.get("SUPABASE_ACCESS_TOKEN","")
+          if not token:
+              raise SystemExit("BLOCK: Missing production Management API token")
+          req=Request("https://api.supabase.com/v1/projects/epkcuseloinygkakxxdu/config/auth", headers={"Authorization":"Bearer "+token,"Accept":"application/json"})
+          try:
+              with urlopen(req, timeout=20) as resp:
+                  auth=json.load(resp)
+          except (HTTPError,URLError):
+              raise SystemExit("BLOCK: Production Management API unavailable or unauthorized") from None
+          if not isinstance(auth,dict):
+              raise SystemExit("BLOCK: Unexpected production Auth configuration format")
+          expected="https://amaris-mathematics-academy-live-students.onrender.com"
+          url=auth.get("site_url","")
+          is_live_url=isinstance(url,str) and url.rstrip("/")==expected
+          checks={
+             "production_site_url_is_live_student_app":is_live_url,
+             "auth_email_enabled":auth.get("external_email_enabled") is True,
+             "auth_email_confirmation_required":auth.get("mailer_autoconfirm") is False,
+             "custom_smtp_host_present":bool(auth.get("smtp_host")),
+             "custom_smtp_sender_present":bool(auth.get("smtp_admin_email")),
+          }
+          for name,passed in checks.items():
+              print(f"{name}: {'PASS' if passed else 'BLOCK'}")
+          print("No passwords, tokens, SMTP hostnames, email addresses, or raw configuration printed.")
+          if not all(checks.values()):
+              raise SystemExit("BLOCK: Production redirect or SMTP preflight failed")
+          print("PASS: Production Auth redirect points to real live students site; safe to prepare OTP templates.")
+          PY
