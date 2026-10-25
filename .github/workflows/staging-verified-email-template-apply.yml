@@ -1,4 +1,4 @@
-name: Amaris Staging Verified Email Template Apply
+name: Amaris Staging Verified Email Template Audit
 on:
   push:
     branches: ["ops/staging-email-verification-template-fix-20261025"]
@@ -26,7 +26,7 @@ jobs:
                   raise SystemExit('BLOCK: staging verification template still has an unsafe link')
           print('PASS: staging OTP template has provider-issued verification link and six-digit code')
           PY
-      - name: Apply and read back staging OTP and email confirmation settings
+      - name: Check previously applied staging OTP and email confirmation settings
         run: |
           test -n "$SUPABASE_ACCESS_TOKEN" || { echo "BLOCK: missing staging token"; exit 2; }
-          python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode apply
+          python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode check
