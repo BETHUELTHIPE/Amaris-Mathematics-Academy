@@ -4,6 +4,8 @@ import { parseLocation } from "@/lib/location-server";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSiteUrl } from "@/lib/supabase/config";
+import { cookies } from "next/headers";
+import { PASSWORD_RECOVERY_COOKIE } from "@/lib/password-recovery";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeRelativePath } from "@/lib/auth";
 import { hasVerifiedAccountEmail } from "@/lib/verified-account-email";
@@ -349,31 +351,50 @@ export async function googleAuthAction(formData: FormData) {
 export async function forgotPasswordAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!z.string().email().safeParse(email).success) {
+    redirectWithMessage("/forgot-password", "error", "Enter a valid email address.");
+  }
+
+  let error: { code?: string; message?: string; status?: number } | null = null;
+  try {
+    const supabase = await createSupabaseServerClient();
+    ({ error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${getSiteUrl()}/auth/confirm?next=/reset-password&flow=password-recovery`,
+    }));
+  } catch {
+    // No addresses, links, passwords or recovery tokens in logs.
     redirectWithMessage(
       "/forgot-password",
       "error",
-      "Enter a valid email address.",
+      "Password recovery is temporarily unavailable. Please try again shortly.",
     );
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${getSiteUrl()}/auth/confirm?next=/reset-password`,
-  });
-
-  if (error && /rate limit|too many/i.test(error.message)) {
-    redirect("/errors/429");
+  if (error && /rate limit|too many/i.test(error.message ?? "")) {
+    redirectWithMessage("/forgot-password", "error", "Too many requests. Wait a few minutes before retrying.");
+  }
+  if (error && !["user_not_found", "user_missing"].includes(error.code ?? "")) {
+    // A delivery or provider error is not proof that a message was sent.
+    // Use a generic response to avoid revealing account existence.
+    redirectWithMessage(
+      "/forgot-password",
+      "error",
+      "A reset link could not be requested right now. Please try again shortly.",
+    );
   }
 
-  // The same response is shown whether the account exists or not.
+  // Do not reveal whether an account exists.
   redirect("/forgot-password?sent=1");
 }
 
 export async function resetPasswordAction(formData: FormData) {
+  const recoveryCookies = await cookies();
+  if (recoveryCookies.get(PASSWORD_RECOVERY_COOKIE)?.value !== "1") {
+    redirectWithMessage("/forgot-password", "error", "Your password reset link has expired. Request a new one.");
+  }
+
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
   const parsed = passwordSchema.safeParse(password);
-
   if (!parsed.success) {
     redirectWithMessage(
       "/reset-password",
@@ -382,23 +403,13 @@ export async function resetPasswordAction(formData: FormData) {
     );
   }
   if (password !== confirmPassword) {
-    redirectWithMessage(
-      "/reset-password",
-      "error",
-      "The passwords do not match.",
-    );
+    redirectWithMessage("/reset-password", "error", "The passwords do not match.");
   }
 
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    redirectWithMessage(
-      "/forgot-password",
-      "error",
-      "That reset link has expired. Request a new one.",
-    );
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user?.email_confirmed_at) {
+    redirectWithMessage("/forgot-password", "error", "Your password reset link has expired. Request a new one.");
   }
 
   const { error } = await supabase.auth.updateUser({ password });
@@ -410,6 +421,14 @@ export async function resetPasswordAction(formData: FormData) {
     );
   }
 
+  // Invalidate the proof and revoke authenticated sessions after a successful reset.
+  recoveryCookies.set(PASSWORD_RECOVERY_COOKIE, "", {
+    path: "/reset-password",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: getSiteUrl().startsWith("https:"),
+    maxAge: 0,
+  });
   await supabase.auth.signOut({ scope: "global" });
   redirect("/login?password_updated=1");
 }
