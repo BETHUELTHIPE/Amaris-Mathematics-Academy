@@ -1,0 +1,26 @@
+name: Staging Tutor Email Confirmation Route Guard
+on:
+  push:
+    branches: ["fix/staging-tutor-dashboard-verified-email-20261025"]
+    paths: ["frontend/app/tutor/dashboard/page.tsx", "frontend/tests/tutor-portal-contract.test.mjs", ".github/workflows/staging-tutor-verified-dashboard.yml"]
+permissions:
+  contents: read
+jobs:
+  security-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Ensure correct type and verified-first tutor dashboard authorization
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          node --test tests/tutor-portal-contract.test.mjs tests/universal-email-verification.test.mjs
