@@ -20,7 +20,7 @@ type RecoveryAuth = {
     error: unknown;
   }>;
   getClaims(): Promise<{
-    data: { claims: RecoveryClaims | null };
+    data: { claims: RecoveryClaims | null } | null;
     error: unknown;
   }>;
 };
@@ -30,8 +30,8 @@ export async function getVerifiedRecoveryIdentity(auth: RecoveryAuth): Promise<R
     const [user, claims] = await Promise.all([auth.getUser(), auth.getClaims()]);
     const confirmed = Boolean(user.data.user?.email_confirmed_at);
     const id = user.data.user?.id;
-    const subject = claims.data.claims?.sub;
-    const session = claims.data.claims?.session_id;
+    const subject = claims.data?.claims?.sub;
+    const session = claims.data?.claims?.session_id;
     if (user.error || claims.error || !confirmed ||
         !id || subject !== id || !session || !/^[0-9a-f-]{36}$/i.test(session)) {
       return null;
@@ -96,7 +96,7 @@ export async function isValidPasswordRecoveryProof(
     if (payload.v !== 1 || payload.u !== identity.userId || payload.s !== identity.sessionId ||
       typeof payload.iat !== "number" || !Number.isSafeInteger(payload.iat) ||
       payload.iat > now || now - payload.iat >= PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS * 1000) return false;
-    const signature = fromBase64url(parts[1]);
+    const signature = new Uint8Array(fromBase64url(parts[1]));
     if (signature.length !== 32) return false;
     return crypto.subtle.verify("HMAC", await keyFor(secret), signature, encoder.encode(parts[0]));
   } catch {
