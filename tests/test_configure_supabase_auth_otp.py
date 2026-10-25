@@ -26,6 +26,13 @@ class SupabaseAuthOtpTests(unittest.TestCase):
         self.assertIn("{{ .Token }}", desired["mailer_templates_confirmation_content"])
         self.assertIn("{{ .Token }}", desired["mailer_templates_magic_link_content"])
         self.assertIn("{{ .ConfirmationURL }}", desired["mailer_templates_magic_link_content"])
+        recovery = desired["mailer_templates_recovery_content"]
+        self.assertIn("{{ .TokenHash }}", recovery)
+        self.assertIn("type=recovery", recovery)
+        self.assertIn("next=/reset-password", recovery)
+        self.assertNotIn("{{ .ConfirmationURL }}", recovery)
+        self.assertNotIn("localhost", recovery)
+        self.assertEqual(desired["mailer_subjects_recovery"], "Amaris | Reset your password")
         self.assertNotIn("{{ .SiteURL }}/auth/confirm", desired["mailer_templates_magic_link_content"])
         self.assertNotIn("123456", desired["mailer_templates_confirmation_content"])
 
@@ -72,10 +79,18 @@ class SupabaseAuthOtpTests(unittest.TestCase):
         self.assertEqual([call.args[0] for call in api.call_args_list], ["GET", "PATCH", "GET"])
         patch_payload = api.call_args_list[1].args[3]
         self.assertEqual(patch_payload["mailer_otp_length"], 6)
+        self.assertIn("{{ .TokenHash }}", patch_payload["mailer_templates_recovery_content"])
+        self.assertEqual(patch_payload["mailer_subjects_recovery"], "Amaris | Reset your password")
         self.assertNotIn("smtp_pass", patch_payload)
         self.assertNotIn("smtp_host", patch_payload)
         self.assertNotIn("synthetic-only", out.getvalue())
         self.assertNotIn("smtp.example.test", out.getvalue())
+
+    def test_recovery_email_requires_server_verified_type_and_hash(self):
+        original = module.FIELDS["mailer_templates_recovery_content"]
+        with patch.object(module, "TEMPLATE_DIR", ROOT / "tests" / "fixtures" / "nonexistent"):
+            self.assertRaises(OSError, module.desired_config)
+        self.assertEqual(module.FIELDS["mailer_templates_recovery_content"], original)
 
     def test_missing_token_fails_without_network(self):
         with patch.dict(os.environ, {}, clear=True), contextlib.redirect_stderr(io.StringIO()):
