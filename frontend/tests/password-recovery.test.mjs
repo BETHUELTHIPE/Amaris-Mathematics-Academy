@@ -58,13 +58,13 @@ test("email recovery uses a non-consuming landing and six-digit OTP fallback", (
   assert.match(codePage, /verifyRecoveryCodeAction/);
   assert.match(codePage, /Continue to choose a new password/);
   assert.match(codePage, /Six-digit recovery code/);
-  assert.match(template, /{{ \\.Token }}/);
-  assert.match(template, /{{ \\.TokenHash }}/);
-  assert.match(template, /{{ \\.RedirectTo }}/);
-  assert.doesNotMatch(template, /{{ \\.ConfirmationURL }}/);
-  assert.match(actions, /type: "recovery"/);
-  assert.match(actions, /recoveryCookies\\.set\\(PASSWORD_RECOVERY_COOKIE/);
-  assert.match(read("../proxy.ts"), /"\\/reset-password\\/:path\\*"/);
+  assert.ok(template.includes("{{ .Token }}"));
+  assert.ok(template.includes("{{ .TokenHash }}"));
+  assert.ok(template.includes("{{ .RedirectTo }}"));
+  assert.ok(!template.includes("{{ .ConfirmationURL }}"));
+  assert.ok(actions.includes('type: "recovery"'));
+  assert.ok(actions.includes("recoveryCookies.set(PASSWORD_RECOVERY_COOKIE"));
+  assert.ok(read("../proxy.ts").includes('"/reset-password/:path*"'));
 });
 
 test("forgot password is available from student and tutor login without disclosing accounts", () => {
