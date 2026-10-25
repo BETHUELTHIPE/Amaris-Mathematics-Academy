@@ -46,7 +46,8 @@ jobs:
 
           for p in Path("frontend/email-templates").glob("*.html"):
               html = p.read_text(encoding="utf-8")
-              assert "{{ .Token }}" in html, f"{p.name} is missing its OTP variable"
+              expected = "{{ .TokenHash }}" if p.name == "recover-password.html" else "{{ .Token }}"
+              assert expected in html, f"{p.name} is missing its Supabase token placeholder"
           print("Templates contain Supabase-issued token placeholders.")
           PY
 
