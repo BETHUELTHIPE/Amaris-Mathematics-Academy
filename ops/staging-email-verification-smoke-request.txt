@@ -1,1 +1,2 @@
 Read-only external verification of staging registration, tutor, sponsor enquiry pages and anonymous private route rejection. No account creation.
+Rerun after correct HTTP Location header case matching.
