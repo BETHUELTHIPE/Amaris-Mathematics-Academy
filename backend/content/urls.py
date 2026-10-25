@@ -30,6 +30,7 @@ from .tutor_application_views import (
 from .tutor_views import TutorDashboardView, TutorEarningsView, TutorSlotCreateView, TutorSlotUpdateView
 from .video_request_views import (
     VideoRequestCheckoutView,
+    VideoRequestDocumentRegisterView,
     VideoRequestInvoiceDownloadView,
     VideoRequestListView,
     VideoRequestPackageView,
@@ -104,6 +105,11 @@ urlpatterns = [
     path("student/live-classes/checkout/", LiveClassCheckoutView.as_view(), name="live-class-checkout"),
     path("student/video-requests/", VideoRequestListView.as_view(), name="video-request-list"),
     path("student/video-requests/checkout/", VideoRequestCheckoutView.as_view(), name="video-request-checkout"),
+    path(
+        "student/video-requests/<str:reference>/documents/",
+        VideoRequestDocumentRegisterView.as_view(),
+        name="video-request-document-register",
+    ),
     path(
         "student/video-requests/<str:reference>/",
         VideoRequestStatusView.as_view(),
