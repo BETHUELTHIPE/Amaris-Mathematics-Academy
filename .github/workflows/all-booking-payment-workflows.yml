@@ -1,0 +1,147 @@
+name: All Booking and Payment Workflows - Isolated Verification
+
+on:
+  pull_request:
+    branches: [production-release-20260923]
+    paths: [.github/workflows/all-booking-payment-workflows.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-all-payment-journeys:
+    name: Class, video, course, callbacks, tutor finance and receipts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_booking_ci
+          POSTGRES_USER: amaris_booking_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U amaris_booking_ci -d amaris_booking_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      DATABASE_URL: "postgresql://amaris_booking_ci@127.0.0.1:5432/amaris_booking_ci"
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      SUPABASE_STORAGE_ENABLED: "false"
+      PAYFAST_MODE: sandbox
+      PAYFAST_ENV: sandbox
+      CELERY_TASK_ALWAYS_EAGER: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - name: Ephemeral Django secret and guarantee no live payment credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$secret"
+          echo "DJANGO_SECRET_KEY=$secret" >> "$GITHUB_ENV"
+          test "$PAYFAST_MODE" = sandbox
+          test "$PAYFAST_ENV" = sandbox
+          test "$SUPABASE_DATABASE_REQUIRED" = false
+          test -z "$(printenv PAYFAST_MERCHANT_ID || true)"
+          test -z "$(printenv PAYFAST_MERCHANT_KEY || true)"
+          test -z "$(printenv PAYFAST_PASSPHRASE || true)"
+          echo "ISOLATED_SYNTHETIC_PAYMENT_ONLY=YES"
+      - name: Install locked test dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Database migration and Django deployment checks
+        run: |
+          python manage.py makemigrations --check --dry-run
+          python manage.py migrate --noinput
+          python manage.py check
+      - name: Run every booking, purchase, finance, callback and permission regression
+        run: |
+          python manage.py test --noinput --verbosity=2             content.test_live_classes             content.test_video_requests             content.test_payments             content.test_payfast_security             content.test_payfast_configuration             content.test_tutor_finance             content.test_tutor_dashboard             content.test_student_api             content.test_invoice_archive             content.test_booking_migration
+
+  frontend-payment-contracts:
+    name: Live frontend booking/video/tutor contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout actual production frontend release branch (read only)
+        uses: actions/checkout@v4
+        with:
+          ref: render-live-current-20260918
+          path: live-web
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: live-web/frontend/package-lock.json
+      - name: Install locked live frontend
+        working-directory: live-web/frontend
+        run: npm ci --ignore-scripts
+      - name: Build live frontend server for payment route contract imports
+        working-directory: live-web/frontend
+        run: npm run build
+      - name: Check booking and video client contracts
+        working-directory: live-web/frontend
+        run: |
+          node --test             tests/live-class-booking-contract.test.mjs             tests/booking-staging-gate.test.mjs             tests/video-request-contract.test.mjs             tests/video-request-api-routing.test.mjs             tests/tutor-portal-contract.test.mjs
+      - name: Check production frontend type safety
+        working-directory: live-web/frontend
+        run: npm run typecheck
+
+  public-booking-pages:
+    name: External Chromium public booking and payment page checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install isolated Playwright
+        run: |
+          mkdir /tmp/booking-ui
+          cd /tmp/booking-ui
+          npm init -y > /dev/null
+          npm install --no-save --ignore-scripts playwright@1.56.1 > /dev/null
+          npx playwright install --with-deps chromium > /dev/null
+      - name: Verify real live frontend paths without login, order or payment
+        run: |
+          cd /tmp/booking-ui
+          node --input-type=module <<'NODE'
+          import {chromium} from 'playwright';
+          import assert from 'node:assert/strict';
+          const root='https://amaris-mathematics-academy-live-students.onrender.com';
+          const routes=['/book-online-live-class','/book-online-class','/request-a-video','/courses','/payments/pending','/payments/cancelled','/payments/failed'];
+          const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+          const page=await browser.newPage({viewport:{width:390,height:844}});
+          let failures=[];
+          for(const path of routes){
+            let response=null;
+            try{
+              response=await page.goto(root+path,{waitUntil:'domcontentloaded',timeout:45000});
+              await page.waitForTimeout(700);
+              const main=await page.locator('body').innerText();
+              const info={path,http:response?.status(),finalPath:new URL(page.url()).pathname,textLength:main.length};
+              console.log('PUBLIC_BOOKING_PAGE='+JSON.stringify(info));
+              if(response?.status()!==200 || main.length<90)failures.push(info);
+            }catch(error){const info={path,error:String(error).slice(0,140)};failures.push(info);console.log('PUBLIC_BOOKING_PAGE_ERROR='+JSON.stringify(info));}
+          }
+          await browser.close();
+          assert.deepEqual(failures,[],'Public booking/payment pages were inaccessible');
+          console.log('RESULT=PUBLIC_BOOKING_PAYMENT_PAGES_REACHABLE');
+          NODE
