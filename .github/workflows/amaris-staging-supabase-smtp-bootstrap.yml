@@ -11,7 +11,7 @@ jobs:
     environment: staging
     timeout-minutes: 5
     env:
-      SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - name: Apply only Supabase signup/login email templates and six-digit defaults
