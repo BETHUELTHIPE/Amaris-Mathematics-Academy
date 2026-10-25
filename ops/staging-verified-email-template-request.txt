@@ -1,0 +1,1 @@
+Approved staging-only Supabase Auth email template correction. Fix confirmation URLs, preserve 6-digit OTP and existing custom SMTP. Production must remain untouched.
