@@ -89,14 +89,11 @@ with sync_playwright() as p:
     browser = p.chromium.launch()
     context = browser.new_context(java_script_enabled=False)
     page = context.new_page()
-    page.goto(BASE + "/book-online-live-class", wait_until="networkidle")
-    page.get_by_role("combobox", name="Programme", exact=True).select_option("caps")
-    page.get_by_role("combobox", name="Subject", exact=True).select_option("mathematics")
-    page.get_by_role("combobox", name="Grade / level", exact=True).select_option("Grade 7")
-    page.get_by_role("button", name="Update grade and topic choices", exact=True).click()
-    page.get_by_role("combobox", name="Topic / chapter", exact=True).select_option(label="Whole-number calculations")
-    page.get_by_role("button", name="Show available tutor times", exact=True).click()
-    values = parse_qs(urlparse(page.url).query)
-    assert values["level"] == ["Grade 7"] and values["topic"] == ["Whole-number calculations"], values
-    print("PASS JavaScript-disabled Grade 7 CAPS chapter selection and GET search", flush=True)
+    page.goto(BASE + "/book-online-live-class?programme=caps&subject=mathematics", wait_until="networkidle")
+    destination = urlparse(page.url)
+    assert destination.path == "/login", f"Anonymous user reached private booking page: {destination.path}"
+    saved = parse_qs(destination.query).get("next", [""])[0]
+    assert saved == "/book-online-live-class?programme=caps&subject=mathematics", saved
+    expect(page.get_by_role("heading", name="Welcome back.")).to_be_visible()
+    print("PASS JavaScript-disabled anonymous booking redirected to sign-in with saved curriculum choices", flush=True)
     browser.close()
