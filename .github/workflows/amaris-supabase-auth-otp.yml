@@ -1,11 +1,6 @@
 name: Amaris Supabase Auth OTP Config
 
 on:
-  # One-time, staging-only activation approved on 2026-10-25.
-  # Isolated ops branch avoids triggering the Render production branch.
-  push:
-    branches: ["ops/otp-staging-apply-20261025"]
-    paths: ["ops/otp-staging-apply-request.txt"]
   pull_request:
     paths:
       - "scripts/configure_supabase_auth_otp.py"
@@ -57,15 +52,15 @@ jobs:
 
   configure:
     needs: contract-tests
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/ops/otp-staging-apply-20261025')
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     # Configure required production reviewers on GitHub Environments for final approval.
-    environment: ${{ github.event_name == 'push' && 'staging' || inputs.project }}
+    environment: ${{ inputs.project }}
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
-      TARGET_PROJECT_REF: ${{ github.event_name == 'push' && 'atyhhjwwxgzeurnwayay' || (inputs.project == 'production' && 'epkcuseloinygkakxxdu' || 'atyhhjwwxgzeurnwayay') }}
-      ACTION_MODE: ${{ github.event_name == 'push' && 'apply' || inputs.operation }}
-      PROJECT_CHOICE: ${{ github.event_name == 'push' && 'staging' || inputs.project }}
+      TARGET_PROJECT_REF: ${{ inputs.project == 'production' && 'epkcuseloinygkakxxdu' || 'atyhhjwwxgzeurnwayay' }}
+      ACTION_MODE: ${{ inputs.operation }}
+      PROJECT_CHOICE: ${{ inputs.project }}
       PRODUCTION_CONFIRMATION: ${{ inputs.production_confirmation }}
     steps:
       - uses: actions/checkout@v4
