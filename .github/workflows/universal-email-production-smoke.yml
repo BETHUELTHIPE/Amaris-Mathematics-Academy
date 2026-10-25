@@ -1,0 +1,55 @@
+name: Amaris Universal Verified Email Live Smoke
+on:
+  push:
+    branches: ["ops/universal-email-live-smoke-20261025"]
+    paths: ["ops/run-universal-email-live-smoke.txt"]
+permissions:
+  contents: read
+jobs:
+  check-anonymous-boundaries:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Verify public entry pages and protected unauthenticated boundaries
+        run: |
+          python3 - <<'PY'
+          import json
+          from urllib.request import Request, build_opener, HTTPRedirectHandler
+          from urllib.error import HTTPError,URLError
+          base="https://amaris-mathematics-academy-live-students.onrender.com"
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self,req,fp,code,msg,headers,newurl):
+                  return None
+          opener=build_opener(NoRedirect)
+          def get(path):
+              try:
+                  with opener.open(Request(base+path,headers={"User-Agent":"AmarisEmailGateSecuritySmoke/1.0"}),timeout=28) as res:
+                      return res.status,dict(res.headers),res.read(250000)
+              except HTTPError as e:
+                  return e.code,dict(e.headers),e.read(250000)
+              except URLError:
+                  raise SystemExit("FAIL: live app unavailable") from None
+          for path in ["/login","/register","/tutor/login","/tutor/register","/tutor/verify-email","/verify-email"]:
+              status,_,body=get(path)
+              if status!=200:
+                  raise SystemExit(f"FAIL: {path} public verification/recovery page unavailable")
+              print(f"PASS: public {path} HTTP 200")
+          code,headers,body=get("/api/auth-state")
+          if code!=200:
+              raise SystemExit("FAIL: Auth state unavailable")
+          data=json.loads(body)
+          if data.get("authenticated") is not False or data.get("emailVerified") is not False:
+              raise SystemExit("FAIL: anonymous account authenticated or verified")
+          if "no-store" not in headers.get("Cache-Control",headers.get("cache-control","")).lower():
+              raise SystemExit("FAIL: auth state can be publicly cached")
+          print("PASS: anonymous auth state false and noncacheable")
+          for path in ["/dashboard","/tutor/dashboard"]:
+              status,headers,body=get(path)
+              if status not in (301,302,303,307,308):
+                  raise SystemExit(f"FAIL: private route did not redirect anonymous visitor ({path})")
+              destination=headers.get("Location",headers.get("location",""))
+              if not ("/login" in destination or "/tutor/verify-email" in destination):
+                  raise SystemExit(f"FAIL: private route redirected outside expected sign-in/verification")
+              print(f"PASS: anonymous {path} redirected to login/verification")
+          print("PASS: universal verified-email boundaries live, no private account data fetched")
+          PY
