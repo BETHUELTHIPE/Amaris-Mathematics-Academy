@@ -1,0 +1,1 @@
+Run external anonymous access and verified email recovery smoke against merged production release 1bcfe282a6de6e78bd475d13332e7ded0e6622e4.
