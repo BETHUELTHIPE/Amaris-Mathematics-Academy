@@ -2,6 +2,7 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { safeRelativePath } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { hasVerifiedAccountEmail } from "@/lib/verified-account-email";
 
 const allowedOtpTypes = new Set<EmailOtpType>([
   "signup",
@@ -34,6 +35,12 @@ export async function GET(request: NextRequest) {
     }));
   } else {
     error = new Error("Missing confirmation token");
+  }
+
+  // Even a valid confirmation or recovery link cannot open private pages
+  // until Supabase reports that the user's email address is confirmed.
+  if (!error && !(await hasVerifiedAccountEmail(supabase.auth))) {
+    error = new Error("Email verification required");
   }
 
   if (error) {
