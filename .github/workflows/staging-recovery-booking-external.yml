@@ -1,0 +1,50 @@
+name: Staging Recovery and Booking External HTTP Acceptance
+on:
+  push:
+    branches: ["ops/staging-reset-and-booking-http-20261026"]
+    paths: ["ops/staging-recovery-http-request.txt"]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Probe staging recovery forms and guest-only booking guards without cookies
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,urllib.parse
+          base="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,request,fp,code,msg,headers,newurl): return None
+          browser=urllib.request.build_opener(NoRedirect())
+          def probe(path):
+              req=urllib.request.Request(base+path,headers={"User-Agent":"AmarisStagingRecoveryBookingQA/1.0"})
+              try:
+                  with browser.open(req,timeout=35) as res:
+                      return res.status,res.headers.get("Location",""),res.read(300000)
+              except urllib.error.HTTPError as e:
+                  return e.code,e.headers.get("Location",""),b""
+          for route,expected in [
+              ("/forgot-password",b"Send reset link"),
+              ("/reset-password/verify",b"Verify code and reset password"),
+          ]:
+              status,location,body=probe(route)
+              if status!=200 or expected not in body:
+                  raise SystemExit(f"FAIL: staging password recovery route unavailable {route} (HTTP {status})")
+              print(f"PASS: staging {route} displays password recovery form")
+          status,location,_=probe("/reset-password")
+          target=urllib.parse.urlsplit(urllib.parse.urljoin(base,location))
+          if status not in (302,303,307,308) or target.netloc!=urllib.parse.urlsplit(base).netloc or target.path!="/forgot-password":
+              raise SystemExit("FAIL: unsecured direct password-reset form")
+          print("PASS: direct reset-password requires recovery proof")
+          for route in ["/book-online-live-class","/book-online-live-class?programme=caps&subject=mathematics",
+              "/book-online-live-class/checkout?slot=123&topic=Algebra&attempt=11111111-1111-4111-8111-111111111111",
+              "/book-online-live-class/confirmation?reference=SYNTHETIC-ONLY"]:
+              status,location,body=probe(route)
+              dest=urllib.parse.urlsplit(urllib.parse.urljoin(base,location))
+              if status not in (302,303,307,308) or dest.path!="/login" or dest.netloc!=urllib.parse.urlsplit(base).netloc or "/book-online-live-class" not in urllib.parse.parse_qs(dest.query).get("next",[""])[0]:
+                  raise SystemExit("FAIL: staging booking route bypassed verified student guard")
+              print("PASS: staging anonymous booking access blocked")
+          print("No credentials, reset emails, bookings or payments submitted")
+          PY
