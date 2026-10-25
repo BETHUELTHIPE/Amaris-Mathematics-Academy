@@ -28,6 +28,11 @@ class SupabaseAuthOtpTests(unittest.TestCase):
         self.assertIn("{{ .ConfirmationURL }}", desired["mailer_templates_magic_link_content"])
         self.assertNotIn("{{ .SiteURL }}/auth/confirm", desired["mailer_templates_magic_link_content"])
         self.assertNotIn("123456", desired["mailer_templates_confirmation_content"])
+        self.assertIn("{{ .Token }}", desired["mailer_templates_recovery_content"])
+        self.assertIn("{{ .TokenHash }}", desired["mailer_templates_recovery_content"])
+        self.assertIn("{{ .RedirectTo }}", desired["mailer_templates_recovery_content"])
+        self.assertNotIn("{{ .ConfirmationURL }}", desired["mailer_templates_recovery_content"])
+        self.assertEqual(desired["mailer_subjects_recovery"], "Amaris | Reset your password")
 
     def test_check_requires_templates_confirmation_and_smtp(self):
         configured = module.desired_config() | {
