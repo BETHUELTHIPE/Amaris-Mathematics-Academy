@@ -127,6 +127,18 @@ jobs:
                       expected_google = "Sign in with Google" if path == "/login" else "Register with Google"
                       google_button = page.get_by_role("button", name=expected_google, exact=True)
                       count = google_button.count()
+                      # Render can still be serving its previous release while
+                      # the push-triggered smoke starts. Allow a short rollout
+                      # window, but fail if the expected current UI never appears.
+                      if path == "/login" and count != 1:
+                          for attempt in range(12):
+                              page.wait_for_timeout(15_000)
+                              page.reload(wait_until="networkidle", timeout=120_000)
+                              google_button = page.get_by_role("button", name=expected_google, exact=True)
+                              count = google_button.count()
+                              if count == 1:
+                                  print(f"PASS /login: current UI appeared after rollout retry {attempt + 1}")
+                                  break
                       if count != 1:
                           failures.append(f"{path}: expected one student Google sign-in button; found {count}")
                       else:
