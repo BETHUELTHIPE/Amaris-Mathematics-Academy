@@ -1,0 +1,1 @@
+Approved read-only inspection: production Supabase password recovery email content, code expiration, and SMTP. Do not PATCH.
