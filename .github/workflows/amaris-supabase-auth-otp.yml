@@ -1,6 +1,9 @@
 name: Amaris Supabase Auth OTP Config
 
 on:
+  push:
+    branches: [ops/staging-password-recovery-apply-20261025]
+    paths: [ops/staging-password-recovery-apply-request.txt]
   pull_request:
     paths:
       - "scripts/configure_supabase_auth_otp.py"
@@ -53,15 +56,15 @@ jobs:
 
   configure:
     needs: contract-tests
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/ops/staging-password-recovery-apply-20261025')
     runs-on: ubuntu-24.04
     # Configure required production reviewers on GitHub Environments for final approval.
-    environment: ${{ inputs.project }}
+    environment: ${{ github.event_name == 'push' && 'staging' || inputs.project }}
     env:
-      SUPABASE_ACCESS_TOKEN: ${{ (inputs.project == 'production' && secrets.SUPABASE_PRODUCTION_AUTH_MANAGEMENT_TOKEN) || (inputs.project == 'staging' && secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN) }}
-      TARGET_PROJECT_REF: ${{ inputs.project == 'production' && 'epkcuseloinygkakxxdu' || 'atyhhjwwxgzeurnwayay' }}
-      ACTION_MODE: ${{ inputs.operation }}
-      PROJECT_CHOICE: ${{ inputs.project }}
+      SUPABASE_ACCESS_TOKEN: ${{ github.event_name == 'push' && secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN || ((inputs.project == 'production' && secrets.SUPABASE_PRODUCTION_AUTH_MANAGEMENT_TOKEN) || (inputs.project == 'staging' && secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN)) }}
+      TARGET_PROJECT_REF: ${{ github.event_name == 'push' && 'atyhhjwwxgzeurnwayay' || (inputs.project == 'production' && 'epkcuseloinygkakxxdu' || 'atyhhjwwxgzeurnwayay') }}
+      ACTION_MODE: ${{ github.event_name == 'push' && 'apply' || inputs.operation }}
+      PROJECT_CHOICE: ${{ github.event_name == 'push' && 'staging' || inputs.project }}
       PRODUCTION_CONFIRMATION: ${{ inputs.production_confirmation }}
     steps:
       - uses: actions/checkout@v4
