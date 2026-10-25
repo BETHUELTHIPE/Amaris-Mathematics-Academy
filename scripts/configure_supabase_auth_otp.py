@@ -45,8 +45,8 @@ def desired_config() -> dict[str, object]:
         if placeholder not in value:
             raise ValueError(f"{filename} is missing Supabase's required token placeholder")
         if setting == "mailer_templates_recovery_content":
-            if "type=recovery" not in value or "next=/reset-password" not in value:
-                raise ValueError("Recovery email must target the server-side recovery route")
+            if "type=recovery" not in value or "{{ .RedirectTo }}" not in value:
+                raise ValueError("Recovery email must use the approved redirect and recovery token type")
             if "{{ .ConfirmationURL }}" in value:
                 raise ValueError("Recovery emails must not use a browser-bound PKCE redirect")
         config[setting] = value
