@@ -1,0 +1,5 @@
+Authorized staging-only Supabase Auth OTP template apply request
+Project: staging (atyhhjwwxgzeurnwayay)
+Operation: apply
+Date: 2026-10-25
+Production configuration and frontend deployments are excluded.
