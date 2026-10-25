@@ -51,6 +51,22 @@ test("only a verified account with a recovery marker may view or submit new pass
   assert.match(actions, /maxAge: 0/);
 });
 
+test("email recovery uses a non-consuming landing and six-digit OTP fallback", () => {
+  const codePage = read("../app/reset-password/verify/page.tsx");
+  const template = read("../email-templates/recovery.html");
+  const actions = read("../app/auth/actions.ts");
+  assert.match(codePage, /verifyRecoveryCodeAction/);
+  assert.match(codePage, /Continue to choose a new password/);
+  assert.match(codePage, /Six-digit recovery code/);
+  assert.match(template, /{{ \\.Token }}/);
+  assert.match(template, /{{ \\.TokenHash }}/);
+  assert.match(template, /{{ \\.RedirectTo }}/);
+  assert.doesNotMatch(template, /{{ \\.ConfirmationURL }}/);
+  assert.match(actions, /type: "recovery"/);
+  assert.match(actions, /recoveryCookies\\.set\\(PASSWORD_RECOVERY_COOKIE/);
+  assert.match(read("../proxy.ts"), /"\\/reset-password\\/:path\\*"/);
+});
+
 test("forgot password is available from student and tutor login without disclosing accounts", () => {
   const student = read("../app/login/page.tsx");
   const tutor = read("../app/tutor/login/page.tsx");
