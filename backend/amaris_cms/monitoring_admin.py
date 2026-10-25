@@ -13,7 +13,14 @@ from django.template.response import TemplateResponse
 from django.urls import path
 from django.views.decorators.csrf import csrf_exempt
 
-from .airflow_client import AirflowUnavailable, get_workflow, get_workflow_tasks, is_configured, monitored_dags
+from .airflow_client import (
+    AirflowUnavailable,
+    get_airflow_ui_url,
+    get_workflow,
+    get_workflow_tasks,
+    is_configured,
+    monitored_dags,
+)
 
 PROXY_PREFIX = "/admin/monitoring/"
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -65,6 +72,17 @@ class AmarisAdminSite(AdminSite):
         ]
         return extra + super().get_urls()
 
+    def index(self, request, extra_context=None):
+        context = dict(extra_context or {})
+        if (
+            request.user.is_authenticated
+            and request.user.is_active
+            and request.user.is_staff
+            and request.user.is_superuser
+        ):
+            context["airflow_ui_url"] = get_airflow_ui_url()
+        return super().index(request, extra_context=context)
+
     @staticmethod
     def _require_superuser(request):
         user = request.user
@@ -92,6 +110,7 @@ class AmarisAdminSite(AdminSite):
                 **self.each_context(request),
                 "title": "Airflow workflow monitoring",
                 "airflow_configured": configured,
+                "airflow_ui_url": get_airflow_ui_url(),
                 "airflow_unavailable": unavailable,
                 "workflows": workflows,
                 "detail": None,
@@ -117,6 +136,7 @@ class AmarisAdminSite(AdminSite):
                 **self.each_context(request),
                 "title": f"Airflow: {dag_id}",
                 "airflow_configured": True,
+                "airflow_ui_url": get_airflow_ui_url(),
                 "airflow_unavailable": False,
                 "workflows": [],
                 "detail": summary,
@@ -133,6 +153,7 @@ class AmarisAdminSite(AdminSite):
                 **self.each_context(request),
                 "title": "Monitoring and operations",
                 "monitoring_enabled": settings.MONITORING_CONSOLE_ENABLED,
+                "airflow_ui_url": get_airflow_ui_url(),
             },
         )
 

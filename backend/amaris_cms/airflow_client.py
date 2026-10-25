@@ -45,6 +45,29 @@ def is_configured():
     )
 
 
+def get_airflow_ui_url():
+    """Return only a safely configured UI launch URL, never an API token.
+
+    Airflow's own authentication still protects its browser interface.
+    """
+    raw = getattr(settings, "AIRFLOW_UI_URL", "").strip().rstrip("/")
+    if not raw or any(ord(char) < 32 or ord(char) == 127 for char in raw):
+        return ""
+    try:
+        parsed = url_parse.urlsplit(raw)
+        # Invalid ports raise ValueError; reject malformed destinations.
+        _ = parsed.port
+    except ValueError:
+        return ""
+    if not parsed.hostname or "@" in parsed.netloc or parsed.username or parsed.password:
+        return ""
+    if parsed.query or parsed.fragment:
+        return ""
+    if parsed.scheme != "https" and not (settings.DEBUG and parsed.scheme == "http"):
+        return ""
+    return raw
+
+
 def _read(path, query=None):
     if not is_configured():
         raise AirflowUnavailable("Airflow is not configured.")

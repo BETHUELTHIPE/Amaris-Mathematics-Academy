@@ -39,6 +39,31 @@ Prometheus and cAdvisor have no public host ports. Flower is defined exactly onc
 
 Grafana listens internally on `GRAFANA_PORT=3000` at `GRAFANA_URL=http://grafana:3000`. Configure `GF_SECURITY_ADMIN_USER`, a strong `GF_SECURITY_ADMIN_PASSWORD`, and keep `GF_USERS_ALLOW_SIGN_UP=false`. The admin password is passed with Grafana's file-based secret setting and is not exposed directly in the container environment.
 
+## Airflow in Django Admin
+
+Django Admin already provides a **read-only Airflow workflow monitor** at
+`/admin/airflow/`, restricted to active Django superusers. This shows the most
+recent allowlisted DAG runs and task states using a private Airflow API token.
+
+To surface the **full Apache Airflow web interface** in the Django Admin home
+and monitoring pages, configure `AIRFLOW_UI_URL` in the Django service
+environment, for example `https://airflow.your-private-domain.example`.
+Production requires HTTPS, forbids URL credentials, and leaves the link hidden
+if the address is invalid or unset.
+
+**Access control:** the link opens Airflow in a separate browser tab. The Airflow
+deployment must independently enforce its own authentication (preferably SSO,
+MFA, and a private access gateway). Django's superuser session is not forwarded
+to Airflow. The Airflow API token is never put into the URL or page. Do not put
+Airflow behind a public, unauthenticated endpoint and do not embed its session
+in an iframe to bypass its login/security headers.
+
+The existing read-only status view requires
+`AIRFLOW_MONITORING_ENABLED=true`, `AIRFLOW_API_BASE_URL`,
+`AIRFLOW_API_TOKEN` (least privilege), and `AIRFLOW_MONITORED_DAGS`.
+`AIRFLOW_UI_URL` alone only enables the launch link; it does not
+create/deploy Airflow or configure its authentication.
+
 ## Runtime layout
 
 ```text

@@ -15,6 +15,11 @@
   </style>
   <p><a href="{% url 'admin:amaris_monitoring_home' %}">Operations monitoring</a> / Airflow</p>
   <h1>Apache Airflow workflow monitoring</h1>
+  {% if airflow_ui_url %}
+    <p><a class="btn btn-primary" href="{{ airflow_ui_url }}" target="_blank" rel="noopener noreferrer">Open full Airflow UI</a> <span class="aw-muted">Airflow has its own authentication. Opens in a separate tab; no API token is sent to your browser.</span></p>
+  {% else %}
+    <p class="aw-muted">Full Airflow UI link is not configured. Set a secured <code>AIRFLOW_UI_URL</code> to enable it; the read-only monitoring panel below remains available.</p>
+  {% endif %}
   <p class="aw-muted">Live Airflow API results, refreshed every 30 seconds when configured. This view never triggers, pauses, retries or modifies workflows.</p>
 
   {% if not airflow_configured %}
