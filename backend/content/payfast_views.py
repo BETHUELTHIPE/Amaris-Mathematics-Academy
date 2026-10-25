@@ -4,6 +4,7 @@ import ipaddress
 import logging
 import os
 
+from django.db import InterfaceError, OperationalError
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -75,12 +76,18 @@ class PayFastITNView(APIView):
         payload = {str(key): str(value) for key, value in request.data.items()}
         gateway = HttpPayFastVerificationGateway()
         local_reference = str(payload.get("m_payment_id", ""))
-        if local_reference.startswith("LCB-"):
-            result = process_live_class_notification(payload, gateway=gateway)
-        elif local_reference.startswith("VRQ-"):
-            result = process_video_request_notification(payload, gateway=gateway)
-        else:
-            result = process_payfast_notification(payload, gateway=gateway)
+        try:
+            if local_reference.startswith("LCB-"):
+                result = process_live_class_notification(payload, gateway=gateway)
+            elif local_reference.startswith("VRQ-"):
+                result = process_video_request_notification(payload, gateway=gateway)
+            else:
+                result = process_payfast_notification(payload, gateway=gateway)
+        except (OperationalError, InterfaceError):
+            # Never acknowledge an uncommitted payment. Ask PayFast to retry,
+            # without logging database messages that can contain credentials/PII.
+            logger.warning("payfast_itn retryable reason=database_unavailable")
+            return Response({"detail": "database_unavailable"}, status=503)
         if result.accepted:
             logger.info("payfast_itn accepted")
             return Response({"status": result.payment_status}, status=200)

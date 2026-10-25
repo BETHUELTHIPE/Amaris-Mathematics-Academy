@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from django.db import InterfaceError, OperationalError
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory
 
@@ -49,3 +50,29 @@ class PayFastITNDiagnosticsTests(SimpleTestCase):
         rendered = " ".join(output)
         for private in ("private-reference", "private@example.test", "secret", "144.126.193.139", "192.0.2.10"):
             self.assertNotIn(private, rendered)
+
+    def test_database_outage_is_retryable_for_every_payment_route(self):
+        for reference, processor in (
+            ("LCB-private-reference", "process_live_class_notification"),
+            ("VRQ-private-reference", "process_video_request_notification"),
+            ("PF-private-reference", "process_payfast_notification"),
+        ):
+            for error_type in (OperationalError, InterfaceError):
+                with self.subTest(reference=reference, error=error_type.__name__):
+                    with (
+                        patch(
+                            f"content.payfast_views.{processor}",
+                            side_effect=error_type("secret private@example.test database credentials"),
+                        ),
+                        self.assertLogs("amaris.payfast", level="INFO") as logs,
+                    ):
+                        request = APIRequestFactory().post(
+                            "/api/v1/payfast/itn/",
+                            {"m_payment_id": reference},
+                            REMOTE_ADDR="144.126.193.139",
+                        )
+                        response = PayFastITNView.as_view()(request)
+                    self.assertEqual(response.status_code, 503)
+                    self.assertEqual(response.data, {"detail": "database_unavailable"})
+                    self.assertIn("retryable reason=database_unavailable", " ".join(logs.output))
+                    self.assert_private_data_absent(logs.output)

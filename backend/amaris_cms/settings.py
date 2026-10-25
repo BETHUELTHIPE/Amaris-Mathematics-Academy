@@ -135,11 +135,17 @@ if not DEBUG and not os.getenv("DATABASE_URL"):
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        conn_max_age=int(os.getenv("DATABASE_CONN_MAX_AGE", "600")),
+        # ASGI requests use separate thread-sensitive contexts. Retaining their
+        # connections exhausts Supabase's session pool rather than reusing them.
+        # Let Supavisor pool server connections and release ours after each request.
+        conn_max_age=0,
         conn_health_checks=True,
         ssl_require=env_bool("DATABASE_SSL_REQUIRED", False),
     )
 }
+# Enforce this after URL parsing too: an old conn_max_age URL option or
+# DATABASE_CONN_MAX_AGE environment variable must not reintroduce ASGI retention.
+DATABASES["default"]["CONN_MAX_AGE"] = 0
 
 SUPABASE_DATABASE_REQUIRED = env_bool("SUPABASE_DATABASE_REQUIRED", not DEBUG)
 SUPABASE_PROJECT_REF = os.getenv("SUPABASE_PROJECT_REF", "").strip()
