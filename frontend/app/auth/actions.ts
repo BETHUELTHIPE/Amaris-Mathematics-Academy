@@ -387,7 +387,7 @@ export async function forgotPasswordAction(formData: FormData) {
 }
 
 export async function resetPasswordAction(formData: FormData) {
-  const recoveryCookies = await cookies();
+  const recoveryCookies = await getPasswordRecoveryCookieStore();
   if (recoveryCookies.get(PASSWORD_RECOVERY_COOKIE)?.value !== "1") {
     redirectWithMessage("/forgot-password", "error", "Your password reset link has expired. Request a new one.");
   }
