@@ -161,13 +161,13 @@ export async function verifyEmailAction(formData: FormData) {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.verifyOtp({
+  const { data, error } = await supabase.auth.verifyOtp({
     email,
     token,
     type: "signup",
   });
 
-  if (error) {
+  if (error || !data.session || !data.user?.email_confirmed_at) {
     redirect(
       `/verify-email?email=${encodeURIComponent(email)}&error=${encodeURIComponent("That code is invalid or has expired. Request a new code and try again.")}`,
     );
@@ -247,6 +247,73 @@ export async function loginAction(formData: FormData) {
   }
 
   redirect(safeRelativePath(parsed.data.next));
+}
+
+/** Request a short-lived email sign-in code; never create a new account here. */
+export async function sendLoginCodeAction(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
+  if (!z.string().email().safeParse(email).success) {
+    redirectWithMessage("/login", "error", "Enter a valid email address to request a code.");
+  }
+
+  let error;
+  try {
+    const supabase = await createSupabaseServerClient();
+    ({ error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=${encodeURIComponent(next)}`,
+      },
+    }));
+  } catch {
+    console.error("student_login_code_request_failed", { code: "auth_unavailable" });
+    redirectWithMessage("/login", "error", "Email sign-in is temporarily unavailable. You can still use your password.");
+  }
+
+  if (error && /rate limit|too many/i.test(error.message)) {
+    redirectWithMessage("/login", "error", "Too many code requests. Wait a few minutes before trying again.");
+  }
+
+  // Do not reveal whether an account exists, including provider "user not found" errors.
+  // No OTP code or token is ever generated, stored, or logged by this application.
+  if (error) {
+    console.error("student_login_code_request_failed", {
+      code: safeAuthErrorCode(error.code),
+      status: error.status,
+    });
+  }
+  redirect(`/login/code?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}&sent=1`);
+}
+
+/** Redeem the Supabase-issued six-digit passwordless login OTP. */
+export async function verifyLoginCodeAction(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const token = String(formData.get("token") ?? "").replace(/\s/g, "");
+  const next = safeRelativePath(String(formData.get("next") ?? "/dashboard"));
+  const codePage = `/login/code?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`;
+
+  if (!z.string().email().safeParse(email).success || !/^\d{6}$/.test(token)) {
+    redirect(`${codePage}&error=${encodeURIComponent("Enter the six-digit code from your email.")}`);
+  }
+
+  let result;
+  try {
+    const supabase = await createSupabaseServerClient();
+    result = await supabase.auth.verifyOtp({ email, token, type: "email" });
+    if (!result.error && result.data.session && !result.data.user?.email_confirmed_at) {
+      await supabase.auth.signOut({ scope: "local" });
+    }
+  } catch {
+    redirect(`${codePage}&error=${encodeURIComponent("Could not verify the code. Please try again.")}`);
+  }
+
+  if (result.error || !result.data.session || !result.data.user?.email_confirmed_at) {
+    redirect(`${codePage}&error=${encodeURIComponent("That code is invalid or has expired. Request a new code and try again.")}`);
+  }
+
+  redirect(next);
 }
 
 export async function googleAuthAction(formData: FormData) {

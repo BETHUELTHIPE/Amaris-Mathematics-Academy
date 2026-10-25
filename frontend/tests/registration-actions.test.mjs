@@ -1,19 +1,22 @@
 import assert from "node:assert/strict";
 import test, { after, beforeEach } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const mockModule = `
 export const state = {};
 export function getSiteUrl() { return "https://academy.example.test"; }
-export function safeRelativePath(path) { return path || "/dashboard"; }
+export function safeRelativePath(path) { if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) return "/dashboard"; return path; }
 export async function createSupabaseServerClient() {
   if (state.unavailable) throw new Error("private configuration details");
   return { auth: {
     signUp: async (input) => { state.signup = input; if (state.networkFailure) throw new Error("private network details"); return state.response; },
     resend: async (input) => { state.resend = input; return { error: state.resendError }; },
-    verifyOtp: async (input) => { state.otp = input; return { error: state.otpError }; }
+    signInWithOtp: async (input) => { state.loginOtp = input; return { error: state.loginOtpError }; },
+    verifyOtp: async (input) => { state.otp = input; return { data: state.otpData, error: state.otpError }; },
+    signOut: async (input) => { state.signOut = input; return { error: null }; }
   } };
 }
 export const studentProfiles = { userId: "user_id" };
@@ -37,11 +40,12 @@ const vite = await createServer({
   server: { middlewareMode: true, hmr: false, ws: false },
 });
 const { state } = await vite.ssrLoadModule("test:auth-state");
-const { registerAction, resendVerificationAction, verifyEmailAction } = await vite.ssrLoadModule("/app/auth/actions.ts");
+const { registerAction, resendVerificationAction, verifyEmailAction, sendLoginCodeAction, verifyLoginCodeAction } = await vite.ssrLoadModule("/app/auth/actions.ts");
 after(() => vite.close());
 beforeEach(() => {
   for (const key of Object.keys(state)) delete state[key];
   state.response = { data: { user: { id: "synthetic-user", identities: [{ id: "synthetic-identity" }] }, session: null }, error: null };
+  state.otpData = { session: { access_token: "verified-login-session" }, user: { email_confirmed_at: "2026-10-25T10:00:00Z" } };
 });
 
 function registration(overrides = {}) {
@@ -176,4 +180,77 @@ test("six-digit verification rejects invalid or expired codes and accepts valid 
   state.otpError = null;
   assert.equal((await redirectUrl(verifyEmailAction, form)).pathname, "/dashboard");
   assert.deepEqual(state.otp, { email: "student@example.test", token: "123456", type: "signup" });
+});
+
+test("email sign-in sends a code only for an existing student account", async () => {
+  const form = registration();
+  form.set("next", "/dashboard/courses");
+  const url = await redirectUrl(sendLoginCodeAction, form);
+  assert.equal(url.pathname, "/login/code");
+  assert.equal(url.searchParams.get("email"), "student@example.test");
+  assert.equal(url.searchParams.get("next"), "/dashboard/courses");
+  assert.equal(state.loginOtp.email, "student@example.test");
+  assert.equal(state.loginOtp.options.shouldCreateUser, false);
+  assert.equal(state.loginOtp.options.emailRedirectTo, "https://academy.example.test/auth/confirm?next=%2Fdashboard%2Fcourses");
+  assert.equal(state.signup, undefined);
+});
+
+test("login code request never reveals missing student accounts", async () => {
+  state.loginOtpError = { code: "user_not_found", message: "User not found", status: 422 };
+  const url = await redirectUrl(sendLoginCodeAction, registration());
+  assert.equal(url.pathname, "/login/code");
+  assert.equal(url.searchParams.get("sent"), "1");
+  assert.equal(state.loginOtp.options.shouldCreateUser, false);
+});
+
+test("six-digit login OTP is validated and exchanged for a verified session", async () => {
+  const form = registration();
+  form.set("token", " 12 34 56 ");
+  form.set("next", "/dashboard/courses");
+  assert.equal((await redirectUrl(verifyLoginCodeAction, form)).pathname, "/dashboard/courses");
+  assert.deepEqual(state.otp, { email: "student@example.test", token: "123456", type: "email" });
+
+  form.set("token", "12345");
+  assert.equal((await redirectUrl(verifyLoginCodeAction, form)).pathname, "/login/code");
+  assert.equal(state.otp.token, "123456");
+});
+
+test("expired codes, missing sessions and unverified identities never sign in", async () => {
+  const form = registration();
+  form.set("token", "123456");
+  state.otpError = { code: "otp_expired" };
+  assert.equal((await redirectUrl(verifyLoginCodeAction, form)).pathname, "/login/code");
+  state.otpError = null;
+  state.otpData = { session: null, user: { email_confirmed_at: "2026-10-25T10:00:00Z" } };
+  assert.equal((await redirectUrl(verifyLoginCodeAction, form)).pathname, "/login/code");
+  state.otpData = { session: { access_token: "synthetic" }, user: { email_confirmed_at: null } };
+  assert.equal((await redirectUrl(verifyLoginCodeAction, form)).pathname, "/login/code");
+  assert.deepEqual(state.signOut, { scope: "local" });
+});
+
+test("email confirmation does not grant dashboard access without a verified session", async () => {
+  const form = registration();
+  form.set("token", "123456");
+  state.otpData = { session: null, user: { email_confirmed_at: null } };
+  assert.equal((await redirectUrl(verifyEmailAction, form)).pathname, "/verify-email");
+});
+
+test("login code redirects reject unsafe return paths", async () => {
+  const form = registration();
+  form.set("token", "123456");
+  form.set("next", "https://attacker.example.test/steal");
+  assert.equal((await redirectUrl(verifyLoginCodeAction, form)).pathname, "/dashboard");
+});
+
+test("both branded Supabase email templates show the generated six-digit OTP", () => {
+  const confirmation = readFileSync(new URL("../email-templates/confirm-signup.html", import.meta.url), "utf8");
+  const loginEmail = readFileSync(new URL("../email-templates/magic-link-login.html", import.meta.url), "utf8");
+  for (const html of [confirmation, loginEmail]) {
+    assert.ok(html.includes("{{ .Token }}"));
+    assert.match(html, /six[- ]digit/);
+    assert.doesNotMatch(html, /123456|654321/);
+  }
+  assert.ok(confirmation.includes("{{ .ConfirmationURL }}"));
+  assert.ok(loginEmail.includes("{{ .ConfirmationURL }}"));
+  assert.doesNotMatch(loginEmail, /localhost:3000/);
 });
