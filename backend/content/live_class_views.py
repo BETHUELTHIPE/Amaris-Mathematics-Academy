@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from django.core.files.storage import storages
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.http import FileResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -59,24 +59,16 @@ class LiveClassSlotView(APIView):
         values = filters.validated_data
         now = timezone.now()
 
-        # Public availability is read-only. Expired holds are ignored by the
-        # queryset below and cleaned up by the scheduled expiration task (or
-        # by the locked checkout path). Never write booking state from GET.
-
+        # Keep browsing read-only; checkout and the expiry task own hold expiry.
+        # Test status and hold expiry on the same booking, without join fan-out.
+        blocking_bookings = LiveClassBooking.objects.filter(slot_id=OuterRef("pk")).filter(
+            Q(status=LiveClassBooking.Status.CONFIRMED)
+            | Q(status=LiveClassBooking.Status.PENDING_PAYMENT, hold_expires_at__gt=now)
+        )
         queryset = (
-            TutorAvailabilitySlot.objects.filter(
-                is_active=True,
-                starts_at__gt=now,
-            )
+            TutorAvailabilitySlot.objects.filter(is_active=True, starts_at__gt=now)
             .select_related("tutor")
-            .exclude(
-                Q(bookings__status=LiveClassBooking.Status.CONFIRMED)
-                | Q(
-                    bookings__status=LiveClassBooking.Status.PENDING_PAYMENT,
-                    bookings__hold_expires_at__gt=now,
-                )
-            )
-            .distinct()
+            .filter(~Exists(blocking_bookings))
         )
         if values.get("programme"):
             queryset = queryset.filter(programme=values["programme"])
