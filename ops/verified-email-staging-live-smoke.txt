@@ -1,0 +1,1 @@
+Live read-only staging email-verification route acceptance; no credentials, session or OTPs.
