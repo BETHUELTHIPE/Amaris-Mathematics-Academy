@@ -21,10 +21,12 @@ TEMPLATE_DIR = REPO_ROOT / "frontend" / "email-templates"
 FIELDS = {
     "mailer_templates_confirmation_content": "confirm-signup.html",
     "mailer_templates_magic_link_content": "magic-link-login.html",
+    "mailer_templates_recovery_content": "recover-password.html",
 }
 SUBJECTS = {
     "mailer_subjects_confirmation": "Amaris | Verify your student email",
     "mailer_subjects_magic_link": "Amaris | Your six-digit sign-in code",
+    "mailer_subjects_recovery": "Amaris | Reset your password",
 }
 PROJECT_REF = re.compile(r"^[a-z0-9]{20}$")
 API_ORIGIN = "https://api.supabase.com"
@@ -39,8 +41,14 @@ def desired_config() -> dict[str, object]:
     }
     for setting, filename in FIELDS.items():
         value = (TEMPLATE_DIR / filename).read_text(encoding="utf-8")
-        if "{{ .Token }}" not in value:
-            raise ValueError(f"{filename} is missing Supabase's .Token placeholder")
+        placeholder = "{{ .TokenHash }}" if setting == "mailer_templates_recovery_content" else "{{ .Token }}"
+        if placeholder not in value:
+            raise ValueError(f"{filename} is missing Supabase's required token placeholder")
+        if setting == "mailer_templates_recovery_content":
+            if "type=recovery" not in value or "next=/reset-password" not in value:
+                raise ValueError("Recovery email must target the server-side recovery route")
+            if "{{ .ConfirmationURL }}" in value:
+                raise ValueError("Recovery emails must not use a browser-bound PKCE redirect")
         config[setting] = value
     return config
 
