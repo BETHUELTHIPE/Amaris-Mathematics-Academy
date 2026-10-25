@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/supabase/config";
+import { hasVerifiedAccountEmail } from "@/lib/verified-account-email";
 
 const password = z.string().min(12).max(72).regex(/[a-z]/).regex(/[A-Z]/).regex(/[0-9]/).regex(/[^A-Za-z0-9]/);
 const registration = z.object({
@@ -43,8 +44,10 @@ export async function verifyApplicant(form: FormData): Promise<never> {
   let failed = false;
   try {
     const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.auth.verifyOtp({ email, token, type: "signup" });
-    failed = Boolean(error);
+    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "signup" });
+    failed = Boolean(error || !data.session || !data.user?.email_confirmed_at);
+    if (!failed) failed = !(await hasVerifiedAccountEmail(supabase.auth));
+    else if (data?.session) await supabase.auth.signOut({ scope: "local" });
   } catch { failed = true; }
   if (failed) verification(email, "error", "That code is invalid or expired. Request a new code or try again shortly.");
   redirect("/tutor/apply");
@@ -72,6 +75,7 @@ export async function loginApplicant(form: FormData): Promise<never> {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password: secret });
     failed = Boolean(error || !data.user);
     unverified = error?.code === "email_not_confirmed";
+    if (!failed) unverified = !(await hasVerifiedAccountEmail(supabase.auth));
   } catch { failed = true; }
   if (unverified) verification(email, "error", "Verify your email before applying.");
   if (failed) redirect("/tutor/apply/login?error=Sign-in+could+not+be+completed.+Check+your+details+or+retry+shortly.");
