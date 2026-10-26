@@ -74,7 +74,7 @@ def validate_release(
         if name == "BACKUP" and run.get("event") != "workflow_dispatch":
             raise ReleaseBlocked("Production backup must be explicitly triggered and verified")
         # Reject a wrong workflow supplied as the evidence ID.
-        path = run.get("path") or ""
+        path = (run.get("path") or "").split("@", 1)[0]
         if name == "STAGING" and not path.endswith("/staging-acceptance.yml"):
             raise ReleaseBlocked("Staging evidence does not identify the designated acceptance workflow")
         if name == "BACKUP" and not path.endswith("/genuine-production-public-backup.yml"):
