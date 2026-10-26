@@ -169,7 +169,9 @@ def check_slow_submission(page: Page) -> None:
 def check_dashboard(page: Page) -> None:
     goto(page, "/dashboard")
     require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
-    require(page.get_by_role("heading", name=re.compile(r"Welcome, Responsive\.")).is_visible(), "Synthetic student dashboard did not render")
+    require(page.get_by_role("heading", name="Welcome, Responsive Student.").is_visible(), "Synthetic student full-name welcome did not render")
+    require(page.get_by_text("Signed in as responsive.student@example.test.", exact=False).is_visible(),
+            "Verified sign-in email is missing from the private dashboard welcome")
     require(page.get_by_role("navigation", name="Dashboard navigation").is_visible(), "Dashboard navigation is not visible")
     # On a 320px screen the shelf is below the fold. Scroll the actual
     # anchor into view before asserting; do not treat offscreen content as missing.
