@@ -5,6 +5,7 @@ import { ArrowLeft, CreditCard, ShieldCheck, Video } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { requireVerifiedStudent } from "@/lib/auth";
+import { getVerifiedStudentBookingName } from "@/lib/registered-booking-name";
 import { createStudentLiveClassCheckout } from "@/lib/student-api";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,9 @@ export default async function LiveClassCheckoutPage({
 
   const returnTo =
     `/book-online-live-class/checkout?slot=${encodeURIComponent(slotId)}&topic=${encodeURIComponent(topic)}&attempt=${encodeURIComponent(attempt)}`;
-  await requireVerifiedStudent(returnTo);
+  const student = await requireVerifiedStudent(returnTo);
+  const registeredName = await getVerifiedStudentBookingName(student.id);
+  if (!registeredName) redirect("/book-online-live-class?booking=complete-profile");
 
   let checkout: Awaited<ReturnType<typeof createStudentLiveClassCheckout>>;
   try {
@@ -69,6 +72,7 @@ export default async function LiveClassCheckoutPage({
           <h1 className="mt-3 text-4xl font-semibold tracking-[-.045em]">Confirm your tutor slot</h1>
 
           <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm">
+            <div><dt className="font-semibold text-[#263852]">Registered student — mandatory</dt><dd className="mt-1 text-[#60708a]">{registeredName.fullName}</dd></div>
             <div><dt className="font-semibold text-[#263852]">Tutor</dt><dd className="mt-1 text-[#60708a]">{booking.tutor}</dd></div>
             <div><dt className="font-semibold text-[#263852]">Class</dt><dd className="mt-1 text-[#60708a]">{booking.programme} · {booking.subject} · {booking.level}</dd></div>
             <div><dt className="font-semibold text-[#263852]">Topic</dt><dd className="mt-1 text-[#60708a]">{booking.topic}</dd></div>
