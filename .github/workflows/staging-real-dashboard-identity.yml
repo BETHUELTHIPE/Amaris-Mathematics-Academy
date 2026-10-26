@@ -12,9 +12,14 @@ jobs:
   verify-real-identity:
     if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [student, tutor]
     environment: staging
     timeout-minutes: 18
     env:
+      AMARIS_STAGING_QA_ROLE: ${{ matrix.role }}
       STAGING_TEST_STUDENT_EMAIL: ${{ secrets.STAGING_TEST_STUDENT_EMAIL }}
       STAGING_TEST_STUDENT_PASSWORD: ${{ secrets.STAGING_TEST_STUDENT_PASSWORD }}
       STAGING_TEST_TUTOR_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
