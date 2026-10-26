@@ -1,4 +1,4 @@
-import type { JwtPayload } from "@supabase/supabase-js";
+import type { JwtPayload, User } from "@supabase/supabase-js";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getSupabaseConfig } from "@/lib/supabase/config";
@@ -44,7 +44,7 @@ export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null
     return null;
   }
 
-  return mapClaims(data.claims, Boolean(userData.user.email_confirmed_at));
+  return mapClaims(data.claims, userData.user);
 });
 
 export async function requireVerifiedStudent(
@@ -90,26 +90,29 @@ export function safeRelativePath(value: string | null | undefined): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function mapClaims(claims: JwtPayload, emailVerified: boolean): StudentIdentity {
-  const metadata = claims.user_metadata ?? {};
+function mapClaims(claims: JwtPayload, verifiedUser: User): StudentIdentity {
+  // The Supabase getUser response is authoritative and current; JWT metadata
+  // can lag behind a corrected name or email. Keep the private dashboard
+  // identity tied to the signed-in user, not an editable browser field.
+  const metadata = verifiedUser.user_metadata ?? {};
   const fullName = cleanName(metadata.full_name) || cleanName(metadata.name);
   const [fullFirst = "", ...fullRest] = fullName.split(/\s+/).filter(Boolean);
   const firstName =
     cleanName(metadata.first_name) ||
     cleanName(metadata.given_name) ||
-    fullFirst ||
-    "Student";
+    fullFirst;
   const lastName =
     cleanName(metadata.last_name) ||
     cleanName(metadata.family_name) ||
     fullRest.join(" ");
+  const displayName = [firstName, lastName].filter(Boolean).join(" ") || "Name not provided";
   return {
-    id: claims.sub,
-    email: typeof claims.email === "string" ? claims.email : "",
-    firstName,
+    id: verifiedUser.id,
+    email: verifiedUser.email || (typeof claims.email === "string" ? claims.email : ""),
+    firstName: firstName || "Student",
     lastName,
-    displayName: [firstName, lastName].filter(Boolean).join(" "),
-    emailVerified,
+    displayName,
+    emailVerified: Boolean(verifiedUser.email_confirmed_at),
   };
 }
 
