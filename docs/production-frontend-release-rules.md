@@ -23,7 +23,7 @@
    - `browser`
    - `private-render-contracts`
 
-   The mandatory gate workflow above runs **unconditionally for every PR into the live frontend branch**, with no path filters. Some historical E2E workflows are path-filtered; **remove path filters or make them unconditional before selecting them as required**, otherwise a docs-only PR can be blocked forever by missing checks. Do **not** treat skipped, cancelled, queued, or missing critical browser checks as verified. Require independent staging browser acceptance for sensitive user flows.
+   The mandatory gate workflow above runs **unconditionally for every PR into the live frontend branch**, with no path filters. This PR also removes the path filters from the **Sitewide 47-Page Responsive and Accessibility Gate** and **Private Student and Tutor Dashboard Performance Acceptance** workflows; the other listed critical jobs already run on every PR targeting the live branch. These checks will then exist for docs-only PRs too. Do **not** treat skipped, cancelled, queued, or missing critical browser checks as verified. Require independent staging browser acceptance for sensitive user flows.
 5. Turn on **Block force pushes** and **Restrict deletions**. Do not grant review/check bypass exceptions. Ensure stale approvals are dismissed on new commits.
 
 ## Controlled future production release
