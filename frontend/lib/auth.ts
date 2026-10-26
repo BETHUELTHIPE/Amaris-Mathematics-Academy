@@ -98,8 +98,7 @@ function mapClaims(claims: JwtPayload, authUser: User): StudentIdentity {
   const firstName =
     cleanName(metadata.first_name) ||
     cleanName(metadata.given_name) ||
-    fullFirst ||
-    "Student";
+    fullFirst;
   const lastName =
     cleanName(metadata.last_name) ||
     cleanName(metadata.family_name) ||
@@ -107,9 +106,9 @@ function mapClaims(claims: JwtPayload, authUser: User): StudentIdentity {
   return {
     id: claims.sub,
     email: typeof authUser.email === "string" ? authUser.email.trim().toLowerCase() : "",
-    firstName,
+    firstName: firstName || "Student",
     lastName,
-    displayName: [firstName, lastName].filter(Boolean).join(" "),
+    displayName: [firstName, lastName].filter(Boolean).join(" ") || "Name not provided",
     emailVerified: Boolean(authUser.email_confirmed_at),
   };
 }
