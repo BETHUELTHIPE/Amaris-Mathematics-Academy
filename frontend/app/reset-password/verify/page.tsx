@@ -26,7 +26,7 @@ export default async function VerifyRecoveryPage({
         <p className="text-xs font-bold uppercase tracking-widest text-[#1f5bbd]">Amaris account recovery</p>
         <h1 className="mt-4 text-3xl font-semibold text-[#07152d]">Verify your password reset.</h1>
         <p className="mt-4 text-sm leading-7 text-[#60708a]">
-          For your security, email links open this page without using your recovery code.
+          For your security, the same verification process applies to students, tutors and all other registered Amaris accounts. Email links open this page without using your recovery code.
           Continue below, or enter the six-digit code from your latest Amaris email.
         </p>
         {params.error && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-4 text-sm text-red-800">{params.error}</p>}
