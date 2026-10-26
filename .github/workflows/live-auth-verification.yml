@@ -45,4 +45,4 @@ jobs:
       - name: TypeScript checks
         run: npm run typecheck
       - name: Student authentication unit tests
-        run: node --test tests/google-registration.test.mjs tests/registration-actions.test.mjs tests/recovery-safety.test.mjs tests/password-recovery.test.mjs tests/universal-email-verification.test.mjs tests/tutor-applications.test.mjs tests/tutor-portal-contract.test.mjs
+        run: node --test tests/google-registration.test.mjs tests/registration-actions.test.mjs tests/recovery-safety.test.mjs tests/password-recovery.test.mjs tests/password-recovery-proof.test.mjs tests/universal-email-verification.test.mjs tests/tutor-applications.test.mjs tests/tutor-portal-contract.test.mjs
