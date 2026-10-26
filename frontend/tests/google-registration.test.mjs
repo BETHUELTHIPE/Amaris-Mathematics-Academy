@@ -41,7 +41,9 @@ test("verified student identity uses the authoritative Supabase user record and 
   assert.match(identity, /supabase\.auth\.getClaims\(\)/);
   assert.match(identity, /supabase\.auth\.getUser\(\)/);
   assert.match(identity, /userData\.user\.id !== data\.claims\.sub/);
-  assert.match(identity, /Boolean\(userData\.user\.email_confirmed_at\)/);
+  assert.match(identity, /mapClaims\(data\.claims, userData\.user\)/);
+  assert.match(identity, /emailVerified: Boolean\(verifiedUser\.email_confirmed_at\)/);
+  assert.match(identity, /verifiedUser\.user_metadata/);
   assert.match(identity, /metadata\.given_name/);
   assert.match(identity, /metadata\.family_name/);
   assert.doesNotMatch(identity, /claims\.email_verified/);
