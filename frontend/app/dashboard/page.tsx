@@ -169,12 +169,12 @@ export default async function DashboardPage({ searchParams }: {
   // Authorize before streaming any personal information. Suspense never
   // bypasses the verified student boundary or private no-store API requests.
   const user = await requireVerifiedStudent("/dashboard");
-  const firstName = user.firstName;
   const profileSaved = user.emailVerified;
   const { courses_page, videos_page } = await searchParams;
   return <StudentDashboardShell
     active="overview"
-    title={`Welcome, ${firstName}.`}
+    identity={user}
+    title={`Welcome, ${user.displayName}.`}
     description="Your next mathematics step will always be clear here."
     headerAside={<div className={`inline-flex max-w-full self-start items-center gap-2 rounded-2xl px-4 py-2 text-left text-sm font-semibold leading-5 md:shrink-0 ${profileSaved ? "bg-[#daf5ec] text-[#13715f]" : "bg-[#fff3d6] text-[#7b5710]"}`}>
       {profileSaved ? <CheckCircle2 className="size-4" /> : <ShieldCheck className="size-4" />}
