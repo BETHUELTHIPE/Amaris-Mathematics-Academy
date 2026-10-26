@@ -74,9 +74,13 @@ def verify_account_region(page, label: str, expected_email: str, expected_displa
     panel = page.get_by_role("region", name="Signed-in account")
     panel.wait_for(state="visible", timeout=45000)
     # Assert two independent fields EXACTLY, not a substring such as a booking student name.
-    actual = panel.locator("p").all_inner_texts()
-    require(len(actual) == 3 and actual[0].strip() == "Signed in as · " + label,
-            "FAIL: role-specific private account heading incorrect")
+    # Rendered innerText may be uppercase from CSS text-transform; read
+    # underlying DOM text for stable, semantically exact role comparison.
+    actual = panel.locator("p").all_text_contents()
+    heading = " ".join(actual[0].split()).casefold() if actual else ""
+    expected_heading = ("Signed in as · " + label).casefold()
+    require(len(actual) == 3 and heading == expected_heading,
+            "FAIL: role-specific private account heading incorrect (no account PII logged)")
     require(actual[1].strip() == expected_display_name,
             "FAIL: dashboard displayed name does not match authoritative account")
     require(actual[2].strip().lower() == expected_email,
