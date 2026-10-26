@@ -170,6 +170,35 @@ test("valid password reset enforces strength and matching confirmation, then rev
   assert.equal(state.cookieSet.options.maxAge, 0);
 });
 
+test("students, tutors, applicants and future registered roles use one recovery and verified email gate", async () => {
+  // Roles are not passed to Supabase recovery: the same verified account
+  // ownership proof protects every role without permitting role escalation.
+  for (const [role, email] of [
+    ["student", "student@example.test"],
+    ["tutor", "tutor@example.test"],
+    ["applicant", "applicant@example.test"],
+    ["future-sponsor", "sponsor@example.test"],
+  ]) {
+    const form = registration({ email, token: "123456", password: "Replaced-Password-281!", confirmPassword: "Replaced-Password-281!" });
+    const requested = await redirectUrl(forgotPasswordAction, form);
+    assert.equal(requested.pathname, "/forgot-password", role);
+    assert.equal(requested.searchParams.get("sent"), "1", role);
+    assert.equal(state.recoveryRequest.email, email, role);
+    assert.equal(state.recoveryRequest.options.redirectTo, "https://academy.example.test/reset-password/verify", role);
+
+    state.otpData = { session: { access_token: "synthetic-recovery" }, user: { id: "synthetic-user", email_confirmed_at: "2026-10-26" } };
+    assert.equal((await redirectUrl(verifyRecoveryCodeAction, form)).pathname, "/reset-password", role);
+    assert.deepEqual(state.otp, { email, token: "123456", type: "recovery" }, role);
+    assert.equal(state.cookieSet.options.httpOnly, true, role);
+    state.recoveryCookie = "1";
+    state.unverified = false;
+    assert.equal((await redirectUrl(resetPasswordAction, form)).pathname, "/login", role);
+    assert.deepEqual(state.updatedPassword, { password: "Replaced-Password-281!" }, role);
+    assert.deepEqual(state.signOut, { scope: "global" }, role);
+    assert.equal(state.cookieSet.options.maxAge, 0, role);
+  }
+});
+
 test("valid registration passes all profile fields and waits for email verification", async () => {
   const url = await redirectUrl(registerAction, registration());
   assert.equal(url.pathname, "/verify-email");
