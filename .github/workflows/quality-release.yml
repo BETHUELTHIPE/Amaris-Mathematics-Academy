@@ -12,6 +12,10 @@ on:
         required: true
         type: boolean
         default: false
+      production_approval_reference:
+        description: "Separate owner approval reference matching the protected production environment for this exact SHA"
+        required: false
+        type: string
       migration_risk:
         description: Database migration risk for this release
         required: true
@@ -608,11 +612,24 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.deploy_production == true
     runs-on: ubuntu-latest
     needs: [publish-image, deploy-staging]
+    permissions:
+      contents: read
+      actions: read
     environment:
       name: production
       url: ${{ vars.PRODUCTION_URL }}
     steps:
       - uses: actions/checkout@v4
+      - name: Require separate owner approval, exact SHA, live staging and protected backup
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PRODUCTION_APPROVAL_INPUT: ${{ inputs.production_approval_reference }}
+          PRODUCTION_APPROVED_SHA: ${{ vars.PRODUCTION_APPROVED_SHA }}
+          PRODUCTION_APPROVAL_REFERENCE: ${{ vars.PRODUCTION_APPROVAL_REFERENCE }}
+          PRODUCTION_STAGING_RUN_ID: ${{ vars.PRODUCTION_STAGING_RUN_ID }}
+          PRODUCTION_BACKUP_RUN_ID: ${{ vars.PRODUCTION_BACKUP_RUN_ID }}
+          PRODUCTION_ROLLBACK_SHA: ${{ vars.PRODUCTION_ROLLBACK_SHA }}
+        run: python scripts/release/verify_manual_production_approval.py
       - name: Verify all professional acceptance evidence
         run: python scripts/release/verify_acceptance.py acceptance/criteria.json
       - name: Create recovery point before high-risk migration
