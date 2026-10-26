@@ -76,13 +76,13 @@ test("all account portals reuse recovery instead of separate role-specific passw
   const reset = read("../app/reset-password/page.tsx");
   const actions = read("../app/auth/actions.ts");
   for (const portal of [student, tutor, applicant]) {
-    assert.match(portal, /href="\\/forgot-password"/);
+    assert.match(portal, /href="\/forgot-password"/);
   }
   for (const label of ["student", "tutor", "tutor applicant", "other registered"]) {
     assert.match(recovery.toLowerCase(), new RegExp(label));
   }
-  assert.match(recovery, /href="\\/tutor\\/login"/);
-  assert.match(recovery, /href="\\/tutor\\/apply\\/login"/);
+  assert.match(recovery, /href="\/tutor\/login"/);
+  assert.match(recovery, /href="\/tutor\/apply\/login"/);
   assert.match(verify, /six-digit code/);
   assert.match(reset, /get\(PASSWORD_RECOVERY_COOKIE\)/);
   assert.match(actions, /auth\.resetPasswordForEmail\(email/);
