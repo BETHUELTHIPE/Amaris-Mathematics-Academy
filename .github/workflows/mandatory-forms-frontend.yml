@@ -1,0 +1,31 @@
+name: Mandatory Forms Frontend Staging Gate
+on:
+  push:
+    branches: [fix/required-video-request-forms-20261026]
+    paths:
+      - "frontend/components/site/video-request-form.tsx"
+      - "frontend/app/api/video-requests/checkout/route.ts"
+      - "frontend/tests/mandatory-form-fields.test.mjs"
+      - ".github/workflows/mandatory-forms-frontend.yml"
+permissions:
+  contents: read
+jobs:
+  form-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Type-check forms and checkout proxy
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Validate mandatory fields and unchanged contact and tutor behavior
+        working-directory: frontend
+        run: node --test tests/mandatory-form-fields.test.mjs tests/contact-actions.test.mjs tests/tutor-applications.test.mjs tests/registration-actions.test.mjs
