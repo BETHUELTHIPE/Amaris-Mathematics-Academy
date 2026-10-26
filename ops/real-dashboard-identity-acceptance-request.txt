@@ -1,1 +1,3 @@
 One-time protected staging browser acceptance of real approved QA student and tutor accounts. Read-only; no screenshot or private log output. Do not modify production.
+
+Independent protected student and tutor accounts acceptance jobs, no production change.
