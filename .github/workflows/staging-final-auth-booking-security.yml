@@ -1,0 +1,66 @@
+name: Final Staging Verified Auth, Recovery and Booking Acceptance
+on:
+  push:
+    branches: [ops/staging-final-security-audit-20261026]
+    paths: [ops/final-staging-security-request.txt]
+permissions:
+  contents: read
+jobs:
+  stage-auth-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Compile-time verification
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Account and booking regression suites
+        working-directory: frontend
+        run: |
+          node --test tests/universal-email-verification.test.mjs tests/registration-actions.test.mjs tests/tutor-applications.test.mjs tests/tutor-portal-contract.test.mjs tests/password-recovery-proof.test.mjs tests/password-recovery.test.mjs tests/live-class-booking-contract.test.mjs tests/booking-staging-gate.test.mjs tests/google-registration.test.mjs
+      - name: Verify live staging routes reject unverified/anonymous guests
+        run: |
+          python3 - <<'PY'
+          from urllib.request import Request, build_opener, HTTPRedirectHandler
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urljoin, urlsplit, parse_qs
+          import json
+          BASE="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
+          class NoFollow(HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl): return None
+          opener=build_opener(NoFollow())
+          def fetch(path):
+              request=Request(BASE+path,headers={"User-Agent":"AmarisStagingReleaseAudit/1.0"})
+              try:
+                  with opener.open(request,timeout=35) as response:
+                      return response.status,response.headers,response.read(50000)
+              except HTTPError as err:
+                  return err.code,err.headers,err.read(50000)
+              except (URLError, TimeoutError):
+                  raise SystemExit("FAIL: staging service unreachable") from None
+          for path in ("/login","/login/code?email=synthetic%40example.test","/tutor/login","/tutor/register","/tutor/verify-email","/forgot-password","/reset-password/verify","/support-our-project"):
+              status,headers,body=fetch(path)
+              if status != 200: raise SystemExit("FAIL: expected public auth or informational page returned non-200")
+              print("PASS: expected staging public page available")
+          for path in ("/book-online-live-class","/book-online-live-class?programme=caps","/book-online-live-class/checkout?slot=123","/book-online-live-class/confirmation?reference=SYNTHETIC","/book-online-live-class/invoice?reference=SYNTHETIC","/reset-password"):
+              status,headers,body=fetch(path)
+              if status not in (302,303,307,308): raise SystemExit("FAIL: guest reached a protected endpoint or could not be safely redirected")
+              target=urlsplit(urljoin(BASE,headers.get("Location","")))
+              expected="/forgot-password" if path=="/reset-password" else "/login"
+              if target.netloc!=urlsplit(BASE).netloc or target.path != expected: raise SystemExit("FAIL: protected route did not redirect to expected same-origin auth page")
+              print("PASS: protected staging route rejects anonymous access")
+          status,headers,body=fetch("/api/auth-state")
+          if status!=200: raise SystemExit("FAIL: auth-state endpoint unavailable")
+          payload=json.loads(body)
+          if payload.get("authenticated") is not False or payload.get("emailVerified") is not False: raise SystemExit("FAIL: anonymous guest incorrectly authenticated")
+          if "no-store" not in headers.get("Cache-Control","").lower(): raise SystemExit("FAIL: auth-state guest response cacheable")
+          print("PASS: Anonymous auth state unavailable for login, no caching and privacy preserved")
+          PY
