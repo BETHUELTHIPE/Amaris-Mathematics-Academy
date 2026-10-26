@@ -72,6 +72,7 @@ export type LiveClassCheckoutSession = {
     level: string;
     topic: string;
     tutor: string;
+    student_name: string;
     starts_at: string;
     ends_at: string;
     duration_minutes: number;

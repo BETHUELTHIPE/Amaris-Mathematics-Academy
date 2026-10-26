@@ -53,6 +53,23 @@ test("checkout, confirmation and invoice require a verified student identity", (
   }
 });
 
+test("student's actual registered first and last names are mandatory and read-only", () => {
+  const profile = fs.readFileSync(new URL("../lib/registered-booking-name.ts", import.meta.url), "utf8");
+  const service = fs.readFileSync(new URL("../../backend/content/services/live_classes.py", import.meta.url), "utf8");
+  const backend = fs.readFileSync(new URL("../../backend/content/live_class_views.py", import.meta.url), "utf8");
+  assert.match(bookingPage, /const registeredName = await getVerifiedStudentBookingName\(student\.id\)/);
+  assert.match(bookingPage, /Student first and last name — mandatory/);
+  assert.match(bookingPage, /registeredName && validProgramme/);
+  assert.match(checkoutPage, /if \(!registeredName\) redirect/);
+  assert.ok(checkoutPage.indexOf("if (!registeredName) redirect") < checkoutPage.indexOf("await createStudentLiveClassCheckout"));
+  assert.match(checkoutPage, /booking\.student_name/);
+  assert.match(profile, /supabase\.auth\.getUser\(\)/);
+  assert.match(profile, /user\.id !== expectedAccountId/);
+  assert.match(profile, /user\.email_confirmed_at/);
+  assert.match(service, /Your registered first and last name are required before booking/);
+  assert.match(backend, /"student_name": f"/);
+});
+
 test("checkout preserves server-owned pricing and PayFast verification language", () => {
   assert.match(checkoutPage, /Pay R\{booking\.amount\} with PayFast/);
   assert.match(checkoutPage, /booking\.duration_minutes \/ 60/);

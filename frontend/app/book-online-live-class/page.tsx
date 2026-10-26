@@ -14,6 +14,7 @@ import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { getLiveClassSlots } from "@/lib/live-classes";
 import { requireVerifiedStudent } from "@/lib/auth";
+import { getVerifiedStudentBookingName } from "@/lib/registered-booking-name";
 import { getGradeLevels, programmes, subjects } from "@/lib/booking-grade-levels.mjs";
 import { LiveClassBookingFilters } from "./live-class-booking-filters";
 
@@ -51,7 +52,8 @@ export default async function BookOnlineLiveClassPage({
     if (choice && choice.length <= 180) savedChoices.set(field, choice);
   }
   const savedQuery = savedChoices.toString();
-  await requireVerifiedStudent(`/book-online-live-class${savedQuery ? `?${savedQuery}` : ""}`);
+  const student = await requireVerifiedStudent(`/book-online-live-class${savedQuery ? `?${savedQuery}` : ""}`);
+  const registeredName = await getVerifiedStudentBookingName(student.id);
 
   const programme = queryValue(params.programme);
   const subject = queryValue(params.subject);
@@ -86,7 +88,7 @@ export default async function BookOnlineLiveClassPage({
     : [];
 
   const readyForSlot = Boolean(
-    validProgramme && validSubject && chosenLevel && topic.length >= 2,
+    registeredName && validProgramme && validSubject && chosenLevel && topic.length >= 2,
   );
 
   return (
@@ -123,6 +125,15 @@ export default async function BookOnlineLiveClassPage({
           ))}
         </ol>
 
+        <div className="mt-7 rounded-2xl border border-[#dce4ef] bg-white p-6" aria-label="Registered student identity">
+          <h2 className="font-semibold text-[#263852]">Student first and last name — mandatory</h2>
+          {registeredName ? (
+            <p className="mt-2 text-sm text-[#60708a]">Registered student: <strong className="text-[#263852]">{registeredName.fullName}</strong>. This is taken from your verified account, not an editable booking field.</p>
+          ) : (
+            <p role="alert" className="mt-2 text-sm text-[#9b2525]">Your verified account must contain your actual registered first and last name before you can reserve a class or pay. <Link href="/contact" className="font-semibold underline">Contact Amaris support to correct your registration details</Link>.</p>
+          )}
+        </div>
+
         <LiveClassBookingFilters
           initialProgramme={validProgramme}
           initialSubject={validSubject}
@@ -144,7 +155,7 @@ export default async function BookOnlineLiveClassPage({
 
           {!readyForSlot ? (
             <div className="mt-5 rounded-2xl border border-[#dce4ef] bg-white p-6 text-sm leading-7 text-[#60708a]">
-              Complete the programme, subject, grade/level and topic fields above to choose a tutor slot.
+              {registeredName ? "Complete the programme, subject, grade/level and topic fields above to choose a tutor slot." : "Booking is unavailable until both your registered first and last name are confirmed. No payment hold has been created."}
             </div>
           ) : availability.unavailable ? (
             <div className="mt-5 rounded-2xl border border-[#f2d28d] bg-[#fff8e7] p-6 text-sm leading-7 text-[#765314]">

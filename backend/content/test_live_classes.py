@@ -166,6 +166,30 @@ class LiveClassBookingTests(TestCase):
         self.assertIn(self.slot.zoom_join_url, mail.outbox[1].body)
         self.assertEqual(deliver_live_class_reminder.run(), 0)
 
+    def test_student_registered_first_and_last_names_are_mandatory_before_payment(self):
+        original_first, original_last = self.student.first_name, self.student.last_name
+        for first, last in (
+            ("", original_last),
+            (original_first, ""),
+            ("Student", "Learner"),
+            (" ", " "),
+        ):
+            self.student.first_name = first
+            self.student.last_name = last
+            with self.subTest(first_name=first, last_name=last):
+                with self.assertRaisesRegex(PaymentSecurityError, "registered first and last name"):
+                    self.checkout(key="missing-registered-name-001")
+                self.assertFalse(LiveClassBooking.objects.filter(
+                    idempotency_key="missing-registered-name-001"
+                ).exists())
+        self.student.first_name, self.student.last_name = original_first, original_last
+
+    def test_payfast_and_checkout_use_only_stored_student_registration_name(self):
+        checkout = self.checkout(key="student-name-payfast-001")
+        self.assertEqual(checkout.fields["name_first"], self.student.first_name)
+        self.assertEqual(checkout.fields["name_last"], self.student.last_name)
+        self.assertEqual(checkout.fields["email_address"], self.student.email)
+
     def test_checkout_is_server_priced_at_r250_and_holds_slot(self):
         checkout = self.checkout()
         booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)

@@ -194,6 +194,7 @@ class LiveClassCheckoutView(LiveClassStudentAPIView):
                     "level": booking.level,
                     "topic": booking.topic,
                     "tutor": booking.slot.tutor_display_name,
+                    "student_name": f"{booking.student.first_name} {booking.student.last_name}".strip(),
                     "starts_at": booking.slot.starts_at,
                     "ends_at": booking.slot.ends_at,
                     "amount": f"{booking.amount:.2f}",
