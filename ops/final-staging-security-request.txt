@@ -1,1 +1,2 @@
 Run staging-only final authentication, verified email, tutor, recovery, and protected booking acceptance. GET-only live smoke. NO production changes.
+Re-check after confirming staging free instance resumed at 2026-10-26T03:49:36Z. Strict guest access controls unchanged.
