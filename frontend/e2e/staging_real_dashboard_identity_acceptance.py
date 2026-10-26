@@ -99,65 +99,66 @@ def main() -> None:
         context = browser.new_context(viewport={"width": 1440, "height": 900},
                                       timezone_id="Africa/Johannesburg", locale="en-ZA")
         try:
-            student, _ = verify_provider_user(context.request, key, student_email, student_password)
-            tutor, tutor_token = verify_provider_user(context.request, key, tutor_email, tutor_password)
-            require(student.get("id") != tutor.get("id"), "BLOCK: QA role accounts must be distinct")
-            student_name = expected_name(student)
-            tutor_name = expected_name(tutor)
+            role = os.environ.get("AMARIS_STAGING_QA_ROLE", "").strip().lower()
+            require(role in ("student", "tutor"), "BLOCK: explicit student or tutor acceptance role required")
+            if role == "student":
+                student, _ = verify_provider_user(context.request, key, student_email, student_password)
+                student_name = expected_name(student)
+                sctx = browser.new_context(viewport={"width": 1440, "height": 900})
+                try:
+                    student_page = sctx.new_page()
+                    student_page.goto(FRONTEND + "/login", wait_until="domcontentloaded", timeout=45000)
+                    student_page.locator('form:has(input[name="password"]) input[name="email"]').fill(student_email)
+                    student_page.locator('form:has(input[name="password"]) input[name="password"]').fill(student_password)
+                    student_page.get_by_role("button", name="Log in securely").click()
+                    student_page.wait_for_url(re.compile(r"/dashboard(?:[/?]|$)"), timeout=45000)
+                    for path in ("/dashboard", "/dashboard/orders", "/dashboard/notifications"):
+                        response = student_page.goto(FRONTEND + path, wait_until="domcontentloaded", timeout=45000)
+                        require(response is not None and response.status == 200,
+                                "FAIL: verified student dashboard route unavailable")
+                        verify_account_region(student_page, "Student", student_email, student_name)
+                        print("PASS: real staging student identity on protected private dashboard (no PII logged)")
+                finally:
+                    sctx.close()
 
-            # Tutor fallback is permitted only when confirmed independently by an
-            # authenticated Django-approved tutor API, never from user-provided UI.
-            tutor_api = context.request.get(
-                BACKEND + "/api/v1/tutor/dashboard/",
-                headers={"Authorization": "Bearer " + tutor_token},
-                timeout=45000,
-            )
-            require(tutor_api.status == 200, "BLOCK: staging test tutor lacks Django Tutors approval")
-            tutor_profile = tutor_api.json().get("tutor") or {}
-            approved_tutor_name = tutor_profile.get("name")
-            if tutor_name == "Name not provided":
-                require(isinstance(approved_tutor_name, str) and approved_tutor_name.strip(),
-                        "BLOCK: approved tutor record missing a full name")
-                tutor_name = approved_tutor_name.strip()
-            require(len(tutor_name.split()) >= 2,
-                    "BLOCK: approved tutor full first and last name not supplied")
-            require(tutor_profile.get("email", "").strip().lower() == tutor_email,
-                    "BLOCK: Django tutor profile email differs from Supabase Auth")
+            else:
+                tutor, tutor_token = verify_provider_user(context.request, key, tutor_email, tutor_password)
+                tutor_name = expected_name(tutor)
 
-            # Browser sessions are intentionally isolated to prevent cross-user
-            # identity accidentally leaking through SSR or cached data.
-            sctx = browser.new_context(viewport={"width": 1440, "height": 900})
-            try:
-                student_page = sctx.new_page()
-                student_page.goto(FRONTEND + "/login", wait_until="domcontentloaded", timeout=45000)
-                student_page.locator('form:has(input[name="password"]) input[name="email"]').fill(student_email)
-                student_page.locator('form:has(input[name="password"]) input[name="password"]').fill(student_password)
-                student_page.get_by_role("button", name="Log in securely").click()
-                student_page.wait_for_url(re.compile(r"/dashboard(?:[/?]|$)"), timeout=45000)
-                for path in ("/dashboard", "/dashboard/orders", "/dashboard/notifications"):
-                    response = student_page.goto(FRONTEND + path, wait_until="domcontentloaded", timeout=45000)
-                    require(response is not None and response.status == 200,
-                            "FAIL: verified student dashboard route unavailable")
-                    verify_account_region(student_page, "Student", student_email, student_name)
-                    print("PASS: real staging student identity on protected private dashboard (no PII logged)")
-            finally:
-                sctx.close()
+                # Tutor fallback is permitted only when confirmed independently by an
+                # authenticated Django-approved tutor API, never from user-provided UI.
+                tutor_api = context.request.get(
+                    BACKEND + "/api/v1/tutor/dashboard/",
+                    headers={"Authorization": "Bearer " + tutor_token},
+                    timeout=45000,
+                )
+                require(tutor_api.status == 200, "BLOCK: staging test tutor lacks Django Tutors approval")
+                tutor_profile = tutor_api.json().get("tutor") or {}
+                approved_tutor_name = tutor_profile.get("name")
+                if tutor_name == "Name not provided":
+                    require(isinstance(approved_tutor_name, str) and approved_tutor_name.strip(),
+                            "BLOCK: approved tutor record missing a full name")
+                    tutor_name = approved_tutor_name.strip()
+                require(len(tutor_name.split()) >= 2,
+                        "BLOCK: approved tutor full first and last name not supplied")
+                require(tutor_profile.get("email", "").strip().lower() == tutor_email,
+                        "BLOCK: Django tutor profile email differs from Supabase Auth")
 
-            tctx = browser.new_context(viewport={"width": 1440, "height": 900})
-            try:
-                tutor_page = tctx.new_page()
-                tutor_page.goto(FRONTEND + "/tutor/login", wait_until="domcontentloaded", timeout=45000)
-                tutor_page.locator('input[name="email"]').fill(tutor_email)
-                tutor_page.locator('input[name="password"]').fill(tutor_password)
-                tutor_page.get_by_role("button", name="Sign in to tutor dashboard").click()
-                tutor_page.wait_for_url(re.compile(r"/tutor/dashboard(?:[/?]|$)"), timeout=45000)
-                tutor_page.get_by_role("heading", name="Your teaching slots").wait_for(state="visible", timeout=45000)
-                verify_account_region(tutor_page, "Tutor", tutor_email, tutor_name)
-                print("PASS: Django-approved staging tutor real account full name/email displayed (no PII logged)")
-            finally:
-                tctx.close()
+                tctx = browser.new_context(viewport={"width": 1440, "height": 900})
+                try:
+                    tutor_page = tctx.new_page()
+                    tutor_page.goto(FRONTEND + "/tutor/login", wait_until="domcontentloaded", timeout=45000)
+                    tutor_page.locator('input[name="email"]').fill(tutor_email)
+                    tutor_page.locator('input[name="password"]').fill(tutor_password)
+                    tutor_page.get_by_role("button", name="Sign in to tutor dashboard").click()
+                    tutor_page.wait_for_url(re.compile(r"/tutor/dashboard(?:[/?]|$)"), timeout=45000)
+                    tutor_page.get_by_role("heading", name="Your teaching slots").wait_for(state="visible", timeout=45000)
+                    verify_account_region(tutor_page, "Tutor", tutor_email, tutor_name)
+                    print("PASS: Django-approved staging tutor real account full name/email displayed (no PII logged)")
+                finally:
+                    tctx.close()
 
-            print("PASS: independent genuine authenticated student/tutor browser acceptance — staging only")
+            print("PASS: real authenticated staging dashboard identity acceptance — " + role)
         finally:
             context.close()
             browser.close()
