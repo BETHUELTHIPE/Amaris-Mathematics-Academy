@@ -48,7 +48,15 @@ def verify_provider_user(request, key: str, email: str, password: str) -> tuple[
         data={"email": email, "password": password},
         timeout=45000,
     )
-    require(response.status == 200, "BLOCK: approved staging QA identity cannot authenticate")
+    if response.status != 200:
+        # Only print allowlisted provider status codes, never the response body,
+        # email address, bearer tokens, cookies, or password.
+        try:
+            code = response.json().get("error_code") or response.json().get("code") or ""
+        except (ValueError, TypeError, AttributeError):
+            code = ""
+        safe = code if code in {"invalid_credentials", "email_not_confirmed", "over_request_rate_limit", "user_not_found", "unexpected_failure"} else "other"
+        raise AssertionError(f"BLOCK: staging QA password auth HTTP {response.status}, reason {safe}")
     auth_data = response.json()
     token = auth_data.get("access_token")
     require(isinstance(token, str) and bool(token), "BLOCK: Supabase Auth did not issue QA access token")
@@ -107,7 +115,12 @@ def main() -> None:
                 sctx = browser.new_context(viewport={"width": 1440, "height": 900})
                 try:
                     student_page = sctx.new_page()
-                    student_page.goto(FRONTEND + "/login", wait_until="domcontentloaded", timeout=45000)
+                    login_response = student_page.goto(FRONTEND + "/login", wait_until="domcontentloaded", timeout=45000)
+                    login_path = urlsplit(student_page.url).path
+                    require(login_response is not None and login_response.status == 200 and login_path == "/login",
+                            f"BLOCK: student staging login page HTTP {login_response.status if login_response else 0}, path {login_path}")
+                    require(student_page.locator('form:has(input[name="password"]) input[name="email"]').count() == 1,
+                            "BLOCK: staging student password form unavailable")
                     student_page.locator('form:has(input[name="password"]) input[name="email"]').fill(student_email)
                     student_page.locator('form:has(input[name="password"]) input[name="password"]').fill(student_password)
                     student_page.get_by_role("button", name="Log in securely").click()
@@ -147,7 +160,12 @@ def main() -> None:
                 tctx = browser.new_context(viewport={"width": 1440, "height": 900})
                 try:
                     tutor_page = tctx.new_page()
-                    tutor_page.goto(FRONTEND + "/tutor/login", wait_until="domcontentloaded", timeout=45000)
+                    login_response = tutor_page.goto(FRONTEND + "/tutor/login", wait_until="domcontentloaded", timeout=45000)
+                    login_path = urlsplit(tutor_page.url).path
+                    require(login_response is not None and login_response.status == 200 and login_path == "/tutor/login",
+                            f"BLOCK: tutor staging login page HTTP {login_response.status if login_response else 0}, path {login_path}")
+                    require(tutor_page.locator('input[name="email"]').count() == 1,
+                            "BLOCK: tutor email input unavailable on staging login page")
                     tutor_page.locator('input[name="email"]').fill(tutor_email)
                     tutor_page.locator('input[name="password"]').fill(tutor_password)
                     tutor_page.get_by_role("button", name="Sign in to tutor dashboard").click()
