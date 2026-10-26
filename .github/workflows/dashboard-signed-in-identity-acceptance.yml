@@ -1,7 +1,7 @@
 name: Dashboard Signed-In Account Header Acceptance
 on:
   push:
-    branches: ["test/staging-dashboard-name-email-20261026"]
+    branches: ["stage/dashboard-account-identity-acceptance-20261026"]
     paths:
       - "frontend/lib/auth.ts"
       - "frontend/components/site/dashboard-account-identity.tsx"
