@@ -1,0 +1,77 @@
+name: Registered Name Booking Acceptance
+on:
+  push:
+    branches: ["fix/mandatory-registered-name-live-bookings-20261026"]
+    paths:
+      - "frontend/app/book-online-live-class/**"
+      - "frontend/lib/registered-booking-name.ts"
+      - "frontend/lib/student-api.ts"
+      - "frontend/tests/live-class-booking-contract.test.mjs"
+      - "backend/content/authentication.py"
+      - "backend/content/live_class_views.py"
+      - "backend/content/services/live_classes.py"
+      - "backend/content/test_live_classes.py"
+      - ".github/workflows/registered-student-name-booking-gate.yml"
+permissions:
+  contents: read
+jobs:
+  frontend-name-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --include=dev
+      - name: Check TypeScript
+        run: npm run typecheck
+      - name: Run student booking identity and PayFast contracts
+        run: node --test tests/live-class-booking-contract.test.mjs tests/booking-staging-gate.test.mjs
+  django-name-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_identity_ci
+          POSTGRES_USER: amaris_identity_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U amaris_identity_ci -d amaris_identity_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+      DJANGO_SECRET_KEY: "isolated-synthetic-qa-only-not-production"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      DATABASE_URL: "postgresql://amaris_identity_ci@127.0.0.1:5432/amaris_identity_ci"
+      DATABASE_SSL_REQUIRED: "false"
+      PAYFAST_MODE: "sandbox"
+      EMAIL_BACKEND: "django.core.mail.backends.locmem.EmailBackend"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.15"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install locked backend dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Database migration drift
+        run: python manage.py makemigrations --check --dry-run
+      - name: Test booking identity and sandbox payments
+        run: python manage.py test content.test_live_classes
