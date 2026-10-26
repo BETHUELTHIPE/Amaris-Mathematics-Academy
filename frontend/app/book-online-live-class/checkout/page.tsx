@@ -72,7 +72,7 @@ export default async function LiveClassCheckoutPage({
           <h1 className="mt-3 text-4xl font-semibold tracking-[-.045em]">Confirm your tutor slot</h1>
 
           <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm">
-            <div><dt className="font-semibold text-[#263852]">Registered student — mandatory</dt><dd className="mt-1 text-[#60708a]">{registeredName.fullName}</dd></div>
+            <div><dt className="font-semibold text-[#263852]">Registered student — mandatory</dt><dd className="mt-1 text-[#60708a]">{booking.student_name}</dd></div>
             <div><dt className="font-semibold text-[#263852]">Tutor</dt><dd className="mt-1 text-[#60708a]">{booking.tutor}</dd></div>
             <div><dt className="font-semibold text-[#263852]">Class</dt><dd className="mt-1 text-[#60708a]">{booking.programme} · {booking.subject} · {booking.level}</dd></div>
             <div><dt className="font-semibold text-[#263852]">Topic</dt><dd className="mt-1 text-[#60708a]">{booking.topic}</dd></div>
