@@ -1,0 +1,1 @@
+Run non-mutating staging HTTP and booking privacy checks after deploying exact PR #382 SHA 5819b36b19b2df5dc21324e9eca5ab72b7427ba6.
