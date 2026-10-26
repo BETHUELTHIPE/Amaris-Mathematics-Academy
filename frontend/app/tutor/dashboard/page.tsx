@@ -11,6 +11,7 @@ import { Header } from "@/components/site/header";
 import { createTutorSlotAction, pauseTutorSlotAction, updateTutorSlotAction } from "@/app/tutor/actions";
 import { getTutorDashboard, getTutorEarnings, TutorApiError, type TutorEarnings } from "@/lib/tutor-api";
 import { TutorEarningsPanel } from "@/components/site/tutor-earnings";
+import { DashboardAccountIdentity } from "@/components/site/dashboard-account-identity";
 import { paginatePrivateRows, PrivatePagination } from "@/components/site/private-pagination";
 
 export const dynamic = "force-dynamic";
@@ -89,6 +90,10 @@ export default async function TutorDashboardPage({
     );
   }
 
+  const tutorIdentity = {
+    displayName: identity.displayName === "Name not provided" ? dashboard.tutor.name : identity.displayName,
+    email: identity.email,
+  };
   const slotHistory = paginatePrivateRows(dashboard.slots, notices.slots_page, 8);
   const bookingHistory = paginatePrivateRows(dashboard.bookings, notices.bookings_page, 8);
 
@@ -100,14 +105,17 @@ export default async function TutorDashboardPage({
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ffcc66]">Private tutor workspace</p>
           <div className="mt-3 flex flex-wrap items-start justify-between gap-5">
             <div>
-              <h1 className="text-4xl font-semibold tracking-tight">Welcome, {dashboard.tutor.name}.</h1>
+              <h1 className="text-4xl font-semibold tracking-tight [overflow-wrap:anywhere]">Welcome, {tutorIdentity.displayName}.</h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/70">Manage your Zoom class timetable, booking details and teaching hours from one secure dashboard.</p>
             </div>
-            <form action={signOutAction}>
-              <button type="submit" className="flex min-h-11 items-center gap-2 rounded-full border border-white/25 px-5 text-sm font-semibold hover:bg-white/10">
-                <LogOut className="size-4" /> Sign out
-              </button>
-            </form>
+            <div className="flex min-w-0 max-w-full flex-col items-start gap-3 sm:items-end">
+              <DashboardAccountIdentity identity={tutorIdentity} role="Tutor" />
+              <form action={signOutAction}>
+                <button type="submit" className="flex min-h-11 items-center gap-2 rounded-full border border-white/25 px-5 text-sm font-semibold hover:bg-white/10">
+                  <LogOut className="size-4" /> Sign out
+                </button>
+              </form>
+            </div>
           </div>
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             {[

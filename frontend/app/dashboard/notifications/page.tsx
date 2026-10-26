@@ -77,10 +77,11 @@ async function NotificationsContent({ page }: { page?: string }) {
 export default async function NotificationsPage({ searchParams }: {
   searchParams: Promise<{ page?: string }>;
 }) {
-  await requireVerifiedStudent("/dashboard/notifications");
+  const user = await requireVerifiedStudent("/dashboard/notifications");
   const { page } = await searchParams;
   return <StudentDashboardShell
     active="notifications"
+    identity={user}
     title="Notifications"
     description="Payment confirmations, live-class reminders and requested-video updates appear here."
   >
