@@ -1,0 +1,1 @@
+Execute one protected staging-only student QA credential comparison/recovery to match existing GitHub staging QA secret. Require exactly two verified staging users and independent tutor identity. No production changes. 2026-10-26.
