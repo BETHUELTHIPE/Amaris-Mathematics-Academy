@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+// Isolated fixture only; never use this signing secret in a real environment.
+process.env.PASSWORD_RECOVERY_SIGNING_SECRET = "test-only-recovery-signing-secret-" + "v".repeat(48);
 const mockModule = `
 export const state = {};
 export function getSiteUrl() { return "https://academy.example.test"; }
@@ -25,6 +27,7 @@ export async function createSupabaseServerClient() {
     resetPasswordForEmail: async (email, options) => { state.recoveryRequest = { email, options }; if (state.recoveryNetworkError) throw Error("Private network details"); return { error: state.recoveryError ?? null }; },
     updateUser: async (input) => { state.updatedPassword = input; return { error: state.passwordUpdateError ?? null }; },
     getUser: async () => ({ data: { user: { id: "synthetic-user", email_confirmed_at: state.unverified ? null : "2026-10-25" } }, error: state.userError }),
+    getClaims: async () => ({ data: { claims: { sub: "synthetic-user", session_id: state.sessionId || "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }, error: state.claimsError }),
     verifyOtp: async (input) => { state.otp = input; return { data: state.otpData, error: state.otpError }; },
     signOut: async (input) => { state.signOut = input; return { error: null }; }
   } };
@@ -44,7 +47,7 @@ const vite = await createServer({
   appType: "custom", configFile: false, root,
   plugins: [{
     name: "isolated-auth-dependencies", enforce: "pre",
-    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email" || id === "@/lib/password-recovery") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
+    resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email" || id === "@/lib/password-recovery" || id === "@/lib/password-recovery-proof") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubbed.has(id) || id === "test:auth-state") return "\0test:auth-state"; },
     load(id) { if (id === "\0test:auth-state") return mockModule; },
   }],
   server: { middlewareMode: true, hmr: false, ws: false },
@@ -110,6 +113,8 @@ test("reset link uses a POST-only verification step and grants short-lived proof
   assert.equal(redirectTo.pathname, "/reset-password");
   assert.deepEqual(state.otp, { token_hash: "pkce_abcdefghijklmnopqrstuvwxyz1234567890", type: "recovery" });
   assert.equal(state.cookieSet.name, "amaris-password-recovery");
+  assert.match(state.cookieSet.value, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+  assert.notEqual(state.cookieSet.value, "1");
   assert.equal(state.cookieSet.options.path, "/reset-password");
   assert.equal(state.cookieSet.options.httpOnly, true);
   assert.equal(state.cookieSet.options.maxAge, 900);
@@ -142,6 +147,10 @@ test("unverified or expired recovery links cannot update a student's password", 
   assert.equal(noProof.pathname, "/forgot-password");
   assert.equal(state.updatedPassword, undefined);
   state.recoveryCookie = "1";
+  assert.equal((await redirectUrl(resetPasswordAction, form)).pathname, "/forgot-password");
+  const code = registration({ token: "123456" });
+  assert.equal((await redirectUrl(verifyRecoveryCodeAction, code)).pathname, "/reset-password");
+  state.recoveryCookie = state.cookieSet.value;
   state.unverified = true;
   const noVerifiedUser = await redirectUrl(resetPasswordAction, form);
   assert.equal(noVerifiedUser.pathname, "/forgot-password");
@@ -150,7 +159,8 @@ test("unverified or expired recovery links cannot update a student's password", 
 
 test("valid password reset enforces strength and matching confirmation, then revokes sessions", async () => {
   const form = registration({ password: "weak", confirmPassword: "weak" });
-  state.recoveryCookie = "1";
+  assert.equal((await redirectUrl(verifyRecoveryCodeAction, registration({ token: "123456" }))).pathname, "/reset-password");
+  state.recoveryCookie = state.cookieSet.value;
   assert.equal((await redirectUrl(resetPasswordAction, form)).pathname, "/reset-password");
   assert.equal(state.updatedPassword, undefined);
   form.set("password", "Secure-New-Password-218!");
@@ -168,6 +178,35 @@ test("valid password reset enforces strength and matching confirmation, then rev
   assert.equal(state.cookieSet.name, "amaris-password-recovery");
   assert.equal(state.cookieSet.options.path, "/reset-password");
   assert.equal(state.cookieSet.options.maxAge, 0);
+});
+
+test("students, tutors, applicants and future registered roles use one recovery and verified email gate", async () => {
+  // Roles are not passed to Supabase recovery: the same verified account
+  // ownership proof protects every role without permitting role escalation.
+  for (const [role, email] of [
+    ["student", "student@example.test"],
+    ["tutor", "tutor@example.test"],
+    ["applicant", "applicant@example.test"],
+    ["future-sponsor", "sponsor@example.test"],
+  ]) {
+    const form = registration({ email, token: "123456", password: "Replaced-Password-281!", confirmPassword: "Replaced-Password-281!" });
+    const requested = await redirectUrl(forgotPasswordAction, form);
+    assert.equal(requested.pathname, "/forgot-password", role);
+    assert.equal(requested.searchParams.get("sent"), "1", role);
+    assert.equal(state.recoveryRequest.email, email, role);
+    assert.equal(state.recoveryRequest.options.redirectTo, "https://academy.example.test/reset-password/verify", role);
+
+    state.otpData = { session: { access_token: "synthetic-recovery" }, user: { id: "synthetic-user", email_confirmed_at: "2026-10-26" } };
+    assert.equal((await redirectUrl(verifyRecoveryCodeAction, form)).pathname, "/reset-password", role);
+    assert.deepEqual(state.otp, { email, token: "123456", type: "recovery" }, role);
+    assert.equal(state.cookieSet.options.httpOnly, true, role);
+    state.recoveryCookie = state.cookieSet.value;
+    state.unverified = false;
+    assert.equal((await redirectUrl(resetPasswordAction, form)).pathname, "/login", role);
+    assert.deepEqual(state.updatedPassword, { password: "Replaced-Password-281!" }, role);
+    assert.deepEqual(state.signOut, { scope: "global" }, role);
+    assert.equal(state.cookieSet.options.maxAge, 0, role);
+  }
 });
 
 test("valid registration passes all profile fields and waits for email verification", async () => {

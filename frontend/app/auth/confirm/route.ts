@@ -4,6 +4,7 @@ import { safeRelativePath } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasVerifiedAccountEmail } from "@/lib/verified-account-email";
 import { isPasswordRecoveryCallback, PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS } from "@/lib/password-recovery";
+import { getVerifiedRecoveryIdentity, issuePasswordRecoveryProof } from "@/lib/password-recovery-proof";
 
 const allowedOtpTypes = new Set<EmailOtpType>([
   "signup",
@@ -54,10 +55,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  const response = NextResponse.redirect(new URL(next, request.url));
+  let recoveryProof: string | null = null;
   if (recovery) {
-    // Server-only, short-lived proof that Supabase accepted this recovery link.
-    response.cookies.set(PASSWORD_RECOVERY_COOKIE, "1", {
+    const identity = await getVerifiedRecoveryIdentity(supabase.auth);
+    recoveryProof = identity ? await issuePasswordRecoveryProof(identity) : null;
+    if (!recoveryProof) {
+      await supabase.auth.signOut({ scope: "local" });
+      const failed = new URL("/forgot-password", request.url);
+      failed.searchParams.set("error", "Recovery session unavailable. Request a fresh password reset email.");
+      return NextResponse.redirect(failed);
+    }
+  }
+
+  const response = NextResponse.redirect(new URL(next, request.url));
+  if (recovery && recoveryProof) {
+    // Signed, session-bound proof; a manually inserted "1" must never work.
+    response.cookies.set(PASSWORD_RECOVERY_COOKIE, recoveryProof, {
       httpOnly: true,
       secure: request.nextUrl.protocol === "https:",
       sameSite: "lax",
