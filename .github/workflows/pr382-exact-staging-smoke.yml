@@ -1,0 +1,50 @@
+name: PR 382 Exact Staging HTTP Acceptance
+on:
+  push:
+    branches: ["ops/pr382-staging-http-acceptance-20261026"]
+    paths: ["ops/pr382-staging-smoke-request.txt"]
+permissions:
+  contents: read
+jobs:
+  exact-staging-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify real staging backend readiness and public slot privacy
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend="https://amaris-mathematics-academy-staging.onrender.com"
+          for path in /health/live/ /health/ready/; do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 45 "$backend$path")"
+            if [ "$status" != "200" ]; then echo "::error::Staging backend unhealthy at $path ($status)"; exit 1; fi
+            echo "PASS: staging backend $path HTTP 200"
+          done
+          body="$(mktemp)"
+          status="$(curl -sS -o "$body" -w '%{http_code}' --max-time 45 "$backend/api/v1/live-classes/slots/?programme=caps&subject=mathematics")"
+          [ "$status" = "200" ] || { echo "::error::Staging slots HTTP $status"; exit 1; }
+          python3 - "$body" <<'PY'
+          import json,sys
+          with open(sys.argv[1]) as fp: data=json.load(fp)
+          assert isinstance(data,list)
+          assert all('zoom_join_url' not in x and str(x.get('price'))=='250.00' for x in data)
+          print('PASS: live staging availability returns R250 slots without private Zoom links')
+          PY
+      - name: Verify protected booking page and safe anonymous login redirect
+        shell: bash
+        run: |
+          node frontend/scripts/verify-booking-page.mjs https://amaris-mathematics-academy-staging-x4ax.onrender.com
+      - name: Ensure missing registration identity is not embedded in public page
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://amaris-mathematics-academy-staging-x4ax.onrender.com/book-online-live-class"
+          headers="$(mktemp)"
+          status="$(curl -sS --max-time 40 --output /dev/null --dump-header "$headers" -w '%{http_code}' "$url")"
+          case "$status" in 302|303|307|308) ;; *) echo "::error::Anonymous booking exposed or blocked by $status"; exit 1;; esac
+          grep -Eqi '^location: .*/login\?next=' "$headers" || { echo "::error::Missing safe login redirect"; exit 1; }
+          echo "PASS: anonymous booking requires verified student login"
