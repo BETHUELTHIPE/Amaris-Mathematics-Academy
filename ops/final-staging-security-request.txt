@@ -1,0 +1,1 @@
+Run staging-only final authentication, verified email, tutor, recovery, and protected booking acceptance. GET-only live smoke. NO production changes.
