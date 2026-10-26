@@ -1,10 +1,13 @@
 import type { ReactNode } from "react";
+import type { StudentIdentity } from "@/lib/auth";
+import { DashboardAccountIdentity } from "@/components/site/dashboard-account-identity";
 import { DashboardNavigation, type DashboardSection } from "@/components/site/dashboard-navigation";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 
 type StudentDashboardShellProps = {
   active: DashboardSection;
+  identity: Pick<StudentIdentity, "displayName" | "email">;
   title: string;
   description: string;
   headerAside?: ReactNode;
@@ -13,6 +16,7 @@ type StudentDashboardShellProps = {
 
 export function StudentDashboardShell({
   active,
+  identity,
   title,
   description,
   headerAside,
@@ -27,7 +31,10 @@ export function StudentDashboardShell({
           <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-[-.045em] [overflow-wrap:anywhere] sm:text-4xl lg:text-5xl">{title}</h1>
           <p className="mt-3 max-w-2xl text-[#60708a]">{description}</p>
         </div>
-        {headerAside}
+        <div className="flex min-w-0 max-w-full flex-col items-start gap-3 md:items-end">
+          <DashboardAccountIdentity identity={identity} role="Student" />
+          {headerAside}
+        </div>
       </div>
     </section>
     <section className="mx-auto grid max-w-7xl min-w-0 gap-5 px-4 py-6 sm:px-5 sm:py-10 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)] lg:gap-7 lg:px-8">
