@@ -27,5 +27,7 @@ jobs:
         run: npm ci --include=dev
       - name: Type-check secure student profile recovery
         run: npm run typecheck
-      - name: Build staging student frontend\n        run: npm run build\n      - name: Test verified self-service registered name and private booking gates
+      - name: Build staging student frontend
+        run: npm run build
+      - name: Test verified self-service registered name and private booking gates
         run: node --test tests/pr382-verified-profile-recovery.test.mjs tests/live-class-booking-contract.test.mjs
