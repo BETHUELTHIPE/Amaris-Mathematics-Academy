@@ -67,6 +67,31 @@ test("email recovery uses a non-consuming landing and six-digit OTP fallback", (
   assert.ok(read("../proxy.ts").includes('"/reset-password/:path*"'));
 });
 
+test("all account portals reuse recovery instead of separate role-specific password stores", () => {
+  const student = read("../app/login/page.tsx");
+  const tutor = read("../app/tutor/login/page.tsx");
+  const applicant = read("../app/tutor/apply/login/page.tsx");
+  const recovery = read("../app/forgot-password/page.tsx");
+  const verify = read("../app/reset-password/verify/page.tsx");
+  const reset = read("../app/reset-password/page.tsx");
+  const actions = read("../app/auth/actions.ts");
+  for (const portal of [student, tutor, applicant]) {
+    assert.match(portal, /href="\\/forgot-password"/);
+  }
+  for (const label of ["student", "tutor", "tutor applicant", "other registered"]) {
+    assert.match(recovery.toLowerCase(), new RegExp(label));
+  }
+  assert.match(recovery, /href="\\/tutor\\/login"/);
+  assert.match(recovery, /href="\\/tutor\\/apply\\/login"/);
+  assert.match(verify, /six-digit code/);
+  assert.match(reset, /get\(PASSWORD_RECOVERY_COOKIE\)/);
+  assert.match(actions, /auth\.resetPasswordForEmail\(email/);
+  assert.match(actions, /auth\.verifyOtp\(\{ email, token, type: "recovery" \}\)/);
+  assert.match(actions, /user\?\.email_confirmed_at/);
+  assert.match(actions, /auth\.updateUser\(\{ password \}\)/);
+  assert.match(actions, /auth\.signOut\(\{ scope: "global" \}\)/);
+});
+
 test("forgot password is available from student and tutor login without disclosing accounts", () => {
   const student = read("../app/login/page.tsx");
   const tutor = read("../app/tutor/login/page.tsx");
