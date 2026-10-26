@@ -36,6 +36,8 @@ test("confirmed reset callback issues 15-minute HttpOnly path-limited recovery p
   assert.match(callback, /path: "\/reset-password"/);
   assert.match(callback, /PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS/);
   assert.equal(PASSWORD_RECOVERY_COOKIE, "amaris-password-recovery");
+  assert.match(callback, /issuePasswordRecoveryProof\(/);
+  assert.doesNotMatch(callback, /set\(PASSWORD_RECOVERY_COOKIE, "1"/);
   assert.equal(PASSWORD_RECOVERY_COOKIE_MAX_AGE_SECONDS, 900);
 });
 
@@ -43,9 +45,13 @@ test("only a verified account with a recovery marker may view or submit new pass
   const page = read("../app/reset-password/page.tsx");
   const actions = read("../app/auth/actions.ts");
   assert.match(page, /get\(PASSWORD_RECOVERY_COOKIE\)/);
-  assert.match(page, /student\?\.emailVerified/);
+  assert.match(page, /getVerifiedRecoveryIdentity\(supabase\.auth\)/);
+  assert.match(page, /isValidPasswordRecoveryProof\(/);
   assert.match(actions, /get\(PASSWORD_RECOVERY_COOKIE\)/);
-  assert.match(actions, /user\?\.email_confirmed_at/);
+  assert.match(actions, /getVerifiedRecoveryIdentity\(supabase\.auth\)/);
+  assert.match(actions, /issuePasswordRecoveryProof\(/);
+  assert.match(actions, /isValidPasswordRecoveryProof\(/);
+  assert.doesNotMatch(actions, /set\(PASSWORD_RECOVERY_COOKIE, "1"/);
   assert.match(actions, /auth\.updateUser\(\{ password \}\)/);
   assert.match(actions, /auth\.signOut\(\{ scope: "global" \}\)/);
   assert.match(actions, /maxAge: 0/);
