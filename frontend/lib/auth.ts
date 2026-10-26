@@ -90,9 +90,11 @@ export function safeRelativePath(value: string | null | undefined): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function mapClaims(claims: JwtPayload, authUser: User): StudentIdentity {
-  // Supabase Auth is authoritative: access-token metadata can lag behind.
-  const metadata = { ...(claims.user_metadata ?? {}), ...(authUser.user_metadata ?? {}) };
+function mapClaims(claims: JwtPayload, verifiedUser: User): StudentIdentity {
+  // The Supabase getUser response is authoritative and current; JWT metadata
+  // can lag behind a corrected name or email. Keep the private dashboard
+  // identity tied to the signed-in user, not an editable browser field.
+  const metadata = verifiedUser.user_metadata ?? {};
   const fullName = cleanName(metadata.full_name) || cleanName(metadata.name);
   const [fullFirst = "", ...fullRest] = fullName.split(/\s+/).filter(Boolean);
   const firstName =
@@ -103,13 +105,14 @@ function mapClaims(claims: JwtPayload, authUser: User): StudentIdentity {
     cleanName(metadata.last_name) ||
     cleanName(metadata.family_name) ||
     fullRest.join(" ");
+  const displayName = [firstName, lastName].filter(Boolean).join(" ") || "Name not provided";
   return {
-    id: claims.sub,
-    email: typeof authUser.email === "string" ? authUser.email.trim().toLowerCase() : "",
+    id: verifiedUser.id,
+    email: verifiedUser.email || (typeof claims.email === "string" ? claims.email : ""),
     firstName: firstName || "Student",
     lastName,
-    displayName: [firstName, lastName].filter(Boolean).join(" ") || "Name not provided",
-    emailVerified: Boolean(authUser.email_confirmed_at),
+    displayName,
+    emailVerified: Boolean(verifiedUser.email_confirmed_at),
   };
 }
 
