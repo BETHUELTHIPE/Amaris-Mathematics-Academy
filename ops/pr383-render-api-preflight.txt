@@ -1,0 +1,1 @@
+READ-ONLY: Check that staging-only Render API credential exists for exact-commit deployment. Never expose secret or change services.
