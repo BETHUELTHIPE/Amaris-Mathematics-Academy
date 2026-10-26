@@ -204,6 +204,7 @@ def check_dashboard(page: Page) -> None:
 
     goto(page, "/dashboard/notifications")
     require(page.get_by_role("heading", name="Notifications", exact=True).is_visible(), "Notifications page is not visible")
+    page.get_by_role("heading", name="You’re all caught up.", exact=True).wait_for(state="visible", timeout=15000)
     require(page.get_by_role("heading", name="You’re all caught up.", exact=True).is_visible(), "Notifications empty state is not visible")
     assert_no_horizontal_overflow(page, "notifications")
 
