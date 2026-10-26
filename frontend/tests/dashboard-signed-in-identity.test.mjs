@@ -70,8 +70,8 @@ test("identity comes from authoritative Supabase getUser record, not submitted f
   const auth = read("../lib/auth.ts");
   assert.match(auth, /await supabase\.auth\.getUser\(\)/);
   assert.match(auth, /mapClaims\(data\.claims, userData\.user\)/);
-  assert.match(auth, /authUser\.user_metadata/);
-  assert.match(auth, /authUser\.email/);
-  assert.match(auth, /emailVerified: Boolean\(authUser\.email_confirmed_at\)/);
+  assert.match(auth, /verifiedUser\.user_metadata/);
+  assert.match(auth, /verifiedUser\.email/);
+  assert.match(auth, /emailVerified: Boolean\(verifiedUser\.email_confirmed_at\)/);
   assert.match(auth, /Name not provided/);
 });
