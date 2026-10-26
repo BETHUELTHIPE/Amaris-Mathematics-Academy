@@ -168,6 +168,9 @@ def check_slow_submission(page: Page) -> None:
 
 def check_dashboard(page: Page) -> None:
     goto(page, "/dashboard")
+    # First private render may initially stream its non-sensitive loading shell.
+    # Wait for the real dashboard label; never accept the skeleton as a pass.
+    page.get_by_text("Student dashboard", exact=True).wait_for(state="visible", timeout=10_000)
     require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
     require(page.get_by_role("heading", name=re.compile(r"Welcome, Responsive\.")).is_visible(), "Synthetic student dashboard did not render")
     require(page.get_by_role("navigation", name="Dashboard navigation").is_visible(), "Dashboard navigation is not visible")
