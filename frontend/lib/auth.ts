@@ -1,4 +1,4 @@
-import type { JwtPayload } from "@supabase/supabase-js";
+import type { JwtPayload, User } from "@supabase/supabase-js";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getSupabaseConfig } from "@/lib/supabase/config";
@@ -44,7 +44,7 @@ export const getStudentIdentity = cache(async (): Promise<StudentIdentity | null
     return null;
   }
 
-  return mapClaims(data.claims, Boolean(userData.user.email_confirmed_at));
+  return mapClaims(data.claims, userData.user);
 });
 
 export async function requireVerifiedStudent(
@@ -90,8 +90,9 @@ export function safeRelativePath(value: string | null | undefined): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function mapClaims(claims: JwtPayload, emailVerified: boolean): StudentIdentity {
-  const metadata = claims.user_metadata ?? {};
+function mapClaims(claims: JwtPayload, authUser: User): StudentIdentity {
+  // Supabase Auth is authoritative: access-token metadata can lag behind.
+  const metadata = { ...(claims.user_metadata ?? {}), ...(authUser.user_metadata ?? {}) };
   const fullName = cleanName(metadata.full_name) || cleanName(metadata.name);
   const [fullFirst = "", ...fullRest] = fullName.split(/\s+/).filter(Boolean);
   const firstName =
@@ -105,11 +106,11 @@ function mapClaims(claims: JwtPayload, emailVerified: boolean): StudentIdentity 
     fullRest.join(" ");
   return {
     id: claims.sub,
-    email: typeof claims.email === "string" ? claims.email : "",
+    email: typeof authUser.email === "string" ? authUser.email.trim().toLowerCase() : "",
     firstName,
     lastName,
     displayName: [firstName, lastName].filter(Boolean).join(" "),
-    emailVerified,
+    emailVerified: Boolean(authUser.email_confirmed_at),
   };
 }
 
