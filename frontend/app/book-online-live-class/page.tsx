@@ -130,7 +130,7 @@ export default async function BookOnlineLiveClassPage({
           {registeredName ? (
             <p className="mt-2 text-sm text-[#60708a]">Registered student: <strong className="text-[#263852]">{registeredName.fullName}</strong>. This is taken from your verified account, not an editable booking field.</p>
           ) : (
-            <p role="alert" className="mt-2 text-sm text-[#9b2525]">Your verified account must contain your actual registered first and last name before you can reserve a class or pay. <Link href="/contact" className="font-semibold underline">Contact Amaris support to correct your registration details</Link>.</p>
+            <p role="alert" className="mt-2 text-sm text-[#9b2525]">Your verified account must contain your actual registered first and last name before you can reserve a class or pay. <Link href="/account/complete-profile" className="font-semibold underline">Complete your registered first and last name securely</Link> or <Link href="/contact" className="font-semibold underline">contact Amaris support</Link> if you need assistance.</p>
           )}
         </div>
 
