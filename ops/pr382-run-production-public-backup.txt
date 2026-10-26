@@ -1,0 +1,1 @@
+One-time read-only production public-schema backup for PR #382 release gate. Require expected Supabase production project, encrypted dump, offline isolated restore, table integrity comparison, retention 90d, no production writes. Do not merge/deploy application or run migrations.
