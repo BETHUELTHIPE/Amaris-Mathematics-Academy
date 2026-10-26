@@ -108,10 +108,11 @@ async function OrdersContent({ page }: { page?: string }) {
 export default async function OrdersPage({ searchParams }: {
   searchParams: Promise<{ page?: string }>;
 }) {
-  await requireVerifiedStudent("/dashboard/orders");
+  const user = await requireVerifiedStudent("/dashboard/orders");
   const { page } = await searchParams;
   return <StudentDashboardShell
     active="orders"
+    identity={user}
     title="Orders & payments"
     description="Review your 100 most recent course, live class and requested video orders in one private account view."
   >
