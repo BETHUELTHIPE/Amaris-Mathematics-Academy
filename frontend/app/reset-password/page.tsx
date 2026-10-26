@@ -8,19 +8,18 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
-import { getStudentIdentity } from "@/lib/auth";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getVerifiedRecoveryIdentity, isValidPasswordRecoveryProof } from "@/lib/password-recovery-proof";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Choose New Password", robots: { index: false, follow: false } };
 
 export default async function ResetPasswordPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const store = await getPasswordRecoveryCookieStore();
-  if (store.get(PASSWORD_RECOVERY_COOKIE)?.value !== "1") {
-    redirect("/forgot-password?error=Your%20reset%20link%20has%20expired.%20Request%20a%20new%20one.");
-  }
-  const student = await getStudentIdentity();
-  if (!student?.emailVerified) {
-    redirect("/forgot-password?error=Your%20reset%20link%20has%20expired.%20Request%20a%20new%20one.");
+  const supabase = await createSupabaseServerClient();
+  const identity = await getVerifiedRecoveryIdentity(supabase.auth);
+  if (!(await isValidPasswordRecoveryProof(store.get(PASSWORD_RECOVERY_COOKIE)?.value, identity))) {
+    redirect("/forgot-password?error=Your%20secure%20reset%20session%20has%20expired.%20Request%20a%20new%20one.");
   }
   const params = await searchParams;
   return <main className="min-h-screen bg-[#f5f7fb]"><Header /><section className="mx-auto max-w-xl px-5 py-16 lg:px-8 lg:py-24"><div className="rounded-[2rem] border border-[#dce4ef] bg-white p-7 shadow-[0_25px_75px_rgba(7,21,45,.1)] sm:p-10"><span className="grid size-14 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LockKeyhole className="size-7" /></span><p className="eyebrow mt-7">Account security</p><h1 className="mt-4 text-4xl font-semibold tracking-[-.045em]">Choose a new password.</h1><p className="mt-4 text-sm leading-7 text-[#60708a]">This new password applies to your verified Amaris account, whether you sign in as a student, tutor, tutor applicant or another registered account holder. Use 12–72 characters with uppercase, lowercase, a number and a symbol. All existing sessions will be signed out after the change.</p>
