@@ -1,0 +1,55 @@
+name: PR383 Staging-Only Tested Revision Deployment
+on:
+  push:
+    branches: ["fix/pr382-verified-student-profile-recovery-20261026"]
+    paths: ["ops/pr383-staging-deploy-exact-commit.txt"]
+permissions:
+  contents: read
+concurrency:
+  group: pr383-staging-frontend-deploy
+  cancel-in-progress: false
+jobs:
+  deploy-tested-profile-page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment: staging
+    env:
+      RENDER_TOKEN: ${{ secrets.RENDER_API_KEY }}
+      TARGET_SHA: ${{ github.sha }}
+    steps:
+      - name: Deploy exact validated PR383 commit to staging student frontend only
+        run: |
+          python3 - <<'PY'
+          import json,os
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          token=os.getenv("RENDER_TOKEN","")
+          sha=os.getenv("TARGET_SHA","")
+          service="srv-daqf69qd0e5s73ac62n0"
+          expected="5819b36b19b2df5dc21324e9eca5ab72b7427ba6"
+          if not token or len(sha)!=40: raise SystemExit("BLOCK: credential or commit missing")
+          url=f"https://api.render.com/v1/services/{service}/deploys"
+          h={"Authorization":"Bearer "+token,"Accept":"application/json"}
+          try:
+              with urlopen(Request(url+"?limit=10",headers=h),timeout=30) as response:
+                  records=json.load(response)
+          except (HTTPError,URLError,ValueError):
+              raise SystemExit("BLOCK: Could not verify staging deployment precondition") from None
+          candidates=[r.get("deploy",r) for r in records if isinstance(r,dict)]
+          live=next((r for r in candidates if r.get("status")=="live"),None)
+          if not live or live.get("commit",{}).get("id")!=expected:
+              raise SystemExit("BLOCK: Staging student frontend has changed since PR382 baseline; do not overwrite")
+          body=json.dumps({"commitId":sha,"clearCache":"do_not_clear"}).encode()
+          h["Content-Type"]="application/json"
+          try:
+              with urlopen(Request(url,headers=h,data=body,method="POST"),timeout=30) as response:
+                  deployed=json.load(response)
+                  if response.status!=201: raise SystemExit("BLOCK: Unexpected staging deployment status")
+          except (HTTPError,URLError,ValueError):
+              raise SystemExit("BLOCK: Exact-commit staging deployment was not accepted") from None
+          if deployed.get("commit",{}).get("id")!=sha:
+              raise SystemExit("BLOCK: Render did not accept the exact tested commit")
+          print("PASS: Staging frontend exact-commit deployment submitted; render deploy id:",deployed.get("id"))
+          print("Previous staging frontend live deploy:",live.get("id"))
+          print("No production service, database, payments, or secret value changed")
+          PY

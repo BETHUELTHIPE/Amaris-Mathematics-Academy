@@ -1,0 +1,1 @@
+Approved staging-only testing of verified profile recovery from PR383; exact commit, production remains unchanged. Render service srv-daqf69qd0e5s73ac62n0 only. Expect previous staging frontend revision 5819b36b19b2df5dc21324e9eca5ab72b7427ba6; abort if different.

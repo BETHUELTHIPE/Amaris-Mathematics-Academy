@@ -1,0 +1,39 @@
+name: PR383 Live Staging Protected Routes Smoke
+on:
+  push:
+    branches: ["fix/pr382-verified-student-profile-recovery-20261026"]
+    paths: ["ops/pr383-live-http-smoke-request.txt"]
+permissions:
+  contents: read
+jobs:
+  staging-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check booking, profile correction and backend health without authentication
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.parse,json
+          base="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
+          for path in ("/book-online-live-class","/account/complete-profile"):
+              request=urllib.request.Request(base+path,headers={"User-Agent":"AmarisPR383StagingGate/1.0"})
+              try:
+                  with urllib.request.urlopen(request,timeout=30) as response:
+                      final=response.geturl()
+                      status=response.status
+              except Exception:
+                  raise SystemExit("FAIL: staging protected route unreachable") from None
+              if status!=200 or urllib.parse.urlparse(final).path!="/login":
+                  raise SystemExit(f"FAIL: anonymous access not sent to verified student login ({path})")
+              print("PASS: anonymous access redirects to sign-in for",path)
+          backend="https://amaris-mathematics-academy-staging.onrender.com"
+          for path in ("/health/live/","/health/ready/"):
+              try:
+                  with urllib.request.urlopen(backend+path,timeout=30) as res:
+                      if res.status!=200:
+                          raise SystemExit("FAIL: staging backend health not ready")
+              except Exception:
+                  raise SystemExit("FAIL: staging backend health unavailable") from None
+              print("PASS: staging backend health",path)
+          print("PASS: staging public routes stay protected. No payment or student data modified.")
+          PY

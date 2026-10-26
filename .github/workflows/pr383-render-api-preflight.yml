@@ -1,0 +1,28 @@
+name: PR383 Staging Render API Credential Preflight
+on:
+  push:
+    branches: ["fix/pr382-verified-student-profile-recovery-20261026"]
+    paths: ["ops/pr383-render-api-preflight.txt"]
+permissions:
+  contents: read
+jobs:
+  staging-deploy-preflight:
+    runs-on: ubuntu-24.04
+    environment: staging
+    env:
+      RENDER_TOKEN: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Confirm protected Render staging deployment credential without disclosing it
+        run: |
+          if [ -z "$RENDER_TOKEN" ]; then
+            echo "BLOCK: staging environment has no RENDER_API_KEY secret for exact-commit deployment"
+            exit 1
+          fi
+          http_code=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 20 \
+            -H "Authorization: Bearer $RENDER_TOKEN" \
+            https://api.render.com/v1/services/srv-daqf69qd0e5s73ac62n0)
+          if [ "$http_code" != "200" ]; then
+            echo "BLOCK: Render staging API credential rejected or staging service not accessible (HTTP $http_code)"
+            exit 1
+          fi
+          echo "PASS: exact-commit staging-only Render API deployment credential is available"

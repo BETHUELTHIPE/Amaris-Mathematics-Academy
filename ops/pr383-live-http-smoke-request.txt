@@ -1,0 +1,1 @@
+Read-only check for staging anonymous profile and booking redirect plus backend health; no production or payment operations.
