@@ -29,19 +29,21 @@ class VideoRequestCheckoutSerializer(serializers.Serializer):
     level = serializers.CharField(min_length=1, max_length=80, trim_whitespace=True)
     topic = serializers.CharField(min_length=2, max_length=180, trim_whitespace=True)
     request_type = serializers.ChoiceField(choices=VideoRequest.RequestType.choices)
-    instructions = serializers.CharField(max_length=2000, allow_blank=True, required=False, trim_whitespace=True)
+    instructions = serializers.CharField(min_length=10, max_length=2000, allow_blank=False, required=True, trim_whitespace=True)
     explanation_style = serializers.CharField(
+        min_length=2,
         max_length=120,
-        allow_blank=True,
-        required=False,
+        allow_blank=False,
+        required=True,
         trim_whitespace=True,
     )
     preferred_duration_minutes = serializers.IntegerField(min_value=15, max_value=180)
     idempotency_key = serializers.RegexField(r"^[A-Za-z0-9_-]{8,64}$")
     documents = serializers.ListField(
         child=serializers.FileField(),
-        required=False,
-        allow_empty=True,
+        required=True,
+        allow_empty=False,
+        min_length=1,
         max_length=5,
         write_only=True,
     )

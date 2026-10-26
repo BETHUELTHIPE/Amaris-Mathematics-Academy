@@ -305,3 +305,42 @@ class VideoRequestWorkflowTests(TestCase):
         self.assertEqual(expire_unpaid_video_requests.run(), 1)
         self.assertFalse(request.documents.exists())
         self.assertFalse(Path(self.storage_directory.name, stored_path).exists())
+
+
+class VideoRequestRequiredFieldsTests(TestCase):
+    """Student video checkout must not accept missing required instructions or documents."""
+
+    def test_video_checkout_serializer_requires_all_visible_form_fields(self):
+        from content.video_request_views import VideoRequestCheckoutSerializer
+
+        valid = {
+            "programme": "caps",
+            "subject": "mathematics",
+            "level": "Grade 12",
+            "topic": "Differential calculus",
+            "request_type": "chapter_topic",
+            "preferred_duration_minutes": 60,
+            "explanation_style": "Worked examples",
+            "instructions": "Explain calculus solutions step by step.",
+            "idempotency_key": "video-required-fields-001",
+            "documents": [
+                SimpleUploadedFile("notes.pdf", b"%PDF-1.4\nsynthetic notes\n%%EOF", content_type="application/pdf")
+            ],
+        }
+        self.assertTrue(VideoRequestCheckoutSerializer(data=valid).is_valid(), "Valid full submission must pass")
+        for field in ("explanation_style", "instructions", "documents"):
+            with self.subTest(field=field):
+                partial = {name: value for name, value in valid.items() if name != field}
+                serializer = VideoRequestCheckoutSerializer(data=partial)
+                self.assertFalse(serializer.is_valid())
+                self.assertIn(field, serializer.errors)
+        for field in ("explanation_style", "instructions"):
+            with self.subTest(blank_field=field):
+                invalid = dict(valid, **{field: "   "})
+                serializer = VideoRequestCheckoutSerializer(data=invalid)
+                self.assertFalse(serializer.is_valid())
+                self.assertIn(field, serializer.errors)
+        empty_documents = dict(valid, documents=[])
+        serializer = VideoRequestCheckoutSerializer(data=empty_documents)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("documents", serializer.errors)
