@@ -72,6 +72,18 @@ def create_live_class_checkout(
         raise PaymentSecurityError("Enter a class topic between 2 and 180 characters.")
     if not student.is_active:
         raise PaymentSecurityError("Inactive students cannot book live classes.")
+    # The student name comes from the registered, Supabase-authenticated
+    # student profile. Never let a fallback label enter PayFast or an invoice.
+    first_name = " ".join(student.first_name.split())
+    last_name = " ".join(student.last_name.split())
+    if (
+        len(first_name) < 2
+        or len(last_name) < 2
+        or (first_name.casefold(), last_name.casefold()) == ("student", "learner")
+    ):
+        raise PaymentSecurityError(
+            "Your registered first and last name are required before booking. Contact Amaris support to correct your profile."
+        )
 
     now = timezone.now()
     reference = f"LCB-{key}"
