@@ -1,0 +1,1 @@
+Production-only approved branded Auth emails: project epkcuseloinygkakxxdu. Staging content and SMTP preflight verified. Install 13 Supabase notification and Auth templates. No frontend or Django deploy. Preserve notification enablement. Read-back and rollback safeguards.
