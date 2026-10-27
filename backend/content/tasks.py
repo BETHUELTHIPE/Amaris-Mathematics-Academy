@@ -1,4 +1,3 @@
-from content.services.branded_email import render_branded_email
 from datetime import timedelta
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -12,6 +11,7 @@ from django.utils import timezone
 
 from content.models import LiveClassBooking, SiteSettings, VideoRequest
 from content.payment_models import Invoice, NotificationOutbox
+from content.services.branded_email import render_branded_email
 from content.services.invoices import archive_invoice_pdf, mark_invoice_archive_failure
 from content.services.reconciliation import reconcile_verified_payments
 from content.services.video_requests import video_request_eta, video_request_queue_position
