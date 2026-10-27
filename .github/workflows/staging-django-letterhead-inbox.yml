@@ -1,0 +1,90 @@
+name: Staging Django Letterhead — Genuine Inbox Acceptance
+on:
+  push:
+    branches: ["qa/staging-django-letterhead-inbox-20261028"]
+    paths: ["ops/staging-letterhead-inbox-request.txt"]
+permissions:
+  contents: read
+jobs:
+  inbox-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      APPROVED_INBOX: bethuelmoukangwe8@gmail.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Django email renderer
+        run: python -m pip install "Django>=5.1,<6"
+      - name: Verify isolated staging SMTP and send one labelled synthetic letterhead email
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, re, urllib.request
+          from urllib.parse import urlsplit
+          from django.conf import settings
+          from django.core.mail import EmailMultiAlternatives
+          from django.template import Context, Engine
+          from pathlib import Path
+
+          STAGING_SERVICE="srv-dam2iivcgkoc7383tq50"
+          STAGING_REF="atyhhjwwxgzeurnwayay"
+          api_key=os.environ.get("RENDER_API_KEY","")
+          if not api_key: raise SystemExit("BLOCK: protected Render credential unavailable")
+          base=f"https://api.render.com/v1/services/{STAGING_SERVICE}"
+          def get(url):
+              req=urllib.request.Request(url,headers={"Authorization":"Bearer "+api_key,"Accept":"application/json"})
+              with urllib.request.urlopen(req,timeout=20) as res: return json.load(res)
+          svc=get(base)
+          if svc.get("id")!=STAGING_SERVICE or svc.get("ownerId")!="tea-csppi8l6l47c73dk9c90" or svc.get("branch")!="ops/staging-known-good-af8709c-20261019":
+              raise SystemExit("BLOCK: non-staging Render service")
+          rows=get(base+"/env-vars?limit=100")
+          if isinstance(rows,dict): rows=rows.get("envVars",rows.get("data",[]))
+          env={}
+          for row in rows:
+              record=row.get("envVar",row)
+              if isinstance(record,dict) and isinstance(record.get("key"),str):
+                  env[record["key"]]=record.get("value") or ""
+          db=urlsplit(env.get("DATABASE_URL",""))
+          if env.get("SUPABASE_PROJECT_REF")!=STAGING_REF or STAGING_REF not in (db.username or "")+" "+(db.hostname or ""):
+              raise SystemExit("BLOCK: staging database separation unverified")
+          host=env.get("EMAIL_HOST","")
+          username=env.get("EMAIL_HOST_USER","")
+          password=env.get("EMAIL_HOST_PASSWORD","")
+          sender=env.get("DEFAULT_FROM_EMAIL","")
+          if host!="smtp.gmail.com" or str(env.get("EMAIL_PORT"))!="587" or env.get("EMAIL_USE_TLS","").lower()!="true" or not username or not password or "@" not in sender:
+              raise SystemExit("BLOCK: staging SMTP configuration unavailable or unexpected")
+          body="This is a synthetic STAGING email-rendering and SMTP Inbox acceptance test. There is no booking, payment, invoice or customer data in this message."
+          html=Engine(dirs=["backend/templates"],autoescape=True).get_template("emails/amaris_letterhead.html").render(Context({
+              "academy_name":"Amaris Mathematics Academy",
+              "email":sender,
+              "phone":"071 415 6665",
+              "address":"27 Tshivhase Street, Atteridgeville, Pretoria, Gauteng, 0008",
+              "heading":"Staging letterhead inbox acceptance",
+              "lines":[body,"Synthetic reference; no personal records or payment triggered."],
+              "reference":"AMARIS-STAGING-LETTERHEAD-QA-20261028",
+          }))
+          if not all(item in html for item in ("Amaris Mathematics Academy","Bethuel Moukangwe","#ffcc66","AMARIS-STAGING-LETTERHEAD-QA-20261028")):
+              raise SystemExit("BLOCK: letterhead content invalid")
+          settings.configure(
+              EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+              EMAIL_HOST=host,EMAIL_PORT=587,EMAIL_USE_TLS=True,EMAIL_USE_SSL=False,
+              EMAIL_HOST_USER=username,EMAIL_HOST_PASSWORD=password,
+              DEFAULT_FROM_EMAIL=sender,EMAIL_TIMEOUT=25,
+          )
+          message=EmailMultiAlternatives(
+              subject="[STAGING QA] Amaris professional email letterhead — 2026-10-28",
+              body=body,from_email=sender,to=[os.environ["APPROVED_INBOX"]]
+          )
+          message.attach_alternative(html,"text/html")
+          try:
+              sent=message.send(fail_silently=False)
+          except Exception as error:
+              raise SystemExit("BLOCK: staging SMTP delivery attempt failed ("+type(error).__name__+")") from None
+          if sent!=1: raise SystemExit("BLOCK: SMTP did not accept the message")
+          print("PASS: one synthetic staging HTML+plain-text letterhead message accepted by SMTP")
+          print("RECEIPT_NOT_YET_VERIFIED: inspect approved Gmail INBOX separately")
+          PY
