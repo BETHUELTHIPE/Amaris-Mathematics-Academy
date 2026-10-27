@@ -9,7 +9,7 @@ export type TutorApplication = {
   status: "submitted" | "reviewing" | "shortlisted" | "closed";
   submitted_at: string;
   acknowledgement_sent_at: string | null;
-  documents: { id: string; original_name: string; size_bytes: number }[];
+  documents: { id: string; category: "legacy" | "id" | "cv" | "matric" | "academic" | "tertiary" | "other"; original_name: string; size_bytes: number }[];
 };
 export class ApplicationError extends Error {
   constructor(public status: number, message: string) { super(message); }
