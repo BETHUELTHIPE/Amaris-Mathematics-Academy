@@ -39,7 +39,7 @@ test("all official account email templates carry the approved letterhead and pre
   const recovery = await source("../email-templates/recovery.html");
   assert.match(confirmation, /{{ \.ConfirmationURL }}/);
   assert.match(login, /{{ \.ConfirmationURL }}/);
-  assert.match(recovery, /{{ \.ConfirmationURL }}/);
+  assert.match(recovery, /{{ \.TokenHash }}/);
   assert.doesNotMatch(recovery, /{{ \.RedirectTo }}\?token_hash=/);
 });
 
