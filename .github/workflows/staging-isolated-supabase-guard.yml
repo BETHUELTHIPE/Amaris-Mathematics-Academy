@@ -1,0 +1,26 @@
+name: Staging Dedicated Supabase Database Isolation Guard
+on:
+  push:
+    branches: ["ops/staging-known-good-af8709c-20261019"]
+    paths:
+      - "backend/manage.py"
+      - "scripts/release/verify_staging_database_isolation.py"
+      - "scripts/release/test_verify_staging_database_isolation.py"
+      - ".github/workflows/staging-isolated-supabase-guard.yml"
+permissions:
+  contents: read
+jobs:
+  deny-production-database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install only PostgreSQL client library
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Assert production and unknown DSNs are rejected
+        run: python -m unittest discover -s scripts/release -p "test_verify_staging_database_isolation.py" -v
+      - name: Compile migration command guard
+        run: python -m py_compile backend/manage.py scripts/release/verify_staging_database_isolation.py
