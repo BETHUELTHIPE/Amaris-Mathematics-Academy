@@ -7,8 +7,6 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
-
-from content.services.official_letterhead import official_letterhead_html
 from django.db.models import Q
 from django.utils import timezone
 
@@ -22,6 +20,7 @@ from content.models import (
     PricingPlan,
     SiteSettings,
 )
+from content.services.official_letterhead import official_letterhead_html
 
 logger = logging.getLogger(__name__)
 
