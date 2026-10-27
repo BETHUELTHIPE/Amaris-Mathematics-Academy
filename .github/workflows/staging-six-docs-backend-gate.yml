@@ -60,4 +60,4 @@ jobs:
       - name: Validate tutor privacy and six-category contracts with compatibility and strict mode
         run: |
           python manage.py test content.test_tutor_applications
-          TUTOR_REQUIRE_SIX_DOCUMENTS=true python manage.py test content.test_tutor_applications
+          TUTOR_REQUIRE_SIX_DOCUMENTS=true python manage.py test content.test_tutor_applications.TutorApplicationJourneyTests.test_six_categorized_documents_are_required_and_private content.test_tutor_applications.TutorApplicationJourneyTests.test_legacy_or_oversized_six_document_form_is_rejected
