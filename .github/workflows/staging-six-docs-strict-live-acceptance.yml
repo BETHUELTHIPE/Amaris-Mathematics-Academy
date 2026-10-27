@@ -1,0 +1,121 @@
+name: Staging Strict Six Tutor Documents Negative and Complete Acceptance
+on:
+  push:
+    branches: [ops/staging-six-docs-authenticated-acceptance-20261027]
+    paths: [ops/staging-six-document-strict-acceptance.txt]
+permissions:
+  contents: read
+concurrency:
+  group: staging-six-docs-strict-real-acceptance
+  cancel-in-progress: false
+jobs:
+  strict-staging:
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 12
+    env:
+      STAGING_TEST_STUDENT_EMAIL: ${{ secrets.STAGING_TEST_STUDENT_EMAIL }}
+      STAGING_TEST_STUDENT_PASSWORD: ${{ secrets.STAGING_TEST_STUDENT_PASSWORD }}
+      STAGING_TEST_TUTOR_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
+      STAGING_TEST_TUTOR_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
+      STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - name: Install fixed HTTP client
+        run: python -m pip install requests==2.32.5
+      - name: Check all six named missing-file errors, submit six complete files, re-read existing tutor
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, hashlib
+          import requests
+          BASE="https://amaris-mathematics-academy-staging.onrender.com/api/v1/tutor-applications/"
+          AUTH="https://atyhhjwwxgzeurnwayay.supabase.co/auth/v1/token?grant_type=password"
+          CATEGORIES=("id","cv","matric","academic","tertiary","other")
+          assert os.environ.get("GITHUB_REPOSITORY")=="BETHUELTHIPE/Amaris-Mathematics-Academy"
+          assert os.environ.get("GITHUB_REF")=="refs/heads/ops/staging-six-docs-authenticated-acceptance-20261027"
+          key=os.environ.get("STAGING_SUPABASE_PUBLISHABLE_KEY","")
+          if not key or not (key.startswith("eyJ") or key.startswith("sb_publishable_")):
+              raise SystemExit("BLOCK: staging public auth credential unavailable")
+          if key.startswith("eyJ"):
+              import base64
+              claims=json.loads(base64.urlsafe_b64decode(key.split(".")[1]+"="*(-len(key.split(".")[1])%4)))
+              if claims.get("ref")!="atyhhjwwxgzeurnwayay" or claims.get("role")!="anon":
+                  raise SystemExit("BLOCK: wrong Supabase project or privileged key")
+          def login(prefix):
+              email=os.environ.get(prefix+"_EMAIL","").strip().lower()
+              password=os.environ.get(prefix+"_PASSWORD","")
+              if not email or not password:
+                  raise SystemExit("BLOCK: "+prefix+" secure credential missing; no test data changed")
+              try:
+                  response=requests.post(AUTH,headers={"apikey":key},json={"email":email,"password":password},timeout=30)
+              except requests.RequestException:
+                  raise SystemExit("BLOCK: staging Auth unavailable") from None
+              if response.status_code!=200: raise SystemExit("BLOCK: approved staging identity sign-in HTTP "+str(response.status_code))
+              body=response.json()
+              if not body.get("access_token") or not body.get("user",{}).get("email_confirmed_at"):
+                  raise SystemExit("BLOCK: staging identity missing verified session")
+              return {"Authorization":"Bearer "+body["access_token"]}
+          student=login("STAGING_TEST_STUDENT")
+          tutor=login("STAGING_TEST_TUTOR")
+          existing=requests.get(BASE,headers=tutor,timeout=30)
+          if existing.status_code!=200 or not isinstance(existing.json().get("application"),dict):
+              raise SystemExit("BLOCK: existing tutor application not readable before strict acceptance")
+          original=existing.json()["application"]
+          ref=original.get("reference")
+          ids={d.get("id") for d in original.get("documents",[])}
+          if not ref or len(ids)!=6: raise SystemExit("BLOCK: original six-document application incomplete")
+          print("PASS: previously submitted staging tutor record readable before new validation")
+          fresh=requests.get(BASE,headers=student,timeout=30)
+          if fresh.status_code!=200 or fresh.json().get("application") is not None:
+              raise SystemExit("BLOCK: second QA identity already has a tutor application; cannot test creation")
+          fields=[
+              ("full_name","Synthetic Staging Six-File QA"),("phone","+27 71 234 5678"),
+              ("country","ZA"),("province","Gauteng"),("city","Pretoria"),
+              ("location","Pretoria, Gauteng, South Africa"),
+              ("qualification","Mathematics QA"),("institution","Synthetic Testing University"),
+              ("subjects","Mathematics"),("programmes","caps"),("programmes","university"),
+              ("levels","Grade 12 and N1"),("experience_years","3"),
+              ("teaching_experience","Synthetic tutor staging workflow with verified teaching experience."),
+              ("availability","Synthetic weekday evening teaching availability SAST."),
+              ("motivation","Synthetic staged tutor application testing required upload validation."),
+              ("consent","true")
+          ]
+          def documents(omit=None):
+              result={}
+              for kind in CATEGORIES:
+                  if kind!=omit:
+                      body=("%PDF-1.7\n%SYNTHETIC AMARIS STAGING QA "+kind+"\n%%EOF\n").encode()
+                      result["document_"+kind]=("qa_"+kind+".pdf",body,"application/pdf")
+              return result
+          for category in CATEGORIES:
+              missing="document_"+category
+              response=requests.post(BASE,headers=student,data=fields,files=documents(omit=category),timeout=45)
+              if response.status_code!=400:
+                  raise SystemExit("FAIL: missing "+missing+" not rejected; HTTP "+str(response.status_code))
+              try: details=response.json()
+              except ValueError: raise SystemExit("FAIL: missing "+missing+" error was not JSON") from None
+              if missing not in details or not details[missing]:
+                  raise SystemExit("FAIL: missing "+missing+" did not report named validation error")
+              print("PASS: missing "+missing+" returns HTTP 400 with field-specific validation")
+          untouched=requests.get(BASE,headers=student,timeout=30)
+          if untouched.status_code!=200 or untouched.json().get("application") is not None:
+              raise SystemExit("FAIL: rejected submissions created a partial tutor record")
+          complete=requests.post(BASE,headers=student,data=fields,files=documents(),timeout=60)
+          if complete.status_code!=201:
+              raise SystemExit("FAIL: complete six-document application HTTP "+str(complete.status_code))
+          result=complete.json().get("application",{})
+          docs=result.get("documents",[])
+          if len(docs)!=6 or {x.get("category") for x in docs}!=set(CATEGORIES):
+              raise SystemExit("FAIL: complete application was not saved with six classified documents")
+          print("PASS: new real staging application stored six synthetic PDF uploads under all six categories")
+          repeat=requests.post(BASE,headers=student,data=fields,files=documents(),timeout=40)
+          if repeat.status_code!=200 or repeat.json().get("application",{}).get("reference")!=result.get("reference"):
+              raise SystemExit("FAIL: duplicate submission was not idempotent")
+          reread=requests.get(BASE,headers=tutor,timeout=30)
+          older=reread.json().get("application") if reread.status_code==200 else None
+          if not older or older.get("reference")!=ref or {d.get("id") for d in older.get("documents",[])}!=ids:
+              raise SystemExit("FAIL: existing tutor record changed or inaccessible after strict validation")
+          print("PASS: original tutor application and six associated document IDs remain accessible")
+          print("PASS: retry is idempotent; no double application")
+          print("No applicant identities, bearer tokens, document contents or private storage keys logged")
+          PY
