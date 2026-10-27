@@ -1,0 +1,122 @@
+name: Genuine Staging Six Tutor Documents and Private Storage Acceptance
+on:
+  push:
+    branches: [ops/staging-six-docs-authenticated-acceptance-20261027]
+    paths: [ops/run-staging-six-upload-acceptance.txt]
+permissions:
+  contents: read
+concurrency:
+  group: amaris-staging-real-six-upload
+  cancel-in-progress: false
+jobs:
+  real-staging-tutor:
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 14
+    env:
+      STAGING_TEST_TUTOR_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
+      STAGING_TEST_TUTOR_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
+      STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - name: Install isolated HTTP test client
+        run: python -m pip install "requests==2.32.5"
+      - name: Submit six synthetic files as the approved real staging tutor and test private reads
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          import requests
+
+          AUTH="https://atyhhjwwxgzeurnwayay.supabase.co/auth/v1/token?grant_type=password"
+          BASE="https://amaris-mathematics-academy-staging.onrender.com/api/v1/tutor-applications/"
+          APPROVED_EMAIL_HASH="2351cb430f5976021719b1c7fb36bd3ec0559d79a32b694c38b7f4a0313bb03a"
+          CATEGORIES=("id","cv","matric","academic","tertiary","other")
+          if os.environ.get("GITHUB_REPOSITORY") != "BETHUELTHIPE/Amaris-Mathematics-Academy" or os.environ.get("GITHUB_REF") != "refs/heads/ops/staging-six-docs-authenticated-acceptance-20261027":
+              raise SystemExit("BLOCK: production or unapproved branch")
+          email=os.getenv("STAGING_TEST_TUTOR_EMAIL","").strip().lower()
+          password=os.getenv("STAGING_TEST_TUTOR_PASSWORD","")
+          key=os.getenv("STAGING_SUPABASE_PUBLISHABLE_KEY","")
+          if not password or not key or hashlib.sha256(email.encode()).hexdigest()!=APPROVED_EMAIL_HASH:
+              raise SystemExit("BLOCK: staging approved QA credentials unavailable or unexpected")
+          if not (key.startswith("sb_publishable_") or key.startswith("eyJ")):
+              raise SystemExit("BLOCK: public staging key is missing or unsupported")
+          if key.startswith("eyJ"):
+              import base64
+              try:
+                  b=key.split(".")[1]
+                  claims=json.loads(base64.urlsafe_b64decode(b+"="*(-len(b)%4)))
+              except Exception:
+                  raise SystemExit("BLOCK: invalid staging public key") from None
+              if claims.get("ref")!="atyhhjwwxgzeurnwayay" or claims.get("role")!="anon":
+                  raise SystemExit("BLOCK: privileged or wrong-project public key")
+          try:
+              response=requests.post(AUTH,headers={"apikey":key,"Content-Type":"application/json"},json={"email":email,"password":password},timeout=35)
+          except requests.RequestException:
+              raise SystemExit("BLOCK: staging Supabase Auth unavailable") from None
+          if response.status_code!=200:
+              raise SystemExit(f"BLOCK: real staging tutor login HTTP {response.status_code}")
+          info=response.json()
+          if not info.get("access_token") or info.get("user",{}).get("email","").lower()!=email or not info.get("user",{}).get("email_confirmed_at"):
+              raise SystemExit("BLOCK: approved staging tutor not email-verified")
+          token=info["access_token"]
+          headers={"Authorization":"Bearer "+token}
+          try:
+              current=requests.get(BASE,headers=headers,timeout=35)
+          except requests.RequestException:
+              raise SystemExit("BLOCK: staging Django recruitment endpoint unavailable") from None
+          if current.status_code!=200:
+              raise SystemExit(f"BLOCK: authenticated Django applicant GET HTTP {current.status_code}")
+          application=current.json().get("application")
+          if application:
+              print("NOTICE: approved staging tutor has a previous application; no duplicate submission attempted")
+          else:
+              data=[
+                  ("full_name","Synthetic Amaris QA Tutor"),("phone","+27 71 234 5678"),
+                  ("country","ZA"),("province","Gauteng"),("city","Pretoria"),
+                  ("location","Pretoria, Gauteng, South Africa"),
+                  ("qualification","BSc Mathematics"),("institution","Synthetic Test University"),
+                  ("subjects","Mathematics"),("programmes","caps"),("programmes","university"),
+                  ("levels","Grade 12 and first-year"),("experience_years","3"),
+                  ("teaching_experience","Three years of synthetic mathematics tutoring for QA."),
+                  ("availability","Weekday evenings SAST, reliable Zoom and internet available."),
+                  ("motivation","Synthetic staging acceptance submission to verify six private documents."),
+                  ("consent","true")
+              ]
+              files={}
+              for category in CATEGORIES:
+                  body=(f"%PDF-1.7\\n%AMARIS STAGING QA ONLY - NOT A REAL {category.upper()}\\n%%EOF\\n").encode()
+                  files["document_"+category]=(f"qa_{category}.pdf",body,"application/pdf")
+              try:
+                  submitted=requests.post(BASE,headers=headers,data=data,files=files,timeout=65)
+              except requests.RequestException:
+                  raise SystemExit("BLOCK: staging six-document submission transport failed") from None
+              if submitted.status_code not in (201,200):
+                  fields=sorted(submitted.json().keys()) if submitted.headers.get("content-type","").startswith("application/json") else []
+                  raise SystemExit(f"BLOCK: staging submission HTTP {submitted.status_code}; field errors={fields}")
+              application=submitted.json().get("application")
+              print("PASS: a real verified staging Supabase account submitted six synthetic documents")
+          if not isinstance(application,dict):
+              raise SystemExit("BLOCK: missing application record")
+          docs=application.get("documents",[])
+          categories={d.get("category") for d in docs if isinstance(d,dict)}
+          if len(docs)!=6 or categories!=set(CATEGORIES):
+              raise SystemExit("BLOCK: existing or new staging application lacks six categorized private documents")
+          if "storage_path" in str(application) or "signed_url" in str(application):
+              raise SystemExit("BLOCK: private storage location exposed to applicant")
+          print("PASS: six distinct private categories persisted and no storage path disclosed")
+          for d in docs:
+              document_id=d.get("id")
+              if not document_id:
+                  raise SystemExit("BLOCK: stored document without ID")
+              url=BASE+"documents/"+document_id+"/"
+              denied=requests.get(url,timeout=30)
+              if denied.status_code not in (401,403,404):
+                  raise SystemExit("FAIL: anonymous can retrieve private tutor documents")
+              owned=requests.get(url,headers=headers,timeout=35)
+              if owned.status_code!=200 or not owned.content.startswith(b"%PDF-"):
+                  raise SystemExit("BLOCK: owner-authorized private document download failed")
+              if "private" not in owned.headers.get("Cache-Control","").lower():
+                  raise SystemExit("FAIL: private download cache header missing")
+          print("PASS: all six private documents downloadable only with owner authentication")
+          print("No credentials, bearer tokens, personal identity scans or document contents logged")
+          PY
