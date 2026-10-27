@@ -20,7 +20,7 @@
 <h1 style="font-size:23px;line-height:1.3;color:#07152d;margin:12px 0 20px;">Password reset requested</h1>
 <p style="font-size:15px;line-height:1.75;color:#35445c;margin:0 0 19px;">We received a request to reset the password for your Amaris account. Enter the six-digit recovery code below, or use the secure link to continue.</p>
 <div style="margin:22px 0;"><div style="font-size:34px;letter-spacing:9px;font-weight:800;text-align:center;color:#07152d;background:#f2f6fd;border:1px solid #dce4ef;border-radius:12px;padding:20px 8px;">{{ .Token }}</div></div>
-<p style="font-size:14px;line-height:1.7;margin:18px 0 24px;"><a href="{{ .ConfirmationURL }}" style="color:#1f5bbd;font-weight:700;">Continue to password reset securely</a></p>
+<p style="font-size:14px;line-height:1.7;margin:18px 0 24px;"><a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}" style="color:#1f5bbd;font-weight:700;">Continue securely to password reset</a></p>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f6f8fc;border-left:4px solid #ffcc66;"><tr><td style="padding:16px 18px;font-size:13px;line-height:1.7;color:#526781;">If you did not request a password reset, ignore the email and contact Amaris support if you notice suspicious activity.</td></tr></table>
 <p style="font-size:13px;color:#43526a;line-height:1.6;margin:26px 0 0;">Kind regards,<br><strong style="color:#07152d;">Amaris Mathematics Academy</strong></p>
 </td></tr>
