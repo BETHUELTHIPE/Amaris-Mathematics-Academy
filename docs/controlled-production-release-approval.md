@@ -56,6 +56,14 @@ When the owner has **separately and explicitly approved** a release, use **Actio
 
 This control is additive to the mandatory health, payment, SMTP, private storage, restore, accessibility, security and rollback gates; it does not certify them.
 
+
+## Rechecked configuration — 27 October 2026 (read-only)
+
+- Both production Render services **currently have Auto-Deploy Off**: frontend `srv-damn6d2d0e5s73d02j5g`, backend `srv-dapn6b3tqb8s73d3r7n0`. This supersedes the 26 October backend drift described above; verify the settings again before every release.
+- GitHub active ruleset `25894039` now targets the live frontend branch and names strict required CI checks; ruleset `25899270` is also active. However, neither ruleset has a `pull_request` rule requiring **an independent approving review**. The separate production backend branch `production-release-20260923` is not included in either active ruleset. The configured rulesets therefore do not yet satisfy this document's human-approval and backend-branch protections.
+- PR #387's policy gate is being hardened to reject rulesets without a real independent PR approval rule; a generic `protected=true` GitHub branch flag is insufficient.
+- PR #388's Python policy tests and live staging health/readiness acceptance passed. The staging workflow probes a deployed staging service, **not necessarily the exact candidate commit**. Final production evidence must separately show the exact candidate SHA was deployed and accepted in staging. Keep both PRs unmerged and production unchanged until all independent approvals and protections pass.
+
 ## Current status
 
 The code-level protection is in **a draft PR** only, not merged or active on `main` until independently approved. GitHub branch ruleset and Render auto-deploy changes require separately authorized administrator action. **Production remains unchanged by this proposal.**
