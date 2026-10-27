@@ -66,17 +66,17 @@ def official_letterhead_html(
         'width="64" height="64" style="vertical-align:middle;display:inline-block;margin-right:16px">'
         f'<span style="color:#07152d;font-size:22px;font-weight:bold;vertical-align:middle">{e(name)}</span>'
         '<div style="font-size:11px;letter-spacing:1px;color:#1f5bbd;margin-top:12px">'
-        'MATHEMATICS · LEARNING · PROGRESS</div></td></tr>'
+        "MATHEMATICS · LEARNING · PROGRESS</div></td></tr>"
         '<tr><td style="padding:12px 28px;background:#f6f8fc;border-top:1px solid #dce4ef;'
         'border-bottom:1px solid #dce4ef;color:#43526a;font-size:12px;line-height:1.7">'
-        f'<strong>Cell:</strong> {e(phone)} &nbsp; <strong>Email:</strong> {e(email)}<br>'
-        f'<strong>Address:</strong> {e(address)}<br><strong>Web:</strong> {e(url)}'
-        '</td></tr>'
+        f"<strong>Cell:</strong> {e(phone)} &nbsp; <strong>Email:</strong> {e(email)}<br>"
+        f"<strong>Address:</strong> {e(address)}<br><strong>Web:</strong> {e(url)}"
+        "</td></tr>"
         '<tr><td style="padding:28px">'
         f'<h1 style="font-size:22px;color:#07152d;margin:0 0 22px">{e(heading)}</h1>'
-        f'{body}{reference_html}</td></tr>'
+        f"{body}{reference_html}</td></tr>"
         '<tr><td style="padding:16px 28px;border-top:2px solid #ffcc66;color:#60708a;font-size:11px;line-height:1.7">'
-        f'{e(name)} · {e(address)}<br>{e(phone)} · {e(email)}<br>'
-        'Professional mathematics education and learner support</td></tr>'
-        '</table></body></html>'
+        f"{e(name)} · {e(address)}<br>{e(phone)} · {e(email)}<br>"
+        "Professional mathematics education and learner support</td></tr>"
+        "</table></body></html>"
     )
