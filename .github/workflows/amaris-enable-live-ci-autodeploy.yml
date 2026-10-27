@@ -1,0 +1,60 @@
+name: Set Live Student Production Auto-Deploy After CI
+on:
+  push:
+    branches: [ops/enable-ci-gated-live-deploy-20261027]
+    paths:
+      - ops/enable-ci-gated-live-deploy-20261027.txt
+permissions:
+  contents: read
+jobs:
+  configure-live-only:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: production
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - name: Enable CI-gated auto-deployment for the EXISTING live student website only
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError, URLError
+          token = os.environ.get("RENDER_API_KEY", "").strip()
+          if not token:
+              raise SystemExit("BLOCK: production Render API token is not configured in GitHub environment.")
+          sid = "srv-damn6d2d0e5s73d02j5g"
+          endpoint = f"https://api.render.com/v1/services/{sid}"
+          headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+          def call(method, payload=None):
+              req = Request(endpoint, headers={**headers, **({"Content-Type": "application/json"} if payload else {})},
+                            method=method, data=json.dumps(payload).encode("utf-8") if payload else None)
+              try:
+                  with urlopen(req, timeout=25) as response:
+                      return json.load(response)
+              except HTTPError as e:
+                  raise SystemExit(f"BLOCK: Render {method} rejected with HTTP {e.code}") from None
+              except (URLError, TimeoutError, ValueError):
+                  raise SystemExit(f"BLOCK: Render {method} unavailable or response invalid") from None
+          before = call("GET")
+          if before.get("id") != sid or before.get("name") != "amaris-mathematics-academy-live-students":
+              raise SystemExit("BLOCK: not the exact intended live student service")
+          if before.get("branch") != "render-live-current-20260918" or before.get("type") != "web_service":
+              raise SystemExit("BLOCK: production branch or service type changed")
+          if before.get("autoDeployTrigger") not in ("off", "checksPass"):
+              raise SystemExit("BLOCK: unexpected existing auto-deploy setting")
+          if before.get("autoDeployTrigger") == "checksPass":
+              print("PASS: live-students auto-deploy was already set to After CI Checks Pass")
+          else:
+              after = call("PATCH", {"autoDeployTrigger": "checksPass"})
+              if after.get("id") != sid or after.get("autoDeployTrigger") != "checksPass":
+                  raise SystemExit("BLOCK: Render did not confirm CI-gated configuration")
+              print("PASS: Render live-students auto-deploy set to After CI Checks Pass")
+          verified = call("GET")
+          if verified.get("autoDeployTrigger") != "checksPass":
+              raise SystemExit("BLOCK: Render read-back did not match CI-gated trigger")
+          print("VERIFIED: existing live student site will deploy only after GitHub CI passes")
+          print("Unchanged: Django backend, staging, database, and all other Render services")
+          print("No deployment requested and no secrets printed")
+          PY
