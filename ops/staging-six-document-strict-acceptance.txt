@@ -1,0 +1,1 @@
+Run strict six-document validation on staging only with separately authorized verified QA accounts. No production writes.
