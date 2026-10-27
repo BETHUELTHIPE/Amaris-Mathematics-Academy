@@ -1,0 +1,57 @@
+name: Staging-only Official Amaris Auth Email Layout Apply
+on:
+  push:
+    branches:
+      - ops/staging-letterhead-auth-apply-20261027
+    paths:
+      - ops/staging-auth-letterhead-apply-request.txt
+permissions:
+  contents: read
+concurrency:
+  group: amaris-staging-auth-email-layouts-20261027
+  cancel-in-progress: false
+jobs:
+  apply-to-staging-only:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/staging-letterhead-auth-apply-20261027'
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 8
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Contract tests for all three approved Auth email layouts
+        run: |
+          python -m unittest discover -s tests -p test_configure_supabase_auth_otp.py -v
+          python -m py_compile scripts/configure_supabase_auth_otp.py
+      - name: Validate preview-safe confirmation links and existing Amaris branding
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ("confirm-signup.html","magic-link-login.html","recovery.html"):
+              html=Path("frontend/email-templates",name).read_text(encoding="utf8")
+              for needle in ("{{ .Token }}","{{ .ConfirmationURL }}","Amaris Mathematics Academy","amaris-academy-icon-192.png","27 Tshivhase Street","071 415 6665","Professional mathematics education"):
+                  if needle not in html: raise SystemExit(f"BLOCK: {name} lacks required branded email element")
+              for invalid in ("localhost:3000","{{ .RedirectTo }}?token_hash="):
+                  if invalid in html: raise SystemExit(f"BLOCK: {name} contains unsafe reset link")
+          print("PASS: 3 branded Auth layouts contain approved identity, logo, footer and canonical links")
+          PY
+      - name: Confirm protected STAGING Supabase authentication settings
+        run: |
+          python - <<'PY'
+          import os,json
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          pat=os.environ.get("SUPABASE_ACCESS_TOKEN","")
+          if not pat: raise SystemExit("BLOCK: Missing staging-only management token")
+          req=Request("https://api.supabase.com/v1/projects/atyhhjwwxgzeurnwayay/config/auth",headers={"Authorization":"Bearer "+pat})
+          try:
+              with urlopen(req,timeout=20) as res: cfg=json.load(res)
+          except (HTTPError,URLError): raise SystemExit("BLOCK: Unable to inspect staging Auth settings") from None
+          if not cfg.get("smtp_host") or not cfg.get("smtp_admin_email") or cfg.get("external_email_enabled") is not True: raise SystemExit("BLOCK: Staging Auth SMTP missing")
+          if cfg.get("mailer_autoconfirm") is not False: raise SystemExit("BLOCK: Email confirmation must remain enforced")
+          print("PASS: staging project and Auth SMTP / verification prerequisites confirmed")
+          PY
+      - name: Apply three approved layouts ONLY to staging, then verify read-back
+        run: |
+          python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode apply
