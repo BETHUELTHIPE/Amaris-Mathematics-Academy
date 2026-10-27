@@ -17,6 +17,7 @@ def main() -> None:
             raise SystemExit("Staging migration blocked: Render is not on the staging branch.")
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "release"))
         from verify_staging_database_isolation import is_isolated_render_staging_dsn
+        from verify_staging_database_isolation import is_dedicated_supabase_staging_dsn
         from verify_staging_database_isolation import main as verify_staging_connection
 
         # The verifier deliberately expects its own variable; bind it to the
@@ -25,7 +26,8 @@ def main() -> None:
         if not configured_url:
             raise SystemExit("Staging migration blocked: DATABASE_URL is not set.")
         isolated_render = is_isolated_render_staging_dsn(configured_url)
-        expected_schema = "public" if isolated_render else "amaris_staging"
+        isolated_supabase_staging = is_dedicated_supabase_staging_dsn(configured_url)
+        expected_schema = "public" if (isolated_render or isolated_supabase_staging) else "amaris_staging"
         configured_schema = os.environ.get("DATABASE_SCHEMA", "").strip()
         if configured_schema and configured_schema != expected_schema:
             raise SystemExit("Staging migration blocked: invalid Django database schema.")

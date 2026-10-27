@@ -20,6 +20,42 @@ RENDER_STAGE_DATABASE = "amaris_staging_postgres"
 RENDER_STAGE_ROLE = "amaris_staging_postgres_user"
 
 
+STAGING_SUPABASE_PROJECT_REF = "atyhhjwwxgzeurnwayay"
+
+
+def is_dedicated_supabase_staging_dsn(dsn: str) -> bool:
+    """Identify the separate Supabase STAGING project, never the production project.
+
+    Do not trust a generic Supabase hostname or public schema alone:
+    the pooler username or direct host must contain this precise project ref.
+    """
+    try:
+        parsed = urlsplit(dsn)
+        host = (parsed.hostname or "").lower()
+        username = unquote(parsed.username or "")
+        return bool(
+            parsed.scheme in ("postgres", "postgresql")
+            and parsed.password
+            and parsed.port in (None, 5432, 6543)
+            and unquote(parsed.path).lstrip("/") == "postgres"
+            and (
+                (host.endswith(".pooler.supabase.com") and username == "postgres." + STAGING_SUPABASE_PROJECT_REF)
+                or (host == "db." + STAGING_SUPABASE_PROJECT_REF + ".supabase.co" and username == "postgres")
+            )
+        )
+    except ValueError:
+        return False
+
+
+def validate_dedicated_staging_facts(facts):
+    return bool(
+        facts
+        and facts["database_name"] == "postgres"
+        and facts["database_role"] == "postgres"
+        and facts["schema_name"] == "public"
+    )
+
+
 def is_isolated_render_staging_dsn(dsn: str) -> bool:
     """Allow only the existing, independently identified Render staging resource."""
     try:
@@ -129,6 +165,18 @@ def main() -> int:
                 print(
                     "PASS: actual Render connection uses the isolated staging database and role."
                 )
+                return 0
+            if is_dedicated_supabase_staging_dsn(dsn):
+                facts = conn.execute(
+                    "SELECT current_database() AS database_name, current_user AS database_role, current_schema() AS schema_name"
+                ).fetchone()
+                if not validate_dedicated_staging_facts(facts):
+                    print(
+                        "Staging release blocked: dedicated Supabase staging identity mismatch.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                print("PASS: actual connection is the isolated dedicated Supabase staging project.")
                 return 0
             facts = conn.execute(QUERY).fetchone()
         if facts is None:
