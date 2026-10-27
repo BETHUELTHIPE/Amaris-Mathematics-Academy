@@ -37,7 +37,6 @@ MAX_TUTOR_DOCUMENT_SIZE = 5 * 1024 * 1024
 MAX_TUTOR_UPLOAD_TOTAL = 30 * 1024 * 1024
 
 
-
 @dataclass(frozen=True)
 class Applicant:
     id: uuid.UUID
@@ -102,7 +101,9 @@ class ApplicationInput(serializers.Serializer):
     availability = serializers.CharField(max_length=2000, min_length=10)
     motivation = serializers.CharField(max_length=4000, min_length=20)
     consent = serializers.BooleanField()
-    documents = serializers.ListField(child=serializers.FileField(), min_length=1, max_length=5, write_only=True, required=False)
+    documents = serializers.ListField(
+        child=serializers.FileField(), min_length=1, max_length=5, write_only=True, required=False
+    )
     document_id = serializers.FileField(required=False, write_only=True)
     document_cv = serializers.FileField(required=False, write_only=True)
     document_matric = serializers.FileField(required=False, write_only=True)
@@ -118,13 +119,19 @@ class ApplicationInput(serializers.Serializer):
         legacy = bool(attrs.get("documents"))
         require_categories = getattr(settings, "TUTOR_REQUIRE_SIX_DOCUMENTS", False)
         if present or require_categories:
-            missing = {name: ["This document is required."] for name, _category, _label in REQUIRED_TUTOR_DOCUMENTS if name not in attrs}
+            missing = {
+                name: ["This document is required."]
+                for name, _category, _label in REQUIRED_TUTOR_DOCUMENTS
+                if name not in attrs
+            }
             if missing:
                 raise serializers.ValidationError(missing)
             if legacy:
                 raise serializers.ValidationError({"documents": "Use the six named document upload fields instead."})
         elif not legacy:
-            raise serializers.ValidationError({name: ["This document is required."] for name, _category, _label in REQUIRED_TUTOR_DOCUMENTS})
+            raise serializers.ValidationError(
+                {name: ["This document is required."] for name, _category, _label in REQUIRED_TUTOR_DOCUMENTS}
+            )
         if attrs.get("country"):
             attrs["location"] = ", ".join((attrs["city"], attrs["province"], COUNTRY_NAMES[attrs["country"]]))
         elif not attrs.get("location"):
@@ -199,12 +206,18 @@ class TutorApplicationView(ApplicantAPIView):
         attrs.pop("consent")
         # During a staged rollout the existing generic form remains supported.
         # Set TUTOR_REQUIRE_SIX_DOCUMENTS=True after the new six-field frontend goes live.
-        labeled = [(name, category, attrs.pop(name)) for name, category, _label in REQUIRED_TUTOR_DOCUMENTS if name in attrs]
+        labeled = [
+            (name, category, attrs.pop(name)) for name, category, _label in REQUIRED_TUTOR_DOCUMENTS if name in attrs
+        ]
         legacy_uploads = attrs.pop("documents", [])
         if labeled:
             if sum(upload.size for _name, _category, upload in labeled) > MAX_TUTOR_UPLOAD_TOTAL:
                 raise serializers.ValidationError({"documents": "Six files may total no more than 30 MB."})
-            invalid = {name: ["Each file must be between 1 byte and 5 MB."] for name, _category, upload in labeled if not 0 < upload.size <= MAX_TUTOR_DOCUMENT_SIZE}
+            invalid = {
+                name: ["Each file must be between 1 byte and 5 MB."]
+                for name, _category, upload in labeled
+                if not 0 < upload.size <= MAX_TUTOR_DOCUMENT_SIZE
+            }
             if invalid:
                 raise serializers.ValidationError(invalid)
         elif sum(upload.size for upload in legacy_uploads) > 15 * 1024 * 1024 or any(
@@ -214,7 +227,8 @@ class TutorApplicationView(ApplicantAPIView):
         try:
             typed_documents = (
                 [(category, validate_documents([upload])[0]) for _name, category, upload in labeled]
-                if labeled else [("legacy", document) for document in validate_documents(legacy_uploads)]
+                if labeled
+                else [("legacy", document) for document in validate_documents(legacy_uploads)]
             )
         except PaymentSecurityError as exc:
             raise serializers.ValidationError({"documents": str(exc)}) from exc
