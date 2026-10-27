@@ -11,11 +11,11 @@ from django.core.files.storage import Storage, storages
 from django.utils import timezone
 
 from content.models import LiveClassBooking, VideoRequest
+from content.payment_models import Invoice
 from content.services.approved_invoice_letterhead import (
     LegacyInvoiceLetterheadError,
     require_approved_invoice_letterhead,
 )
-from content.payment_models import Invoice
 from content.services.course_invoice_archive import (
     InvoiceArchiveError as InvoiceArchiveError,
 )
