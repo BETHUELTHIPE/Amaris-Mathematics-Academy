@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check or install Amaris six-digit Supabase Auth email templates.
+"""Check or install Amaris branded Supabase Auth and security templates.
 
 Uses Supabase Management API, not Postgres SQL and not a service-role key.
 Requires a scoped SUPABASE_ACCESS_TOKEN. Never prints or logs the token,
@@ -22,12 +22,55 @@ FIELDS = {
     "mailer_templates_confirmation_content": "confirm-signup.html",
     "mailer_templates_magic_link_content": "magic-link-login.html",
     "mailer_templates_recovery_content": "recovery.html",
+    "mailer_templates_invite_content": "invite.html",
+    "mailer_templates_email_change_content": "email-change.html",
+    "mailer_templates_reauthentication_content": "reauthentication.html",
+    "mailer_templates_password_changed_notification_content": "password-changed.html",
+    "mailer_templates_email_changed_notification_content": "email-changed.html",
+    "mailer_templates_phone_changed_notification_content": "phone-changed.html",
+    "mailer_templates_mfa_factor_enrolled_notification_content": "mfa-factor-enrolled.html",
+    "mailer_templates_mfa_factor_unenrolled_notification_content": "mfa-factor-unenrolled.html",
+    "mailer_templates_identity_linked_notification_content": "identity-linked.html",
+    "mailer_templates_identity_unlinked_notification_content": "identity-unlinked.html",
 }
 SUBJECTS = {
-    "mailer_subjects_confirmation": "Amaris | Verify your student email",
+    "mailer_subjects_confirmation": "Amaris | Verify your email address",
     "mailer_subjects_magic_link": "Amaris | Your six-digit sign-in code",
     "mailer_subjects_recovery": "Amaris | Reset your password",
+    "mailer_subjects_invite": "Amaris | Invitation to join the academy",
+    "mailer_subjects_email_change": "Amaris | Confirm your new email address",
+    "mailer_subjects_reauthentication": "Amaris | Your security verification code",
+    "mailer_subjects_password_changed_notification": "Amaris | Your password has been changed",
+    "mailer_subjects_email_changed_notification": "Amaris | Your email address has been changed",
+    "mailer_subjects_phone_changed_notification": "Amaris | Your phone number has been changed",
+    "mailer_subjects_mfa_factor_enrolled_notification": "Amaris | A verification method was added",
+    "mailer_subjects_mfa_factor_unenrolled_notification": "Amaris | A verification method was removed",
+    "mailer_subjects_identity_linked_notification": "Amaris | A sign-in method was linked",
+    "mailer_subjects_identity_unlinked_notification": "Amaris | A sign-in method was removed",
 }
+REQUIRED_VARIABLES = {
+    "confirm-signup.html": ("{{ .Token }}", "{{ .ConfirmationURL }}"),
+    "magic-link-login.html": ("{{ .Token }}", "{{ .ConfirmationURL }}"),
+    "recovery.html": ("{{ .Token }}", "{{ .TokenHash }}", "{{ .RedirectTo }}"),
+    "invite.html": ("{{ .ConfirmationURL }}",),
+    "email-change.html": ("{{ .NewEmail }}", "{{ .ConfirmationURL }}"),
+    "reauthentication.html": ("{{ .Token }}",),
+    "password-changed.html": ("{{ .Email }}",),
+    "email-changed.html": ("{{ .OldEmail }}", "{{ .Email }}"),
+    "phone-changed.html": ("{{ .OldPhone }}", "{{ .Phone }}"),
+    "mfa-factor-enrolled.html": ("{{ .FactorType }}",),
+    "mfa-factor-unenrolled.html": ("{{ .FactorType }}",),
+    "identity-linked.html": ("{{ .Provider }}",),
+    "identity-unlinked.html": ("{{ .Provider }}",),
+}
+BRANDING_MARKERS = (
+    "Amaris Mathematics Academy",
+    "amaris-academy-icon-192.png",
+    "071 415 6665",
+    "27 Tshivhase Street",
+    "Bethuel Moukangwe",
+    "#ffcc66",
+)
 PROJECT_REF = re.compile(r"^[a-z0-9]{20}$")
 API_ORIGIN = "https://api.supabase.com"
 
@@ -41,12 +84,14 @@ def desired_config() -> dict[str, object]:
     }
     for setting, filename in FIELDS.items():
         value = (TEMPLATE_DIR / filename).read_text(encoding="utf-8")
-        if "{{ .Token }}" not in value:
-            raise ValueError(f"{filename} is missing Supabase's .Token placeholder")
-        if filename == "recovery.html" and (
-            "{{ .TokenHash }}" not in value or "{{ .RedirectTo }}" not in value
-        ):
-            raise ValueError("Recovery email is missing preview-safe recovery link placeholders")
+        for variable in REQUIRED_VARIABLES[filename]:
+            if variable not in value:
+                raise ValueError(f"{filename} is missing the required variable {variable}")
+        for marker in BRANDING_MARKERS:
+            if marker not in value:
+                raise ValueError(f"{filename} lacks the approved letterhead marker: {marker}")
+        if "localhost" in value.lower():
+            raise ValueError(f"{filename} contains an unsafe local URL")
         config[setting] = value
     return config
 

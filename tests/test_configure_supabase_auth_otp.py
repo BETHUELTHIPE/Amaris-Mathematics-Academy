@@ -18,21 +18,28 @@ SPEC.loader.exec_module(module)
 
 
 class SupabaseAuthOtpTests(unittest.TestCase):
-    def test_templates_include_real_supabase_otp_placeholder(self):
+    def test_every_auth_and_security_email_uses_approved_letterhead(self):
         desired = module.desired_config()
         self.assertEqual(desired["mailer_otp_length"], 6)
         self.assertEqual(desired["mailer_otp_exp"], 600)
         self.assertIs(desired["mailer_autoconfirm"], False)
-        self.assertIn("{{ .Token }}", desired["mailer_templates_confirmation_content"])
-        self.assertIn("{{ .Token }}", desired["mailer_templates_magic_link_content"])
-        self.assertIn("{{ .ConfirmationURL }}", desired["mailer_templates_magic_link_content"])
-        self.assertNotIn("{{ .SiteURL }}/auth/confirm", desired["mailer_templates_magic_link_content"])
-        self.assertNotIn("123456", desired["mailer_templates_confirmation_content"])
+        self.assertEqual(len(module.FIELDS), 13)
+        for key, filename in module.FIELDS.items():
+            html = desired[key]
+            with self.subTest(filename=filename):
+                for placeholder in module.REQUIRED_VARIABLES[filename]:
+                    self.assertIn(placeholder, html)
+                for marker in module.BRANDING_MARKERS:
+                    self.assertIn(marker, html)
+                self.assertNotIn("localhost", html.lower())
         self.assertIn("{{ .Token }}", desired["mailer_templates_recovery_content"])
         self.assertIn("{{ .TokenHash }}", desired["mailer_templates_recovery_content"])
         self.assertIn("{{ .RedirectTo }}", desired["mailer_templates_recovery_content"])
         self.assertNotIn("{{ .ConfirmationURL }}", desired["mailer_templates_recovery_content"])
         self.assertEqual(desired["mailer_subjects_recovery"], "Amaris | Reset your password")
+        self.assertEqual(desired["mailer_subjects_password_changed_notification"], "Amaris | Your password has been changed")
+        self.assertNotIn("mailer_notifications_password_changed_enabled", desired)
+        self.assertNotIn("smtp_pass", desired)
 
     def test_check_requires_templates_confirmation_and_smtp(self):
         configured = module.desired_config() | {
