@@ -21,9 +21,9 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_configure_supabase_auth_otp.py -v
           python -m py_compile scripts/configure_supabase_auth_otp.py
-      - name: Apply approved 13 email letterhead templates to staging only
+      - name: Read-only verify 13 previously applied staging letterhead templates
         run: |
           test -n "$SUPABASE_ACCESS_TOKEN" || { echo "Staging Management API token missing"; exit 1; }
-          python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode apply
+          python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode check
       - name: Re-read and verify all staging Supabase letterhead settings
         run: python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode check
