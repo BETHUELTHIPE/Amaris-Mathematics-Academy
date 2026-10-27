@@ -152,7 +152,7 @@ class EnquiryAutoReplyTests(TestCase):
             data={
                 "name": "Synthetic Student",
                 "email": "synthetic.student2@example.com",
-                "phone": "",
+                "phone": "0710000000",
                 "subject": "technical support",
                 "message": "I can open the website but I need help finding the correct support page.",
             }

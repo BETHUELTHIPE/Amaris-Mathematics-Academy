@@ -1,9 +1,16 @@
+from datetime import timedelta
+
+from django import forms
 from django.contrib import admin, messages
+from django.template.response import TemplateResponse
+from django.urls import path
 from django.utils import timezone
 
 from .models import (
     FAQ,
+    LIVE_CLASS_MAX_HOURS,
     Announcement,
+    AnnouncementMedia,
     ContactEnquiry,
     Course,
     CourseCategory,
@@ -25,6 +32,7 @@ from .models import (
     VideoAsset,
     VideoRequest,
     VideoRequestDocument,
+    WebVitalBucket,
 )
 
 admin.site.site_header = "Amaris Mathematics Academy"
@@ -256,11 +264,46 @@ class FAQAdmin(PublishableAdmin):
     search_fields = ("question", "answer", "category")
 
 
+class SuperuserMarketingAdmin:
+    def _allowed(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_module_permission(self, request):
+        return self._allowed(request)
+
+    def has_view_permission(self, request, obj=None):
+        return self._allowed(request)
+
+    def has_add_permission(self, request):
+        return self._allowed(request)
+
+    def has_change_permission(self, request, obj=None):
+        return self._allowed(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return self._allowed(request)
+
+
+class AnnouncementMediaInline(SuperuserMarketingAdmin, admin.TabularInline):
+    model = AnnouncementMedia
+    extra = 0
+    fields = ("kind", "title", "file", "order")
+
+
 @admin.register(Announcement)
-class AnnouncementAdmin(PublishableAdmin):
+class AnnouncementAdmin(SuperuserMarketingAdmin, PublishableAdmin):
     list_display = ("title", "priority", "expires_at", "is_published", "updated_at")
     list_editable = ("priority", "is_published")
     search_fields = ("title", "message")
+    inlines = (AnnouncementMediaInline,)
+
+
+@admin.register(AnnouncementMedia)
+class AnnouncementMediaAdmin(SuperuserMarketingAdmin, TimeStampedAdmin):
+    list_display = ("title", "announcement", "kind", "order", "created_at")
+    list_filter = ("kind",)
+    search_fields = ("title", "announcement__title")
+    autocomplete_fields = ("announcement",)
 
 
 @admin.register(ContactEnquiry)
@@ -269,7 +312,18 @@ class ContactEnquiryAdmin(TimeStampedAdmin):
     list_filter = ("status", "created_at", "assigned_to")
     list_editable = ("status", "assigned_to")
     search_fields = ("name", "email", "phone", "subject", "message")
-    readonly_fields = ("name", "email", "phone", "subject", "message", "created_at", "updated_at")
+    readonly_fields = (
+        "name",
+        "email",
+        "phone",
+        "subject",
+        "message",
+        "country",
+        "province",
+        "city",
+        "created_at",
+        "updated_at",
+    )
     actions = ("mark_in_progress", "mark_resolved")
     date_hierarchy = "created_at"
 
@@ -393,8 +447,75 @@ class PaymentReconciliationRunAdmin(TimeStampedAdmin):
         return False
 
 
+class TutorAvailabilitySlotAdminForm(forms.ModelForm):
+    """Select the number of paid Zoom hours; derive the end time server-side."""
+
+    duration_hours = forms.IntegerField(
+        min_value=1,
+        max_value=LIVE_CLASS_MAX_HOURS,
+        initial=1,
+        label="Number of session hours",
+        help_text=f"Choose 1 to {LIVE_CLASS_MAX_HOURS} full hours; R250 per hour.",
+    )
+
+    class Meta:
+        model = TutorAvailabilitySlot
+        exclude = ("ends_at",)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk and self.instance.duration_hours:
+            self.fields["duration_hours"].initial = self.instance.duration_hours
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start = cleaned_data.get("starts_at")
+        hours = cleaned_data.get("duration_hours")
+        if start is not None and hours is not None:
+            new_end = start + timedelta(hours=hours)
+            if self.instance.pk:
+                old = TutorAvailabilitySlot.objects.get(pk=self.instance.pk)
+                # A booked session must not silently change its length or time
+                # after a student has started paying for the original booking.
+                reserved = old.bookings.filter(
+                    status__in=(
+                        LiveClassBooking.Status.PENDING_PAYMENT,
+                        LiveClassBooking.Status.CONFIRMED,
+                        LiveClassBooking.Status.PAYMENT_REVIEW,
+                        LiveClassBooking.Status.COMPLETED,
+                    )
+                ).exists()
+                if reserved and (
+                    start != old.starts_at or new_end != old.ends_at or cleaned_data.get("tutor") != old.tutor
+                ):
+                    raise forms.ValidationError("A reserved or paid class cannot change tutor, duration or start time.")
+            self.instance.ends_at = new_end
+        return cleaned_data
+
+
 @admin.register(TutorAvailabilitySlot)
 class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
+    form = TutorAvailabilitySlotAdminForm
+    readonly_fields = (*TimeStampedAdmin.readonly_fields, "ends_at", "duration_notice")
+    fields = (
+        "tutor",
+        "programme",
+        "subject",
+        "level",
+        "starts_at",
+        "duration_hours",
+        "ends_at",
+        "duration_notice",
+        "zoom_join_url",
+        "is_active",
+        "created_at",
+        "updated_at",
+    )
+
+    @admin.display(description="Class duration")
+    def duration_notice(self, obj):
+        return "The end time is automatically calculated from the start time and selected hours."
+
     list_display = (
         "tutor",
         "programme",
@@ -402,6 +523,7 @@ class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
         "level",
         "starts_at",
         "ends_at",
+        "duration_hours",
         "is_active",
     )
     list_filter = ("programme", "subject", "level", "is_active", "starts_at")
@@ -467,6 +589,26 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    actions = ("mark_verified_class_completed",)
+
+    @admin.action(description="Confirm completed class after payment and attendance review")
+    def mark_verified_class_completed(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(request, "Superuser approval is required.", messages.ERROR)
+            return
+        completed = 0
+        for booking in queryset.select_related("slot"):
+            if (
+                booking.status == LiveClassBooking.Status.CONFIRMED
+                and booking.gateway_verified_at
+                and booking.paid_at
+                and booking.slot.ends_at <= timezone.now()
+            ):
+                booking.status = LiveClassBooking.Status.COMPLETED
+                booking.save(update_fields=("status", "updated_at"))
+                completed += 1
+        self.message_user(request, f"Reviewed and marked {completed} class(es) completed.", messages.SUCCESS)
 
 
 class VideoRequestDocumentInline(admin.TabularInline):
@@ -639,3 +781,58 @@ class VideoRequestAdmin(TimeStampedAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+from . import tutor_application_admin as _tutor_application_admin  # noqa: E402,F401
+
+
+@admin.register(WebVitalBucket)
+class WebVitalBucketAdmin(admin.ModelAdmin):
+    """Superuser-only p75 trend view; never expose individual measurements."""
+
+    change_list_template = "admin/content/webvitalbucket/change_list.html"
+    list_display = ("day", "release", "metric", "route", "device", "network", "bucket", "count")
+    list_filter = ("release", "metric", "device", "network", "day")
+    ordering = ("-day", "route", "metric")
+    list_per_page = 30
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return self.has_module_permission(request)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_urls(self):
+        urls = super().get_urls()
+        return [
+            path(
+                "report/",
+                self.admin_site.admin_view(self.report),
+                name="content_webvitalbucket_report",
+            )
+        ] + urls
+
+    def report(self, request):
+        if not self.has_view_permission(request):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied()
+        from .rum import summarize_p75, summarize_weekly_p75
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Real-user Web Vitals, trailing 28 days",
+            "rows": summarize_p75(days=28, min_samples=20),
+            "weekly": summarize_weekly_p75(weeks=4, min_samples=20),
+            "opts": self.model._meta,
+        }
+        return TemplateResponse(request, "admin/content/webvitalbucket/report.html", context)

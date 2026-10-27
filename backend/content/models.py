@@ -387,6 +387,61 @@ class Announcement(PublishableModel):
         return self.title
 
 
+class AnnouncementMedia(TimeStampedModel):
+    """Superuser-managed marketing attachments stored in the CMS S3 bucket."""
+
+    class Kind(models.TextChoices):
+        IMAGE = "image", "Image"
+        VIDEO = "video", "Video"
+        PDF = "pdf", "PDF"
+
+    announcement = models.ForeignKey(Announcement, related_name="media", on_delete=models.CASCADE)
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    title = models.CharField(max_length=180)
+    file = models.FileField(upload_to="marketing/announcements/%Y/%m/")
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ("order", "id")
+
+    def clean(self):
+        super().clean()
+        if not self.file:
+            raise ValidationError({"file": "Upload a marketing file."})
+        from pathlib import Path
+
+        extensions = {
+            self.Kind.IMAGE: {".jpg", ".jpeg", ".png", ".webp"},
+            self.Kind.VIDEO: {".mp4", ".webm"},
+            self.Kind.PDF: {".pdf"},
+        }
+        extension = Path(self.file.name).suffix.lower()
+        if extension not in extensions.get(self.Kind(self.kind), set()):
+            raise ValidationError({"file": "File extension does not match the selected media type."})
+        # Existing stored objects should not trigger a remote S3 HEAD during metadata edits.
+        if not self.file._committed:
+            if self.file.size > 50 * 1024 * 1024:
+                raise ValidationError({"file": "Maximum file size is 50 MB (Supabase bucket limit)."})
+            # Validate signatures to reject renamed HTML or executable files.
+            pos = self.file.tell()
+            header = self.file.read(16)
+            self.file.seek(pos)
+            valid = {
+                ".pdf": header.startswith(b"%PDF-"),
+                ".png": header.startswith(b"\x89PNG\r\n\x1a\n"),
+                ".jpg": header.startswith(b"\xff\xd8\xff"),
+                ".jpeg": header.startswith(b"\xff\xd8\xff"),
+                ".webp": header[:4] == b"RIFF" and header[8:12] == b"WEBP",
+                ".mp4": header[4:8] == b"ftyp",
+                ".webm": header.startswith(b"\x1a\x45\xdf\xa3"),
+            }
+            if not valid.get(extension, False):
+                raise ValidationError({"file": "File content does not match the allowed format."})
+
+    def __str__(self):
+        return self.title
+
+
 class ContactEnquiry(TimeStampedModel):
     class Status(models.TextChoices):
         NEW = "new", "New"
@@ -397,6 +452,9 @@ class ContactEnquiry(TimeStampedModel):
     name = models.CharField(max_length=120)
     email = models.EmailField(unique=False)
     phone = models.CharField(max_length=30, blank=True)
+    country = models.CharField(max_length=2, blank=True, default="")
+    province = models.CharField(max_length=160, blank=True, default="")
+    city = models.CharField(max_length=160, blank=True, default="")
     subject = models.CharField(max_length=180)
     message = models.TextField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.NEW, db_index=True)
@@ -430,6 +488,10 @@ class StudentRecord(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.first_name} {self.last_name} ({self.email})"
+
+
+# Tutor-selected sessions may run for whole hours up to one day.
+LIVE_CLASS_MAX_HOURS = 24
 
 
 def live_class_hold_expiry():
@@ -479,14 +541,38 @@ class TutorAvailabilitySlot(TimeStampedModel):
             )
         ]
 
+    @property
+    def duration_hours(self) -> int:
+        if not self.starts_at or not self.ends_at:
+            return 0
+        duration = self.ends_at - self.starts_at
+        if (
+            duration <= timedelta(0)
+            or duration > timedelta(hours=LIVE_CLASS_MAX_HOURS)
+            or duration % timedelta(hours=1) != timedelta(0)
+        ):
+            return 0
+        return duration // timedelta(hours=1)
+
     def clean(self):
         super().clean()
-        if self.ends_at <= self.starts_at:
-            raise ValidationError("The class end time must be after the start time.")
-        if self.ends_at - self.starts_at != timedelta(hours=1):
-            raise ValidationError("Live class slots must be exactly one hour.")
+        if not self.starts_at or not self.ends_at:
+            return
+        if not self.duration_hours:
+            raise ValidationError(f"Live class slots must last 1 to {LIVE_CLASS_MAX_HOURS} whole hours.")
         if self.is_active and not self.zoom_join_url:
             raise ValidationError("An active live-class slot must have a Zoom join URL.")
+        if self.is_active and self.tutor_id:
+            overlapping = TutorAvailabilitySlot.objects.filter(
+                tutor_id=self.tutor_id,
+                is_active=True,
+                starts_at__lt=self.ends_at,
+                ends_at__gt=self.starts_at,
+            )
+            if self.pk:
+                overlapping = overlapping.exclude(pk=self.pk)
+            if overlapping.exists():
+                raise ValidationError("This tutor has another active session that overlaps these hours.")
 
     @property
     def tutor_display_name(self) -> str:
@@ -796,3 +882,34 @@ class PaymentReconciliationRun(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.started_at:%Y-%m-%d %H:%M} — {self.status}"
+
+
+class WebVitalBucket(models.Model):
+    """Coarse daily counts only; never store visitors, URLs, IPs or raw events."""
+
+    day = models.DateField()
+    release = models.CharField(max_length=12, default="unknown")
+    metric = models.CharField(max_length=3)
+    route = models.CharField(max_length=24)
+    device = models.CharField(max_length=8)
+    network = models.CharField(max_length=8)
+    bucket = models.PositiveSmallIntegerField()
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["day", "release", "metric", "route", "device", "network", "bucket"],
+                name="rum_daily_bucket_unique",
+            )
+        ]
+        indexes = [models.Index(fields=["-day", "metric"], name="rum_day_metric_idx")]
+        verbose_name = "Anonymous daily Web Vital bucket"
+        verbose_name_plural = "Anonymous daily Web Vital buckets"
+
+    def __str__(self) -> str:
+        return f"{self.day} {self.release} {self.metric} {self.route} {self.device}/{self.network}: {self.count}"
+
+
+# Django discovers the recruitment models through this application module.
+from .tutor_application_models import TutorApplication, TutorApplicationDocument  # noqa: E402,F401

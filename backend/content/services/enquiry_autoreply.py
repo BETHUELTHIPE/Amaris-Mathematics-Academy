@@ -21,6 +21,8 @@ from content.models import (
     SiteSettings,
 )
 
+from .live_classes import LIVE_CLASS_PRICE
+
 logger = logging.getLogger(__name__)
 
 
@@ -122,6 +124,13 @@ def build_website_context() -> str:
             (
                 f"- Password recovery: {_public_url('/forgot-password')}. The student enters their registration "
                 "email and, if an account exists, receives a secure reset link."
+            ),
+            (
+                f"- Live Zoom classes: {_public_url('/book-online-live-class')}. "
+                f"Live Zoom sessions can last 1 to 24 whole hours at R{LIVE_CLASS_PRICE:.0f} per hour. "
+                "The available duration is set by the tutor. "
+                "Students choose an available tutor, time, and class topic. "
+                "Recorded course lesson counts and total hours vary by course."
             ),
         ]
     )
@@ -257,7 +266,7 @@ def _call_openai(enquiry: ContactEnquiry, website_context: str) -> tuple[str, st
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured.")
 
-    model = getattr(settings, "OPENAI_ENQUIRY_MODEL", "gpt-5.6-luna")
+    model = getattr(settings, "OPENAI_ENQUIRY_MODEL", "gpt-6-luna")
     timeout = float(getattr(settings, "OPENAI_ENQUIRY_TIMEOUT_SECONDS", 10))
     public_site_url = getattr(settings, "PUBLIC_SITE_URL", "")
 

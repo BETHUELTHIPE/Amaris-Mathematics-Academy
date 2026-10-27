@@ -16,6 +16,9 @@ from content.services.invoices import archive_invoice_pdf, mark_invoice_archive_
 from content.services.reconciliation import reconcile_verified_payments
 from content.services.video_requests import video_request_eta, video_request_queue_position
 
+# Celery autodiscovery imports content.tasks; register the finance jobs.
+from . import tutor_finance_tasks  # noqa: F401
+
 
 @shared_task(
     bind=True,
@@ -234,6 +237,8 @@ def _deliver_one_live_class_confirmation() -> bool:
                 f"Topic: {booking.topic}",
                 f"Tutor: {booking.slot.tutor_display_name}",
                 f"Date and time: {_booking_when(booking)}",
+                f"Duration: {booking.slot.duration_hours} hour(s)",
+                f"End time: {timezone.localtime(booking.slot.ends_at):%H:%M} SAST",
                 f"Zoom link: {booking.slot.zoom_join_url}",
                 f"Invoice: {booking.invoice_number}",
                 f"Amount paid: R{booking.amount:.2f}",
@@ -290,6 +295,7 @@ def _deliver_one_live_class_reminder() -> bool:
                 f"Topic: {booking.topic}",
                 f"Tutor: {booking.slot.tutor_display_name}",
                 f"Start time: {_booking_when(booking)}",
+                f"Duration: {booking.slot.duration_hours} hour(s)",
                 f"Zoom link: {booking.slot.zoom_join_url}",
                 f"Booking reference: {booking.reference}",
             ],
@@ -541,3 +547,16 @@ def archive_missing_invoice_pdfs(_self) -> int:
         except Exception:
             continue
     return queued
+
+
+@shared_task(ignore_result=True)
+def deliver_tutor_application_acknowledgements() -> int:
+    from content.services.tutor_applications import deliver_application_acknowledgement
+
+    delivered = 0
+    for _ in range(50):
+        count = deliver_application_acknowledgement()
+        delivered += count
+        if not count:
+            break
+    return delivered

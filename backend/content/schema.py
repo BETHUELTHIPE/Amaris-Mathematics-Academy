@@ -18,3 +18,36 @@ class SupabaseStudentAuthenticationScheme(OpenApiAuthenticationExtension):
                 "may use the repository's GitHub Actions OIDC token when explicitly enabled."
             ),
         }
+
+
+class SupabaseTutorAuthenticationScheme(OpenApiAuthenticationExtension):
+    """Document the restricted bearer token and tutor group requirement."""
+
+    target_class = "content.tutor_views.SupabaseTutorAuthentication"
+    name = "SupabaseTutorBearerAuth"
+
+    def get_security_definition(self, auto_schema):
+        del auto_schema
+        return {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": (
+                "Verified Supabase access token; the corresponding active Django user "
+                "must be an approved member of the Tutors group. Student registration "
+                "or a GitHub synthetic acceptance identity does not grant tutor access."
+            ),
+        }
+
+
+class ApplicantAuthenticationScheme(OpenApiAuthenticationExtension):
+    target_class = "content.tutor_application_views.ApplicantAuthentication"
+    name = "SupabaseApplicantBearerAuth"
+
+    def get_security_definition(self, auto_schema):
+        return {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Verified Supabase applicant account; does not grant approved tutor permissions.",
+        }

@@ -229,17 +229,8 @@ class SupabaseStudentAuthentication(BaseAuthentication):
     @staticmethod
     def _get_or_create_student(payload: dict, user_id: str, email: str) -> StudentRecord:
         metadata = payload.get("user_metadata") if isinstance(payload.get("user_metadata"), dict) else {}
-        # Registration names come from the validated Supabase Auth user record;
-        # Google OAuth may provide given/family_name or full_name instead.
-        full_name = str(metadata.get("full_name") or metadata.get("name") or "").strip().split()
-        first_name = str(
-            metadata.get("first_name") or metadata.get("given_name") or
-            (full_name[0] if full_name else "") or "Student"
-        ).strip()[:80] or "Student"
-        last_name = str(
-            metadata.get("last_name") or metadata.get("family_name") or
-            (" ".join(full_name[1:]) if len(full_name) > 1 else "") or "Learner"
-        ).strip()[:80] or "Learner"
+        first_name = str(metadata.get("first_name") or "Student").strip()[:80] or "Student"
+        last_name = str(metadata.get("last_name") or "Learner").strip()[:80] or "Learner"
 
         try:
             student, created = StudentRecord.objects.get_or_create(
@@ -253,22 +244,9 @@ class SupabaseStudentAuthentication(BaseAuthentication):
         except (IntegrityError, ValueError) as exc:
             raise AuthenticationFailed("The authenticated account could not be linked to a student profile.") from exc
 
-        updated_fields = []
         if not created and student.email != email:
             if StudentRecord.objects.exclude(pk=student.pk).filter(email=email).exists():
                 raise AuthenticationFailed("The authenticated email is already linked to another student profile.")
             student.email = email
-            updated_fields.append("email")
-        # Upgrade legacy placeholder profiles when the genuine registered
-        # first/last names have become available from Supabase Auth.
-        if (
-            not created
-            and (student.first_name.casefold(), student.last_name.casefold()) == ("student", "learner")
-            and len(first_name) >= 2 and len(last_name) >= 2
-            and (first_name.casefold(), last_name.casefold()) != ("student", "learner")
-        ):
-            student.first_name, student.last_name = first_name, last_name
-            updated_fields.extend(("first_name", "last_name"))
-        if updated_fields:
-            student.save(update_fields=[*updated_fields, "updated_at"])
+            student.save(update_fields=["email", "updated_at"])
         return student

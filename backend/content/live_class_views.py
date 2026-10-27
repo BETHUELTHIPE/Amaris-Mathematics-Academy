@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 from .authentication import SupabaseStudentAuthentication
 from .models import LiveClassBooking, TutorAvailabilitySlot
 from .services.invoices import student_invoice_key
-from .services.live_classes import create_live_class_checkout
+from .services.live_classes import create_live_class_checkout, price_for_live_class_slot
 from .services.payments import PaymentSecurityError
 
 
@@ -101,10 +101,11 @@ class LiveClassSlotView(APIView):
                     0,
                     int((slot.ends_at - slot.starts_at).total_seconds() // 60),
                 ),
-                "price": "250.00",
+                "price": f"{price_for_live_class_slot(slot):.2f}",
                 "currency": "ZAR",
             }
             for slot in queryset
+            if slot.duration_hours
         ]
         return Response(payload)
 
@@ -134,6 +135,7 @@ class LiveClassBookingStatusSerializer(serializers.Serializer):
     starts_at = serializers.DateTimeField()
     ends_at = serializers.DateTimeField()
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    duration_minutes = serializers.IntegerField()
     currency = serializers.CharField()
     invoice_number = serializers.CharField(allow_blank=True, allow_null=True)
     invoice_ready = serializers.BooleanField()
@@ -194,9 +196,9 @@ class LiveClassCheckoutView(LiveClassStudentAPIView):
                     "level": booking.level,
                     "topic": booking.topic,
                     "tutor": booking.slot.tutor_display_name,
-                    "student_name": f"{booking.student.first_name} {booking.student.last_name}".strip(),
                     "starts_at": booking.slot.starts_at,
                     "ends_at": booking.slot.ends_at,
+                    "duration_minutes": booking.slot.duration_hours * 60,
                     "amount": f"{booking.amount:.2f}",
                     "currency": booking.currency,
                 },
@@ -233,6 +235,7 @@ class LiveClassBookingStatusView(LiveClassStudentAPIView):
                 "tutor": booking.slot.tutor_display_name,
                 "starts_at": booking.slot.starts_at,
                 "ends_at": booking.slot.ends_at,
+                "duration_minutes": booking.slot.duration_hours * 60,
                 "amount": booking.amount,
                 "currency": booking.currency,
                 "invoice_number": booking.invoice_number,
