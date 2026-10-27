@@ -1,10 +1,10 @@
 """Verified applicants may submit once and view only their own recruitment record."""
 
 import uuid
-from django.conf import settings
 from dataclasses import dataclass
 
 from botocore.exceptions import BotoCoreError, ClientError
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import storages
 from django.db import IntegrityError, transaction
