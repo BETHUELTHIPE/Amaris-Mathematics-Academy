@@ -1,4 +1,5 @@
 """Regression checks: official letterhead, safe escaping and preserved notifications."""
+
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
