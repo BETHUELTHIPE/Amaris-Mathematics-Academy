@@ -1,0 +1,61 @@
+name: Staging Approved Official Email Backend Acceptance
+on:
+  push:
+    branches: [stage/official-letterhead-booking-emails-20261027]
+    paths:
+      - "backend/content/services/official_letterhead.py"
+      - "backend/content/services/enquiry_autoreply.py"
+      - "backend/content/tasks.py"
+      - "backend/content/test_official_letterhead.py"
+      - "backend/content/test_enquiry_autoreply.py"
+      - ".github/workflows/staging-official-email-backend-qa.yml"
+permissions:
+  contents: read
+jobs:
+  staged-formal-email-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_ci
+          POSTGRES_USER: amaris_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U amaris_ci -d amaris_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_ci
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: "0"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inject isolated synthetic Django test secret
+        run: |
+          secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$secret"
+          printf 'DJANGO_SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install locked Django test dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
+      - name: Syntax, formatting and lint
+        run: |
+          python -m compileall -q content/tasks.py content/services/official_letterhead.py content/services/enquiry_autoreply.py
+          black --check content/tasks.py content/services/official_letterhead.py content/services/enquiry_autoreply.py content/test_official_letterhead.py content/test_enquiry_autoreply.py
+          ruff check content/tasks.py content/services/official_letterhead.py content/services/enquiry_autoreply.py content/test_official_letterhead.py content/test_enquiry_autoreply.py
+      - name: Test letterhead, enquiry and approved invoice archival
+        run: python manage.py test content.test_official_letterhead content.test_enquiry_autoreply content.test_invoice_archive
