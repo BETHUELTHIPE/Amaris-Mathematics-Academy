@@ -1,10 +1,6 @@
 name: Staging-only Official Amaris Auth Email Layout Apply
 on:
-  push:
-    branches:
-      - ops/staging-letterhead-auth-apply-20261027
-    paths:
-      - ops/staging-auth-letterhead-apply-request.txt
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -12,7 +8,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   apply-to-staging-only:
-    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/staging-letterhead-auth-apply-20261027'
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/staging-letterhead-auth-apply-20261027'
     runs-on: ubuntu-24.04
     environment: staging
     timeout-minutes: 8
