@@ -1,0 +1,1 @@
+Approved staging-only additive Django migration 0018_tutor_document_categories on dedicated staging Supabase project. Must pass strict Render service and DB isolation checks. NO production mutation; NO flag activation.
