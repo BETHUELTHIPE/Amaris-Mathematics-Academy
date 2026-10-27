@@ -9,8 +9,8 @@ from django.core.files.storage import Storage, storages
 from django.utils import timezone
 
 from content.models import Payment
-from content.services.approved_invoice_letterhead import require_approved_invoice_letterhead
 from content.payment_models import Invoice
+from content.services.approved_invoice_letterhead import require_approved_invoice_letterhead
 from content.services.invoice_document import InvoiceDocument, InvoiceLine, render_document
 
 
