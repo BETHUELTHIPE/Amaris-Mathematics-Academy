@@ -1,0 +1,29 @@
+name: Amaris Letterhead — Staging Supabase Auth Apply
+on:
+  push:
+    branches: [ops/amaris-letterhead-staging-apply-20261028]
+    paths: [ops/amaris-letterhead-staging-apply-request.txt]
+permissions:
+  contents: read
+concurrency:
+  group: amaris-staging-auth-letterhead-once
+  cancel-in-progress: false
+jobs:
+  staging-apply:
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 8
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate all letterhead email templates offline
+        run: |
+          python -m unittest discover -s tests -p test_configure_supabase_auth_otp.py -v
+          python -m py_compile scripts/configure_supabase_auth_otp.py
+      - name: Apply approved 13 email letterhead templates to staging only
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "Staging Management API token missing"; exit 1; }
+          python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode apply
+      - name: Re-read and verify all staging Supabase letterhead settings
+        run: python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode check
