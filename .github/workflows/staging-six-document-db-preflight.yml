@@ -1,0 +1,86 @@
+name: Staging Six-Document Actual-DB Migration Preflight
+on:
+  push:
+    branches: [ops/staging-six-tutor-docs-migrate-20261027]
+    paths: [ops/staging-six-doc-database-preflight.txt]
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install isolated SQL verifier
+        run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Verify actual Render staging DB and Django migration history (READ ONLY)
+        run: |
+          python - <<'PY'
+          import os, json, urllib.request, urllib.parse
+          import psycopg
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, str(Path("scripts/release").resolve()))
+          from verify_staging_database_isolation import is_isolated_render_staging_dsn, validate_facts, QUERY
+          ref="atyhhjwwxgzeurnwayay"
+          stage="srv-dam2iivcgkoc7383tq50"
+          key=os.environ.get("RENDER_API_KEY","")
+          if not key: raise SystemExit("BLOCK: protected Render token unavailable")
+          base=f"https://api.render.com/v1/services/{stage}"
+          headers={"Authorization":"Bearer "+key,"Accept":"application/json"}
+          def fetch(path):
+              request=urllib.request.Request(base+path,headers=headers)
+              with urllib.request.urlopen(request,timeout=20) as res: return json.load(res)
+          service=fetch("")
+          if service.get("id")!=stage or service.get("ownerId")!="tea-csppi8l6l47c73dk9c90":
+              raise SystemExit("BLOCK: unexpected Render service")
+          if service.get("branch")!="ops/staging-known-good-af8709c-20261019":
+              raise SystemExit("BLOCK: unexpected staging release branch")
+          records=fetch("/env-vars?limit=100")
+          if isinstance(records,dict): records=records.get("envVars",records.get("data",[]))
+          env={}
+          for row in records:
+              item=row.get("envVar",row)
+              if isinstance(item,dict) and isinstance(item.get("key"),str):
+                  env[item["key"]]=item.get("value") or ""
+          dsn=env.get("DATABASE_URL","")
+          if not dsn: raise SystemExit("BLOCK: staging service has no DATABASE_URL")
+          from urllib.parse import urlsplit
+          url=urlsplit(dsn)
+          isolated_render=is_isolated_render_staging_dsn(dsn)
+          isolated_supabase=ref in (url.username or "") or url.hostname==f"db.{ref}.supabase.co"
+          if not (isolated_render or isolated_supabase): raise SystemExit("BLOCK: Django staging DB target is not an approved isolated target")
+          if isolated_supabase and env.get("SUPABASE_PROJECT_REF")!=ref: raise SystemExit("BLOCK: staging Supabase project ref mismatch")
+          with psycopg.connect(dsn,connect_timeout=12) as conn:
+              conn.execute("SET TRANSACTION READ ONLY")
+              name,role,schema=conn.execute("SELECT current_database(), current_user, current_schema()").fetchone()
+              if isolated_render:
+                  if name!="amaris_staging_postgres" or role!="amaris_staging_postgres_user" or schema!="public":
+                      raise SystemExit("BLOCK: isolated Render staging DB identity incorrect")
+                  print("TARGET=ISOLATED_RENDER_STAGING")
+              else:
+                  # Must be isolated schema and restricted staging role before any migration.
+                  from psycopg.rows import dict_row
+                  conn.row_factory=dict_row
+                  facts=conn.execute(QUERY).fetchone()
+                  valid,_=validate_facts(facts)
+                  if not valid: raise SystemExit("BLOCK: staging Supabase schema isolation failed")
+                  print("TARGET=ISOLATED_SUPABASE_STAGING_SCHEMA")
+              existing=conn.execute("SELECT to_regclass('content_tutorapplicationdocument')").fetchone()[0]
+              if existing is None: raise SystemExit("BLOCK: tutor documents table absent")
+              content_migrations=[row[0] for row in conn.execute("SELECT name FROM django_migrations WHERE app='content' AND name LIKE '001%' ORDER BY name").fetchall()]
+              if "0016_separate_location_fields" not in content_migrations: raise SystemExit("BLOCK: migration 0016 absent")
+              if "0018_tutor_document_categories" in content_migrations:
+                  print("STAGING_CATEGORY_MIGRATION=ALREADY_APPLIED")
+              else: print("STAGING_CATEGORY_MIGRATION=PENDING")
+              cols=conn.execute("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='content_tutorapplicationdocument' AND column_name='category'").fetchall()
+              print("CATEGORY_COLUMN_PRESENT="+str(bool(cols)).upper())
+              print("RECORDED_LIVECLASS_0017="+str("0017_liveclass_recipient_receipts" in content_migrations).upper())
+          print("PREFLIGHT=PASS (read-only; no passwords, URL or private data disclosed)")
+          PY
