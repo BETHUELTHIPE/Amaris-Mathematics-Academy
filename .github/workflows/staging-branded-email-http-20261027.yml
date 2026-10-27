@@ -1,0 +1,44 @@
+name: Amaris Staging Email Pages and Logo HTTP Acceptance
+on:
+  push:
+    branches: [qa/staging-branded-email-http-20261027]
+    paths: [ops/verify-staging-auth-email-pages.txt]
+permissions:
+  contents: read
+jobs:
+  check-visible-email-links:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Inspect real staging public auth paths and official logo
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error
+          base="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
+          pages={
+            "/register":"Create student profile",
+            "/login":"Email me a six-digit code",
+            "/forgot-password":"Send reset link",
+          }
+          for path,expected in pages.items():
+              req=urllib.request.Request(base+path,headers={"User-Agent":"AmarisStagingEmailQA/1.0"})
+              try:
+                  with urllib.request.urlopen(req,timeout=30) as response:
+                      status=response.status
+                      html=response.read(500000).decode("utf8","ignore")
+              except (urllib.error.HTTPError,urllib.error.URLError):
+                  raise SystemExit(f"BLOCK: {path} unavailable") from None
+              if status!=200 or expected not in html: raise SystemExit(f"BLOCK: {path} missing authentic form")
+              print(f"PASS: staging {path} HTTP 200 and approved email flow available")
+          req=urllib.request.Request("https://amaris-mathematics-academy-live-students.onrender.com/brand/amaris-academy-icon-192.png",headers={"User-Agent":"AmarisStagingEmailQA/1.0"})
+          try:
+              with urllib.request.urlopen(req,timeout=25) as res:
+                  content_type=res.headers.get("content-type","")
+                  content=res.read(200000)
+                  code=res.status
+          except (urllib.error.HTTPError,urllib.error.URLError):
+              raise SystemExit("BLOCK: official Amaris email logo URL unreachable") from None
+          if code!=200 or not content_type.startswith("image/") or len(content)<300:
+              raise SystemExit("BLOCK: official Amaris email logo is not serving a valid image")
+          print("PASS: official email logo URL returns HTTP 200 image")
+          PY
