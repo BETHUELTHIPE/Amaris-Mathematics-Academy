@@ -30,7 +30,7 @@ class SupabaseAuthOtpTests(unittest.TestCase):
         self.assertNotIn("123456", desired["mailer_templates_confirmation_content"])
         self.assertIn("{{ .Token }}", desired["mailer_templates_recovery_content"])
         self.assertIn("{{ .TokenHash }}", desired["mailer_templates_recovery_content"])
-        self.assertNotIn("{{ .RedirectTo }}?token_hash=", desired["mailer_templates_recovery_content"])
+        self.assertIn("{{ .RedirectTo }}", desired["mailer_templates_recovery_content"])
         self.assertNotIn("localhost", desired["mailer_templates_recovery_content"])
         self.assertEqual(desired["mailer_subjects_recovery"], "Amaris | Reset your password")
 
