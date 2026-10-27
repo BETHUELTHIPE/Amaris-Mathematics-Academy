@@ -55,6 +55,16 @@ class TutorApplication(models.Model):
 
 
 class TutorApplicationDocument(models.Model):
+    class Category(models.TextChoices):
+        LEGACY = "legacy", "Legacy qualification"
+        ID = "id", "Identity document"
+        CV = "cv", "Curriculum vitae"
+        MATRIC = "matric", "Matric certificate"
+        ACADEMIC = "academic", "Academic records"
+        TERTIARY = "tertiary", "Tertiary certificate"
+        OTHER = "other", "Additional document"
+
+    category = models.CharField(max_length=16, choices=Category.choices, default=Category.LEGACY)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     application = models.ForeignKey(TutorApplication, related_name="documents", on_delete=models.CASCADE)
     storage_path = models.CharField(max_length=512, editable=False)
