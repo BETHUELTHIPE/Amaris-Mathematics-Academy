@@ -1,5 +1,4 @@
 from datetime import timedelta
-from html import escape
 
 from botocore.exceptions import BotoCoreError, ClientError
 from celery import shared_task
@@ -13,6 +12,7 @@ from django.utils import timezone
 from content.models import LiveClassBooking, SiteSettings, VideoRequest
 from content.payment_models import Invoice, NotificationOutbox
 from content.services.invoices import archive_invoice_pdf, mark_invoice_archive_failure
+from content.services.official_letterhead import official_letterhead_html
 from content.services.reconciliation import reconcile_verified_payments
 from content.services.video_requests import video_request_eta, video_request_queue_position
 
@@ -120,6 +120,14 @@ def deliver_transactional_email(_self) -> int:
             to=[outbox.destination],
         )
         invoice = outbox.payment.invoice
+        email.attach_alternative(
+            official_letterhead_html(
+                heading="Payment confirmed",
+                body_lines=message.splitlines(),
+                reference=invoice.invoice_number,
+            ),
+            "text/html",
+        )
         email.attach(f"{invoice.invoice_number}.pdf", archive_invoice_pdf(invoice), "application/pdf")
         sent = email.send(fail_silently=False)
         if sent != 1:
@@ -162,18 +170,10 @@ def _send_live_class_message(
             *body_lines,
         ]
     )
-    html_lines = "".join(f"<p>{escape(line)}</p>" for line in body_lines)
-    html = (
-        '<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;'
-        'border:1px solid #dce4ef;border-radius:18px;overflow:hidden">'
-        '<div style="background:#07152d;color:#fff;padding:24px">'
-        f'<div style="font-size:22px;font-weight:700">{escape(name)}</div>'
-        f'<div style="margin-top:6px;color:#dce4ef">{escape(email)} · {escape(phone)}</div>'
-        "</div>"
-        '<div style="padding:28px;color:#1d2d44">'
-        f'<h1 style="font-size:24px;margin-top:0">{escape(heading)}</h1>'
-        f"{html_lines}"
-        "</div></div>"
+    html = official_letterhead_html(
+        heading=heading,
+        body_lines=body_lines,
+        reference=booking.reference,
     )
     message = EmailMultiAlternatives(
         subject=subject,
@@ -331,18 +331,10 @@ def _send_video_request_message(
 ) -> None:
     name, email, phone = _live_class_brand()
     text = "\n".join([name, f"{email} | {phone}", "", heading, "", *body_lines])
-    html_lines = "".join(f"<p>{escape(line)}</p>" for line in body_lines)
-    html = (
-        '<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;'
-        'border:1px solid #dce4ef;border-radius:18px;overflow:hidden">'
-        '<div style="background:#07152d;color:#fff;padding:24px">'
-        f'<div style="font-size:22px;font-weight:700">{escape(name)}</div>'
-        f'<div style="margin-top:6px;color:#dce4ef">{escape(email)} · {escape(phone)}</div>'
-        "</div>"
-        '<div style="padding:28px;color:#1d2d44">'
-        f'<h1 style="font-size:24px;margin-top:0">{escape(heading)}</h1>'
-        f"{html_lines}"
-        "</div></div>"
+    html = official_letterhead_html(
+        heading=heading,
+        body_lines=body_lines,
+        reference=request.ticket_number,
     )
     message = EmailMultiAlternatives(subject=subject, body=text, from_email=None, to=[request.student.email])
     message.attach_alternative(html, "text/html")
