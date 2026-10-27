@@ -321,7 +321,7 @@ def _send_video_request_message(
 ) -> None:
     name, email, phone = _live_class_brand()
     text = "\n".join([name, f"{email} | {phone}", "", heading, "", *body_lines])
-    html = render_branded_email(heading, body_lines, reference=request.ticket_number)
+    html = render_branded_email(heading, body_lines, reference=request.ticket_number or request.reference)
     message = EmailMultiAlternatives(subject=subject, body=text, from_email=None, to=[request.student.email])
     message.attach_alternative(html, "text/html")
     if attach_invoice and request.invoice_number:
