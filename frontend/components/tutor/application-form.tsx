@@ -71,7 +71,7 @@ export function ApplicationForm({ name, email, location }: { name: string; email
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="relative inline-flex w-fit max-w-full rounded-full bg-[#0b2a5b] text-white transition hover:bg-[#123d79] focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-[#1f5bbd]">
                 <span aria-hidden="true" className="inline-flex min-h-11 items-center justify-center gap-2 px-5 py-3 text-sm font-semibold"><Upload className="size-4 shrink-0" />Choose file</span>
-                <input id={name} name={name} type="file" accept="application/pdf,image/jpeg,image/png" required aria-label={label} aria-describedby={`${name}-help ${name}-selection`} onChange={event => setDocuments(current => ({ ...current, [name]: event.currentTarget.files?.[0] ?? null }))} className="absolute inset-0 h-full w-full cursor-pointer rounded-full opacity-0 disabled:cursor-wait" />
+                <input id={name} name={name} type="file" accept="application/pdf,image/jpeg,image/png" required aria-label={label} aria-describedby={`${name}-help ${name}-selection`} onChange={event => { const selected = event.currentTarget.files?.[0] ?? null; setDocuments(current => ({ ...current, [name]: selected })); }} className="absolute inset-0 h-full w-full cursor-pointer rounded-full opacity-0 disabled:cursor-wait" />
               </div>
               <span id={`${name}-selection`} role="status" className="min-w-0 break-all text-sm text-[#52617a]">{file ? `${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)` : "No file selected"}</span>
             </div>
