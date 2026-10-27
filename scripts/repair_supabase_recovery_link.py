@@ -50,7 +50,11 @@ def safe_site(url: object, ref: str) -> bool:
         return False
     if ref == PRODUCTION_REF:
         return url.rstrip("/") == PRODUCTION_SITE
-    return url.rstrip("/").startswith("https://amaris-mathematics-academy-staging")
+    return (split.port is None and split.query == "" and split.fragment == ""
+            and split.hostname in {
+                "amaris-mathematics-academy-staging-x4ax.onrender.com",
+                "amaris-mathematics-academy-staging.onrender.com",
+            })
 
 
 def main(argv: list[str] | None = None) -> int:
