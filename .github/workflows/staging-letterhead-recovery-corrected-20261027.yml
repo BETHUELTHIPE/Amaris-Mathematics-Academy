@@ -1,13 +1,11 @@
 name: Staging Amaris Corrected Recovery Email Layout
 on:
-  push:
-    branches: [ops/staging-letterhead-recovery-corrected-20261027]
-    paths: [ops/staging-corrected-recovery-apply.txt]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   staging-recovery-only:
-    if: github.ref == 'refs/heads/ops/staging-letterhead-recovery-corrected-20261027' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/ops/staging-letterhead-recovery-corrected-20261027' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
     runs-on: ubuntu-24.04
     environment: staging
     timeout-minutes: 8
