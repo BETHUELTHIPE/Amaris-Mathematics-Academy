@@ -1,0 +1,1 @@
+Approved staging-only Supabase Auth email layout correction. Project: atyhhjwwxgzeurnwayay. Preserve Amaris recovery non-consuming landing. Production unchanged.
