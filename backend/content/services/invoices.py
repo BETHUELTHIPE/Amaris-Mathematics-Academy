@@ -11,6 +11,10 @@ from django.core.files.storage import Storage, storages
 from django.utils import timezone
 
 from content.models import LiveClassBooking, VideoRequest
+from content.services.approved_invoice_letterhead import (
+    LegacyInvoiceLetterheadError,
+    require_approved_invoice_letterhead,
+)
 from content.payment_models import Invoice
 from content.services.course_invoice_archive import (
     InvoiceArchiveError as InvoiceArchiveError,
@@ -116,6 +120,7 @@ def archive_invoice_pdf(
         except Exception as exc:
             raise OSError("Student invoice archive is unavailable.") from exc
     document = render_invoice_pdf(invoice)
+    require_approved_invoice_letterhead(document)
     invoice_number, _ = _invoice_identity(invoice)
     key = student_invoice_key(invoice.student.supabase_user_id, invoice_number)
     private_storage = storage or storages["student_private"]
@@ -125,12 +130,15 @@ def archive_invoice_pdf(
         if private_storage.exists(key):
             with private_storage.open(key, "rb") as archived:
                 existing = archived.read()
-            if not existing.startswith(b"%PDF-"):
-                raise OSError("Previously archived booking invoice is not a PDF.")
+            # Never resend a legacy plain-layout invoice as an approved PDF.
+            # A corrected reissue requires an explicit, auditable action.
+            require_approved_invoice_letterhead(existing)
             return existing
         saved = private_storage.save(key, ContentFile(document))
         if saved != key:
             raise OSError("Student invoice archive did not use the expected object key.")
+    except LegacyInvoiceLetterheadError:
+        raise
     except Exception as exc:
         raise OSError("Student invoice archive is unavailable.") from exc
     return document
