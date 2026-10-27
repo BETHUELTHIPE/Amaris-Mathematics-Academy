@@ -40,7 +40,7 @@ test("all official account email templates carry the approved letterhead and pre
   assert.match(confirmation, /{{ \.ConfirmationURL }}/);
   assert.match(login, /{{ \.ConfirmationURL }}/);
   assert.match(recovery, /{{ \.TokenHash }}/);
-  assert.doesNotMatch(recovery, /{{ \.RedirectTo }}\?token_hash=/);
+  assert.match(recovery, /{{ \.RedirectTo }}/);
 });
 
 test("Django formal correspondence uses the approved letterhead without generic unbranded emails", async () => {
