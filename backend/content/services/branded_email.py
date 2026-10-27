@@ -4,6 +4,7 @@ Matches frontend/components/documents/brand-letterhead.tsx. All dynamic
 user-supplied copy is autoescaped by the Django template; no HTML fragments
 are accepted from AI replies, student fields or payment data.
 """
+
 from __future__ import annotations
 
 from django.template.loader import render_to_string
