@@ -50,7 +50,16 @@ jobs:
                   response=requests.post(AUTH,headers={"apikey":key},json={"email":email,"password":password},timeout=30)
               except requests.RequestException:
                   raise SystemExit("BLOCK: staging Auth unavailable") from None
-              if response.status_code!=200: raise SystemExit("BLOCK: approved staging identity sign-in HTTP "+str(response.status_code))
+              if response.status_code!=200:
+                  try:
+                      error=response.json()
+                      raw_code=error.get("code") or error.get("error_code") or error.get("error")
+                  except (ValueError,AttributeError):
+                      raw_code=None
+                  allowed_codes={"invalid_credentials","email_not_confirmed","email_provider_disabled","over_request_rate_limit","over_email_send_rate_limit","user_banned"}
+                  safe_code=raw_code if raw_code in allowed_codes else "unknown"
+                  raise SystemExit("BLOCK: "+prefix+" staging QA login HTTP "+str(response.status_code)+"; safe error code="+safe_code+"; no application writes attempted")
+
               body=response.json()
               if not body.get("access_token") or not body.get("user",{}).get("email_confirmed_at"):
                   raise SystemExit("BLOCK: staging identity missing verified session")
