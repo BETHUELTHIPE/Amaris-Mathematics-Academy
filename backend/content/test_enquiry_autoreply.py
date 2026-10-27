@@ -18,7 +18,7 @@ from content.services.enquiry_autoreply import _support_instructions, build_webs
     DEFAULT_FROM_EMAIL="Amaris Mathematics Academy <mailer@example.com>",
 )
 class EnquiryAutoReplyTests(TestCase):
-    @patch("content.services.enquiry_autoreply.EmailMessage.send", return_value=1)
+    @patch("content.services.enquiry_autoreply.EmailMultiAlternatives.send", return_value=1)
     @patch(
         "content.services.enquiry_autoreply._call_openai",
         return_value=(
@@ -146,7 +146,7 @@ class EnquiryAutoReplyTests(TestCase):
         self.assertNotIn("Email:", context)
 
     @override_settings(OPENAI_API_KEY="")
-    @patch("content.services.enquiry_autoreply.EmailMessage.send")
+    @patch("content.services.enquiry_autoreply.EmailMultiAlternatives.send")
     def test_contact_enquiry_is_preserved_when_openai_is_not_configured(self, send):
         serializer = ContactEnquirySerializer(
             data={
