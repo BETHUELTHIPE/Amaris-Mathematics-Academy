@@ -51,35 +51,16 @@ jobs:
     name: Production branch ruleset enforcement active
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
-      - name: Verify production branch is protected before approving any release
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run negative policy checks, including missing reviewers
+        run: python3 -m unittest discover -s scripts/release -p 'test_verify_frontend_branch_ruleset.py' -v
+      - name: Require genuine active frontend approval and strict CI branch rulesets
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from urllib.error import HTTPError, URLError
-          from urllib.request import Request, urlopen
-
-          repository = os.environ["GITHUB_REPOSITORY"]
-          if repository != "BETHUELTHIPE/Amaris-Mathematics-Academy":
-              raise SystemExit("BLOCK: Release gate running in unexpected repository")
-          branch = "render-live-current-20260918"
-          url = f"https://api.github.com/repos/{repository}/branches/{branch}"
-          request = Request(url, headers={
-              "Accept": "application/vnd.github+json",
-              "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-              "X-GitHub-Api-Version": "2022-11-28",
-          })
-          try:
-              with urlopen(request, timeout=15) as response:
-                  state = json.load(response)
-          except (HTTPError, URLError, ValueError):
-              raise SystemExit("BLOCK: Cannot confirm GitHub production branch protection") from None
-          if not state.get("protected"):
-              raise SystemExit("BLOCK: Production branch is unprotected; apply active ruleset before release")
-          print("PASS: GitHub reports protected=True for exact live frontend branch")
-          print("NOTICE: Administrator must also confirm required approvals and status checks in the live ruleset")
-          PY
+        run: python3 scripts/release/verify_frontend_branch_ruleset.py
