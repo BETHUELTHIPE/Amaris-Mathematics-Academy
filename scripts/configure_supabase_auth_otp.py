@@ -44,7 +44,7 @@ def desired_config() -> dict[str, object]:
         if "{{ .Token }}" not in value:
             raise ValueError(f"{filename} is missing Supabase's .Token placeholder")
         if filename == "recovery.html" and (
-            "{{ .ConfirmationURL }}" not in value
+            "{{ .TokenHash }}" not in value or "{{ .RedirectTo }}" not in value
         ):
             raise ValueError("Recovery email must include the Supabase-issued confirmation URL")
         config[setting] = value
