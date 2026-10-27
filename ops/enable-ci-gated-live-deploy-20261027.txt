@@ -1,0 +1,1 @@
+Authorized change: set Render service srv-damn6d2d0e5s73d02j5g to autoDeployTrigger checksPass. Existing production frontend only; no new deployment, no backend migration, no secret changes.
