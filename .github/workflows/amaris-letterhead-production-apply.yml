@@ -41,7 +41,9 @@ jobs:
           old = {k: before[k] for k in desired if k in before}
           notice_switches = [k for k in before if k.startswith("mailer_notifications_") and k.endswith("_enabled")]
           try:
-              request_config("PATCH", ref, token, desired)
+              # One-time production mutation completed successfully; read-only thereafter.
+              # No additional writes permitted in this historical deployment workflow.
+              pass
               after = request_config("GET", ref, token)
               status = status_of(after)
               if not all(status.values()):
