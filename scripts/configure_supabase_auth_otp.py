@@ -51,7 +51,7 @@ SUBJECTS = {
 REQUIRED_VARIABLES = {
     "confirm-signup.html": ("{{ .Token }}", "{{ .ConfirmationURL }}"),
     "magic-link-login.html": ("{{ .Token }}", "{{ .ConfirmationURL }}"),
-    "recovery.html": ("{{ .Token }}", "{{ .ConfirmationURL }}"),
+    "recovery.html": ("{{ .Token }}", "{{ .TokenHash }}", "{{ .RedirectTo }}"),
     "invite.html": ("{{ .ConfirmationURL }}",),
     "email-change.html": ("{{ .NewEmail }}", "{{ .ConfirmationURL }}"),
     "reauthentication.html": ("{{ .Token }}",),
