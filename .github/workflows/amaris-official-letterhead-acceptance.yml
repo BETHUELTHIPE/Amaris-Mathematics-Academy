@@ -1,0 +1,36 @@
+name: Amaris Official Letterhead Acceptance
+on:
+  push:
+    branches: [feat/official-letterhead-formal-communications-20261027]
+    paths:
+      - "backend/content/services/official_letterhead.py"
+      - "backend/content/services/enquiry_autoreply.py"
+      - "backend/content/tasks.py"
+      - "backend/content/test_official_letterhead.py"
+      - "backend/content/test_enquiry_autoreply.py"
+      - "frontend/email-templates/**"
+      - "frontend/tests/letterhead-policy-contract.test.mjs"
+      - ".github/workflows/amaris-official-letterhead-acceptance.yml"
+permissions:
+  contents: read
+jobs:
+  brand-and-communication-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Validate approved letterhead and account templates
+        working-directory: frontend
+        run: node --test tests/letterhead-policy-contract.test.mjs
+      - name: Validate Supabase OTP template contract without deployment
+        run: python -m unittest discover -s tests -p test_configure_supabase_auth_otp.py -v
+      - name: Python syntax validation for email workflows
+        run: python -m compileall -q backend/content/services/official_letterhead.py backend/content/services/enquiry_autoreply.py backend/content/tasks.py backend/content/test_official_letterhead.py
