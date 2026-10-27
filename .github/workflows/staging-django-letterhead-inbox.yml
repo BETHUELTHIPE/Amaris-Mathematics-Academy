@@ -55,7 +55,18 @@ jobs:
           username=env.get("EMAIL_HOST_USER","")
           password=env.get("EMAIL_HOST_PASSWORD","")
           sender=env.get("DEFAULT_FROM_EMAIL","")
-          if host!="smtp.gmail.com" or str(env.get("EMAIL_PORT"))!="587" or env.get("EMAIL_USE_TLS","").lower()!="true" or not username or not password or "@" not in sender:
+          checks = {
+              "HOST_PRESENT": bool(host),
+              "HOST_IS_GMAIL": host=="smtp.gmail.com",
+              "PORT_587": str(env.get("EMAIL_PORT"))=="587",
+              "TLS_ENABLED": env.get("EMAIL_USE_TLS","").lower()=="true",
+              "USER_PRESENT": bool(username),
+              "PASSWORD_PRESENT": bool(password),
+              "SENDER_PRESENT": "@" in sender,
+          }
+          for check,passed in checks.items():
+              print("SMTP_CHECK_"+check+("=PASS" if passed else "=MISSING_OR_OTHER"))
+          if not all(checks.values()):
               raise SystemExit("BLOCK: staging SMTP configuration unavailable or unexpected")
           body="This is a synthetic STAGING email-rendering and SMTP Inbox acceptance test. There is no booking, payment, invoice or customer data in this message."
           html=Engine(dirs=["backend/templates"],autoescape=True).get_template("emails/amaris_letterhead.html").render(Context({
