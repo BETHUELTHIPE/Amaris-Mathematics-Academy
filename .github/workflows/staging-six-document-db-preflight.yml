@@ -27,7 +27,7 @@ jobs:
           from pathlib import Path
           import sys
           sys.path.insert(0, str(Path("scripts/release").resolve()))
-          from verify_staging_database_isolation import is_isolated_render_staging_dsn, validate_facts, QUERY
+          from verify_staging_database_isolation import is_isolated_render_staging_dsn
           ref="atyhhjwwxgzeurnwayay"
           stage="srv-dam2iivcgkoc7383tq50"
           key=os.environ.get("RENDER_API_KEY","")
@@ -65,13 +65,20 @@ jobs:
                       raise SystemExit("BLOCK: isolated Render staging DB identity incorrect")
                   print("TARGET=ISOLATED_RENDER_STAGING")
               else:
-                  # Must be isolated schema and restricted staging role before any migration.
-                  from psycopg.rows import dict_row
-                  conn.row_factory=dict_row
-                  facts=conn.execute(QUERY).fetchone()
-                  valid,_=validate_facts(facts)
-                  if not valid: raise SystemExit("BLOCK: staging Supabase schema isolation failed")
-                  print("TARGET=ISOLATED_SUPABASE_STAGING_SCHEMA")
+                  # Dedicated staging Supabase PROJECT has its own public schema.
+                  # Its unique project ref must appear in the pooler username
+                  # (or in the direct db.<ref> hostname), never production's ref.
+                  stage_user=urllib.parse.unquote(url.username or "")
+                  stage_host=url.hostname or ""
+                  pooler_identity=(ref in stage_user and stage_host.endswith(".pooler.supabase.com"))
+                  direct_identity=stage_host==f"db.{ref}.supabase.co"
+                  if not (pooler_identity or direct_identity):
+                      raise SystemExit("BLOCK: database does not identify dedicated staging Supabase project")
+                  if name!="postgres" or schema!="public":
+                      raise SystemExit("BLOCK: dedicated staging project must use expected database and schema")
+                  if env.get("DATABASE_SCHEMA","") not in ("","public"):
+                      raise SystemExit("BLOCK: unexpected database schema override")
+                  print("TARGET=DEDICATED_SUPABASE_STAGING_PROJECT")
               existing=conn.execute("SELECT to_regclass('content_tutorapplicationdocument')").fetchone()[0]
               if existing is None: raise SystemExit("BLOCK: tutor documents table absent")
               content_migrations=[row[0] for row in conn.execute("SELECT name FROM django_migrations WHERE app='content' AND name LIKE '001%' ORDER BY name").fetchall()]
