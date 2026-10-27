@@ -21,3 +21,18 @@ The backend and frontend production histories differ. This PR targets `render-li
 - Paired browser: install `frontend/e2e/requirements.txt` and backend requirements; set `TUTOR_BACKEND_ROOT` to the matching backend directory and optionally `TUTOR_CHROME_PATH` to an installed Chrome binary; run `python frontend/e2e/tutor_recruitment.py`.
 - The harness tests registration, code verification, a fresh login session, form submission, private upload/download, receipt and captured acknowledgement. It audits page overflow and Axe accessibility across narrow mobile, mobile, tablet and desktop sizes.
 - Tests use temporary SQLite, private local files, a fake Auth service and captured mail. They do not prove live Supabase signup or SMTP inbox delivery.
+
+## Six compulsory private uploads (October 2026)
+
+The tutor application form now requires six separate files, each selected and validated independently:
+
+1. Identity document (ID)
+2. Curriculum vitae (CV)
+3. Matric certificate
+4. Academic records / transcript
+5. Tertiary qualification certificate
+6. One additional supporting document
+
+PDF, JPEG and PNG are accepted. Each file is limited to **5 MB**, with a combined **30 MB** limit. The browser and authenticated BFF reject missing, empty, oversized or disallowed file types. The Django backend revalidates the contents, keeps files in private storage, and records a category on each document for authorized recruitment reviewers. Names, identity documents and financial details must not be attached to public or applicant acknowledgment emails.
+
+**Staged release safety:** Deploy and migrate backend recruitment changes (PR to `production-release-20260923`) first, with `TUTOR_REQUIRE_SIX_DOCUMENTS=false` to preserve compatibility with the existing deployed form. After the matching six-field frontend is deployed and real staging uploads pass, enable `TUTOR_REQUIRE_SIX_DOCUMENTS=true` on the backend to reject old clients missing any mandatory category. Test all six fields and verify that older applications remain readable. Do not enable strict mode or deploy production before the controlled acceptance gates.
