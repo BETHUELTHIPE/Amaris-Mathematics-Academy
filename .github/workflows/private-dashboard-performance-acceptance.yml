@@ -3,13 +3,6 @@ name: Private Student and Tutor Dashboard Performance Acceptance
 on:
   pull_request:
     branches: [render-live-current-20260918]
-    paths:
-      - 'frontend/app/dashboard/**'
-      - 'frontend/app/tutor/dashboard/**'
-      - 'frontend/components/site/private-pagination.tsx'
-      - 'frontend/lib/private-pagination.ts'
-      - 'frontend/tests/private-dashboard-pagination.test.mjs'
-      - '.github/workflows/private-dashboard-performance-acceptance.yml'
   workflow_dispatch:
 
 permissions:

@@ -3,12 +3,6 @@ name: Sitewide 47-Page Responsive and Accessibility Gate
 on:
   pull_request:
     branches: [render-live-current-20260918]
-    paths:
-      - 'frontend/app/**'
-      - 'frontend/components/**'
-      - 'frontend/e2e/sitewide_responsive.py'
-      - 'frontend/e2e/private_synthetic_responsive.py'
-      - '.github/workflows/sitewide-responsive-gate.yml'
   workflow_dispatch:
 
 permissions:
