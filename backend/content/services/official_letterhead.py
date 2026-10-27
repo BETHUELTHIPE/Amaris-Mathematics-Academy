@@ -40,7 +40,8 @@ def official_letterhead_html(
     phone = str(site.phone if site and site.phone else "071 415 6665")
     address = str(site.address if site and site.address else DEFAULT_ADDRESS)
     url = _safe_site_url()
-    e = lambda value: escape(str(value), quote=True)
+    def e(value: object) -> str:
+        return escape(str(value), quote=True)
     body = "".join(
         f'<p style="margin:0 0 14px;line-height:1.7;overflow-wrap:anywhere">{e(line)}</p>'
         if line else '<div style="height:8px"></div>'
