@@ -9,6 +9,7 @@ from django.core.files.storage import Storage, storages
 from django.utils import timezone
 
 from content.models import Payment
+from content.services.approved_invoice_letterhead import require_approved_invoice_letterhead
 from content.payment_models import Invoice
 from content.services.invoice_document import InvoiceDocument, InvoiceLine, render_document
 
@@ -61,10 +62,10 @@ def archive_invoice_pdf(invoice_id: int, *, storage: Storage | None = None) -> s
     if storage.exists(path):
         with storage.open(path, "rb") as existing:
             pdf_bytes = existing.read()
-        if not pdf_bytes.startswith(b"%PDF-"):
-            raise InvoiceArchiveError("Previously archived invoice is not a PDF.")
+        require_approved_invoice_letterhead(pdf_bytes)
     else:
         pdf_bytes = build_invoice_pdf(invoice)
+        require_approved_invoice_letterhead(pdf_bytes)
         saved_name = storage.save(path, ContentFile(pdf_bytes, name=path.rsplit("/", 1)[-1]))
         if saved_name != path:
             try:
