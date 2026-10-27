@@ -1,0 +1,40 @@
+name: Manual Production Approval Policy Tests
+on:
+  push:
+    branches: [fix/explicit-production-release-approval-20261026]
+    paths:
+      - "scripts/release/verify_manual_production_approval.py"
+      - "scripts/release/test_verify_manual_production_approval.py"
+      - ".github/workflows/quality-release.yml"
+      - ".github/workflows/manual-production-approval-policy-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/release/verify_manual_production_approval.py"
+      - "scripts/release/test_verify_manual_production_approval.py"
+      - ".github/workflows/quality-release.yml"
+      - ".github/workflows/manual-production-approval-policy-tests.yml"
+permissions:
+  contents: read
+jobs:
+  no-staging-auto-promotion:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject auto-production and require independent owner approval
+        run: python -m unittest discover -s scripts/release -p 'test_verify_manual_production_approval.py' -v
+      - name: Verify production job remains dispatch-only with explicit evidence
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path(".github/workflows/quality-release.yml").read_text()
+          assert "if: github.event_name == 'workflow_dispatch' && inputs.deploy_production == true" in p
+          assert "verify_manual_production_approval.py" in p
+          assert "PRODUCTION_APPROVED_SHA" in p
+          assert "PRODUCTION_APPROVAL_REFERENCE" in p
+          assert "PRODUCTION_STAGING_RUN_ID" in p
+          assert "PRODUCTION_BACKUP_RUN_ID" in p
+          assert "environment:" in p
+          print("PASS: staging push and tests alone can never satisfy manual production release gate")
+          PY
