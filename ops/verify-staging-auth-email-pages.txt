@@ -1,0 +1,1 @@
+Read-only staging registration/sign-in/recovery availability and existing approved logo URL. No emails sent and no real-user data touched.
