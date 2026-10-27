@@ -1,0 +1,1 @@
+Request one SMTP-approved synthetic staging email with official letterhead, no student data or billing. The only recipient is the connected QA inbox. Production service unchanged.
