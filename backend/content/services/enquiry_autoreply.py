@@ -20,8 +20,8 @@ from content.models import (
     PricingPlan,
     SiteSettings,
 )
-
 from content.services.official_letterhead import official_letterhead_html
+
 from .live_classes import LIVE_CLASS_PRICE
 
 logger = logging.getLogger(__name__)
