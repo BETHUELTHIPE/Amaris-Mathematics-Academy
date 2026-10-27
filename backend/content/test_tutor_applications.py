@@ -122,8 +122,12 @@ class TutorApplicationJourneyTests(TestCase):
                 name + ".pdf", b"%PDF-1.7\\nsynthetic " + name.encode() + b"\\n%%EOF", "application/pdf"
             )
             for name in (
-                "document_id", "document_cv", "document_matric", "document_academic",
-                "document_tertiary", "document_other"
+                "document_id",
+                "document_cv",
+                "document_matric",
+                "document_academic",
+                "document_tertiary",
+                "document_other",
             )
         }
 
@@ -160,9 +164,7 @@ class TutorApplicationJourneyTests(TestCase):
         response = self.submit(**extra)
         self.assertEqual(response.status_code, 400, response.data)
         oversized = self.six_documents()
-        oversized["document_id"] = SimpleUploadedFile(
-            "id.pdf", b"%PDF-" + b"x" * (5 * 1024 * 1024), "application/pdf"
-        )
+        oversized["document_id"] = SimpleUploadedFile("id.pdf", b"%PDF-" + b"x" * (5 * 1024 * 1024), "application/pdf")
         response = self.submit(documents=[], **oversized)
         self.assertEqual(response.status_code, 400, response.data)
         self.assertIn("document_id", response.data)
