@@ -144,9 +144,8 @@ test("oversized uploads are rejected even without a content-length header", asyn
   assert.equal(response.status, 413);
   assert.equal(state.forwarded, undefined);
 });
-test("ordinary HTML form submits redirect to the saved application without JavaScript", async () => {
-  const form = new FormData();
-  for (const [key, value] of Object.entries({ country: "ZA", province: "Gauteng", city: "Pretoria" })) form.set(key, value);
+test("ordinary HTML form submits all six files to the saved application without JavaScript", async () => {
+  const form = completedApplicationForm();
   const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "text/html" } }));
   assert.equal(response.status, 303);
   assert.equal(response.headers.get("location"), "https://academy.example.test/tutor/apply");
