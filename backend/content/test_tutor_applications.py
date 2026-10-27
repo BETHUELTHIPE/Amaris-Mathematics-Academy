@@ -115,6 +115,59 @@ class TutorApplicationJourneyTests(TestCase):
             self.api.get(reverse("tutor-application-document", args=[document.pk]), secure=True).status_code, 404
         )
 
+    @staticmethod
+    def six_documents():
+        return {
+            name: SimpleUploadedFile(
+                name + ".pdf", b"%PDF-1.7\\nsynthetic " + name.encode() + b"\\n%%EOF", "application/pdf"
+            )
+            for name in (
+                "document_id", "document_cv", "document_matric", "document_academic",
+                "document_tertiary", "document_other"
+            )
+        }
+
+    @override_settings(TUTOR_REQUIRE_SIX_DOCUMENTS=True)
+    def test_six_categorized_documents_are_required_and_private(self):
+        for missing in self.six_documents():
+            with self.subTest(missing=missing):
+                files = self.six_documents()
+                del files[missing]
+                response = self.submit(documents=[], **files)
+                self.assertEqual(response.status_code, 400, response.data)
+                self.assertIn(missing, response.data)
+        self.assertEqual(TutorApplication.objects.count(), 0)
+        response = self.submit(documents=[], **self.six_documents())
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(
+            set(TutorApplicationDocument.objects.values_list("category", flat=True)),
+            {"id", "cv", "matric", "academic", "tertiary", "other"},
+        )
+        self.assertEqual(
+            {d["category"] for d in response.data["application"]["documents"]},
+            {"id", "cv", "matric", "academic", "tertiary", "other"},
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].attachments, [])
+        self.assertTrue(all("storage_path" not in str(d) for d in response.data["application"]["documents"]))
+        self.enqueue.assert_called_once()
+
+    @override_settings(TUTOR_REQUIRE_SIX_DOCUMENTS=True)
+    def test_legacy_or_oversized_six_document_form_is_rejected(self):
+        self.assertEqual(self.submit().status_code, 400)
+        extra = self.six_documents()
+        extra["documents"] = [SimpleUploadedFile("extra.pdf", b"%PDF-test", "application/pdf")]
+        response = self.submit(**extra)
+        self.assertEqual(response.status_code, 400, response.data)
+        oversized = self.six_documents()
+        oversized["document_id"] = SimpleUploadedFile(
+            "id.pdf", b"%PDF-" + b"x" * (5 * 1024 * 1024), "application/pdf"
+        )
+        response = self.submit(documents=[], **oversized)
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("document_id", response.data)
+        self.assertEqual(TutorApplicationDocument.objects.count(), 0)
+
     def test_invalid_forms_and_uploads_create_no_application(self):
         cases = [
             {"consent": "false"},
