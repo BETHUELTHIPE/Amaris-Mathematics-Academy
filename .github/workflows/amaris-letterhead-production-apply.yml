@@ -1,0 +1,66 @@
+name: Amaris Production Letterhead Auth Mail Release
+on:
+  push:
+    branches: ["ops/amaris-letterhead-production-apply-20261028"]
+    paths: ["ops/amaris-letterhead-production-apply-request.txt"]
+permissions:
+  contents: read
+concurrency:
+  group: amaris-production-auth-letterhead-once
+  cancel-in-progress: false
+jobs:
+  protected-production-apply:
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_PRODUCTION_AUTH_MANAGEMENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run template contract tests and compile
+        run: |
+          python -m unittest discover -s tests -p test_configure_supabase_auth_otp.py -v
+          python -m py_compile scripts/configure_supabase_auth_otp.py
+      - name: Guarded production letterhead apply with readback and rollback
+        run: |
+          python - <<'PY'
+          import os
+          from scripts.configure_supabase_auth_otp import desired_config, request_config, status_of
+          ref = "epkcuseloinygkakxxdu"
+          token = os.environ.get("SUPABASE_ACCESS_TOKEN", "")
+          if not token:
+              raise SystemExit("BLOCK: production Auth Management credential unavailable")
+          before = request_config("GET", ref, token)
+          if str(before.get("site_url", "")).rstrip("/") != "https://amaris-mathematics-academy-live-students.onrender.com":
+              raise SystemExit("BLOCK: production Auth Site URL must match the approved live student website")
+          if not before.get("smtp_host") or not before.get("smtp_admin_email") or before.get("external_email_enabled") is not True:
+              raise SystemExit("BLOCK: production Auth SMTP and email provider must be enabled")
+          if before.get("mailer_autoconfirm") is not False:
+              raise SystemExit("BLOCK: email verification must remain required")
+          desired = desired_config()
+          old = {k: before[k] for k in desired if k in before}
+          notice_switches = [k for k in before if k.startswith("mailer_notifications_") and k.endswith("_enabled")]
+          try:
+              request_config("PATCH", ref, token, desired)
+              after = request_config("GET", ref, token)
+              status = status_of(after)
+              if not all(status.values()):
+                  raise RuntimeError("Branded Auth template readback did not match the approved content")
+              if any(before[k] != after.get(k) for k in notice_switches):
+                  raise RuntimeError("Auth security-notification enablement unexpectedly changed")
+          except Exception:
+              print("BLOCK: template update verification failed; attempting to restore prior email templates")
+              try:
+                  if old:
+                      request_config("PATCH", ref, token, old)
+                      restored = request_config("GET", ref, token)
+                      if not all(restored.get(k) == v for k, v in old.items()):
+                          print("URGENT: rollback could not be fully verified")
+              except Exception:
+                  print("URGENT: rollback request failed; manually review production Auth configuration")
+              raise SystemExit(2) from None
+          print("PASS: all 13 official Amaris letterhead templates installed and independently verified")
+          print("PASS: six-digit OTP and 10-minute expiry preserved")
+          print("PASS: existing security-notification enablement settings preserved")
+          print("No SMTP credentials, codes, security tokens or raw template bodies printed")
+          PY
