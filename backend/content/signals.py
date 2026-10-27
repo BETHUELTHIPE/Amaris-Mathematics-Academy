@@ -5,6 +5,7 @@ from django.dispatch import receiver
 from .models import (
     FAQ,
     Announcement,
+    AnnouncementMedia,
     Course,
     CourseCategory,
     CourseModule,
@@ -30,6 +31,7 @@ PUBLIC_CONTENT_MODELS = (
     Testimonial,
     FAQ,
     Announcement,
+    AnnouncementMedia,
 )
 
 

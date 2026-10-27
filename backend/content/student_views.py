@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from botocore.exceptions import BotoCoreError, ClientError
 from django.core.files.storage import storages
 from django.db import transaction
@@ -40,7 +38,7 @@ from .serializers import (
     StudentLessonResponseSerializer,
 )
 from .services.invoices import InvoiceArchiveError, archive_invoice_pdf, invoice_storage_path
-from .services.payments import PaymentSecurityError, create_checkout, process_payfast_notification
+from .services.payments import PaymentSecurityError, _payfast_mode, create_checkout, process_payfast_notification
 
 
 class CheckoutRequestSerializer(serializers.Serializer):
@@ -471,7 +469,11 @@ class AcceptancePaymentCompleteView(StudentAPIView):
         auth = request.auth if isinstance(request.auth, dict) else {}
         if auth.get("provider") != "github-actions-oidc":
             raise PermissionDenied("Synthetic acceptance payment completion is restricted to GitHub Actions OIDC.")
-        if os.getenv("PAYFAST_MODE", "sandbox").strip().lower() != "sandbox":
+        try:
+            sandbox = _payfast_mode() == "sandbox"
+        except PaymentSecurityError:
+            sandbox = False
+        if not sandbox:
             raise PermissionDenied("Synthetic acceptance payment completion requires PayFast sandbox mode.")
         if not reference.startswith("PF-acceptance-"):
             raise PermissionDenied("Only synthetic acceptance payments can be completed.")

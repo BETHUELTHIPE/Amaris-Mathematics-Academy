@@ -5,6 +5,7 @@ from rest_framework import serializers
 from .models import (
     FAQ,
     Announcement,
+    AnnouncementMedia,
     ContactEnquiry,
     Course,
     CourseCategory,
@@ -235,10 +236,26 @@ class FAQSerializer(serializers.ModelSerializer):
         fields = ("id", "question", "answer", "category", "order")
 
 
+class AnnouncementMediaSerializer(serializers.ModelSerializer):
+    download_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AnnouncementMedia
+        fields = ("id", "title", "kind", "order", "download_url")
+
+    @extend_schema_field(OpenApiTypes.URI)
+    def get_download_url(self, obj):
+        request = self.context.get("request")
+        path = f"/api/v1/marketing-media/{obj.pk}/"
+        return request.build_absolute_uri(path) if request else path
+
+
 class AnnouncementSerializer(serializers.ModelSerializer):
+    media = AnnouncementMediaSerializer(many=True, read_only=True)
+
     class Meta:
         model = Announcement
-        fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at")
+        fields = ("id", "title", "message", "link_label", "link_url", "priority", "expires_at", "media")
 
 
 class AmarisAssistantRequestSerializer(serializers.Serializer):
@@ -250,13 +267,43 @@ class AmarisAssistantResponseSerializer(serializers.Serializer):
 
 
 class ContactEnquirySerializer(serializers.ModelSerializer):
+    provinceOther = serializers.CharField(required=False, allow_blank=True, max_length=160, write_only=True)
+    cityOther = serializers.CharField(required=False, allow_blank=True, max_length=160, write_only=True)
+
+    def validate(self, attrs):
+        from .locations import normalize_location
+
+        return normalize_location(attrs)
+
     class Meta:
         model = ContactEnquiry
-        fields = ("name", "email", "phone", "subject", "message")
+        fields = (
+            "name",
+            "email",
+            "phone",
+            "subject",
+            "message",
+            "country",
+            "province",
+            "city",
+            "provinceOther",
+            "cityOther",
+        )
         extra_kwargs = {
-            "name": {"trim_whitespace": True},
-            "subject": {"trim_whitespace": True},
-            "message": {"trim_whitespace": True},
+            field: {
+                "required": True,
+                "allow_blank": False,
+                "allow_null": False,
+                "trim_whitespace": True,
+                "error_messages": {"required": message, "blank": message, "null": message},
+            }
+            for field, message in {
+                "name": "Please enter your full name.",
+                "email": "Please enter your email address.",
+                "phone": "Please enter your phone number.",
+                "subject": "Please choose an enquiry type.",
+                "message": "Please enter your message.",
+            }.items()
         }
 
     def validate_message(self, value):

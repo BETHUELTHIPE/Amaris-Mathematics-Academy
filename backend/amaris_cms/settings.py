@@ -68,6 +68,9 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [value.strip() for value in os.getenv(name, default).split(",") if value.strip()]
 
 
+# Enable after the six-file frontend is live and backend/staging acceptance passes.
+TUTOR_REQUIRE_SIX_DOCUMENTS = env_bool("TUTOR_REQUIRE_SIX_DOCUMENTS", False)
+
 DEBUG = env_bool("DJANGO_DEBUG", True)
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY and not DEBUG:
@@ -80,7 +83,7 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
     "jazzmin",
-    "django.contrib.admin",
+    "amaris_cms.admin_config.AmarisAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -108,6 +111,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_prometheus.middleware.PrometheusAfterMiddleware",
+    "amaris_cms.middleware.PublicApiConditionalGetMiddleware",
 ]
 
 ROOT_URLCONF = "amaris_cms.urls"
@@ -190,6 +194,9 @@ CACHES = {
 }
 PUBLIC_CONTENT_CACHE_SECONDS = int(os.getenv("PUBLIC_CONTENT_CACHE_SECONDS", "300"))
 SITE_BOOTSTRAP_CACHE_SECONDS = int(os.getenv("SITE_BOOTSTRAP_CACHE_SECONDS", "60"))
+# Private Render-to-Render secret; absence disables all Web Vitals writes.
+RUM_INGEST_TOKEN = os.getenv("RUM_INGEST_TOKEN", "")
+RUM_PERSIST_ENABLED = env_bool("RUM_PERSIST_ENABLED", False)
 PUBLIC_SITE_URL = os.getenv(
     "PUBLIC_SITE_URL",
     "https://amaris-mathematics-academy-live-students.onrender.com",
@@ -304,6 +311,16 @@ else:
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
     }
 
+# Recruitment files use the private CMS bucket with a separate local fallback outside public media.
+STORAGES["tutor_qualifications"] = (
+    STORAGES["default"]
+    if _supabase_s3_values[0]
+    else {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {"location": BASE_DIR / "private-tutor-qualifications"},
+    }
+)
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 STORAGES["student_data"] = STORAGES["student_private"]
@@ -400,17 +417,38 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD") or os.getenv("GMAIL_APP_P
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT_SECONDS", "10"))
+TUTOR_BANK_FERNET_KEY = os.getenv("TUTOR_BANK_FERNET_KEY", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@example.invalid>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 AI_ENQUIRY_AUTOREPLY_ENABLED = env_bool("AI_ENQUIRY_AUTOREPLY_ENABLED", True)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY") or os.getenv("OPENAI_APIKEY", "")
-OPENAI_ENQUIRY_MODEL = os.getenv("OPENAI_ENQUIRY_MODEL", "gpt-5.6-luna")
+# The website assistant needs a documented OpenAI API model, not a ChatGPT-only alias.
+# Map legacy configured aliases to a supported model without exposing API credentials.
+OPENAI_ENQUIRY_MODEL = os.getenv("OPENAI_ENQUIRY_MODEL", "gpt-4.1-mini").strip()
 OPENAI_ENQUIRY_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ENQUIRY_TIMEOUT_SECONDS", "10"))
-OPENAI_ASSISTANT_MODEL = os.getenv("OPENAI_ASSISTANT_MODEL", OPENAI_ENQUIRY_MODEL)
+if OPENAI_ENQUIRY_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
+    OPENAI_ENQUIRY_MODEL = "gpt-4.1-mini"
+OPENAI_ASSISTANT_MODEL = os.getenv("OPENAI_ASSISTANT_MODEL", OPENAI_ENQUIRY_MODEL).strip()
+if OPENAI_ASSISTANT_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
+    OPENAI_ASSISTANT_MODEL = "gpt-4.1-mini"
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
 CELERY_BEAT_SCHEDULE = {
+    "reconcile-tutor-earnings": {
+        "task": "content.tutor_finance_tasks.reconcile_tutor_earnings",
+        "schedule": 600.0,
+    },
+    "email-tutor-payout-receipts": {
+        "task": "content.tutor_finance_tasks.email_tutor_payout_receipt",
+        "schedule": 60.0,
+        "options": {"queue": "notifications"},
+    },
+    "deliver-tutor-application-acknowledgements": {
+        "task": "content.tasks.deliver_tutor_application_acknowledgements",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
     "publish-scheduled-content": {
         "task": "content.tasks.publish_scheduled_content",
         "schedule": 60.0,
@@ -453,6 +491,23 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 300.0,
     },
 }
+
+
+# A lightweight, two-container external deployment intentionally processes only
+# notifications. Do not let its singleton Beat publish critical/default jobs:
+# those queues require separate existing infrastructure and would build up.
+def _is_notifications_schedule_entry(entry: object) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    options = entry.get("options")
+    return isinstance(options, dict) and options.get("queue") == "notifications"
+
+
+if env_bool("CELERY_NOTIFICATIONS_ONLY_BEAT", False):
+    CELERY_BEAT_SCHEDULE = {
+        name: entry for name, entry in CELERY_BEAT_SCHEDULE.items() if _is_notifications_schedule_entry(entry)
+    }
+
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = not DEBUG
@@ -552,3 +607,12 @@ JAZZMIN_UI_TWEAKS = {
         "success": "btn-success",
     },
 }
+
+
+# Private Render monitoring consoles. These URLs are server-side only.
+MONITORING_CONSOLE_ENABLED = env_bool("MONITORING_CONSOLE_ENABLED", False)
+MONITORING_GRAFANA_URL = os.getenv("MONITORING_GRAFANA_URL", "").rstrip("/")
+MONITORING_PROMETHEUS_URL = os.getenv("MONITORING_PROMETHEUS_URL", "").rstrip("/")
+MONITORING_FLOWER_URL = os.getenv("MONITORING_FLOWER_URL", "").rstrip("/")
+MONITORING_FLOWER_BASIC_AUTH = os.getenv("MONITORING_FLOWER_BASIC_AUTH", "")
+MONITORING_RENDER_EXPORTER_URL = os.getenv("MONITORING_RENDER_EXPORTER_URL", "").rstrip("/")

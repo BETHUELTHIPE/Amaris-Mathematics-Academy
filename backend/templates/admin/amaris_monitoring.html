@@ -1,0 +1,51 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <h1>Amaris private monitoring</h1>
+  <p>Live, read-only service status is checked by Django from the private monitoring network.
+    This area is available only to active Django superusers. No student or payment data
+    is sent to an external monitoring browser.</p>
+  {% if not monitoring_enabled %}
+    <p><strong>Not enabled:</strong> Set MONITORING_CONSOLE_ENABLED=true on Django only
+      after the private monitoring endpoints are configured.</p>
+  {% endif %}
+  <div class="monitoring-services" aria-label="Monitoring tools" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:18px 0 28px">
+    {% for service in monitoring_services %}
+      <section style="border:1px solid #d8dee8;border-radius:10px;padding:16px">
+        <h2>{{ service.title }}</h2>
+        <p>{{ service.description }}</p>
+        <p><strong>Status:</strong>
+          {% if service.status == "reachable" %}
+            <span style="color:#197544">Console reachable</span>
+          {% elif service.status == "degraded" %}
+            {% if service.name == "flower" %}
+              <span style="color:#9a6700">Console reachable; no verified active Celery workers</span>
+            {% else %}
+              <span style="color:#9a6700">Metrics partial, stale or refresh failed</span>
+            {% endif %}
+          {% elif service.status == "invalid_config" %}
+            <span style="color:#b42318">Unsafe endpoint configuration</span>
+          {% elif service.status == "unavailable" %}
+            <span style="color:#b42318">Unavailable (connection not verified)</span>
+          {% else %}
+            <span>Unconfigured</span>
+          {% endif %}
+        </p>
+        {% if service.name != "render" and service.status == "reachable" or service.name == "flower" and service.status == "degraded" %}
+          <p><a href="{% url 'admin:amaris_monitoring_console' tool=service.name %}"
+              class="button">Open {{ service.title }} (read-only)</a></p>
+        {% else %}
+          <p><em>Console link disabled until a healthy private endpoint is verified.</em></p>
+        {% endif %}
+      </section>
+    {% endfor %}
+  </div>
+  <p><strong>Metric scope:</strong> On Render, host CPU, memory and HTTP metrics
+    originate from the official Render metrics API through the private exporter.
+    cAdvisor is available only on a Docker host and is not a truthful measurement
+    of Render-managed containers. A reachable Flower console does not prove
+    that Celery workers are processing tasks.</p>
+  <p><strong>Refresh:</strong> Reload this page to recheck service availability;
+    health results may be cached for up to 30 seconds. Unavailable measurements
+    must not be interpreted as zero.</p>
+  <a href="{% url 'admin:index' %}">Return to Django Admin</a>
+{% endblock %}

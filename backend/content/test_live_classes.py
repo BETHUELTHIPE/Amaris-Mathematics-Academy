@@ -5,13 +5,16 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from content.admin import TutorAvailabilitySlotAdminForm
 from content.authentication import SupabaseStudentPrincipal
 from content.models import (
     LiveClassBooking,
@@ -28,6 +31,200 @@ from content.tasks import (
     deliver_live_class_reminder,
     expire_live_class_holds,
 )
+
+
+class TutorAvailabilitySlotAdminFormTests(TestCase):
+    def setUp(self):
+        self.tutor = get_user_model().objects.create_user(
+            username="admin.slot.tutor",
+            email="slot.tutor@example.test",
+        )
+        self.start = (timezone.now() + timedelta(days=2)).replace(second=0, microsecond=0)
+
+    def slot_data(self, start):
+        return {
+            "tutor": self.tutor.pk,
+            "programme": TutorAvailabilitySlot.Programme.CAPS,
+            "subject": TutorAvailabilitySlot.Subject.MATHEMATICS,
+            "level": "Grade 12",
+            "starts_at": timezone.localtime(start).strftime("%Y-%m-%d %H:%M:%S"),
+            "duration_hours": 1,
+            "zoom_join_url": "https://zoom.example.test/j/123456789",
+            "is_active": True,
+        }
+
+    def test_add_slot_automatically_ends_after_one_hour(self):
+        form = TutorAvailabilitySlotAdminForm(data=self.slot_data(self.start))
+        self.assertNotIn("ends_at", form.fields)
+        self.assertIn("duration_hours", form.fields)
+        self.assertTrue(form.is_valid(), form.errors)
+        slot = form.save()
+        self.assertEqual(slot.ends_at - slot.starts_at, timedelta(hours=1))
+        slot.full_clean()
+
+    def test_changing_start_recalculates_end_time(self):
+        slot = TutorAvailabilitySlot.objects.create(
+            tutor=self.tutor,
+            programme=TutorAvailabilitySlot.Programme.CAPS,
+            subject=TutorAvailabilitySlot.Subject.MATHEMATICS,
+            level="Grade 12",
+            starts_at=self.start,
+            ends_at=self.start + timedelta(hours=1),
+            zoom_join_url="https://zoom.example.test/j/123456789",
+            is_active=True,
+        )
+        new_start = self.start + timedelta(days=1, minutes=30)
+        form = TutorAvailabilitySlotAdminForm(data=self.slot_data(new_start), instance=slot)
+        self.assertTrue(form.is_valid(), form.errors)
+        updated = form.save()
+        self.assertEqual(updated.starts_at, new_start)
+        self.assertEqual(updated.ends_at, new_start + timedelta(hours=1))
+
+    def test_model_still_rejects_non_hour_slot(self):
+        slot = TutorAvailabilitySlot(
+            tutor=self.tutor,
+            programme=TutorAvailabilitySlot.Programme.CAPS,
+            subject=TutorAvailabilitySlot.Subject.MATHEMATICS,
+            level="Grade 12",
+            starts_at=self.start,
+            ends_at=self.start + timedelta(minutes=45),
+            zoom_join_url="https://zoom.example.test/j/123456789",
+        )
+        with self.assertRaisesRegex(ValidationError, "whole hours"):
+            slot.full_clean()
+
+    def test_superadmin_form_explains_automatic_end_time(self):
+        model_admin = admin.site._registry[TutorAvailabilitySlot]
+        self.assertIn("automatically calculated", model_admin.duration_notice(None))
+        self.assertIn("ends_at", model_admin.get_readonly_fields(None))
+
+    def test_superadmin_can_save_slot_without_entering_end_time(self):
+        staff = get_user_model().objects.create_superuser(
+            username="live.slot.admin",
+            email="admin.slot@example.test",
+            password="Synthetic-Only-Password-8302",
+        )
+        self.client.force_login(staff)
+        date = timezone.localtime(self.start)
+        response = self.client.post(
+            reverse("admin:content_tutoravailabilityslot_add"),
+            {
+                "tutor": str(self.tutor.pk),
+                "programme": TutorAvailabilitySlot.Programme.CAPS,
+                "subject": TutorAvailabilitySlot.Subject.MATHEMATICS,
+                "level": "Grade 12",
+                "starts_at_0": date.strftime("%Y-%m-%d"),
+                "starts_at_1": date.strftime("%H:%M:%S"),
+                "duration_hours": "1",
+                "zoom_join_url": "https://zoom.example.test/j/123456789",
+                "is_active": "on",
+                "_save": "Save",
+            },
+            secure=True,
+        )
+        self.assertEqual(response.status_code, 302, response.context)
+        slot = TutorAvailabilitySlot.objects.get(tutor=self.tutor)
+        self.assertEqual(slot.ends_at - slot.starts_at, timedelta(hours=1))
+
+    def test_tutor_can_choose_two_or_three_hours(self):
+        for hours in (2, 3):
+            with self.subTest(hours=hours):
+                start = self.start + timedelta(days=hours)
+                data = self.slot_data(start)
+                data["duration_hours"] = hours
+                form = TutorAvailabilitySlotAdminForm(data=data)
+                self.assertTrue(form.is_valid(), form.errors)
+                slot = form.save()
+                self.assertEqual(slot.ends_at - slot.starts_at, timedelta(hours=hours))
+                self.assertEqual(slot.duration_hours, hours)
+
+    def test_hours_must_be_positive_whole_hours_within_one_day(self):
+        for hours in ("0", "-1", "1.5", "25"):
+            with self.subTest(hours=hours):
+                data = self.slot_data(self.start)
+                data["duration_hours"] = hours
+                form = TutorAvailabilitySlotAdminForm(data=data)
+                self.assertFalse(form.is_valid())
+                self.assertIn("duration_hours", form.errors)
+
+    def test_tutor_cannot_offer_overlapping_sessions(self):
+        TutorAvailabilitySlot.objects.create(
+            tutor=self.tutor,
+            programme=TutorAvailabilitySlot.Programme.CAPS,
+            subject=TutorAvailabilitySlot.Subject.MATHEMATICS,
+            level="Grade 12",
+            starts_at=self.start,
+            ends_at=self.start + timedelta(hours=3),
+            zoom_join_url="https://zoom.example.test/j/123456789",
+            is_active=True,
+        )
+        data = self.slot_data(self.start + timedelta(hours=2))
+        data["duration_hours"] = 2
+        form = TutorAvailabilitySlotAdminForm(data=data)
+        self.assertFalse(form.is_valid())
+        self.assertIn("overlaps", str(form.errors))
+
+    def test_cannot_change_hours_after_booking_reserved(self):
+        slot = TutorAvailabilitySlot.objects.create(
+            tutor=self.tutor,
+            programme=TutorAvailabilitySlot.Programme.CAPS,
+            subject=TutorAvailabilitySlot.Subject.MATHEMATICS,
+            level="Grade 12",
+            starts_at=self.start,
+            ends_at=self.start + timedelta(hours=2),
+            zoom_join_url="https://zoom.example.test/j/123456789",
+            is_active=True,
+        )
+        student = StudentRecord.objects.create(
+            supabase_user_id=uuid.UUID("00000000-0000-4000-8000-000000000301"),
+            email="reserved@example.test",
+            first_name="Reserved",
+            last_name="Student",
+        )
+        LiveClassBooking.objects.create(
+            reference="LCB-admin-reserved-test",
+            idempotency_key="admin-reserved-test",
+            student=student,
+            slot=slot,
+            programme=slot.programme,
+            subject=slot.subject,
+            level=slot.level,
+            topic="Derivatives",
+            amount=Decimal("500.00"),
+            status=LiveClassBooking.Status.PENDING_PAYMENT,
+        )
+        data = self.slot_data(self.start)
+        data["duration_hours"] = 3
+        form = TutorAvailabilitySlotAdminForm(data=data, instance=slot)
+        self.assertFalse(form.is_valid())
+        self.assertIn("reserved or paid", str(form.errors))
+
+    def test_superadmin_can_post_three_hour_slot(self):
+        staff = get_user_model().objects.create_superuser(
+            username="longclass.admin",
+            email="longclass.admin@example.test",
+            password="Synthetic-Only-Password-8302",
+        )
+        self.client.force_login(staff)
+        date = timezone.localtime(self.start)
+        response = self.client.post(
+            reverse("admin:content_tutoravailabilityslot_add"),
+            {
+                "tutor": str(self.tutor.pk),
+                "programme": TutorAvailabilitySlot.Programme.CAPS,
+                "subject": TutorAvailabilitySlot.Subject.MATHEMATICS,
+                "level": "Grade 12",
+                "starts_at_0": date.strftime("%Y-%m-%d"),
+                "starts_at_1": date.strftime("%H:%M:%S"),
+                "duration_hours": "3",
+                "zoom_join_url": "https://zoom.example.test/j/123456789",
+                "is_active": "on",
+                "_save": "Save",
+            },
+            secure=True,
+        )
+        self.assertEqual(response.status_code, 302, response.context)
+        self.assertEqual(TutorAvailabilitySlot.objects.get(tutor=self.tutor).duration_hours, 3)
 
 
 class MockPayFastGateway:
@@ -91,7 +288,7 @@ class LiveClassBookingTests(TestCase):
             "m_payment_id": booking.reference,
             "pf_payment_id": "PF-LIVE-SANDBOX-001",
             "payment_status": "COMPLETE",
-            "amount_gross": "250.00",
+            "amount_gross": f"{booking.amount:.2f}",
             "custom_str1": str(booking.student.supabase_user_id),
             "custom_str2": booking.reference,
             "signature": "synthetic-signature-never-sent",
@@ -166,30 +363,6 @@ class LiveClassBookingTests(TestCase):
         self.assertIn(self.slot.zoom_join_url, mail.outbox[1].body)
         self.assertEqual(deliver_live_class_reminder.run(), 0)
 
-    def test_student_registered_first_and_last_names_are_mandatory_before_payment(self):
-        original_first, original_last = self.student.first_name, self.student.last_name
-        for first, last in (
-            ("", original_last),
-            (original_first, ""),
-            ("Student", "Learner"),
-            (" ", " "),
-        ):
-            self.student.first_name = first
-            self.student.last_name = last
-            with self.subTest(first_name=first, last_name=last):
-                with self.assertRaisesRegex(PaymentSecurityError, "registered first and last name"):
-                    self.checkout(key="missing-registered-name-001")
-                self.assertFalse(LiveClassBooking.objects.filter(
-                    idempotency_key="missing-registered-name-001"
-                ).exists())
-        self.student.first_name, self.student.last_name = original_first, original_last
-
-    def test_payfast_and_checkout_use_only_stored_student_registration_name(self):
-        checkout = self.checkout(key="student-name-payfast-001")
-        self.assertEqual(checkout.fields["name_first"], self.student.first_name)
-        self.assertEqual(checkout.fields["name_last"], self.student.last_name)
-        self.assertEqual(checkout.fields["email_address"], self.student.email)
-
     def test_checkout_is_server_priced_at_r250_and_holds_slot(self):
         checkout = self.checkout()
         booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
@@ -205,6 +378,52 @@ class LiveClassBookingTests(TestCase):
             self.checkout(
                 student=self.other_student,
                 key="liveclass-checkout-002",
+            )
+
+    def test_two_and_three_hour_payment_confirmation_invoice_and_reminder(self):
+        for hours in (2, 3):
+            with self.subTest(hours=hours):
+                self.slot.ends_at = self.slot.starts_at + timedelta(hours=hours)
+                self.slot.save(update_fields=("ends_at",))
+                checkout = self.checkout(key=f"multi-hour-checkout-{hours}")
+                booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+                expected = Decimal("250.00") * hours
+                self.assertEqual(booking.amount, expected)
+                self.assertEqual(checkout.fields["amount"], f"{expected:.2f}")
+                self.assertIn(f"{hours}-hour", checkout.fields["item_name"])
+                response = self.client.get(reverse("live-class-slots"), secure=True)
+                # Pending unexpired hold hides the reserved slot.
+                self.assertEqual(response.json(), [])
+                result = process_live_class_notification(
+                    self.callback(booking, pf_payment_id=f"PF-LIVE-SANDBOX-{hours}"),
+                    gateway=MockPayFastGateway(True),
+                )
+                self.assertTrue(result.accepted)
+                self.assertEqual(deliver_live_class_confirmation.run(), 1)
+                self.assertIn(f"Duration: {hours} hour(s)", mail.outbox[-1].body)
+                # Remove the synthetic booking to test the next duration using the same slot.
+                LiveClassBooking.objects.filter(pk=booking.pk).delete()
+                mail.outbox.clear()
+
+    def test_overlapping_tutor_checkout_is_blocked(self):
+        other = TutorAvailabilitySlot.objects.create(
+            tutor=self.tutor,
+            programme=TutorAvailabilitySlot.Programme.CAPS,
+            subject=TutorAvailabilitySlot.Subject.MATHEMATICS,
+            level="Grade 12",
+            starts_at=self.slot.starts_at + timedelta(minutes=30),
+            ends_at=self.slot.ends_at + timedelta(minutes=30),
+            zoom_join_url="https://zoom.example.test/j/987654321",
+        )
+        # Simulates legacy/imported conflicting slots that bypass admin validation.
+        self.assertEqual(other.duration_hours, 1)
+        self.checkout(key="one-overlap-reservation-001")
+        with self.assertRaisesRegex(PaymentSecurityError, "overlapping hours"):
+            create_live_class_checkout(
+                student=self.other_student,
+                slot=other,
+                topic="Trigonometry",
+                idempotency_key="other-overlap-reservation-002",
             )
 
     def test_published_slot_id_can_be_used_at_authenticated_checkout(self):

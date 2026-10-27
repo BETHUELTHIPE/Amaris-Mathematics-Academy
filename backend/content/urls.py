@@ -8,6 +8,7 @@ from .live_class_views import (
     LiveClassSlotView,
 )
 from .payfast_views import PayFastITNView
+from .rum import collect_web_vitals
 from .student_views import (
     AcceptancePaymentCompleteView,
     AcceptanceSeedView,
@@ -21,6 +22,12 @@ from .student_views import (
     StudentNotificationsView,
     StudentOrdersView,
 )
+from .tutor_application_views import (
+    TutorApplicationAcknowledgementView,
+    TutorApplicationDocumentView,
+    TutorApplicationView,
+)
+from .tutor_views import TutorDashboardView, TutorEarningsView, TutorSlotCreateView, TutorSlotUpdateView
 from .video_request_views import (
     VideoRequestCheckoutView,
     VideoRequestInvoiceDownloadView,
@@ -42,6 +49,7 @@ from .views import (
     SiteBootstrapView,
     SiteSettingsView,
     TestimonialViewSet,
+    public_marketing_media,
 )
 
 router = DefaultRouter()
@@ -56,8 +64,25 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
+    path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
+    path(
+        "tutor-applications/acknowledgement/",
+        TutorApplicationAcknowledgementView.as_view(),
+        name="tutor-application-acknowledgement",
+    ),
+    path("tutor-applications/", TutorApplicationView.as_view(), name="tutor-applications"),
+    path(
+        "tutor-applications/documents/<uuid:document_id>/",
+        TutorApplicationDocumentView.as_view(),
+        name="tutor-application-document",
+    ),
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
+    path("tutor/dashboard/", TutorDashboardView.as_view(), name="tutor-dashboard"),
+    path("tutor/earnings/", TutorEarningsView.as_view(), name="tutor-earnings"),
+    path("tutor/slots/", TutorSlotCreateView.as_view(), name="tutor-slot-create"),
+    path("tutor/slots/<int:slot_id>/", TutorSlotUpdateView.as_view(), name="tutor-slot-update"),
     path("video-requests/packages/", VideoRequestPackageView.as_view(), name="video-request-packages"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),

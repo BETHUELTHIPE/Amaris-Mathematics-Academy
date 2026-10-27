@@ -283,7 +283,7 @@ services:
       /bin/sh -c 'celery -A amaris_cms flower
       --address=0.0.0.0
       --port=$${FLOWER_PORT:-5555}
-      --url_prefix=monitoring/flower
+      --url_prefix=admin/monitoring/flower
       --basic_auth=$$(cat /run/secrets/flower_basic_auth)
       --persistent=True
       --db=/data/flower.db'
@@ -296,7 +296,7 @@ services:
     secrets: [flower_basic_auth]
     networks: [backend_network, monitoring_network]
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent --user \"$$(cat /run/secrets/flower_basic_auth)\" http://localhost:$${FLOWER_PORT:-5555}/monitoring/flower/ >/dev/null"]
+      test: ["CMD-SHELL", "curl --fail --silent --user \"$$(cat /run/secrets/flower_basic_auth)\" http://localhost:${FLOWER_PORT:-5555}/admin/monitoring/flower/ >/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -327,6 +327,8 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-30d}
+      - --web.external-url=${MONITORING_PROMETHEUS_BROWSER_URL:-http://localhost:8080/admin/monitoring/prometheus/}
+      - --web.route-prefix=/admin/monitoring/prometheus/
       - --web.enable-lifecycle
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -351,11 +353,12 @@ services:
       GRAFANA_PORT: ${GRAFANA_PORT:-3000}
       GRAFANA_URL: ${GRAFANA_URL:-http://grafana:3000}
       GF_SERVER_HTTP_PORT: ${GRAFANA_PORT:-3000}
-      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://grafana:3000/}
-      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      GF_SERVER_ROOT_URL: ${MONITORING_GRAFANA_BROWSER_URL:-http://localhost:8080/admin/monitoring/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
-      GF_AUTH_ANONYMOUS_ENABLED: ${GF_AUTH_ANONYMOUS_ENABLED:-false}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_SECURITY_COOKIE_SECURE: ${GF_SECURITY_COOKIE_SECURE:-false}
       GF_SECURITY_COOKIE_SAMESITE: strict
       GF_USERS_ALLOW_SIGN_UP: ${GF_USERS_ALLOW_SIGN_UP:-false}
@@ -368,7 +371,8 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
-    networks: [monitoring_network]
+    # Django web is on backend_network and proxies dashboards after superuser auth.
+    networks: [backend_network, monitoring_network]
     healthcheck:
       test: ["CMD-SHELL", "wget --spider --quiet http://localhost:3000/api/health || exit 1"]
       interval: 30s
