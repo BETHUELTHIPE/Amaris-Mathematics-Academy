@@ -1,0 +1,35 @@
+name: Staging Amaris Corrected Recovery Email Layout
+on:
+  push:
+    branches: [ops/staging-letterhead-recovery-corrected-20261027]
+    paths: [ops/staging-corrected-recovery-apply.txt]
+permissions:
+  contents: read
+jobs:
+  staging-recovery-only:
+    if: github.ref == 'refs/heads/ops/staging-letterhead-recovery-corrected-20261027' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 8
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test OTP templates and non-consuming recovery link
+        run: |
+          python -m unittest discover -s tests -p test_configure_supabase_auth_otp.py -v
+          python - <<'PY'
+          from pathlib import Path
+          base=Path('frontend/email-templates')
+          for name in ('confirm-signup.html','magic-link-login.html','recovery.html'):
+              text=(base/name).read_text()
+              for required in ('{{ .Token }}','Amaris Mathematics Academy','amaris-academy-icon-192.png','27 Tshivhase Street','Professional mathematics education'):
+                  if required not in text: raise SystemExit(f"BLOCK: {name} lacks required branding")
+              if 'localhost:3000' in text: raise SystemExit("BLOCK: hardcoded localhost URL")
+          recover=(base/'recovery.html').read_text()
+          if '{{ .RedirectTo }}?token_hash={{ .TokenHash }}' not in recover or '{{ .ConfirmationURL }}' in recover:
+              raise SystemExit("BLOCK: recovery must open the non-consuming code-verification landing")
+          print("PASS: verified official branding and non-consuming recovery link")
+          PY
+      - name: Apply current three approved layouts to staging only
+        run: python scripts/configure_supabase_auth_otp.py --project-ref atyhhjwwxgzeurnwayay --mode apply
