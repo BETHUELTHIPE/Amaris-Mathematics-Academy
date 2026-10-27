@@ -1,0 +1,31 @@
+name: Amaris Staging Hosted Recovery Link Audit
+on:
+  push:
+    branches: ["fix/recovery-email-siteurl-no-localhost-20261027"]
+    paths: ["ops/staging-hosted-recovery-audit.txt"]
+permissions:
+  contents: read
+jobs:
+  staging-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment: staging
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Offline hosted template href and professional letterhead safety
+        run: python -m unittest discover -s tests -p "test_repair_supabase_recovery_link.py" -v
+      - name: Audit actual Supabase staging recovery email without changing any settings
+        run: python scripts/repair_supabase_recovery_link.py --project staging --mode check
+
+  production-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_PRODUCTION_AUTH_MANAGEMENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read-only audit of live hosted recovery email and canonical Site URL
+        run: python scripts/repair_supabase_recovery_link.py --project production --mode check
