@@ -1,5 +1,5 @@
+from content.services.branded_email import render_branded_email
 from datetime import timedelta
-from html import escape
 
 from botocore.exceptions import BotoCoreError, ClientError
 from celery import shared_task
@@ -116,6 +116,14 @@ def deliver_transactional_email(_self) -> int:
             from_email=None,
             to=[outbox.destination],
         )
+        email.attach_alternative(
+            render_branded_email(
+                "Your payment is confirmed",
+                message.splitlines(),
+                reference=outbox.payment.reference,
+            ),
+            "text/html",
+        )
         invoice = outbox.payment.invoice
         email.attach(f"{invoice.invoice_number}.pdf", archive_invoice_pdf(invoice), "application/pdf")
         sent = email.send(fail_silently=False)
@@ -159,19 +167,7 @@ def _send_live_class_message(
             *body_lines,
         ]
     )
-    html_lines = "".join(f"<p>{escape(line)}</p>" for line in body_lines)
-    html = (
-        '<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;'
-        'border:1px solid #dce4ef;border-radius:18px;overflow:hidden">'
-        '<div style="background:#07152d;color:#fff;padding:24px">'
-        f'<div style="font-size:22px;font-weight:700">{escape(name)}</div>'
-        f'<div style="margin-top:6px;color:#dce4ef">{escape(email)} · {escape(phone)}</div>'
-        "</div>"
-        '<div style="padding:28px;color:#1d2d44">'
-        f'<h1 style="font-size:24px;margin-top:0">{escape(heading)}</h1>'
-        f"{html_lines}"
-        "</div></div>"
-    )
+    html = render_branded_email(heading, body_lines, reference=booking.reference)
     message = EmailMultiAlternatives(
         subject=subject,
         body=text,
@@ -325,19 +321,7 @@ def _send_video_request_message(
 ) -> None:
     name, email, phone = _live_class_brand()
     text = "\n".join([name, f"{email} | {phone}", "", heading, "", *body_lines])
-    html_lines = "".join(f"<p>{escape(line)}</p>" for line in body_lines)
-    html = (
-        '<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;'
-        'border:1px solid #dce4ef;border-radius:18px;overflow:hidden">'
-        '<div style="background:#07152d;color:#fff;padding:24px">'
-        f'<div style="font-size:22px;font-weight:700">{escape(name)}</div>'
-        f'<div style="margin-top:6px;color:#dce4ef">{escape(email)} · {escape(phone)}</div>'
-        "</div>"
-        '<div style="padding:28px;color:#1d2d44">'
-        f'<h1 style="font-size:24px;margin-top:0">{escape(heading)}</h1>'
-        f"{html_lines}"
-        "</div></div>"
-    )
+    html = render_branded_email(heading, body_lines, reference=request.ticket_number)
     message = EmailMultiAlternatives(subject=subject, body=text, from_email=None, to=[request.student.email])
     message.attach_alternative(html, "text/html")
     if attach_invoice and request.invoice_number:
