@@ -1,1 +1,2 @@
 Read-only staging Django DB source-of-truth check. Verify exact Render service identity and isolation; do not run migrations. 2026-10-27.
+Corrected check for dedicated Supabase staging project, read-only rerun.
