@@ -54,7 +54,7 @@ class SupabaseAuthOtpTests(unittest.TestCase):
         output = io.StringIO()
         with (
             patch.dict(os.environ, {"SUPABASE_ACCESS_TOKEN": "synthetic-only"}, clear=True),
-            patch.object(module, "request_config", return_value={"smtp_host": None}) as api,
+            patch.object(module, "request_config", return_value={"smtp_host": None, "site_url": module.EXPECTED_AUTH_SITE_URL["epkcuseloinygkakxxdu"]}) as api,
             contextlib.redirect_stderr(output),
         ):
             outcome = module.main(["--project-ref", "epkcuseloinygkakxxdu", "--mode", "apply"])
