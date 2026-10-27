@@ -1,0 +1,1 @@
+Authorized single synthetic HTML email via production SMTP transport to the connected QA inbox. No code deploy, no customer, transaction or database changes. Release gated.
