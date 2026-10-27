@@ -7,6 +7,7 @@ permissions:
   contents: read
 jobs:
   inbox-smoke:
+    if: ${{ false }} # One-time QA delivery attempt completed; prevent duplicate sends.
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     env:
