@@ -2,10 +2,11 @@ import { parseLocation } from "@/lib/location-server";
 import { countryName } from "@/lib/location-data";
 import { NextResponse } from "next/server";
 import { applicantToken, applicationRequest, ApplicationError } from "@/lib/tutor-applications";
+import { validateRequiredTutorDocuments } from "@/lib/tutor-required-documents";
 
 export const dynamic = "force-dynamic";
 const privateHeaders = { "Cache-Control": "private, no-store" };
-const MAX_BODY = 16 * 1024 * 1024;
+const MAX_BODY = 33 * 1024 * 1024;
 
 export async function POST(request: Request): Promise<Response> {
   const wantsJson = request.headers.get("accept")?.includes("application/json");
@@ -25,7 +26,7 @@ export async function POST(request: Request): Promise<Response> {
       return result({ detail: "Attach your documents using the application form." }, 400);
     }
     if (Number(request.headers.get("content-length")) > MAX_BODY) {
-      return result({ documents: ["Files must total no more than 15 MB."] }, 413);
+      return result({ documents: ["The six files must total no more than 30 MB."] }, 413);
     }
     const reader = request.body?.getReader();
     if (!reader) return result({ detail: "The form is empty." }, 400);
@@ -37,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
       length += value.byteLength;
       if (length > MAX_BODY) {
         await reader.cancel();
-        return result({ documents: ["Files must total no more than 15 MB."] }, 413);
+        return result({ documents: ["The six files must total no more than 30 MB."] }, 413);
       }
       chunks.push(new Uint8Array(value));
     }
@@ -47,6 +48,8 @@ export async function POST(request: Request): Promise<Response> {
     if (data.get("_action") !== "retry-email") {
       const location = await parseLocation(Object.fromEntries(data));
       if (!location.value) return result(Object.fromEntries(Object.entries(location.errors).map(([field, message]) => [field, [message]])), 400);
+      const documentErrors = validateRequiredTutorDocuments(data);
+      if (Object.keys(documentErrors).length > 0) return result(documentErrors, 400);
       // Keep the summary readable for older API releases during an ordered rollout.
       data.set("location", [location.value.city, location.value.province, countryName(location.value.country)].join(", ").slice(0, 120));
     }
