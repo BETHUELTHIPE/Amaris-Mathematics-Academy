@@ -1,0 +1,109 @@
+name: Apply Staging Django Tutor Document Category Migration
+on:
+  push:
+    branches: [ops/staging-six-tutor-docs-migrate-20261027]
+    paths: [ops/apply-staging-tutor-category-0018.txt]
+permissions:
+  contents: read
+concurrency:
+  group: amaris-staging-tutor-categories-0018
+  cancel-in-progress: false
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 20
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install locked Django and PostgreSQL runtime
+        run: python -m pip install -r backend/requirements.txt
+      - name: Strict staging isolation preflight then Django 0018 migration and verification
+        run: |
+          python - <<'PY'
+          import os, json, subprocess, sys, urllib.request, urllib.parse
+          from pathlib import Path
+          import psycopg
+          from urllib.parse import urlsplit,unquote
+          stage_service="srv-dam2iivcgkoc7383tq50"
+          stage_project="atyhhjwwxgzeurnwayay"
+          key=os.environ.get("RENDER_API_KEY","")
+          if not key: raise SystemExit("BLOCK: staging Render API credential unavailable")
+          base=f"https://api.render.com/v1/services/{stage_service}"
+          headers={"Authorization":"Bearer "+key,"Accept":"application/json"}
+          def get(path):
+              with urllib.request.urlopen(urllib.request.Request(base+path,headers=headers),timeout=20) as resp:
+                  return json.load(resp)
+          svc=get("")
+          if svc.get("id")!=stage_service or svc.get("ownerId")!="tea-csppi8l6l47c73dk9c90" or svc.get("branch")!="ops/staging-known-good-af8709c-20261019":
+              raise SystemExit("BLOCK: unexpected staging service or branch")
+          records=get("/env-vars?limit=100")
+          if isinstance(records,dict): records=records.get("envVars",records.get("data",[]))
+          config={}
+          for row in records:
+              item=row.get("envVar",row)
+              if isinstance(item,dict) and isinstance(item.get("key"),str):
+                  config[item["key"]]=item.get("value") or ""
+          dsn=config.get("DATABASE_URL","")
+          url=urlsplit(dsn)
+          username=unquote(url.username or "")
+          hostname=url.hostname or ""
+          if not (
+              (stage_project in username and hostname.endswith(".pooler.supabase.com"))
+              or hostname==f"db.{stage_project}.supabase.co"
+          ):
+              raise SystemExit("BLOCK: connection is not to dedicated staging Supabase project")
+          if config.get("SUPABASE_PROJECT_REF")!=stage_project:
+              raise SystemExit("BLOCK: service staging project mismatch")
+          if config.get("DATABASE_SCHEMA","") not in ("","public"):
+              raise SystemExit("BLOCK: unexpected staging schema override")
+          if (config.get("PAYFAST_MODE") or config.get("PAYFAST_ENV") or "sandbox").lower()!="sandbox":
+              raise SystemExit("BLOCK: target service does not use test payment mode")
+          path=Path("backend/content/migrations/0018_tutor_document_categories.py")
+          if not path.is_file() or "0016_separate_location_fields" not in path.read_text():
+              raise SystemExit("BLOCK: approved additive Django migration missing")
+          with psycopg.connect(dsn,connect_timeout=12) as conn:
+              conn.execute("SET TRANSACTION READ ONLY")
+              db,schema=conn.execute("SELECT current_database(),current_schema()").fetchone()
+              if db!="postgres" or schema!="public":
+                  raise SystemExit("BLOCK: wrong database/schema")
+              history={row[0] for row in conn.execute("SELECT name FROM django_migrations WHERE app='content'").fetchall()}
+              if "0016_separate_location_fields" not in history:
+                  raise SystemExit("BLOCK: parent migration not applied")
+              already="0018_tutor_document_categories" in history
+              col=bool(conn.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='content_tutorapplicationdocument' AND column_name='category'").fetchone())
+              if already!=col:
+                  raise SystemExit("BLOCK: migration recorder/column inconsistent")
+              if already:
+                  print("PASS: staging tutor document category migration already applied")
+                  raise SystemExit(0)
+              if "0017_liveclass_recipient_receipts" not in history:
+                  raise SystemExit("BLOCK: staging 0017 migration unexpectedly absent")
+          run_env=os.environ.copy()
+          for k,v in config.items():
+              if isinstance(k,str) and isinstance(v,str) and k not in ("RENDER_API_KEY",):
+                  run_env[k]=v
+          run_env["DATABASE_URL"]=dsn
+          run_env["SUPABASE_PROJECT_REF"]=stage_project
+          run_env["SUPABASE_DATABASE_REQUIRED"]="true"
+          run_env.pop("RENDER_SERVICE_ID",None)
+          run_env.pop("RENDER_GIT_BRANCH",None)
+          run_env["DJANGO_SETTINGS_MODULE"]="amaris_cms.settings"
+          print("PASS: Staging target, payment sandbox, existing migration graph and project isolation verified")
+          print("MIGRATION_PLAN:")
+          subprocess.run([sys.executable,"manage.py","migrate","content","0018_tutor_document_categories","--plan"],cwd="backend",env=run_env,check=True)
+          print("APPLYING: additive Django tutor category migration in dedicated staging project only")
+          subprocess.run([sys.executable,"manage.py","migrate","content","0018_tutor_document_categories","--noinput"],cwd="backend",env=run_env,check=True)
+          with psycopg.connect(dsn,connect_timeout=12) as conn:
+              conn.execute("SET TRANSACTION READ ONLY")
+              exists=bool(conn.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='content_tutorapplicationdocument' AND column_name='category'").fetchone())
+              done=bool(conn.execute("SELECT 1 FROM django_migrations WHERE app='content' AND name='0018_tutor_document_categories'").fetchone())
+          if not exists or not done:
+              raise SystemExit("BLOCK: staging category migration verification failed")
+          print("PASS: category column and Django 0018 migration record verified on STAGING only")
+          print("PRODUCTION_DATABASE_MODIFIED=NO; FRONTEND_DEPLOYED=NO; STRICT_ENFORCEMENT=OFF")
+          PY
