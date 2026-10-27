@@ -5,8 +5,8 @@ from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.utils import timezone
 
-from content.services.branded_email import render_branded_email
 from content.models import LiveClassBooking, Payment, VideoRequest
+from content.services.branded_email import render_branded_email
 from content.services.tutor_finance import (
     record_course_sale,
     record_existing_video_sale,
