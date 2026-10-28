@@ -1,12 +1,15 @@
+import os
 from datetime import timedelta
 from html import escape
 
 from botocore.exceptions import BotoCoreError, ClientError
 from celery import shared_task
 from django.apps import apps
+from django.conf import settings
 from django.core.files.storage import storages
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
+from django.db.models import Q
 from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
 
@@ -150,6 +153,7 @@ def _send_live_class_message(
     heading: str,
     body_lines: list[str],
     attach_invoice: bool = False,
+    to_email: str | None = None,
 ) -> None:
     name, email, phone = _live_class_brand()
     text = "\n".join(
@@ -179,7 +183,7 @@ def _send_live_class_message(
         subject=subject,
         body=text,
         from_email=None,
-        to=[booking.student.email],
+        to=[to_email or booking.student.email],
     )
     message.attach_alternative(html, "text/html")
     if attach_invoice and booking.invoice_number:
@@ -211,26 +215,66 @@ def deliver_live_class_confirmation(_self) -> int:
     return delivered
 
 
-def _deliver_one_live_class_confirmation() -> bool:
-    with transaction.atomic():
-        booking = (
-            LiveClassBooking.objects.select_for_update(skip_locked=True)
-            .select_related("student", "slot", "slot__tutor")
-            .filter(
-                status=LiveClassBooking.Status.CONFIRMED,
-                confirmation_sent_at__isnull=True,
-            )
-            .order_by("paid_at", "created_at")
-            .first()
-        )
-        if booking is None:
-            return False
+def _booking_admin_email() -> str:
+    """Explicit operations mailbox, falling back to configured site contact."""
+    configured = (getattr(settings, "BOOKING_ADMIN_EMAIL", "") or os.getenv("BOOKING_ADMIN_EMAIL", "")).strip()
+    if configured:
+        return configured
+    return _live_class_brand()[1]
 
-        _send_live_class_message(
-            booking,
-            subject=f"Amaris live class confirmed — {booking.reference}",
-            heading="Your Zoom live class is confirmed",
-            body_lines=[
+
+def _deliver_one_live_class_confirmation() -> bool:
+    """Send each role once, retaining successful role markers across retries.
+
+    Only real gateway-verified bookings are eligible. Every recipient has a
+    separately committed marker so a later SMTP failure does not replay emails
+    already accepted for another recipient.
+    """
+    pending = (
+        Q(confirmation_sent_at__isnull=True)
+        | Q(tutor_confirmation_sent_at__isnull=True)
+        | Q(admin_confirmation_sent_at__isnull=True)
+    )
+    booking_id = (
+        LiveClassBooking.objects.filter(
+            status=LiveClassBooking.Status.CONFIRMED,
+            gateway_verified_at__isnull=False,
+        )
+        .filter(pending)
+        .order_by("paid_at", "created_at")
+        .values_list("pk", flat=True)
+        .first()
+    )
+    if booking_id is None:
+        return False
+
+    sent_any = False
+    failed_delivery: OSError | None = None
+    for role, marker in (
+        ("student", "confirmation_sent_at"),
+        ("tutor", "tutor_confirmation_sent_at"),
+        ("admin", "admin_confirmation_sent_at"),
+    ):
+        with transaction.atomic():
+            booking = (
+                LiveClassBooking.objects.select_for_update()
+                .select_related("student", "slot", "slot__tutor")
+                .filter(
+                    pk=booking_id,
+                    status=LiveClassBooking.Status.CONFIRMED,
+                    gateway_verified_at__isnull=False,
+                )
+                .first()
+            )
+            if booking is None:
+                return sent_any
+            if getattr(booking, marker) is not None:
+                continue
+            if not booking.invoice_number:
+                raise OSError("Verified booking has no invoice reference.")
+
+            student_lines = [
+                f"Booking reference: {booking.reference}",
                 f"Programme: {booking.get_programme_display()}",
                 f"Subject: {booking.get_subject_display()}",
                 f"Level: {booking.level}",
@@ -242,12 +286,55 @@ def _deliver_one_live_class_confirmation() -> bool:
                 f"Zoom link: {booking.slot.zoom_join_url}",
                 f"Invoice: {booking.invoice_number}",
                 f"Amount paid: R{booking.amount:.2f}",
-            ],
-            attach_invoice=True,
-        )
-        booking.confirmation_sent_at = timezone.now()
-        booking.save(update_fields=("confirmation_sent_at", "updated_at"))
-        return True
+            ]
+            operations_lines = [
+                f"Student: {booking.student.first_name} {booking.student.last_name}",
+                f"Student email: {booking.student.email}",
+                f"Student mobile: {booking.student.mobile or 'Not provided'}",
+                *student_lines,
+            ]
+            if role == "student":
+                recipient = booking.student.email
+                subject = f"Amaris live class confirmed — {booking.reference}"
+                heading = "Your Zoom live class is confirmed"
+                lines = student_lines
+            elif role == "tutor":
+                recipient = booking.slot.tutor.email
+                subject = f"Amaris tutor booking confirmed — {booking.reference}"
+                heading = "A student has booked your live class"
+                lines = operations_lines
+            else:
+                recipient = _booking_admin_email()
+                subject = f"Amaris admin booking confirmed — {booking.reference}"
+                heading = "Verified live-class booking — admin copy"
+                lines = operations_lines
+
+            if not recipient:
+                if failed_delivery is None:
+                    failed_delivery = OSError(f"Missing {role} email address for verified booking.")
+                continue
+            try:
+                _send_live_class_message(
+                    booking,
+                    subject=subject,
+                    heading=heading,
+                    body_lines=lines,
+                    attach_invoice=True,
+                    to_email=recipient,
+                )
+            except OSError as exc:
+                # One failing inbox must not prevent delivery to other roles.
+                # Keep this recipient's marker empty; Celery retries it later.
+                # Markers for already accepted roles are committed separately.
+                if failed_delivery is None:
+                    failed_delivery = exc
+                continue
+            setattr(booking, marker, timezone.now())
+            booking.save(update_fields=(marker, "updated_at"))
+            sent_any = True
+    if failed_delivery is not None:
+        raise failed_delivery
+    return sent_any
 
 
 @shared_task(

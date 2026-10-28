@@ -380,6 +380,27 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           scanners: vuln
+      - name: Summarize container vulnerability findings
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("trivy-results.sarif").read_text(encoding="utf-8"))
+          for run in report.get("runs", []):
+              for finding in run.get("results", []):
+                  print(f"{finding.get('ruleId', 'unknown')}: {finding.get('message', {}).get('text', '')}")
+          PY
+      - name: Preserve container vulnerability report
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-vulnerability-report
+          path: trivy-results.sarif
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload container scan results
         if: always() && hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
