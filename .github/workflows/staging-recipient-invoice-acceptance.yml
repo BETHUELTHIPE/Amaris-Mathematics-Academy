@@ -66,6 +66,7 @@ jobs:
           python manage.py check --deploy --fail-level ERROR
           python manage.py makemigrations --check --dry-run
           python manage.py migrate --noinput
+          python manage.py collectstatic --noinput
       - name: Full isolated Django regression suite
         run: python manage.py test
   runtime-preflight:
