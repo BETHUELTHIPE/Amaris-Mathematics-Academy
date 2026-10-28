@@ -63,6 +63,7 @@ jobs:
                   dest=headers.get("Location","")
                   parsed=urlparse(urljoin(base,dest))
                   saved=parse_qs(parsed.query).get("next",[""])[0]
+                  print(f"OBSERVED: {label} anonymous booking HTTP {code}; redirect_path={parsed.path}; same_host={parsed.netloc==urlparse(base).netloc}; return_path={saved}",flush=True)
                   if code not in (301,302,303,307,308) or parsed.netloc!=urlparse(base).netloc or parsed.path!="/login" or not saved.startswith("/book-online-live-class"):
                       raise SystemExit(f"FAIL: {label} booking route exposed or unsafe redirect: HTTP {code}")
                   print(f"PASS: {label} booking anonymous GET redirects to same-origin login with safe return")
