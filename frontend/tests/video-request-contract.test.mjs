@@ -40,7 +40,9 @@ test("request form supports all programmes, secure files and server-priced check
   assert.match(form, /application\/pdf,image\/jpeg,image\/png/);
   assert.match(form, /Maximum 10 MB per file and 25 MB total/);
   assert.match(form, /Server-priced/);
-  assert.match(form, /<PayFastHostedCheckout checkout=\\{checkout\\}/);\n  const hostedForm = await readFile(new URL("../components/site/payfast-hosted-checkout.tsx", import.meta.url), "utf8");\n  assert.match(hostedForm, /Continue to PayFast/);
+  assert.match(form, /<PayFastHostedCheckout checkout=\\{checkout\\}/);
+  const hostedForm = await readFile(new URL("../components/site/payfast-hosted-checkout.tsx", import.meta.url), "utf8");
+  assert.match(hostedForm, /Continue to PayFast/);
   assert.doesNotMatch(form, /localStorage|sessionStorage/);
 });
 
