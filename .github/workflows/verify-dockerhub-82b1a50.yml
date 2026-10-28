@@ -1,0 +1,46 @@
+name: Read Docker Hub candidate publication
+on:
+  push:
+    branches: ["ops/publish-dockerhub-tested-82b1a50-20261028"]
+    paths: [".github/workflows/verify-dockerhub-82b1a50.yml"]
+permissions:
+  contents: read
+jobs:
+  registry-read:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      IMAGE: docker.io/bethuelm/amaris-mathematics-academy:82b1a50b678c43b425f3a8756b47f48f62914fce
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: bethuelm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Read registry tag and architectures
+        run: |
+          if ! docker buildx imagetools inspect "$IMAGE" > /tmp/image-info.txt 2>/tmp/registry-error.txt; then
+            echo "REGISTRY_NOT_CONFIRMED: candidate tag cannot yet be read; inspect the publishing job."
+            exit 1
+          fi
+          docker buildx imagetools inspect --raw "$IMAGE" > /tmp/image-manifest.json
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          info = Path("/tmp/image-info.txt").read_text()
+          match = re.search(r"^Digest:\s+(sha256:[0-9a-f]{64})", info, re.MULTILINE)
+          if not match:
+              raise SystemExit("REGISTRY_NOT_CONFIRMED: root digest unavailable")
+          manifest = json.loads(Path("/tmp/image-manifest.json").read_text())
+          platforms = {
+              (item.get("platform", {}).get("os"), item.get("platform", {}).get("architecture"))
+              for item in manifest.get("manifests", [])
+          }
+          if not {("linux", "amd64"), ("linux", "arm64")} <= platforms:
+              raise SystemExit("REGISTRY_NOT_CONFIRMED: both platforms are not present")
+          print("REGISTRY_VERIFIED_DIGEST=" + match.group(1))
+          print("REGISTRY_VERIFIED_PLATFORMS=linux/amd64,linux/arm64")
+          PY
