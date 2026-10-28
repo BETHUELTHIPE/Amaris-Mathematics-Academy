@@ -42,17 +42,13 @@ jobs:
               if code not in (401,403):
                   raise SystemExit(f"FAIL: anonymous access boundary {route} returned HTTP {code}")
               print(f"PASS private Django {route} anonymous rejected HTTP {code}")
-          for route,needle in (("/tutor/register",b"Create your applicant account"),("/tutor/apply",b"Become an Amaris tutor"),("/tutor/login",b"Tutor")):
-              status,html=check(student+route)
-              matched=needle.lower() in html.lower()
-              import re
-              headings=re.findall(rb"<h1[^>]*>(.*?)</h1>",html,re.I|re.S)
-              heading_text=" | ".join(re.sub(rb"<[^>]+>",b"",x).decode("utf-8","ignore")[:80] for x in headings[:2])
-              safe_heading="".join(ch for ch in heading_text if ch.isascii() and (ch.isalnum() or ch in " .,-"))[:120]
-              print(f"DIAGNOSTIC: staging tutor page {route} HTTP {status}, heading-present={matched}, page-h1={safe_heading!r}")
-              if status!=200 or not matched:
-                  raise SystemExit(f"BLOCK: staging tutor public page {route} not at expected version")
-              print(f"PASS staging public tutor page {route} HTTP {status}")
+          # SSR emits an initial shell: verify HTTP here; actual content, h1
+          # and private dashboard exclusion are verified by Chromium below.
+          for route in ("/tutor/register","/tutor/apply","/tutor/login"):
+              status,_html=check(student+route)
+              if status != 200:
+                  raise SystemExit(f"BLOCK: staging tutor page {route} HTTP {status}")
+              print(f"PASS staging public tutor route {route} HTTP {status}; content verified in Chromium")
           code,html=check(student+"/tutor/dashboard")
           if code==200 and (b"Your teaching slots" in html or b"private tutor earnings" in html):
               raise SystemExit("FAIL: unverified visitor received private tutor dashboard")
