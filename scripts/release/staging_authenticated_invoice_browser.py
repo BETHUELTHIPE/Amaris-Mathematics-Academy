@@ -21,28 +21,41 @@ EMAIL = os.environ.get("STAGING_TEST_STUDENT_EMAIL", "")
 PASSWORD = os.environ.get("STAGING_TEST_STUDENT_PASSWORD", "")
 BOOKING = os.environ.get("STAGING_TEST_BOOKING_REFERENCE", "")
 
-if not EMAIL or not PASSWORD or not BOOKING:
-    raise SystemExit(
-        "BLOCK: staging verified-student email, password and genuine paid booking reference "
-        "must all exist as protected staging secrets; no fake session is permitted."
-    )
-if not URL.startswith("https://") or not BOOKING.replace("_", "").replace("-", "").isalnum():
-    raise SystemExit("BLOCK: invalid staging URL or booking reference.")
-
-invoice_url = f"{URL}/book-online-live-class/invoice?reference={quote(BOOKING)}"
+missing = [
+    name for name, value in (
+        ("STAGING_TEST_STUDENT_EMAIL", EMAIL),
+        ("STAGING_TEST_STUDENT_PASSWORD", PASSWORD),
+        ("STAGING_TEST_BOOKING_REFERENCE", BOOKING),
+    ) if not value
+]
+if not URL.startswith("https://"):
+    raise SystemExit("BLOCK: invalid staging URL")
+anonymous_invoice_url = (
+    f"{URL}/book-online-live-class/invoice?reference="
+    f"{quote(BOOKING or 'LCB-anonymous-security-probe')}"
+)
 
 with sync_playwright() as playwright:
     browser = playwright.chromium.launch(headless=True)
     try:
         # The unauthenticated browser must not receive invoice PDF bytes.
         anonymous = browser.new_context(accept_downloads=True)
-        anon_response = anonymous.request.get(invoice_url, max_redirects=0, timeout=30000)
+        anon_response = anonymous.request.get(anonymous_invoice_url, max_redirects=0, timeout=30000)
         if anon_response.status not in (302, 303, 307, 308, 401, 403, 404):
             raise AssertionError("BLOCK: unauthenticated invoice URL did not deny access")
         if "application/pdf" in (anon_response.headers.get("content-type") or "").lower():
             raise AssertionError("BLOCK: an anonymous browser received an invoice")
         print("PASS: Anonymous browser cannot download private invoice")
         anonymous.close()
+
+        if missing:
+            raise SystemExit(
+                "BLOCK: protected staging QA secrets absent: " + ", ".join(missing)
+                + ". No authenticated download was attempted."
+            )
+        if not BOOKING.replace("_", "").replace("-", "").isalnum():
+            raise SystemExit("BLOCK: invalid staging booking reference")
+        invoice_url = f"{URL}/book-online-live-class/invoice?reference={quote(BOOKING)}"
 
         # Only a genuine, confirmed staging account may supply the browser cookie.
         context = browser.new_context(accept_downloads=True)
