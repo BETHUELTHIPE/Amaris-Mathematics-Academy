@@ -1,0 +1,31 @@
+name: Staging Authenticated Invoice Browser Acceptance
+on:
+  push:
+    branches: ["qa/staging-invoice-authenticated-browser-20261028"]
+    paths:
+      - "scripts/release/staging_authenticated_invoice_browser.py"
+      - ".github/workflows/staging-authenticated-invoice-browser.yml"
+permissions:
+  contents: read
+jobs:
+  invoice-download:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment: staging
+    env:
+      STAGING_STUDENT_URL: https://amaris-mathematics-academy-staging-x4ax.onrender.com
+      STAGING_TEST_STUDENT_EMAIL: ${{ secrets.STAGING_TEST_STUDENT_EMAIL }}
+      STAGING_TEST_STUDENT_PASSWORD: ${{ secrets.STAGING_TEST_STUDENT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pinned Chromium browser
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Check acceptance script syntax
+        run: python -m py_compile scripts/release/staging_authenticated_invoice_browser.py
+      - name: Real verified student browser invoice download
+        run: python scripts/release/staging_authenticated_invoice_browser.py
