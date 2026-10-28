@@ -76,5 +76,6 @@ test("protected checkout wraps references and retains POST redirect to PayFast",
   assert.match(page, /PayFastHostedCheckout/);
   assert.match(page, /break-all font-mono/);
   assert.match(page, /\[overflow-wrap:anywhere\]/);
-  assert.match(page, /min-h-12 w-full/);
+  const form = await source("../components/site/payfast-hosted-checkout.tsx");
+  assert.match(form, /min-h-12 w-full/);
 });
