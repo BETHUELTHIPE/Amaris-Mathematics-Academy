@@ -9,9 +9,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, urljoin, urlsplit
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 URL = os.environ.get(
     "STAGING_STUDENT_URL",
@@ -56,7 +56,20 @@ with sync_playwright() as playwright:
         page.locator('form:has(button:has-text("Log in securely")) input[name="email"]').fill(EMAIL)
         page.locator('form:has(button:has-text("Log in securely")) input[name="password"]').fill(PASSWORD)
         page.get_by_role("button", name="Log in securely").click()
-        page.wait_for_url("**/dashboard**", timeout=45000)
+        try:
+            page.wait_for_url("**/dashboard**", wait_until="domcontentloaded", timeout=45000)
+        except PlaywrightTimeoutError:
+            current = urlsplit(page.url)
+            if current.path.rstrip("/") == "/login" and "error" in parse_qs(current.query):
+                raise SystemExit(
+                    "BLOCK: staging rejected the protected QA login. Verify the staging "
+                    "account and update its protected environment credentials. "
+                    "No authenticated invoice download was attempted."
+                ) from None
+            raise SystemExit(
+                "BLOCK: staging login did not reach the student dashboard. "
+                "No authenticated invoice download was attempted."
+            ) from None
         auth_state = context.request.get(f"{URL}/api/auth-state", timeout=30000)
         if auth_state.status != 200:
             raise AssertionError("BLOCK: authenticated student state unavailable")
@@ -70,7 +83,7 @@ with sync_playwright() as playwright:
         page.goto(f"{URL}/dashboard/orders", wait_until="domcontentloaded", timeout=60000)
         owned_invoice = page.locator(
             'a[href^="/book-online-live-class/invoice?reference="]'
-        ).first()
+        ).first
         link = owned_invoice
         try:
             link.wait_for(state="visible", timeout=20000)
@@ -107,5 +120,11 @@ with sync_playwright() as playwright:
         print("PASS: Verified staging student downloaded real archived PDF in Chromium")
         print("No credentials, session cookies, student details or PDF bytes were logged")
         context.close()
+    except PlaywrightError:
+        # Browser errors may include private URLs or entered form values.
+        raise SystemExit(
+            "BLOCK: browser acceptance could not complete. "
+            "Browser details suppressed to protect student data."
+        ) from None
     finally:
         browser.close()
