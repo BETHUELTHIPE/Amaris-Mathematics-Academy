@@ -152,7 +152,7 @@ test("application date and duration selection validates future SAST schedules", 
   assert.equal(good.ok, true);
   assert.match(good.summary, /South African Standard Time/);
   assert.deepEqual(good.slots.map(s => s.durationHours), [2, 3]);
-  form.set("availability_start", "2027-01-12T17:00");
+  form.set("availability_start", "2026-10-27T17:00");
   assert.equal(validateTutorAvailability(form).ok, false);
   form.set("availability_start", "2027-01-12T16:00");
   form.set("availability_duration_hours", "25");
