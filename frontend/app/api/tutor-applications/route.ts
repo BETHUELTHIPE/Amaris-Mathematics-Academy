@@ -2,6 +2,7 @@ import { parseLocation } from "@/lib/location-server";
 import { countryName } from "@/lib/location-data";
 import { NextResponse } from "next/server";
 import { applicantToken, applicationRequest, ApplicationError } from "@/lib/tutor-applications";
+import { validateTutorAvailability } from "@/lib/tutor-availability";
 
 export const dynamic = "force-dynamic";
 const privateHeaders = { "Cache-Control": "private, no-store" };
@@ -49,6 +50,12 @@ export async function POST(request: Request): Promise<Response> {
       if (!location.value) return result(Object.fromEntries(Object.entries(location.errors).map(([field, message]) => [field, [message]])), 400);
       // Keep the summary readable for older API releases during an ordered rollout.
       data.set("location", [location.value.city, location.value.province, countryName(location.value.country)].join(", ").slice(0, 120));
+      // Derive the stored schedule from validated date/time controls, never from client text.
+      const availability = validateTutorAvailability(data);
+      if (!availability.ok) return result({ availability: [availability.error] }, 400);
+      data.set("availability", availability.summary);
+      data.delete("availability_start");
+      data.delete("availability_duration_hours");
     }
     const response = await applicationRequest(data.get("_action") === "retry-email" ? "acknowledgement/" : "", { method: "POST", body: data }, token);
     const body = await response.json().catch(() => ({ detail: "Applications are temporarily unavailable. Please retry." }));
