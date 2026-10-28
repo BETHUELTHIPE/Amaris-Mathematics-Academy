@@ -1,0 +1,207 @@
+name: Interactive Hosted PayFast Checkout Acceptance
+on:
+  push:
+    branches: [fix/interactive-payfast-hosted-checkout-20261028]
+    paths:
+      - "frontend/app/checkout/**"
+      - "frontend/app/book-online-live-class/checkout/**"
+      - "frontend/components/site/payfast-hosted-checkout.tsx"
+      - "frontend/components/site/video-request-form.tsx"
+      - "frontend/lib/payfast-hosted-checkout.ts"
+      - "frontend/tests/payfast-hosted-checkout.test.mjs"
+      - "frontend/tests/live-class-booking-contract.test.mjs"
+      - "frontend/tests/video-request-contract.test.mjs"
+      - "scripts/release/hosted_checkout_browser_matrix.py"
+      - ".github/workflows/interactive-hosted-payfast-checkout.yml"
+permissions:
+  contents: read
+jobs:
+  frontend-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install exact frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Build required server bundle for checkout security-header tests
+        working-directory: frontend
+        run: npm run build
+      - name: Verify types and interactive checkout regression
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          node --test tests/payfast-hosted-checkout.test.mjs tests/live-class-booking-contract.test.mjs tests/video-request-contract.test.mjs
+  actual-sandbox-hosted-browser:
+    name: Real browser POST to official PayFast sandbox (NO payment made)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: staging
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: amaris_hosted_ci
+          POSTGRES_DB: amaris_hosted_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U amaris_hosted_ci -d amaris_hosted_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_SECRET_KEY: "synthetic-hosted-sandbox-browser-acceptance-only"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      DATABASE_URL: "postgresql://amaris_hosted_ci@127.0.0.1:5432/amaris_hosted_ci"
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      SUPABASE_STORAGE_ENABLED: "false"
+      SUPABASE_S3_REQUIRED: "false"
+      PAYFAST_MODE: "sandbox"
+      PAYFAST_ENV: "sandbox"
+      PAYFAST_NOTIFY_URL: "https://isolated-sandbox.invalid/api/v1/payfast/itn/"
+      PUBLIC_SITE_URL: "https://isolated-sandbox.invalid"
+      PUBLIC_API_URL: "https://isolated-sandbox.invalid"
+      PAYFAST_MERCHANT_ID: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_ID }}
+      PAYFAST_MERCHANT_KEY: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_KEY }}
+      PAYFAST_PASSPHRASE: ${{ secrets.PAYFAST_SANDBOX_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check out the actual deployed Django payment implementation
+        uses: actions/checkout@v4
+        with:
+          ref: production-release-20260923
+          path: backend-release
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend-release/backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Refuse production credentials, data and payment environment
+        run: |
+          set -euo pipefail
+          test "$PAYFAST_MODE" = "sandbox"
+          test "$PAYFAST_ENV" = "sandbox"
+          test "$SUPABASE_DATABASE_REQUIRED" = "false"
+          test "$DATABASE_URL" = "postgresql://amaris_hosted_ci@127.0.0.1:5432/amaris_hosted_ci"
+          test -n "$PAYFAST_MERCHANT_ID"
+          test -n "$PAYFAST_MERCHANT_KEY"
+          test -n "$PAYFAST_PASSPHRASE"
+          echo "PASS: isolated sandbox database and gateway selected"
+      - name: Install isolated Django and Playwright
+        run: |
+          python -m pip install -r backend-release/backend/requirements.txt
+          mkdir -p /tmp/payfast-playwright
+          cd /tmp/payfast-playwright
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-save playwright@1.56.1 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Create eight genuine signed Django checkout payloads (never charge)
+        run: |
+          cd backend-release/backend
+          python manage.py migrate --noinput
+          python manage.py check
+          python manage.py shell -c 'exec(open("../../scripts/release/hosted_checkout_browser_matrix.py").read())'
+      - name: Click native browser POST and verify hosted PayFast screen
+        run: |
+          cd /tmp/payfast-playwright
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import {chromium} from 'playwright';
+          const checkouts=JSON.parse(fs.readFileSync('/tmp/amaris-hosted-checkouts.json','utf8'));
+          assert.equal(checkouts.length,8);
+          const kinds=['course_950','live_class_3h','video_chapter_topic'];
+          const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+          const escape=v=>String(v).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
+          try {
+            for(const kind of kinds) {
+              const item=checkouts.find(x=>x.kind===kind);
+              assert.ok(item,'Missing real Django sandbox checkout: '+kind);
+              assert.equal(item.url,'https://sandbox.payfast.co.za/eng/process');
+              assert.match(item.fields.signature,/^[0-9a-f]{32}$/i);
+              const page=await browser.newPage();
+              try {
+                let posted=false;
+                page.on('request',request=>{
+                  if(request.url()===item.url && request.method()==='POST') posted=true;
+                });
+                const fields=Object.entries(item.fields).map(([k,v])=>'<input type="hidden" name="'+escape(k)+'" value="'+escape(v)+'">').join('');
+                await page.setContent('<form method="post" action="'+item.url+'">'+fields+'<button id="pay">Continue to PayFast</button></form>');
+                await page.locator('#pay').click();
+                await page.waitForURL(url=>url.hostname==='sandbox.payfast.co.za',{timeout:45000});
+                assert.equal(posted,true,'Native browser POST did not occur');
+                await page.getByText('Complete Payment',{exact:true}).waitFor({timeout:35000});
+                console.log('PASS real PayFast hosted checkout screen: '+kind+' (no charge made)');
+              } finally {await page.close();}
+            }
+          } finally {await browser.close();}
+          NODE
+
+  invoice-letterhead-archive-contract:
+    name: Approved invoice letterhead, private PDF and email contract (isolated)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: amaris_invoice_ci
+          POSTGRES_DB: amaris_invoice_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U amaris_invoice_ci -d amaris_invoice_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://amaris_invoice_ci@127.0.0.1:5432/amaris_invoice_ci"
+      DJANGO_SECRET_KEY: "isolated-letterhead-contract-no-live-credentials"
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      SUPABASE_STORAGE_ENABLED: "false"
+      SUPABASE_S3_REQUIRED: "false"
+      PAYFAST_MODE: "sandbox"
+      PAYFAST_ENV: "sandbox"
+      EMAIL_BACKEND: "django.core.mail.backends.locmem.EmailBackend"
+      DEFAULT_FROM_EMAIL: "Amaris CI <test@example.invalid>"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: production-release-20260923
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Ensure isolated data and in-memory email only
+        run: |
+          set -euo pipefail
+          test "$SUPABASE_DATABASE_REQUIRED" = "false"
+          test "$DATABASE_URL" = "postgresql://amaris_invoice_ci@127.0.0.1:5432/amaris_invoice_ci"
+          test "$PAYFAST_MODE" = "sandbox"
+          test "$EMAIL_BACKEND" = "django.core.mail.backends.locmem.EmailBackend"
+      - name: Verify Django approved letterhead, invoice archive, booking and notifications
+        working-directory: backend
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python manage.py test -v 1 content.test_invoice_letterhead content.test_invoice_archive content.test_live_classes content.test_video_requests content.test_payments content.test_payfast_security
