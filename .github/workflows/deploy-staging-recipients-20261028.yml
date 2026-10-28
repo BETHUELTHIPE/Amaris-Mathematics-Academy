@@ -1,0 +1,116 @@
+name: Deploy verified staging recipient fix
+on:
+  push:
+    branches: ["ops/deploy-staging-recipients-20261028"]
+    paths: [".github/workflows/deploy-staging-recipients-20261028.yml"]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: amaris-staging-backend-recipient-release
+  cancel-in-progress: false
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: staging
+    env:
+      RENDER_TOKEN: ${{ secrets.RENDER_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: 44e800ccc4ad4c0f88f5c6f7dde72907b06da19c
+    steps:
+      - name: Verify exact successful backend acceptance
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          base = "https://api.github.com/repos/BETHUELTHIPE/Amaris-Mathematics-Academy/actions/runs/40779510566"
+          headers = {"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"}
+          with urlopen(Request(base, headers=headers), timeout=30) as response:
+              run = json.load(response)
+          if (
+              run.get("head_sha") != os.environ["TARGET_SHA"]
+              or run.get("conclusion") != "success"
+              or run.get("status") != "completed"
+          ):
+              raise SystemExit("BLOCK: exact staging source does not have successful acceptance")
+          with urlopen(Request(base + "/jobs?per_page=100", headers=headers), timeout=30) as response:
+              jobs = json.load(response)["jobs"]
+          required = {"backend-regression", "runtime-preflight"}
+          passed = {job["name"] for job in jobs if job.get("conclusion") == "success"}
+          if not required <= passed:
+              raise SystemExit("BLOCK: required regression and runtime preflight jobs did not pass")
+          print("PASS: exact source passed full Django regression and isolated runtime preflight")
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: 44e800ccc4ad4c0f88f5c6f7dde72907b06da19c
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.15"
+      - name: Install read-only database verifier
+        run: python -m pip install "psycopg[binary]==3.2.10"
+      - name: Revalidate actual staging baseline, isolation and recipient destinations
+        run: python scripts/release/staging_recipient_preflight.py
+      - name: Deploy exact revision to the existing staging backend and verify readiness
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          service = "srv-dam2iivcgkoc7383tq50"
+          target = os.environ["TARGET_SHA"]
+          api = f"https://api.render.com/v1/services/{service}/deploys"
+          headers = {
+              "Authorization": "Bearer " + os.environ["RENDER_TOKEN"],
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+          }
+          body = json.dumps({"commitId": target, "clearCache": "do_not_clear"}).encode()
+          try:
+              with urlopen(Request(api, headers=headers, data=body, method="POST"), timeout=30) as response:
+                  deployment = json.load(response)
+                  if response.status != 201:
+                      raise SystemExit("BLOCK: unexpected staging deployment response")
+          except (HTTPError, URLError, OSError, ValueError):
+              raise SystemExit("BLOCK: staging deployment submission not confirmed; inspect Render before retrying") from None
+          deploy_id = deployment.get("id")
+          if not deploy_id or deployment.get("commit", {}).get("id") != target:
+              raise SystemExit("BLOCK: Render did not accept the exact staging revision")
+          print("STAGING_DEPLOY_ID=" + deploy_id, flush=True)
+          last_status = None
+          for _ in range(90):
+              try:
+                  with urlopen(Request(api + "/" + deploy_id, headers=headers), timeout=30) as response:
+                      current = json.load(response)
+              except (HTTPError, URLError, OSError, ValueError):
+                  time.sleep(5)
+                  continue
+              status = current.get("status")
+              if status != last_status:
+                  print("STAGING_DEPLOY_STATUS=" + str(status), flush=True)
+                  last_status = status
+              if status == "live":
+                  if current.get("commit", {}).get("id") != target:
+                      raise SystemExit("BLOCK: live staging source does not match accepted revision")
+                  try:
+                      with urlopen("https://amaris-mathematics-academy-staging.onrender.com/health/ready/", timeout=30) as response:
+                          if response.status != 200:
+                              raise SystemExit("BLOCK: staging readiness probe did not pass")
+                  except (HTTPError, URLError, OSError):
+                      raise SystemExit("BLOCK: staging readiness could not be verified") from None
+                  print("PASS: exact staging revision is live and readiness returned HTTP 200", flush=True)
+                  print("SOURCE_SHA=" + target, flush=True)
+                  break
+              if status in {"build_failed", "pre_deploy_failed", "update_failed", "canceled", "deactivated"}:
+                  raise SystemExit("BLOCK: staging deployment reached terminal state " + str(status))
+              time.sleep(5)
+          else:
+              raise SystemExit("BLOCK: exact staging revision did not become live within the verification window")
+          PY
