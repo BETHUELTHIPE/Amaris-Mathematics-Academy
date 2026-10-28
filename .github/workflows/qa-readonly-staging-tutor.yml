@@ -54,3 +54,67 @@ jobs:
               raise SystemExit(f"FAIL: Unexpected tutor dashboard HTTP {code}")
           print("PASS anonymous frontend tutor dashboard has no private timetable or earnings")
           PY
+
+  authenticated-staging-approved-tutor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: staging
+    env:
+      STAGING_TEST_TUTOR_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
+      STAGING_TEST_TUTOR_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
+      STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - name: Read-only login and approved tutor dashboard, timetable and earnings
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          if os.getenv("GITHUB_REPOSITORY") != "BETHUELTHIPE/Amaris-Mathematics-Academy" or os.getenv("GITHUB_REF") != "refs/heads/qa/staging-tutor-authorization-20261028":
+              raise SystemExit("BLOCK: Unexpected QA workflow repository or branch")
+          email=os.getenv("STAGING_TEST_TUTOR_EMAIL","").strip().lower()
+          password=os.getenv("STAGING_TEST_TUTOR_PASSWORD","")
+          key=os.getenv("STAGING_SUPABASE_PUBLISHABLE_KEY","")
+          if not email or not password or not key or "@" not in email:
+              raise SystemExit("BLOCK: Approved staging tutor test credentials missing")
+          auth_url="https://atyhhjwwxgzeurnwayay.supabase.co/auth/v1/token?grant_type=password"
+          stage_backend="https://amaris-mathematics-academy-staging.onrender.com/api/v1"
+          def request(url,method="GET",payload=None,access=None):
+              headers={"Accept":"application/json","User-Agent":"AmarisStagingTutorReadOnlyAcceptance/20261028"}
+              if url==auth_url:
+                  headers.update({"apikey":key,"Content-Type":"application/json"})
+              if access: headers["Authorization"]="Bearer "+access
+              data=json.dumps(payload).encode() if payload is not None else None
+              try:
+                  with urlopen(Request(url,data=data,method=method,headers=headers),timeout=50) as response:
+                      status=response.status
+                      body=response.read(400000)
+              except HTTPError as err:
+                  status=err.code
+                  body=b""
+              except (URLError,TimeoutError):
+                  raise SystemExit("BLOCK: staging Auth or Django API unreachable")
+              try: result=json.loads(body) if body else {}
+              except ValueError: raise SystemExit("BLOCK: invalid API response")
+              return status,result
+          code,login=request(auth_url,"POST",{"email":email,"password":password})
+          if code!=200 or not isinstance(login,dict):
+              raise SystemExit(f"BLOCK: genuine staging tutor sign-in rejected HTTP {code}")
+          user=login.get("user") or {}
+          token=login.get("access_token")
+          if not token or str(user.get("email","")).lower()!=email or not user.get("email_confirmed_at"):
+              raise SystemExit("BLOCK: test tutor identity is not email-verified or session token is absent")
+          print("PASS: genuine staging Supabase approved QA tutor signed in, confirmed email")
+          code,dash=request(stage_backend+"/tutor/dashboard/",access=token)
+          if code!=200 or not isinstance(dash,dict) or not isinstance(dash.get("slots"),list) or not isinstance(dash.get("bookings"),list):
+              raise SystemExit(f"BLOCK: approved staging tutor dashboard HTTP {code} or missing owned rows")
+          print("PASS: authenticated staging Django tutor dashboard read, slot and booking collections exist")
+          code,earn=request(stage_backend+"/tutor/earnings/",access=token)
+          if code!=200 or not isinstance(earn,dict) or "categories" not in earn:
+              raise SystemExit(f"BLOCK: authenticated tutor earnings HTTP {code} or contract invalid")
+          print("PASS: private staging tutor earnings API returned expected structure")
+          code,slots=request(stage_backend+"/tutor/slots/",access=token)
+          if code!=200:
+              raise SystemExit(f"BLOCK: owned tutor slot listing HTTP {code}")
+          print("PASS: approved tutor can read owned timetable; all operations were GET-only")
+          PY
