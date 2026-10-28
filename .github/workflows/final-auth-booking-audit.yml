@@ -47,9 +47,9 @@ jobs:
                       req=urllib.request.Request(url,headers={"User-Agent":"AmarisReadOnlySecurityAcceptance/1.0","Accept":"text/html,application/json"})
                       try:
                           with opener.open(req,timeout=35) as response:
-                              status,headers,body=response.status,dict(response.headers),response.read(150000)
+                              status,headers,body=response.status,{k.lower():v for k,v in response.headers.items()},response.read(150000)
                       except urllib.error.HTTPError as error:
-                          status,headers,body=error.code,dict(error.headers),error.read(120000)
+                          status,headers,body=error.code,{k.lower():v for k,v in error.headers.items()},error.read(120000)
                       if status in (502,503,504) and attempt<3:
                           time.sleep(8)
                           continue
@@ -60,7 +60,7 @@ jobs:
           for label,base in origins.items():
               for path in ["/book-online-live-class","/book-online-live-class?programme=caps&subject=mathematics"]:
                   code,headers,_=get(base+path)
-                  dest=headers.get("Location","")
+                  dest=headers.get("location","")
                   parsed=urlparse(urljoin(base,dest))
                   saved=parse_qs(parsed.query).get("next",[""])[0]
                   print(f"OBSERVED: {label} anonymous booking HTTP {code}; redirect_path={parsed.path}; same_host={parsed.netloc==urlparse(base).netloc}; return_path={saved}",flush=True)
@@ -81,7 +81,7 @@ jobs:
               if code !=200: raise SystemExit(f"FAIL: {label} six-digit recovery code page HTTP {code}")
               print(f"PASS: {label} recovery code entry page served")
               code,headers,_=get(base+"/reset-password")
-              if code not in (301,302,303,307,308) or urlparse(urljoin(base,headers.get("Location",""))).path!="/forgot-password":
+              if code not in (301,302,303,307,308) or urlparse(urljoin(base,headers.get("location",""))).path!="/forgot-password":
                   raise SystemExit(f"FAIL: {label} reset form accessible without proof HTTP {code}")
               print(f"PASS: {label} password reset form rejects unauthenticated guest")
           print("PASS: Read-only browser-visible GET checks complete. No booking, email, reset or payment was initiated.")
