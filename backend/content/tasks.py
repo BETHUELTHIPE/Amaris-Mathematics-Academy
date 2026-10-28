@@ -310,7 +310,9 @@ def _deliver_one_live_class_confirmation() -> bool:
                 lines = operations_lines
 
             if not recipient:
-                raise OSError(f"Missing {role} email address for verified booking.")
+                if failed_delivery is None:
+                    failed_delivery = OSError(f"Missing {role} email address for verified booking.")
+                continue
             try:
                 _send_live_class_message(
                     booking,
