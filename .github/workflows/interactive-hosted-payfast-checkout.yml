@@ -30,6 +30,9 @@ jobs:
       - name: Install exact frontend dependencies
         working-directory: frontend
         run: npm ci --include=dev
+      - name: Build required server bundle for checkout security-header tests
+        working-directory: frontend
+        run: npm run build
       - name: Verify types and interactive checkout regression
         working-directory: frontend
         run: |
