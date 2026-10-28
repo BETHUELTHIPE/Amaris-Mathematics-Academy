@@ -1,0 +1,1 @@
+Perform read-only SMTP connect, EHLO, STARTTLS and authentication diagnostics on staging (no message sent). Production unchanged.
