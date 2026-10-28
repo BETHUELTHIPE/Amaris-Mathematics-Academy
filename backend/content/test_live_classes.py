@@ -241,6 +241,7 @@ class MockPayFastGateway:
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     DEFAULT_FROM_EMAIL="Amaris Mathematics Academy <noreply@example.test>",
+    BOOKING_ADMIN_EMAIL="booking.admin@example.test",
 )
 class LiveClassBookingTests(TestCase):
     def setUp(self):
@@ -350,7 +351,13 @@ class LiveClassBookingTests(TestCase):
         self.assertEqual(len(mail.outbox), 0)
 
         self.assertEqual(deliver_live_class_confirmation.run(), 1)
-        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(len(mail.outbox), 3)
+        self.assertEqual(
+            [message.to for message in mail.outbox],
+            [[self.student.email], [self.tutor.email], ["booking.admin@example.test"]],
+        )
+        self.assertTrue(all(message.attachments[0][2] == "application/pdf" for message in mail.outbox))
+        self.assertTrue(all(message.attachments[0][1].startswith(b"%PDF-") for message in mail.outbox))
         self.assertIn(booking.invoice_number, mail.outbox[0].body)
         self.assertEqual(mail.outbox[0].attachments[0][2], "application/pdf")
 
@@ -359,8 +366,8 @@ class LiveClassBookingTests(TestCase):
             return_value=self.slot.starts_at - timedelta(minutes=29),
         ):
             self.assertEqual(deliver_live_class_reminder.run(), 1)
-        self.assertEqual(len(mail.outbox), 2)
-        self.assertIn(self.slot.zoom_join_url, mail.outbox[1].body)
+        self.assertEqual(len(mail.outbox), 4)
+        self.assertIn(self.slot.zoom_join_url, mail.outbox[-1].body)
         self.assertEqual(deliver_live_class_reminder.run(), 0)
 
     def test_checkout_is_server_priced_at_r250_and_holds_slot(self):
@@ -515,28 +522,207 @@ class LiveClassBookingTests(TestCase):
     def test_confirmation_email_contains_zoom_details_and_invoice_attachment(self):
         checkout = self.checkout()
         booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+
+        self.assertEqual(deliver_live_class_confirmation.run(), 1)
+        booking.refresh_from_db()
+        self.assertIsNotNone(booking.confirmation_sent_at)
+        self.assertIsNotNone(booking.tutor_confirmation_sent_at)
+        self.assertIsNotNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(
+            [email.to for email in mail.outbox],
+            [[self.student.email], [self.tutor.email], ["booking.admin@example.test"]],
+        )
+        self.assertIn("confirmed", mail.outbox[0].subject.lower())
+        for email in mail.outbox:
+            self.assertIn("MATHEMATICS · LEARNING · PROGRESS", email.alternatives[0][0])
+            self.assertIn(self.slot.zoom_join_url, email.body)
+            self.assertIn(booking.invoice_number, email.body)
+            self.assertEqual(len(email.attachments), 1)
+            filename, pdf, mime = email.attachments[0]
+            self.assertEqual(filename, f"{booking.invoice_number}.pdf")
+            self.assertEqual(mime, "application/pdf")
+            self.assertTrue(pdf.startswith(b"%PDF-"))
+        self.assertIn(self.student.email, mail.outbox[1].body)
+        self.assertIn(self.student.email, mail.outbox[2].body)
+        self.assertEqual(mail.outbox[0].attachments[0][1], mail.outbox[1].attachments[0][1])
+        self.assertEqual(mail.outbox[1].attachments[0][1], mail.outbox[2].attachments[0][1])
+
+        self.assertEqual(deliver_live_class_confirmation.run(), 0)
+        self.assertEqual(len(mail.outbox), 3)
+
+    def test_notification_retry_does_not_resend_already_accepted_student_email(self):
+        checkout = self.checkout(key="three-recipient-retry-001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+
+        from content.tasks import _send_live_class_message
+
+        def fail_tutor_once(*args, **kwargs):
+            if kwargs.get("to_email") == self.tutor.email:
+                raise OSError("Simulated tutor SMTP outage")
+            return _send_live_class_message(*args, **kwargs)
+
+        with mock.patch("content.tasks._send_live_class_message", side_effect=fail_tutor_once):
+            with self.assertRaisesRegex(OSError, "Simulated tutor SMTP outage"):
+                deliver_live_class_confirmation.run()
+        booking.refresh_from_db()
+        self.assertIsNotNone(booking.confirmation_sent_at)
+        self.assertIsNone(booking.tutor_confirmation_sent_at)
+        # A bad tutor mailbox must not starve the Django administrator.
+        self.assertIsNotNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(
+            [msg.to for msg in mail.outbox],
+            [[self.student.email], ["booking.admin@example.test"]],
+        )
+
+        self.assertEqual(deliver_live_class_confirmation.run(), 1)
+        booking.refresh_from_db()
+        self.assertIsNotNone(booking.tutor_confirmation_sent_at)
+        self.assertIsNotNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(
+            [msg.to for msg in mail.outbox],
+            [[self.student.email], ["booking.admin@example.test"], [self.tutor.email]],
+        )
+        self.assertEqual(deliver_live_class_confirmation.run(), 0)
+
+    def test_admin_smtp_outage_does_not_resend_student_or_tutor(self):
+        checkout = self.checkout(key="three-recipient-admin-retry-001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+
+        from content.tasks import _send_live_class_message
+
+        def fail_admin(*args, **kwargs):
+            if kwargs.get("to_email") == "booking.admin@example.test":
+                raise OSError("Simulated admin SMTP outage")
+            return _send_live_class_message(*args, **kwargs)
+
+        with mock.patch("content.tasks._send_live_class_message", side_effect=fail_admin):
+            with self.assertRaisesRegex(OSError, "Simulated admin SMTP outage"):
+                deliver_live_class_confirmation.run()
+        booking.refresh_from_db()
+        self.assertIsNotNone(booking.confirmation_sent_at)
+        self.assertIsNotNone(booking.tutor_confirmation_sent_at)
+        self.assertIsNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(
+            [msg.to for msg in mail.outbox],
+            [[self.student.email], [self.tutor.email]],
+        )
+
+        self.assertEqual(deliver_live_class_confirmation.run(), 1)
+        booking.refresh_from_db()
+        self.assertIsNotNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(
+            [msg.to for msg in mail.outbox],
+            [[self.student.email], [self.tutor.email], ["booking.admin@example.test"]],
+        )
+        self.assertEqual(deliver_live_class_confirmation.run(), 0)
+
+    def test_unverified_booking_never_sends_email(self):
+        checkout = self.checkout(key="never-email-unverified-001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        LiveClassBooking.objects.filter(pk=booking.pk).update(
+            status=LiveClassBooking.Status.CONFIRMED,
+            invoice_number="INV-LIVE-UNVERIFIED-TEST",
+        )
+        self.assertEqual(deliver_live_class_confirmation.run(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_verified_callback_without_paid_timestamp_never_sends_confirmation(self):
+        checkout = self.checkout(key="never-email-unpaid-001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        LiveClassBooking.objects.filter(pk=booking.pk).update(
+            status=LiveClassBooking.Status.CONFIRMED,
+            gateway_verified_at=timezone.now(),
+            invoice_number="INV-LIVE-NOT-PAID-TEST",
+        )
+        self.assertEqual(deliver_live_class_confirmation.run(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_missing_tutor_address_does_not_block_admin_or_replay_student(self):
+        checkout = self.checkout(key="missing-tutor-address-001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+        self.tutor.email = ""
+        self.tutor.save(update_fields=("email",))
+
+        with self.assertRaisesRegex(OSError, "Missing tutor email address"):
+            deliver_live_class_confirmation.run()
+        booking.refresh_from_db()
+        self.assertIsNotNone(booking.confirmation_sent_at)
+        self.assertIsNone(booking.tutor_confirmation_sent_at)
+        self.assertIsNotNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(
+            [message.to for message in mail.outbox],
+            [[self.student.email], ["booking.admin@example.test"]],
+        )
+        self.tutor.email = "restored.tutor@example.test"
+        self.tutor.save(update_fields=("email",))
+        self.assertEqual(deliver_live_class_confirmation.run(), 1)
+        self.assertEqual(mail.outbox[-1].to, [self.tutor.email])
+        self.assertEqual(len(mail.outbox), 3)
+
+    def test_failing_tutor_does_not_starve_another_verified_booking(self):
+        first_checkout = self.checkout(key="batch-recipient-first-001")
+        first = LiveClassBooking.objects.get(reference=first_checkout.booking_reference)
+        process_live_class_notification(self.callback(first), gateway=MockPayFastGateway(True))
+        second_tutor = get_user_model().objects.create_user(
+            username="batch.second.tutor",
+            email="second.tutor@example.test",
+        )
+        second_slot = TutorAvailabilitySlot.objects.create(
+            tutor=second_tutor,
+            programme=self.slot.programme,
+            subject=self.slot.subject,
+            level=self.slot.level,
+            starts_at=self.slot.starts_at + timedelta(days=1),
+            ends_at=self.slot.ends_at + timedelta(days=1),
+            zoom_join_url="https://zoom.example.test/j/987654321",
+            is_active=True,
+        )
+        second_checkout = create_live_class_checkout(
+            student=self.other_student,
+            slot=second_slot,
+            topic="Sequences and series",
+            idempotency_key="batch-recipient-second-001",
+        )
+        second = LiveClassBooking.objects.get(reference=second_checkout.booking_reference)
         process_live_class_notification(
-            self.callback(booking),
+            self.callback(second, pf_payment_id="PF-LIVE-BATCH-SECOND"),
             gateway=MockPayFastGateway(True),
         )
 
-        delivered = deliver_live_class_confirmation.run()
+        from content.tasks import _send_live_class_message
 
-        self.assertEqual(delivered, 1)
-        booking.refresh_from_db()
-        self.assertIsNotNone(booking.confirmation_sent_at)
-        self.assertEqual(len(mail.outbox), 1)
-        message = mail.outbox[0]
-        self.assertEqual(message.to, [self.student.email])
-        self.assertIn("confirmed", message.subject.lower())
-        self.assertIn(self.slot.zoom_join_url, message.body)
-        self.assertIn(booking.invoice_number, message.body)
-        self.assertEqual(len(message.attachments), 1)
-        self.assertEqual(message.attachments[0][2], "application/pdf")
-        self.assertTrue(message.attachments[0][1].startswith(b"%PDF"))
+        def fail_first_tutor(*args, **kwargs):
+            if kwargs.get("to_email") == self.tutor.email:
+                raise OSError("First tutor mailbox unavailable")
+            return _send_live_class_message(*args, **kwargs)
 
+        with mock.patch("content.tasks._send_live_class_message", side_effect=fail_first_tutor):
+            with self.assertRaisesRegex(OSError, "First tutor mailbox unavailable"):
+                deliver_live_class_confirmation.run()
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertIsNone(first.tutor_confirmation_sent_at)
+        self.assertIsNotNone(first.confirmation_sent_at)
+        self.assertIsNotNone(first.admin_confirmation_sent_at)
+        self.assertIsNotNone(second.confirmation_sent_at)
+        self.assertIsNotNone(second.tutor_confirmation_sent_at)
+        self.assertIsNotNone(second.admin_confirmation_sent_at)
+        self.assertEqual(len(mail.outbox), 5)
+
+        self.assertEqual(deliver_live_class_confirmation.run(), 1)
+        self.assertEqual(len(mail.outbox), 6)
+        self.assertEqual(mail.outbox[-1].to, [self.tutor.email])
         self.assertEqual(deliver_live_class_confirmation.run(), 0)
-        self.assertEqual(len(mail.outbox), 1)
+
+    def test_role_confirmation_markers_are_read_only_in_django_admin(self):
+        booking_admin = admin.site._registry[LiveClassBooking]
+        for field in ("confirmation_sent_at", "tutor_confirmation_sent_at", "admin_confirmation_sent_at"):
+            self.assertIn(field, booking_admin.readonly_fields)
+            self.assertIn(field, booking_admin.list_display)
 
     def test_invoice_archive_and_download_are_student_owned(self):
         checkout = self.checkout()

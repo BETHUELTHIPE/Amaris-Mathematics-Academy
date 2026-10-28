@@ -549,6 +549,8 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
         "status",
         "paid_at",
         "confirmation_sent_at",
+        "tutor_confirmation_sent_at",
+        "admin_confirmation_sent_at",
         "reminder_sent_at",
     )
     list_filter = ("status", "programme", "subject", "slot__starts_at")
@@ -579,6 +581,8 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
         "gateway_verified_at",
         "invoice_number",
         "confirmation_sent_at",
+        "tutor_confirmation_sent_at",
+        "admin_confirmation_sent_at",
         "reminder_sent_at",
         "created_at",
         "updated_at",
