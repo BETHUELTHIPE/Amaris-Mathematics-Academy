@@ -1,3 +1,5 @@
 Read-only staging tutor API authorization and public route audit. No tutor data or secrets.
 
 Rerun: retry staging frontend cold-start timeouts; preserve all anonymous permission checks.
+
+Run protected real staging QA tutor login and read-only API checks.
