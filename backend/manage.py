@@ -16,8 +16,7 @@ def main() -> None:
         if os.getenv("RENDER_GIT_BRANCH") not in ("staging", "ops/staging-known-good-af8709c-20261019"):
             raise SystemExit("Staging migration blocked: Render is not on the staging branch.")
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "release"))
-        from verify_staging_database_isolation import is_isolated_render_staging_dsn
-        from verify_staging_database_isolation import is_dedicated_supabase_staging_dsn
+        from verify_staging_database_isolation import is_dedicated_supabase_staging_dsn, is_isolated_render_staging_dsn
         from verify_staging_database_isolation import main as verify_staging_connection
 
         # The verifier deliberately expects its own variable; bind it to the
