@@ -9,3 +9,5 @@ Rerun real approved staging tutor authenticated dashboard and diagnose public tu
 Confirm staging UI exact heading safely without private response details.
 
 Run real Chromium rendering of public tutor routes in staging alongside protected approved QA tutor session.
+
+Final acceptance rerun: anonymous API status, public HTTP pages, Chromium content and approved QA authenticated tutor.
