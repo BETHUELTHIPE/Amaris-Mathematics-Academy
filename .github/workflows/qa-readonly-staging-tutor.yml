@@ -45,7 +45,11 @@ jobs:
           for route,needle in (("/tutor/register",b"Create your applicant account"),("/tutor/apply",b"Become an Amaris tutor"),("/tutor/login",b"Tutor")):
               status,html=check(student+route)
               matched=needle.lower() in html.lower()
-              print(f"DIAGNOSTIC: staging tutor page {route} HTTP {status}, expected heading present={matched}")
+              import re
+              headings=re.findall(rb"<h1[^>]*>(.*?)</h1>",html,re.I|re.S)
+              heading_text=" | ".join(re.sub(rb"<[^>]+>",b"",x).decode("utf-8","ignore")[:80] for x in headings[:2])
+              safe_heading="".join(ch for ch in heading_text if ch.isascii() and (ch.isalnum() or ch in " .,-"))[:120]
+              print(f"DIAGNOSTIC: staging tutor page {route} HTTP {status}, heading-present={matched}, page-h1={safe_heading!r}")
               if status!=200 or not matched:
                   raise SystemExit(f"BLOCK: staging tutor public page {route} not at expected version")
               print(f"PASS staging public tutor page {route} HTTP {status}")
