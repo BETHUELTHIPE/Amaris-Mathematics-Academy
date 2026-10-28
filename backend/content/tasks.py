@@ -436,7 +436,7 @@ def _send_video_request_message(
     html = official_letterhead_html(
         heading=heading,
         body_lines=body_lines,
-        reference=request.ticket_number,
+        reference=request.ticket_number or request.reference,
     )
     message = EmailMultiAlternatives(subject=subject, body=text, from_email=None, to=[request.student.email])
     message.attach_alternative(html, "text/html")
