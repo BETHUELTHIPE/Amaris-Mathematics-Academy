@@ -1,0 +1,45 @@
+name: Read-only Staging Tutor Access and Routing Audit
+on:
+  push:
+    branches: [qa/staging-tutor-authorization-20261028]
+    paths: ["ops/staging-tutor-readonly-audit.txt"]
+permissions:
+  contents: read
+jobs:
+  staging-tutor-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Check real staging Django private endpoints and tutor web routes
+        run: |
+          python3 - <<'PY'
+          from urllib.request import Request,urlopen,build_opener,HTTPRedirectHandler
+          from urllib.error import HTTPError,URLError
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          agent=build_opener(NoRedirect())
+          django="https://amaris-mathematics-academy-staging.onrender.com"
+          student="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
+          def check(url):
+              req=Request(url,headers={"User-Agent":"AmarisTutorSecurityAudit/20261028"})
+              try:
+                  with agent.open(req,timeout=40) as res: return res.status,res.read(100000)
+              except HTTPError as e: return e.code,b""
+              except URLError: raise SystemExit("BLOCK: staging endpoint unavailable")
+          for route in ("/api/v1/tutor/dashboard/","/api/v1/tutor/earnings/","/api/v1/tutor/slots/","/api/v1/tutor-applications/"):
+              code,_=check(django+route)
+              if code not in (401,403):
+                  raise SystemExit(f"FAIL: anonymous access boundary {route} returned HTTP {code}")
+              print(f"PASS private Django {route} anonymous rejected HTTP {code}")
+          for route,needle in (("/tutor/register",b"Create your applicant account"),("/tutor/apply",b"Become an Amaris tutor"),("/tutor/login",b"Tutor")):
+              status,html=check(student+route)
+              if status!=200 or needle.lower() not in html.lower():
+                  raise SystemExit(f"FAIL: staging tutor public page {route} unavailable or missing")
+              print(f"PASS staging public tutor page {route} HTTP {status}")
+          code,html=check(student+"/tutor/dashboard")
+          if code==200 and (b"Your teaching slots" in html or b"private tutor earnings" in html):
+              raise SystemExit("FAIL: unverified visitor received private tutor dashboard")
+          if code not in (200,302,303,307,308,401,403):
+              raise SystemExit(f"FAIL: Unexpected tutor dashboard HTTP {code}")
+          print("PASS anonymous frontend tutor dashboard has no private timetable or earnings")
+          PY
