@@ -4,6 +4,7 @@ on:
     branches: ["fix/staging-paid-tutor-admin-invoices-20261028"]
     paths:
       - "backend/content/**"
+      - "backend/manage.py"
       - "scripts/release/staging_recipient_preflight.py"
       - ".github/workflows/staging-recipient-invoice-acceptance.yml"
 permissions:
