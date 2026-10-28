@@ -1,0 +1,1 @@
+Run Django check, makemigrations dry-run and migrations in disposable CI Postgres 17 only. No production database access.
