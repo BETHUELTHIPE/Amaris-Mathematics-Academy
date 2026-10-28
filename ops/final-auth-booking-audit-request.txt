@@ -1,0 +1,1 @@
+Read-only final audit of production and staging email verification, password recovery and anonymous booking access. No payments, emails, accounts or production deployments may be created or changed.
