@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   inbox-smoke:
-    if: ${{ false }} # One-time QA delivery attempt completed; prevent duplicate sends.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/qa/staging-django-letterhead-inbox-20261028' # One authorized synthetic staging QA message only
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     env:
