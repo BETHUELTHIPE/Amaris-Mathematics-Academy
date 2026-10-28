@@ -68,6 +68,9 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [value.strip() for value in os.getenv(name, default).split(",") if value.strip()]
 
 
+# Enable after the six-file frontend is live and backend/staging acceptance passes.
+TUTOR_REQUIRE_SIX_DOCUMENTS = env_bool("TUTOR_REQUIRE_SIX_DOCUMENTS", False)
+
 DEBUG = env_bool("DJANGO_DEBUG", True)
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY and not DEBUG:

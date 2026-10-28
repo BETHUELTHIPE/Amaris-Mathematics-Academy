@@ -11,7 +11,7 @@ from .tutor_application_views import private_document_response
 
 class QualificationInline(admin.TabularInline):
     model = TutorApplicationDocument
-    fields = ("original_name", "size_bytes", "download")
+    fields = ("category", "original_name", "size_bytes", "download")
     readonly_fields = fields
     extra = 0
     can_delete = False
@@ -70,7 +70,7 @@ class TutorApplicationAdmin(admin.ModelAdmin):
 
 @admin.register(TutorApplicationDocument)
 class TutorApplicationDocumentAdmin(admin.ModelAdmin):
-    list_display = ("original_name", "application", "size_bytes")
+    list_display = ("category", "original_name", "application", "size_bytes")
     readonly_fields = tuple(field.name for field in TutorApplicationDocument._meta.fields)
 
     def has_module_permission(self, request):
