@@ -5,3 +5,5 @@ Rerun: retry staging frontend cold-start timeouts; preserve all anonymous permis
 Run protected real staging QA tutor login and read-only API checks.
 
 Rerun real approved staging tutor authenticated dashboard and diagnose public tutor route version.
+
+Confirm staging UI exact heading safely without private response details.
