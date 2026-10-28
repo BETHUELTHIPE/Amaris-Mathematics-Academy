@@ -1,0 +1,1 @@
+Read-only staging tutor API authorization and public route audit. No tutor data or secrets.
