@@ -67,5 +67,19 @@ jobs:
           deps=json.loads(body)["dependencies"]
           print("PASS: Django PostgreSQL available")
           print("Redis dependency: "+"PASS" if deps.get("redis") else "Redis dependency: DEGRADED")
-          print("ACCEPTANCE: Public HTTP, booking access protection, password reset route, and Django health checked; no bookings, email, payment, or data writes performed.")
+          for path in [
+              "/api/v1/student/courses/",
+              "/api/v1/student/orders/",
+              "/api/v1/student/notifications/",
+              "/api/v1/student/video-requests/",
+              "/api/v1/tutor/dashboard/",
+              "/api/v1/tutor/earnings/",
+              "/api/v1/tutor-applications/",
+          ]:
+              status,headers,body=check(BACK+path)
+              if status not in (401,403):
+                  raise SystemExit(f"FAIL: unauthenticated private API {path} returned HTTP {status}")
+              print(f"PASS: private API {path} rejects anonymous access, HTTP {status}")
+          print("ACCEPTANCE: Public HTTP, anonymous student booking and private Django APIs, password recovery, and service dependencies verified with read-only GETs.")
+
           PY
