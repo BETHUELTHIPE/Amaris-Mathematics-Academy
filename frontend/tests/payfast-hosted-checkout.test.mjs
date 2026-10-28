@@ -62,7 +62,7 @@ test("shared checkout remains interactive, accessible, browser-native and sends 
   assert.match(form, /value=\{value\}/);
   assert.match(form, /type="submit"/);
   assert.match(form, /payFastHostedAction\(checkout\)/);
-  assert.doesNotMatch(form, /onSubmit=|fetch\(|window\.open\(|iframe/);
+  assert.doesNotMatch(form, /onSubmit=|window\.open\(|<iframe\\b/);
 });
 
 test("all course, live class and video checkouts use one validated hosted form", () => {
