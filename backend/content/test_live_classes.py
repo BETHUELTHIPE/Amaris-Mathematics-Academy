@@ -568,12 +568,49 @@ class LiveClassBookingTests(TestCase):
         booking.refresh_from_db()
         self.assertIsNotNone(booking.confirmation_sent_at)
         self.assertIsNone(booking.tutor_confirmation_sent_at)
-        self.assertIsNone(booking.admin_confirmation_sent_at)
-        self.assertEqual([msg.to for msg in mail.outbox], [[self.student.email]])
+        # A bad tutor mailbox must not starve the Django administrator.
+        self.assertIsNotNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(
+            [msg.to for msg in mail.outbox],
+            [[self.student.email], ["booking.admin@example.test"]],
+        )
 
         self.assertEqual(deliver_live_class_confirmation.run(), 1)
         booking.refresh_from_db()
         self.assertIsNotNone(booking.tutor_confirmation_sent_at)
+        self.assertIsNotNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(
+            [msg.to for msg in mail.outbox],
+            [[self.student.email], ["booking.admin@example.test"], [self.tutor.email]],
+        )
+        self.assertEqual(deliver_live_class_confirmation.run(), 0)
+
+    def test_admin_smtp_outage_does_not_resend_student_or_tutor(self):
+        checkout = self.checkout(key="three-recipient-admin-retry-001")
+        booking = LiveClassBooking.objects.get(reference=checkout.booking_reference)
+        process_live_class_notification(self.callback(booking), gateway=MockPayFastGateway(True))
+
+        from content.tasks import _send_live_class_message
+
+        def fail_admin(*args, **kwargs):
+            if kwargs.get("to_email") == "booking.admin@example.test":
+                raise OSError("Simulated admin SMTP outage")
+            return _send_live_class_message(*args, **kwargs)
+
+        with mock.patch("content.tasks._send_live_class_message", side_effect=fail_admin):
+            with self.assertRaisesRegex(OSError, "Simulated admin SMTP outage"):
+                deliver_live_class_confirmation.run()
+        booking.refresh_from_db()
+        self.assertIsNotNone(booking.confirmation_sent_at)
+        self.assertIsNotNone(booking.tutor_confirmation_sent_at)
+        self.assertIsNone(booking.admin_confirmation_sent_at)
+        self.assertEqual(
+            [msg.to for msg in mail.outbox],
+            [[self.student.email], [self.tutor.email]],
+        )
+
+        self.assertEqual(deliver_live_class_confirmation.run(), 1)
+        booking.refresh_from_db()
         self.assertIsNotNone(booking.admin_confirmation_sent_at)
         self.assertEqual(
             [msg.to for msg in mail.outbox],
