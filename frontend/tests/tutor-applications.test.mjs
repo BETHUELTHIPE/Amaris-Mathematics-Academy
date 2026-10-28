@@ -30,6 +30,7 @@ const vite = await createServer({
 const { state } = await vite.ssrLoadModule("test:applicants");
 const actions = await vite.ssrLoadModule("/app/tutor/register/actions.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/tutor-applications/route.ts");
+const { validateTutorAvailability } = await vite.ssrLoadModule("/lib/tutor-availability.ts");
 after(() => vite.close());
 beforeEach(() => { for (const key of Object.keys(state)) delete state[key]; });
 function signup(overrides = {}) {
@@ -100,11 +101,19 @@ test("qualification multipart form preserves file bytes and returns private rece
   form.set("full_name", "Synthetic Applicant");
   form.set("country", "ZA"); form.set("province", "Gauteng"); form.set("city", "Pretoria");
   form.append("documents", new File(["%PDF-test"], "qualification.pdf", { type: "application/pdf" }));
+  form.append("availability_start", "2027-01-12T16:00"); form.append("availability_duration_hours", "2");
+  form.append("availability_start", "2027-01-13T18:30"); form.append("availability_duration_hours", "3");
+  form.set("availability", "Ignore this forged schedule from the browser.");
   const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
   assert.equal(response.status, 201);
   assert.equal(response.headers.get("cache-control"), "private, no-store");
   assert.equal(state.forwarded.token, "synthetic-private-token");
   assert.equal(await state.forwarded.data.get("documents").text(), "%PDF-test");
+  const scheduled = state.forwarded.data.get("availability");
+  assert.match(scheduled, /2027-01-12 16:00 to 2027-01-12 18:00 \(2 hours\)/);
+  assert.match(scheduled, /2027-01-13 18:30 to 2027-01-13 21:30 \(3 hours\)/);
+  assert.doesNotMatch(scheduled, /forged schedule/);
+  assert.equal(state.forwarded.data.has("availability_start"), false);
   assert.equal((await response.json()).application.reference, "AMARIS-TUTOR-TEST");
 });
 test("expired applicant session does not forward qualifications", async () => {
@@ -130,5 +139,55 @@ test("missing application location returns named errors before forwarding files"
   const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: new FormData(), headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
   assert.equal(response.status, 400);
   assert.deepEqual(Object.keys(await response.json()).sort(), ["city", "country", "province"]);
+  assert.equal(state.forwarded, undefined);
+});
+
+test("application date and duration selection validates future SAST schedules", async () => {
+  const form = new FormData();
+  form.append("availability_start", "2027-01-12T16:00");
+  form.append("availability_duration_hours", "2");
+  form.append("availability_start", "2027-01-13T18:30");
+  form.append("availability_duration_hours", "3");
+  const good = validateTutorAvailability(form, Date.parse("2026-10-28T09:00:00Z"));
+  assert.equal(good.ok, true);
+  assert.match(good.summary, /South African Standard Time/);
+  assert.deepEqual(good.slots.map(s => s.durationHours), [2, 3]);
+  form.set("availability_start", "2027-01-12T17:00");
+  assert.equal(validateTutorAvailability(form).ok, false);
+  form.set("availability_start", "2027-01-12T16:00");
+  form.set("availability_duration_hours", "25");
+  assert.equal(validateTutorAvailability(form).ok, false);
+});
+
+test("date availability blocks past or invalid, duplicate and overlapping slots", () => {
+  function check(pairs) {
+    const data = new FormData();
+    for (const [start, hours] of pairs) {
+      data.append("availability_start", start);
+      data.append("availability_duration_hours", String(hours));
+    }
+    return validateTutorAvailability(data, Date.parse("2026-10-28T09:00:00Z"));
+  }
+  assert.equal(check([]).ok, false);
+  assert.equal(check([["2026-10-27T10:00", 1]]).ok, false);
+  assert.equal(check([["2027-02-31T15:00", 1]]).ok, false);
+  assert.equal(check([["2027-01-12T16:15", 1]]).ok, false);
+  assert.equal(check([["2027-01-12T16:00", 2], ["2027-01-12T17:00", 1]]).ok, false);
+  assert.equal(check([["2027-01-12T16:00", 2], ["2027-01-12T16:00", 1]]).ok, false);
+  assert.equal(check([["2027-01-12T16:00", 2], ["2027-01-12T18:00", 3]]).ok, true);
+  assert.equal(check([["2027-01-12T16:00", 1]]).ok, true);
+  assert.equal(check(Array.from({ length: 13 }, (_, i) => [`2027-01-${String(i + 1).padStart(2, "0")}T08:00`, 1])).ok, false);
+});
+
+test("authenticated multipart BFF rejects missing or inconsistent dates before Django", async () => {
+  const form = new FormData();
+  form.set("country", "ZA"); form.set("province", "Gauteng"); form.set("city", "Pretoria");
+  form.set("availability", "I can teach whenever, do not validate my chosen schedule.");
+  const request = new Request("https://academy.example.test/api/tutor-applications", {
+    method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "application/json" },
+  });
+  const response = await POST(request);
+  assert.equal(response.status, 400);
+  assert.ok((await response.json()).availability);
   assert.equal(state.forwarded, undefined);
 });
