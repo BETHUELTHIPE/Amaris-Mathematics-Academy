@@ -1,0 +1,71 @@
+name: Amaris Read-Only Production Live Acceptance 20261028
+on:
+  push:
+    branches: [ops/prod-live-acceptance-20261028]
+    paths: [ops/production-live-acceptance-trigger.txt]
+permissions:
+  contents: read
+jobs:
+  live-http:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Exercise only public GETs and anonymous redirects against live Amaris
+        run: |
+          python3 - <<'PY'
+          import json
+          from urllib.request import Request,build_opener,HTTPRedirectHandler
+          from urllib.error import HTTPError,URLError
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self,req,fp,code,msg,headers,newurl):
+                  return None
+          client=build_opener(NoRedirect)
+          FRONT="https://amaris-mathematics-academy-live-students.onrender.com"
+          BACK="https://amaris-production-web.onrender.com"
+          def check(url):
+              try:
+                  response=client.open(Request(url,headers={"User-Agent":"AmarisReadOnlyProductionAcceptance/1.0"}),timeout=30)
+                  with response: return response.status,dict(response.headers),response.read(450000)
+              except HTTPError as e:
+                  return e.code,dict(e.headers),e.read(450000)
+              except (URLError, TimeoutError):
+                  raise SystemExit("FAIL: live endpoint unreachable") from None
+          for path,phrase in [
+              ("/",b"Amaris"),
+              ("/login",b"six-digit email code"),
+              ("/register",b"email"),
+              ("/forgot-password",b"Reset your password"),
+              ("/tutor/login",b"Tutor"),
+              ("/support-our-project",b"Support Our Project")
+          ]:
+              status,headers,body=check(FRONT+path)
+              if status!=200 or phrase.lower() not in body.lower():
+                  raise SystemExit(f"FAIL: live public route {path} code {status} missing required content")
+              print(f"PASS: live route {path}, HTTP 200")
+          for path in ["/book-online-live-class","/dashboard"]:
+              status,headers,_=check(FRONT+path)
+              location=headers.get("Location",headers.get("location",""))
+              if status not in (302,303,307,308) or not location.startswith("/login") and not location.startswith(FRONT+"/login"):
+                  raise SystemExit(f"FAIL: anonymous {path} not redirected to login, HTTP {status}")
+              print(f"PASS: anonymous private page {path} denied, HTTP {status}")
+          status,headers,body=check(FRONT+"/api/auth-state")
+          if status!=200:
+              raise SystemExit("FAIL: anonymous auth-state unavailable")
+          try: data=json.loads(body)
+          except ValueError: raise SystemExit("FAIL: auth-state returned invalid JSON") from None
+          if data.get("authenticated") is not False or data.get("emailVerified") is not False:
+              raise SystemExit("FAIL: auth-state permits anonymous sign-in")
+          print("PASS: anonymous auth-state is unauthenticated and unverified")
+          for path,expected in [("/health/live/","ok"),("/health/ready/","ready")]:
+              status,headers,body=check(BACK+path)
+              if status!=200 or json.loads(body).get("status")!=expected:
+                  raise SystemExit(f"FAIL: Django {path} health not ready, HTTP {status}")
+              print(f"PASS: Django {path} ready")
+          status,headers,body=check(BACK+"/health/dependencies/")
+          if status!=200 or json.loads(body).get("dependencies",{}).get("postgresql") is not True:
+              raise SystemExit("FAIL: Django dependency preflight unavailable")
+          deps=json.loads(body)["dependencies"]
+          print("PASS: Django PostgreSQL available")
+          print("Redis dependency: "+"PASS" if deps.get("redis") else "Redis dependency: DEGRADED")
+          print("ACCEPTANCE: Public HTTP, booking access protection, password reset route, and Django health checked; no bookings, email, payment, or data writes performed.")
+          PY
