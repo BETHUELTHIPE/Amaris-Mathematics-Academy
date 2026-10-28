@@ -361,6 +361,19 @@ class LiveClassBookingTests(TestCase):
             self.assertEqual(deliver_live_class_reminder.run(), 1)
         self.assertEqual(len(mail.outbox), 2)
         self.assertIn(self.slot.zoom_join_url, mail.outbox[1].body)
+        for email in mail.outbox:
+            self.assertEqual(len(email.alternatives), 1)
+            branded_html, content_type = email.alternatives[0]
+            self.assertEqual(content_type, "text/html")
+            for marker in (
+                "amaris-academy-icon-192.png",
+                "Bethuel Moukangwe",
+                "Amaris Mathematics Academy",
+                "#ffcc66",
+                booking.reference,
+            ):
+                self.assertIn(marker, branded_html)
+            self.assertIn(self.slot.zoom_join_url, branded_html)
         self.assertEqual(deliver_live_class_reminder.run(), 0)
 
     def test_checkout_is_server_priced_at_r250_and_holds_slot(self):
