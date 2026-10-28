@@ -47,9 +47,13 @@ jobs:
                       req=urllib.request.Request(url,headers={"User-Agent":"AmarisReadOnlySecurityAcceptance/1.0","Accept":"text/html,application/json"})
                       try:
                           with opener.open(req,timeout=35) as response:
-                              return response.status,dict(response.headers),response.read(150000)
+                              status,headers,body=response.status,dict(response.headers),response.read(150000)
                       except urllib.error.HTTPError as error:
-                          return error.code,dict(error.headers),error.read(120000)
+                          status,headers,body=error.code,dict(error.headers),error.read(120000)
+                      if status in (502,503,504) and attempt<3:
+                          time.sleep(8)
+                          continue
+                      return status,headers,body
                   except (urllib.error.URLError,TimeoutError):
                       if attempt==3: raise SystemExit("FAIL: public route unreachable (no auth data or secrets used)") from None
                       time.sleep(5)
