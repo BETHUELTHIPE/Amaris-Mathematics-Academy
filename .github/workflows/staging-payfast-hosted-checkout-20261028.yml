@@ -1,0 +1,41 @@
+name: Isolated Staging PayFast Hosted Checkout Release Gate
+on:
+  push:
+    branches: [test/staging-payfast-hosted-checkout-20261028]
+    paths:
+      - "frontend/app/checkout/**"
+      - "frontend/app/book-online-live-class/checkout/**"
+      - "frontend/components/site/video-request-form.tsx"
+      - "frontend/components/site/payfast-hosted-checkout.tsx"
+      - "frontend/lib/payfast-hosted-checkout.ts"
+      - "frontend/tests/**"
+      - ".github/workflows/staging-payfast-hosted-checkout-20261028.yml"
+permissions:
+  contents: read
+jobs:
+  staging-hosted-checkout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked staging frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Lint and type check the complete frontend
+        working-directory: frontend
+        run: |
+          npm run lint
+          npm run typecheck
+      - name: Verify checkout security, pricing and responsive regressions
+        working-directory: frontend
+        run: node --test tests/payfast-hosted-checkout.test.mjs tests/live-class-booking-contract.test.mjs tests/video-request-contract.test.mjs tests/student-responsive-contract.test.mjs
+      - name: Build exact staging frontend
+        working-directory: frontend
+        run: npm run build
