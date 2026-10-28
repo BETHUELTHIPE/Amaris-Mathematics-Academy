@@ -21,11 +21,22 @@ jobs:
           django="https://amaris-mathematics-academy-staging.onrender.com"
           student="https://amaris-mathematics-academy-staging-x4ax.onrender.com"
           def check(url):
+              import time
               req=Request(url,headers={"User-Agent":"AmarisTutorSecurityAudit/20261028"})
-              try:
-                  with agent.open(req,timeout=40) as res: return res.status,res.read(100000)
-              except HTTPError as e: return e.code,b""
-              except URLError: raise SystemExit("BLOCK: staging endpoint unavailable")
+              for attempt in range(3):
+                  try:
+                      with agent.open(req,timeout=55) as res: return res.status,res.read(100000)
+                  except HTTPError as e:
+                      if e.code in (502,503,504) and attempt<2:
+                          time.sleep(7)
+                          continue
+                      return e.code,b""
+                  except (URLError,TimeoutError,OSError):
+                      if attempt<2:
+                          time.sleep(7)
+                          continue
+                      raise SystemExit("BLOCK: staging endpoint unavailable after retries")
+              raise SystemExit("BLOCK: staging route timeout")
           for route in ("/api/v1/tutor/dashboard/","/api/v1/tutor/earnings/","/api/v1/tutor/slots/","/api/v1/tutor-applications/"):
               code,_=check(django+route)
               if code not in (401,403):
