@@ -1,1 +1,2 @@
 Read-only production GET/anonymous-access test, 2026-10-28. No payments, bookings, email sends or migrations.
+Private Django API anonymous GET gate added, no changes to live systems.
