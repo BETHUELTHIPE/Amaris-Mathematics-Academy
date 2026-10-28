@@ -1,0 +1,83 @@
+name: Amaris Final Auth and Booking Guest Audit
+on:
+  push:
+    branches: [qa/final-auth-booking-audit-20261028]
+    paths: [ops/final-auth-booking-audit-request.txt, .github/workflows/final-auth-booking-audit.yml]
+permissions:
+  contents: read
+jobs:
+  offline-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Auth, password recovery and protected booking regressions
+        working-directory: frontend
+        run: node --test tests/universal-email-verification.test.mjs tests/registration-actions.test.mjs tests/password-recovery.test.mjs tests/password-recovery-proof.test.mjs tests/booking-staging-gate.test.mjs tests/live-class-booking-contract.test.mjs tests/tutor-applications.test.mjs tests/tutor-portal-contract.test.mjs tests/google-registration.test.mjs
+  live-anonymous-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check production and staging anonymous auth gates without cookies or writes
+        run: |
+          python3 - <<'PY'
+          import json,time,urllib.request,urllib.error
+          from urllib.parse import urljoin,urlparse,parse_qs
+          origins={
+            "production":"https://amaris-mathematics-academy-live-students.onrender.com",
+            "staging":"https://amaris-mathematics-academy-staging-x4ax.onrender.com",
+          }
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(NoRedirect)
+          def get(url):
+              for attempt in range(4):
+                  try:
+                      req=urllib.request.Request(url,headers={"User-Agent":"AmarisReadOnlySecurityAcceptance/1.0","Accept":"text/html,application/json"})
+                      try:
+                          with opener.open(req,timeout=35) as response:
+                              return response.status,dict(response.headers),response.read(150000)
+                      except urllib.error.HTTPError as error:
+                          return error.code,dict(error.headers),error.read(120000)
+                  except (urllib.error.URLError,TimeoutError):
+                      if attempt==3: raise SystemExit("FAIL: public route unreachable (no auth data or secrets used)") from None
+                      time.sleep(5)
+          for label,base in origins.items():
+              for path in ["/book-online-live-class","/book-online-live-class?programme=caps&subject=mathematics"]:
+                  code,headers,_=get(base+path)
+                  dest=headers.get("Location","")
+                  parsed=urlparse(urljoin(base,dest))
+                  saved=parse_qs(parsed.query).get("next",[""])[0]
+                  if code not in (301,302,303,307,308) or parsed.netloc!=urlparse(base).netloc or parsed.path!="/login" or not saved.startswith("/book-online-live-class"):
+                      raise SystemExit(f"FAIL: {label} booking route exposed or unsafe redirect: HTTP {code}")
+                  print(f"PASS: {label} booking anonymous GET redirects to same-origin login with safe return")
+              code,headers,body=get(base+"/api/auth-state")
+              if code!=200: raise SystemExit(f"FAIL: {label} anonymous auth-state HTTP {code}")
+              try: data=json.loads(body)
+              except ValueError: raise SystemExit(f"FAIL: {label} auth-state invalid JSON") from None
+              if data.get("authenticated") is not False or data.get("emailVerified") is not False:
+                  raise SystemExit(f"FAIL: {label} anonymous user appears authenticated")
+              print(f"PASS: {label} anonymous auth-state false/false")
+              code,_,_=get(base+"/forgot-password")
+              if code !=200: raise SystemExit(f"FAIL: {label} password request page HTTP {code}")
+              print(f"PASS: {label} password request page served")
+              code,_,_=get(base+"/reset-password/verify")
+              if code !=200: raise SystemExit(f"FAIL: {label} six-digit recovery code page HTTP {code}")
+              print(f"PASS: {label} recovery code entry page served")
+              code,headers,_=get(base+"/reset-password")
+              if code not in (301,302,303,307,308) or urlparse(urljoin(base,headers.get("Location",""))).path!="/forgot-password":
+                  raise SystemExit(f"FAIL: {label} reset form accessible without proof HTTP {code}")
+              print(f"PASS: {label} password reset form rejects unauthenticated guest")
+          print("PASS: Read-only browser-visible GET checks complete. No booking, email, reset or payment was initiated.")
+          PY
