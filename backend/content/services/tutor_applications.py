@@ -1,13 +1,13 @@
 """Durable acknowledgement delivery; SMTP failures never discard an application."""
 
 from datetime import timedelta
-from html import escape
 
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.utils import timezone
 
 from content.models import TutorApplication
+from content.services.branded_email import render_branded_email
 
 
 def deliver_application_acknowledgement(application_id=None) -> int:
@@ -37,12 +37,19 @@ def deliver_application_acknowledgement(application_id=None) -> int:
             subject=f"Amaris tutor application received — {reference}", body=text, to=[application.email]
         )
         message.attach_alternative(
-            f"<h1>Application received</h1><p>Dear {escape(application.full_name)},</p>"
-            f"<p>Thank you for applying to become an Amaris tutor.</p><p>Reference: <strong>{reference}</strong></p>"
-            "<p>We have received your application and qualification documents. Our recruitment team will review "
-            "them and contact you if further information or an interview is needed.</p>"
-            "<p>This acknowledgement is not an offer or approval to teach. Sign in on the Amaris website "
-            "and open Become a tutor to view your application status.</p><p>Amaris Mathematics Academy</p>",
+            render_branded_email(
+                "Your tutor application has been received",
+                [
+                    f"Dear {application.full_name},",
+                    "Thank you for applying to become an Amaris tutor.",
+                    "We have received your application and qualification documents.",
+                    "Our recruitment team will review your qualifications and teaching experience.",
+                    "We will contact you at your registered email if additional information or an interview is needed.",
+                    "This acknowledgement is not an offer or approval to teach.",
+                    "Sign in on the Amaris website and open Become a tutor to view your application status.",
+                ],
+                reference=reference,
+            ),
             "text/html",
         )
         try:

@@ -1,11 +1,12 @@
 """Scheduled reconciliation: no bank transfer without a verified provider integration."""
 
 from celery import shared_task
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.utils import timezone
 
 from content.models import LiveClassBooking, Payment, VideoRequest
+from content.services.branded_email import render_branded_email
 from content.services.tutor_finance import (
     record_course_sale,
     record_existing_video_sale,
@@ -101,25 +102,34 @@ def email_tutor_payout_receipt(_self):
         tutor = payout.earning.tutor
         if not tutor.email:
             return 0
-        sent = send_mail(
-            subject="Amaris tutor payment confirmation",
-            message=(
-                f"Dear {tutor.get_full_name().strip() or tutor.get_username()},\n\n"
-                "Your tutor payout has been confirmed by the payment provider.\n"
-                f"Service: {payout.earning.get_service_display()}\n"
-                f"Service reference: {payout.earning.source_reference}\n"
-                f"Amount paid: R {payout.earning.tutor_amount:.2f}\n"
-                f"Provider: {payout.provider_name}\n"
-                f"Transfer reference: {payout.provider_reference}\n"
-                f"Payment date: {timezone.localtime(payout.confirmed_at):%d %B %Y}\n"
-                f"Destination account: ****{payout.bank_last_four}\n\n"
-                "This confirmation is issued only after provider verification.\n"
-                "Amaris Mathematics Academy"
-            ),
-            from_email=None,
-            recipient_list=[tutor.email],
-            fail_silently=False,
+        body = (
+            f"Dear {tutor.get_full_name().strip() or tutor.get_username()},\n\n"
+            "Your tutor payout has been confirmed by the payment provider.\n"
+            f"Service: {payout.earning.get_service_display()}\n"
+            f"Service reference: {payout.earning.source_reference}\n"
+            f"Amount paid: R {payout.earning.tutor_amount:.2f}\n"
+            f"Provider: {payout.provider_name}\n"
+            f"Transfer reference: {payout.provider_reference}\n"
+            f"Payment date: {timezone.localtime(payout.confirmed_at):%d %B %Y}\n"
+            f"Destination account: ****{payout.bank_last_four}\n\n"
+            "This confirmation is issued only after provider verification.\n"
+            "Amaris Mathematics Academy"
         )
+        email = EmailMultiAlternatives(
+            subject="Amaris tutor payment confirmation",
+            body=body,
+            from_email=None,
+            to=[tutor.email],
+        )
+        email.attach_alternative(
+            render_branded_email(
+                "Your tutor payment is confirmed",
+                body.splitlines(),
+                reference=payout.provider_reference,
+            ),
+            "text/html",
+        )
+        sent = email.send(fail_silently=False)
         if sent != 1:
             raise OSError("The mail provider did not accept the payment notification.")
         payout.receipt_emailed_at = timezone.now()
