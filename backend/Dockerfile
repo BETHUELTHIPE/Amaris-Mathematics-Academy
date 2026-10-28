@@ -20,11 +20,13 @@ RUN apt-get update \
               golang.org/x/text@v0.42.0 \
               google.golang.org/grpc@v1.83.2 \
               github.com/klauspost/compress@v1.18.7 \
+              github.com/go-jose/go-jose/v4@v4.1.6 \
     && test "$(go list -m -f '{{.Version}}' golang.org/x/crypto)" = "v0.57.0" \
     && test "$(go list -m -f '{{.Version}}' golang.org/x/net)" = "v0.60.0" \
     && test "$(go list -m -f '{{.Version}}' golang.org/x/text)" = "v0.42.0" \
     && test "$(go list -m -f '{{.Version}}' google.golang.org/grpc)" = "v1.83.2" \
     && test "$(go list -m -f '{{.Version}}' github.com/klauspost/compress)" = "v1.18.7" \
+    && test "$(go list -m -f '{{.Version}}' github.com/go-jose/go-jose/v4)" = "v4.1.6" \
     && test "$(go env GOVERSION)" = "go1.27.3" \
     && mkdir -p /out \
     && go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/restic ./cmd/restic \
