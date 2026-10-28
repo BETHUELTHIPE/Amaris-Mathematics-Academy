@@ -73,7 +73,7 @@ test("protected checkout wraps references and retains POST redirect to PayFast",
   const page = await source("../app/checkout/[slug]/page.tsx");
   assert.match(page, /requireVerifiedStudent\("\/dashboard"\)/);
   assert.match(page, /await createStudentCheckout\(slug\)/);
-  assert.match(page, /form method="post" action=\{checkout.gateway_url\}/);
+  assert.match(page, /PayFastHostedCheckout/);
   assert.match(page, /break-all font-mono/);
   assert.match(page, /\[overflow-wrap:anywhere\]/);
   assert.match(page, /min-h-12 w-full/);
