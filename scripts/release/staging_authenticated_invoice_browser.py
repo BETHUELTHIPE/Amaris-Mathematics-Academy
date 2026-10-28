@@ -43,7 +43,6 @@ with sync_playwright() as playwright:
         if "application/pdf" in (anon_response.headers.get("content-type") or "").lower():
             raise AssertionError("BLOCK: an anonymous browser received an invoice")
         print("PASS: Anonymous browser cannot download private invoice")
-        anonymous.close()
 
         if missing:
             raise SystemExit(
@@ -71,7 +70,7 @@ with sync_playwright() as playwright:
         page.goto(f"{URL}/dashboard/orders", wait_until="domcontentloaded", timeout=60000)
         owned_invoice = page.locator(
             'a[href^="/book-online-live-class/invoice?reference="]'
-        ).first
+        ).first()
         link = owned_invoice
         try:
             link.wait_for(state="visible", timeout=20000)
@@ -91,6 +90,7 @@ with sync_playwright() as playwright:
         if "application/pdf" in (blocked.headers.get("content-type") or "").lower():
             raise AssertionError("BLOCK: anonymous browser received a real invoice PDF")
         print("PASS: Anonymous browser denied exact student-owned invoice")
+        anonymous.close()
 
         # Click the actual user-facing download button in a real browser session.
         with page.expect_download(timeout=45000) as event:
