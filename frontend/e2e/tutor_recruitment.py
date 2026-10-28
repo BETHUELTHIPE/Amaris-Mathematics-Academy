@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -180,10 +181,18 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             values = {"phone": "0710000000", "qualification": "BSc Mathematics",
                       "institution": "Synthetic University", "subjects": "Mathematics", "levels": "Grade 12",
                       "experience_years": "3", "teaching_experience": "Three years of mathematics tutoring.",
-                      "availability": "Weekday evenings in SAST with Zoom and stable internet.",
                       "motivation": "I enjoy helping students understand mathematics and build confidence."}
             for name, value in values.items():
                 page.locator(f'[name="{name}"]').fill(value)
+            # The new registration/application step requires concrete, future SAST slots.
+            first_day = (datetime.now(timezone(timedelta(hours=2))) + timedelta(days=7)).date().isoformat()
+            second_day = (datetime.now(timezone(timedelta(hours=2))) + timedelta(days=8)).date().isoformat()
+            page.locator('input[name="availability_start"]').first.fill(first_day + "T16:00")
+            page.locator('select[name="availability_duration_hours"]').first.select_option("2")
+            page.get_by_role("button", name="Add another date and time").click()
+            page.locator('input[name="availability_start"]').nth(1).fill(second_day + "T18:30")
+            page.locator('select[name="availability_duration_hours"]').nth(1).select_option("3")
+            assert page.get_by_text("2 of 12 available sessions selected.").is_visible()
             page.locator("#country").select_option("ZA")
             page.locator("#province").select_option("Gauteng")
             page.locator("#city").select_option("Pretoria")
@@ -211,7 +220,12 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             assert not list(message.iter_attachments())
             assert len(list((root / "qualifications").rglob("*.pdf"))) == 1
             with sqlite3.connect(root / "database.sqlite3") as connection:
-                assert connection.execute("SELECT country, province, city FROM content_tutorapplication").fetchall() == [("ZA", "Gauteng", "Pretoria")]
+                location_rows = connection.execute("SELECT country, province, city, availability FROM content_tutorapplication").fetchall()
+                assert len(location_rows) == 1
+                assert location_rows[0][:3] == ("ZA", "Gauteng", "Pretoria")
+                assert first_day + " 16:00" in location_rows[0][3]
+                assert second_day + " 18:30" in location_rows[0][3]
+                assert "2 hours" in location_rows[0][3] and "3 hours" in location_rows[0][3]
             context.close()
             browser.close()
         print("PASS: registration → verification → fresh-session login → application → private qualification upload → receipt → captured acknowledgement.")

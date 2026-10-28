@@ -1,13 +1,15 @@
 "use client";
 
 import { LocationFields } from "@/components/site/location-fields";
+import { TutorAvailabilityPicker } from "@/components/tutor/availability-picker";
+import { validateTutorAvailability } from "@/lib/tutor-availability";
 import type { InitialLocation } from "@/lib/location-data";
 import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 
 const input = "min-w-0 min-h-12 w-full rounded-xl border border-[#cbd6e5] bg-white px-4 py-3 text-base font-normal text-[#263852] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1f5bbd]";
-const labels: Record<string, string> = { full_name: "Full name", phone: "Phone", country: "Country", province: "Province / Region", city: "City / Town", provinceOther: "Province / Region", cityOther: "City / Town", qualification: "Qualification", institution: "Institution", subjects: "Subjects", programmes: "Programmes", levels: "Levels", experience_years: "Experience", teaching_experience: "Teaching experience", availability: "Availability", motivation: "Motivation", consent: "Declaration", documents: "Qualifications" };
+const labels: Record<string, string> = { full_name: "Full name", phone: "Phone", country: "Country", province: "Province / Region", city: "City / Town", provinceOther: "Province / Region", cityOther: "City / Town", qualification: "Qualification", institution: "Institution", subjects: "Subjects", programmes: "Programmes", levels: "Levels", experience_years: "Experience", teaching_experience: "Teaching experience", availability: "Available date and time", motivation: "Motivation", consent: "Declaration", documents: "Qualifications" };
 
 export function ApplicationForm({ name, email, location }: { name: string; email: string; location: InitialLocation }) {
   const router = useRouter();
@@ -23,6 +25,9 @@ export function ApplicationForm({ name, email, location }: { name: string; email
     const files = data.getAll("documents").filter((file): file is File => file instanceof File && file.size > 0);
     let problems: { field: string; message: string }[] = [];
     if (!data.getAll("programmes").length) problems.push({ field: "programmes", message: "Choose at least one programme." });
+    const availability = validateTutorAvailability(data);
+    if (!availability.ok) problems.push({ field: "availability", message: availability.error });
+    else data.set("availability", availability.summary);
     if (!files.length || files.length > 5 || files.some(file => file.size > 5 * 1024 * 1024) || files.reduce((sum, file) => sum + file.size, 0) > 15 * 1024 * 1024) problems.push({ field: "documents", message: "Attach 1–5 PDF, JPEG or PNG qualifications, up to 5 MB each and 15 MB total." });
     if (!problems.length) {
       setPending(true);
@@ -54,7 +59,7 @@ export function ApplicationForm({ name, email, location }: { name: string; email
       <Field label="Grades, levels or university modules" name="levels" minLength={2} maxLength={200} />
       <Field label="Years of teaching or tutoring experience" name="experience_years" type="number" min={0} max={80} step={1} defaultValue={0} />
       <Text label="Describe your teaching or tutoring experience" name="teaching_experience" minLength={10} maxLength={4000} />
-      <Text label="Availability in South African time (UTC+2) and access to Zoom/internet" name="availability" minLength={10} maxLength={2000} />
+      <TutorAvailabilityPicker />
       <Text label="Why would you like to tutor at Amaris?" name="motivation" minLength={20} maxLength={4000} />
     </fieldset>
     <fieldset disabled={pending} className="min-w-0 grid gap-4"><legend className="mb-5 text-xl font-semibold">3. Attach your qualifications</legend>
