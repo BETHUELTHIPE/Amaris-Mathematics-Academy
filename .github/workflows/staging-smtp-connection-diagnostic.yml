@@ -47,8 +47,7 @@ jobs:
           print("INFO: Staging sender same as SMTP user:", "YES" if sender.strip().lower()==user.strip().lower() else "NO_ALIAS_MAY_REQUIRE_AUTHORIZATION")
           phase="connect"
           try:
-              with smtplib.SMTP(timeout=14) as server:
-                  server.connect(host,587)
+              with smtplib.SMTP(host=host, port=587, timeout=14) as server:
                   print("PASS: SMTP connect")
                   phase="ehlo"
                   server.ehlo_or_helo_if_needed()
