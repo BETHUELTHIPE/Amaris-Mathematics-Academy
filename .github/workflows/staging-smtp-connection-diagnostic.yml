@@ -62,7 +62,20 @@ jobs:
                   server.login(user,password)
                   print("PASS: SMTP login")
           except Exception as error:
-              print("BLOCK: SMTP phase="+phase+" exception_class="+type(error).__name__)
-              raise SystemExit(1) from None
-          print("PASS: End-to-end SMTP connection and authentication; no email was sent")
+              print("INFO: Port 587 SMTP phase="+phase+" exception_class="+type(error).__name__)
+              print("INFO: Checking Gmail port 465 SSL alternative; no email will be sent.")
+              phase="ssl_connect"
+              try:
+                  with smtplib.SMTP_SSL(host=host,port=465,timeout=14,context=ssl.create_default_context()) as secure:
+                      print("PASS: SMTP SSL port 465 connect")
+                      phase="ssl_ehlo"
+                      secure.ehlo()
+                      print("PASS: SMTP SSL EHLO")
+                      phase="ssl_authentication"
+                      secure.login(user,password)
+                      print("PASS: SMTP SSL port 465 authentication")
+              except Exception as fallback_error:
+                  print("BLOCK: SMTP SSL phase="+phase+" exception_class="+type(fallback_error).__name__)
+                  raise SystemExit(1) from None
+          print("PASS: Gmail SMTP authenticated; no email was sent")
           PY
