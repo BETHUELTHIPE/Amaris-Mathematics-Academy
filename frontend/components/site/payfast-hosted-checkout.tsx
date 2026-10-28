@@ -33,7 +33,7 @@ export function PayFastHostedCheckout({
       </form>
       <p className="mt-3 flex items-start justify-center gap-2 text-center text-xs leading-5 text-[#60708a]">
         <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        Selecting this button opens PayFast's secure hosted checkout in this tab. Your order remains pending until Amaris verifies PayFast's payment notification.
+        Selecting this button opens the secure PayFast hosted checkout in this tab. Your order remains pending until Amaris verifies the payment notification from PayFast.
       </p>
     </div>
   );
