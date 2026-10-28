@@ -34,13 +34,15 @@ test("request-a-video page requires a verified student and explains the paid que
   assert.match(page, /Supporting documents are stored in the private student bucket/);
 });
 
-test("request form supports all programmes, secure files and server-priced checkout", () => {
+test("request form supports all programmes, secure files and server-priced checkout", async () => {
   assert.deepEqual(programmes.map(([, label]) => label), ["CAPS", "IEB", "TVET", "University"]);
   assert.match(form, /<CurriculumFields/);
   assert.match(form, /application\/pdf,image\/jpeg,image\/png/);
   assert.match(form, /Maximum 10 MB per file and 25 MB total/);
   assert.match(form, /Server-priced/);
-  assert.match(form, /Continue to PayFast/);
+  assert.ok(form.includes("<PayFastHostedCheckout checkout={checkout}"));
+  const hostedForm = await readFile(new URL("../components/site/payfast-hosted-checkout.tsx", import.meta.url), "utf8");
+  assert.match(hostedForm, /Continue to PayFast/);
   assert.doesNotMatch(form, /localStorage|sessionStorage/);
 });
 
