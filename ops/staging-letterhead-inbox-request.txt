@@ -1,2 +1,5 @@
 Request one SMTP-approved synthetic staging email with official letterhead, no student data or billing. The only recipient is the connected QA inbox. Production service unchanged.
 Read-only SMTP field availability preflight repeated; synthetic mail allowed only if all guards pass.
+
+
+Authorized isolated retry on 28 Oct 2026 after successful staging SMTP authentication and credential consistency checks. Send only one synthetic [STAGING QA] Amaris professional email letterhead message to connected Gmail test Inbox; no booking, payments or live production changes.
