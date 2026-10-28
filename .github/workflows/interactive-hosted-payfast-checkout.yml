@@ -10,6 +10,7 @@ on:
       - "frontend/lib/payfast-hosted-checkout.ts"
       - "frontend/tests/payfast-hosted-checkout.test.mjs"
       - "frontend/tests/live-class-booking-contract.test.mjs"
+      - "frontend/tests/video-request-contract.test.mjs"
       - "scripts/release/hosted_checkout_browser_matrix.py"
       - ".github/workflows/interactive-hosted-payfast-checkout.yml"
 permissions:
