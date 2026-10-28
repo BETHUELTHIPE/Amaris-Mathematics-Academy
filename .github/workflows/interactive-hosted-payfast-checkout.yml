@@ -77,11 +77,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Check out the actual deployed Django payment implementation
+        uses: actions/checkout@v4
+        with:
+          ref: production-release-20260923
+          path: backend-release
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend-release/backend/requirements.txt
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -98,7 +104,7 @@ jobs:
           echo "PASS: isolated sandbox database and gateway selected"
       - name: Install isolated Django and Playwright
         run: |
-          python -m pip install -r backend/requirements.txt
+          python -m pip install -r backend-release/backend/requirements.txt
           mkdir -p /tmp/payfast-playwright
           cd /tmp/payfast-playwright
           npm init -y >/dev/null
@@ -106,10 +112,10 @@ jobs:
           npx playwright install --with-deps chromium >/dev/null
       - name: Create eight genuine signed Django checkout payloads (never charge)
         run: |
-          cd backend
+          cd backend-release/backend
           python manage.py migrate --noinput
           python manage.py check
-          python manage.py shell -c 'exec(open("../scripts/release/hosted_checkout_browser_matrix.py").read())'
+          python manage.py shell -c 'exec(open("../../scripts/release/hosted_checkout_browser_matrix.py").read())'
       - name: Click native browser POST and verify hosted PayFast screen
         run: |
           cd /tmp/payfast-playwright
