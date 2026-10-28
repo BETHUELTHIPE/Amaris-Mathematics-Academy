@@ -21,7 +21,19 @@ jobs:
       - name: Read registry tag and architectures
         run: |
           if ! docker buildx imagetools inspect "$IMAGE" > /tmp/image-info.txt 2>/tmp/registry-error.txt; then
-            echo "REGISTRY_NOT_CONFIRMED: candidate tag cannot yet be read; inspect the publishing job."
+            python - <<'PY'
+          from pathlib import Path
+
+          error = Path("/tmp/registry-error.txt").read_text().lower()
+          if "not found" in error or "manifest unknown" in error:
+              print("REGISTRY_TAG_PENDING: the candidate tag is not present yet")
+          elif "unauthorized" in error or "denied" in error or "insufficient_scope" in error:
+              print("REGISTRY_ACCESS_BLOCKED: the credential cannot read the candidate repository")
+          elif "timeout" in error or "timed out" in error:
+              print("REGISTRY_LOOKUP_TIMEOUT")
+          else:
+              print("REGISTRY_LOOKUP_FAILED: provider lookup did not complete")
+          PY
             exit 1
           fi
           docker buildx imagetools inspect --raw "$IMAGE" > /tmp/image-manifest.json
