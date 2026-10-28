@@ -54,7 +54,8 @@ test("checkout, confirmation and invoice require a verified student identity", (
 });
 
 test("checkout preserves server-owned pricing and PayFast verification language", () => {
-  assert.match(checkoutPage, /Pay R\{booking\.amount\} with PayFast/);
+  assert.match(checkoutPage, /Pay R\\$\\{booking\\.amount\\} with PayFast/);
+  assert.match(checkoutPage, /PayFastHostedCheckout/);
   assert.match(checkoutPage, /booking\.duration_minutes \/ 60/);
   assert.match(checkoutPage, /Server-priced/);
   assert.match(checkoutPage, /verified callback required/);
