@@ -249,6 +249,7 @@ def _deliver_one_live_class_confirmation() -> bool:
         return False
 
     sent_any = False
+    failed_delivery: OSError | None = None
     for role, marker in (
         ("student", "confirmation_sent_at"),
         ("tutor", "tutor_confirmation_sent_at"),
@@ -310,17 +311,27 @@ def _deliver_one_live_class_confirmation() -> bool:
 
             if not recipient:
                 raise OSError(f"Missing {role} email address for verified booking.")
-            _send_live_class_message(
-                booking,
-                subject=subject,
-                heading=heading,
-                body_lines=lines,
-                attach_invoice=True,
-                to_email=recipient,
-            )
+            try:
+                _send_live_class_message(
+                    booking,
+                    subject=subject,
+                    heading=heading,
+                    body_lines=lines,
+                    attach_invoice=True,
+                    to_email=recipient,
+                )
+            except OSError as exc:
+                # One failing inbox must not prevent delivery to other roles.
+                # Keep this recipient's marker empty; Celery retries it later.
+                # Markers for already accepted roles are committed separately.
+                if failed_delivery is None:
+                    failed_delivery = exc
+                continue
             setattr(booking, marker, timezone.now())
             booking.save(update_fields=(marker, "updated_at"))
             sent_any = True
+    if failed_delivery is not None:
+        raise failed_delivery
     return sent_any
 
 
