@@ -1,0 +1,2 @@
+# Tutor end-to-end audit — 28 October 2026
+Scope: independent CI acceptance for tutor registration, six-digit verification, applicant login, private qualifications, acknowledgement, tutor approval/role gate, tutor dashboard, availability and booking/earnings read authorization. This isolated QA branch does not deploy to any Render or Supabase project. Do not alter production until verified acceptance passes.
