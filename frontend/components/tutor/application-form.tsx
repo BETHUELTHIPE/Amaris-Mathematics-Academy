@@ -25,7 +25,7 @@ export function ApplicationForm({ name, email, location }: { name: string; email
         method: "GET", headers: { Accept: "application/json" }, cache: "no-store",
       });
       if (!response.ok) return false;
-      const body = await response.json();
+      const body = await response.json() as { application?: { reference?: unknown } };
       return typeof body?.application?.reference === "string" && body.application.reference.length > 0;
     } catch {
       return false;
