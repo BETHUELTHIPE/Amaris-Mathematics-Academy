@@ -10,7 +10,8 @@ export class ApplicationError extends Error { constructor(status, message) { sup
 export async function applicantToken() { state.tokenChecked = true; if (state.unauthorized) throw new ApplicationError(401, "Sign in first."); return "synthetic-private-token"; }
 export async function applicationRequest(path, init, token) {
   state.forwarded = { path, method: init.method, data: init.body, token };
-  return Response.json(state.backendBody || { application: { reference: "AMARIS-TUTOR-TEST" } }, { status: state.backendStatus || 201 });
+  if (state.backendPlaintext) return new Response("<html>Bad Gateway</html>", { status: state.backendStatus || 502, headers: { "Content-Type": "text/html" } });
+  return Response.json(state.backendBody || { application: { reference: "AMARIS-TUTOR-TEST" } }, { status: state.backendStatus || (init.method === "GET" ? 200 : 201) });
 }
 export async function createSupabaseServerClient() { return { auth: {
   signUp: async input => { state.signup = input; return { error: state.authError }; },
@@ -24,12 +25,13 @@ export async function createSupabaseServerClient() { return { auth: {
 const stubs = new Set(["@/lib/supabase/config", "@/lib/supabase/server", "@/lib/tutor-applications", "test:applicants"]);
 const vite = await createServer({
   root: fileURLToPath(new URL("..", import.meta.url)), configFile: false, appType: "custom",
-  plugins: [{ name: "applicant-test-services", enforce: "pre", resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email" || id === "@/lib/tutor-required-documents") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubs.has(id)) return "\0test:applicants"; }, load(id) { if (id === "\0test:applicants") return mock; } }],
+  plugins: [{ name: "applicant-test-services", enforce: "pre", resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email" || id === "@/lib/tutor-required-documents" || id === "@/lib/tutor-availability") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubs.has(id)) return "\0test:applicants"; }, load(id) { if (id === "\0test:applicants") return mock; } }],
   server: { middlewareMode: true, hmr: false, ws: false },
 });
 const { state } = await vite.ssrLoadModule("test:applicants");
 const actions = await vite.ssrLoadModule("/app/tutor/register/actions.ts");
-const { POST } = await vite.ssrLoadModule("/app/api/tutor-applications/route.ts");
+const { POST, GET } = await vite.ssrLoadModule("/app/api/tutor-applications/route.ts");
+const { validateTutorAvailability } = await vite.ssrLoadModule("/lib/tutor-availability.ts");
 after(() => vite.close());
 beforeEach(() => { for (const key of Object.keys(state)) delete state[key]; });
 function signup(overrides = {}) {
@@ -103,6 +105,11 @@ function completedApplicationForm() {
   form.set("province", "Gauteng");
   form.set("city", "Pretoria");
   for (const name of mandatoryUploads) form.set(name, new File(["%PDF-" + name], name + ".pdf", { type: "application/pdf" }));
+  const date = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  form.append("availability_start", date + "T16:00");
+  form.append("availability_duration_hours", "2");
+  form.set("zoom_internet_access", "yes");
+  form.set("availability", "FORGED old free text that must not be forwarded");
   return form;
 }
 test("all six identity and academic documents are compulsory at the API boundary", async () => {
@@ -156,4 +163,52 @@ test("missing application location returns named errors before forwarding files"
   assert.equal(response.status, 400);
   assert.deepEqual(Object.keys(await response.json()).sort(), ["city", "country", "province"]);
   assert.equal(state.forwarded, undefined);
+});
+
+test("calendar availability is validated and never accepts forged free text", async () => {
+  const form = completedApplicationForm();
+  form.delete("availability_start");
+  let response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
+  assert.equal(response.status, 400);
+  assert.ok((await response.json()).availability);
+  assert.equal(state.forwarded, undefined);
+  form.append("availability_start", new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) + "T16:00");
+  form.delete("zoom_internet_access");
+  response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
+  assert.equal(response.status, 400);
+  assert.ok((await response.json()).availability);
+  form.set("zoom_internet_access", "yes");
+  response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
+  assert.equal(response.status, 201);
+  assert.match(state.forwarded.data.get("availability"), /South African Standard Time/);
+  assert.match(state.forwarded.data.get("availability"), /Zoom\/internet access: confirmed/);
+  assert.doesNotMatch(state.forwarded.data.get("availability"), /FORGED/);
+  assert.equal(state.forwarded.data.has("availability_start"), false);
+  assert.equal(state.forwarded.data.has("zoom_internet_access"), false);
+});
+test("date picker rejects invalid and overlapping SAST slots", () => {
+  const form = completedApplicationForm();
+  assert.equal(validateTutorAvailability(form).ok, true);
+  form.set("availability_start", "2020-01-01T16:00");
+  assert.equal(validateTutorAvailability(form).ok, false);
+  form.set("availability_start", new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) + "T16:00");
+  form.append("availability_start", form.get("availability_start"));
+  form.append("availability_duration_hours", "1");
+  const result = validateTutorAvailability(form);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /overlap/i);
+});
+test("non-JSON gateway failures return actionable JSON rather than throwing", async () => {
+  state.backendPlaintext = true;
+  state.backendStatus = 502;
+  const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: completedApplicationForm(), headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
+  assert.equal(response.status, 502);
+  assert.match((await response.json()).detail, /Check your application status/);
+});
+test("authenticated GET checks whether a tutor application was already saved", async () => {
+  const response = await GET();
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).application.reference, "AMARIS-TUTOR-TEST");
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  assert.equal(state.forwarded.method, "GET");
 });
