@@ -234,17 +234,22 @@ class TutorApplicationView(ApplicantAPIView):
             raise serializers.ValidationError({"documents": str(exc)}) from exc
         storage = storages["tutor_qualifications"]
         saved = []
+        # S3 uploads can take longer than the database idle-in-transaction timeout.
+        # Stage objects before opening a short database transaction, then publish
+        # the application and all six document records atomically.
+        application_id = uuid.uuid4()
+        staged = []
         try:
+            for category, document in typed_documents:
+                key = f"tutor-applications/{request.user.id}/{application_id}/{uuid.uuid4().hex}{document.extension}"
+                path = storage.save(key, ContentFile(document.data))
+                saved.append(path)
+                staged.append((category, document, path))
             with transaction.atomic():
                 application = TutorApplication.objects.create(
-                    supabase_user_id=request.user.id, email=request.user.email, **attrs
+                    id=application_id, supabase_user_id=request.user.id, email=request.user.email, **attrs
                 )
-                for category, document in typed_documents:
-                    key = (
-                        f"tutor-applications/{request.user.id}/{application.pk}/{uuid.uuid4().hex}{document.extension}"
-                    )
-                    path = storage.save(key, ContentFile(document.data))
-                    saved.append(path)
+                for category, document, path in staged:
                     TutorApplicationDocument.objects.create(
                         application=application,
                         category=category,
