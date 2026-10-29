@@ -1,6 +1,8 @@
 "use client";
 
 import { LocationFields } from "@/components/site/location-fields";
+import { TutorAvailabilityPicker } from "@/components/tutor/availability-picker";
+import { validateTutorAvailability } from "@/lib/tutor-availability";
 import type { InitialLocation } from "@/lib/location-data";
 import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
@@ -8,7 +10,7 @@ import { REQUIRED_TUTOR_DOCUMENTS, MAX_TUTOR_DOCUMENTS_TOTAL_BYTES, validateRequ
 import { useRef, useState, type FormEvent } from "react";
 
 const input = "min-w-0 min-h-12 w-full rounded-xl border border-[#cbd6e5] bg-white px-4 py-3 text-base font-normal text-[#263852] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1f5bbd]";
-const labels: Record<string, string> = { full_name: "Full name", phone: "Phone", country: "Country", province: "Province / Region", city: "City / Town", provinceOther: "Province / Region", cityOther: "City / Town", qualification: "Qualification", institution: "Institution", subjects: "Subjects", programmes: "Programmes", levels: "Levels", experience_years: "Experience", teaching_experience: "Teaching experience", availability: "Availability", motivation: "Motivation", consent: "Declaration", documents: "Supporting documents", ...Object.fromEntries(REQUIRED_TUTOR_DOCUMENTS.map(({ name, label }) => [name, label])) };
+const labels: Record<string, string> = { full_name: "Full name", phone: "Phone", country: "Country", province: "Province / Region", city: "City / Town", provinceOther: "Province / Region", cityOther: "City / Town", qualification: "Qualification", institution: "Institution", subjects: "Subjects", programmes: "Programmes", levels: "Levels", experience_years: "Experience", teaching_experience: "Teaching experience", availability: "Available teaching date and time", motivation: "Motivation", consent: "Declaration", documents: "Supporting documents", ...Object.fromEntries(REQUIRED_TUTOR_DOCUMENTS.map(({ name, label }) => [name, label])) };
 
 export function ApplicationForm({ name, email, location }: { name: string; email: string; location: InitialLocation }) {
   const router = useRouter();
@@ -17,6 +19,18 @@ export function ApplicationForm({ name, email, location }: { name: string; email
   const [errors, setErrors] = useState<{ field: string; message: string }[]>([]);
   const errorSummary = useRef<HTMLDivElement>(null);
   const selectedFiles = REQUIRED_TUTOR_DOCUMENTS.map(({ name }) => documents[name]).filter((file): file is File => Boolean(file));
+  async function applicationWasSaved(): Promise<boolean> {
+    try {
+      const response = await fetch("/api/tutor-applications", {
+        method: "GET", headers: { Accept: "application/json" }, cache: "no-store",
+      });
+      if (!response.ok) return false;
+      const body = await response.json() as { application?: { reference?: unknown } };
+      return typeof body?.application?.reference === "string" && body.application.reference.length > 0;
+    } catch {
+      return false;
+    }
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
@@ -27,15 +41,34 @@ export function ApplicationForm({ name, email, location }: { name: string; email
     for (const [field, messages] of Object.entries(validateRequiredTutorDocuments(data))) {
       problems.push(...messages.map(message => ({ field, message })));
     }
+    const availability = validateTutorAvailability(data);
+    if (!availability.ok) problems.push({ field: "availability", message: availability.error });
+    else data.set("availability", availability.summary + "\nZoom/internet access: confirmed.");
+    if (data.get("zoom_internet_access") !== "yes") {
+      problems.push({ field: "availability", message: "Confirm that you have access to Zoom and reliable internet." });
+    }
     if (!problems.length) {
       setPending(true);
       try {
         const response = await fetch("/api/tutor-applications", { method: "POST", body: data, headers: { Accept: "application/json" } });
-        const body = await response.json() as Record<string, unknown> & { application?: { reference?: string } };
-        if (response.ok && body.application?.reference) { router.replace("/tutor/apply?submitted=1#application-status"); return; }
-        if (response.status === 401) problems = [{ field: "detail", message: "Your session expired. Sign in again in another tab, then retry this form." }];
-        else problems = Object.entries(body).map(([field, message]) => ({ field, message: Array.isArray(message) ? message.join(" ") : typeof message === "string" ? message : "Check this field." }));
-      } catch { problems = [{ field: "detail", message: "The service did not respond. Your entries and files are still selected. Please retry; an application received already will not be duplicated." }]; }
+        const body = await response.json().catch(() => null) as (Record<string, unknown> & { application?: { reference?: string } }) | null;
+        if (response.ok && body?.application?.reference) { router.replace("/tutor/apply?submitted=1#application-status"); return; }
+        if ((response.status >= 500 || body === null) && await applicationWasSaved()) {
+          router.replace("/tutor/apply?submitted=1#application-status"); return;
+        }
+        if (response.status === 401) {
+          problems = [{ field: "detail", message: "Your session expired. Sign in again in another tab, then retry this form." }];
+        } else if (response.status === 413) {
+          problems = [{ field: "documents", message: "The server rejected the upload size. Each file must be under 5 MB and all six together under 30 MB." }];
+        } else if (body && typeof body === "object" && !Array.isArray(body)) {
+          problems = Object.entries(body).map(([field, message]) => ({ field, message: Array.isArray(message) ? message.join(" ") : typeof message === "string" ? message : "Check this field." }));
+        } else {
+          problems = [{ field: "submission", message: "The server returned an unexpected response. Your files remain selected. Check your application status in another tab before attempting another submission." }];
+        }
+      } catch {
+        if (await applicationWasSaved()) { router.replace("/tutor/apply?submitted=1#application-status"); return; }
+        problems = [{ field: "submission", message: "The connection was interrupted, so we cannot confirm whether your application was received. Your entries and files remain selected. Check your application status in another tab before submitting again." }];
+      }
       setPending(false);
     }
     setErrors(problems);
@@ -43,7 +76,7 @@ export function ApplicationForm({ name, email, location }: { name: string; email
   }
   return <form action="/api/tutor-applications" method="post" encType="multipart/form-data" onSubmit={submit} className="grid gap-8">
     <p className="text-sm leading-6 text-[#52617a]">Application email: <strong className="break-all">{email}</strong>. All fields are required. Your application will be linked to this verified account.</p>
-    {errors.length > 0 && <div ref={errorSummary} tabIndex={-1} role="alert" className="rounded-xl border border-red-300 bg-red-50 p-5 text-red-900"><h2 className="font-bold">Please check your application</h2><ul className="mt-2 list-disc space-y-2 pl-5">{errors.map(({ field, message }) => <li key={field}>{labels[field] ? <a href={`#${field}`} className="underline">{labels[field]}</a> : "Application"}: {message}</li>)}</ul></div>}
+    {errors.length > 0 && <div ref={errorSummary} tabIndex={-1} role="alert" className="rounded-xl border border-red-300 bg-red-50 p-5 text-red-900"><h2 className="font-bold">Please check your application</h2><ul className="mt-2 list-disc space-y-2 pl-5">{errors.map(({ field, message }) => <li key={field}>{labels[field] ? <a href={`#${field}`} className="underline">{labels[field]}</a> : "Application"}: {message}</li>)}</ul>{errors.some(({ field }) => field === "submission") && <a href="/tutor/apply" target="_blank" rel="noopener noreferrer" className="mt-3 inline-block font-semibold underline">Check application status in a new tab</a>}</div>}
     <fieldset disabled={pending} className="min-w-0 grid gap-5"><legend className="mb-5 text-xl font-semibold">1. Your details</legend>
       <Field label="Full name" name="full_name" maxLength={160} minLength={2} autoComplete="name" defaultValue={name === "Student" ? "" : name} />
       <div className="grid gap-5 sm:grid-cols-2"><Field label="Mobile number" name="phone" type="tel" autoComplete="tel" maxLength={30} minLength={7} /></div>
@@ -57,7 +90,7 @@ export function ApplicationForm({ name, email, location }: { name: string; email
       <Field label="Grades, levels or university modules" name="levels" minLength={2} maxLength={200} />
       <Field label="Years of teaching or tutoring experience" name="experience_years" type="number" min={0} max={80} step={1} defaultValue={0} />
       <Text label="Describe your teaching or tutoring experience" name="teaching_experience" minLength={10} maxLength={4000} />
-      <Text label="Availability in South African time (UTC+2) and access to Zoom/internet" name="availability" minLength={10} maxLength={2000} />
+      <TutorAvailabilityPicker />
       <Text label="Why would you like to tutor at Amaris?" name="motivation" minLength={20} maxLength={4000} />
     </fieldset>
     <fieldset disabled={pending} className="min-w-0 grid gap-4"><legend className="mb-5 text-xl font-semibold">3. Upload your six required documents</legend>

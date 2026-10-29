@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -180,10 +181,18 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             values = {"phone": "0710000000", "qualification": "BSc Mathematics",
                       "institution": "Synthetic University", "subjects": "Mathematics", "levels": "Grade 12",
                       "experience_years": "3", "teaching_experience": "Three years of mathematics tutoring.",
-                      "availability": "Weekday evenings in SAST with Zoom and stable internet.",
+
                       "motivation": "I enjoy helping students understand mathematics and build confidence."}
             for name, value in values.items():
                 page.locator(f'[name="{name}"]').fill(value)
+            first_day = (datetime.now(timezone(timedelta(hours=2))) + timedelta(days=7)).date().isoformat()
+            second_day = (datetime.now(timezone(timedelta(hours=2))) + timedelta(days=8)).date().isoformat()
+            page.locator('input[name="availability_start"]').first.fill(first_day + "T16:00")
+            page.locator('select[name="availability_duration_hours"]').first.select_option("2")
+            page.get_by_role("button", name="Add another date and time").click()
+            page.locator('input[name="availability_start"]').nth(1).fill(second_day + "T18:30")
+            page.locator('select[name="availability_duration_hours"]').nth(1).select_option("3")
+            page.locator('input[name="zoom_internet_access"]').check()
             page.locator("#country").select_option("ZA")
             page.locator("#province").select_option("Gauteng")
             page.locator("#city").select_option("Pretoria")
@@ -217,6 +226,10 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             assert len(list((root / "qualifications").rglob("*.pdf"))) == 6
             with sqlite3.connect(root / "database.sqlite3") as connection:
                 assert connection.execute("SELECT country, province, city FROM content_tutorapplication").fetchall() == [("ZA", "Gauteng", "Pretoria")]
+                available = connection.execute("SELECT availability FROM content_tutorapplication").fetchone()[0]
+                assert first_day + " 16:00" in available
+                assert second_day + " 18:30" in available
+                assert "Zoom/internet access: confirmed." in available
             context.close()
             browser.close()
         print("PASS: registration → verification → fresh-session login → application → six categorized private uploads → receipt → captured acknowledgement.")

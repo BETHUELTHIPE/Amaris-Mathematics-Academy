@@ -56,9 +56,16 @@ class RulesetTests(unittest.TestCase):
         with self.assertRaises(ProtectionMissing):
             self.verify(item)
 
-    def test_approval_without_independent_review_is_blocked(self):
+    def test_owner_configured_zero_reviewers_still_requires_strict_checks(self):
         item = copy.deepcopy(self.detail)
         item["rules"][0]["parameters"]["required_approving_review_count"] = 0
+        item["rules"][0]["parameters"]["required_review_thread_resolution"] = False
+        item["rules"][0]["parameters"]["require_last_push_approval"] = False
+        self.verify(item)
+
+    def test_missing_review_count_is_rejected(self):
+        item = copy.deepcopy(self.detail)
+        del item["rules"][0]["parameters"]["required_approving_review_count"]
         with self.assertRaises(ProtectionMissing):
             self.verify(item)
 

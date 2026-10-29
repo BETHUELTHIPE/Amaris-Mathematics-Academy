@@ -40,9 +40,16 @@ export async function applicationRequest(path = "", init: RequestInit = {}, toke
       ...init,
       headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
-      signal: AbortSignal.timeout(30_000),
+      // Six private files can take longer than 30 seconds to upload to S3.
+      signal: AbortSignal.timeout(90_000),
     });
-  } catch {
-    throw new ApplicationError(503, "The application service did not respond. Your form is still here; please retry.");
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new ApplicationError(
+      timedOut ? 504 : 503,
+      timedOut
+        ? "The upload took too long to confirm. Check your application status before retrying."
+        : "The application service could not be reached. Check your application status before retrying.",
+    );
   }
 }
