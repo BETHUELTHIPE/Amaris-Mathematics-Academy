@@ -60,6 +60,10 @@ export function TutorAvailabilityPicker() {
       <p className="mt-3 text-sm text-[#52617a]" role="status">
         {ids.length} of {MAX_TUTOR_AVAILABILITY_SLOTS} available sessions selected.
       </p>
+      <label className="mt-4 flex items-start gap-3 rounded-xl border border-[#dce4ef] bg-white p-4 text-sm leading-6 text-[#263852]">
+        <input name="zoom_internet_access" value="yes" type="checkbox" required className="mt-1 size-5 shrink-0 accent-[#1f5bbd]" />
+        <span>I have access to Zoom and reliable internet for these teaching sessions.</span>
+      </label>
     </section>
   );
 }
