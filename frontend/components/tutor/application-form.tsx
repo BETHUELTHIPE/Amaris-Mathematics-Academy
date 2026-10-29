@@ -1,6 +1,8 @@
 "use client";
 
 import { LocationFields } from "@/components/site/location-fields";
+import { TutorAvailabilityPicker } from "@/components/tutor/availability-picker";
+import { validateTutorAvailability } from "@/lib/tutor-availability";
 import type { InitialLocation } from "@/lib/location-data";
 import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
@@ -8,7 +10,7 @@ import { REQUIRED_TUTOR_DOCUMENTS, MAX_TUTOR_DOCUMENTS_TOTAL_BYTES, validateRequ
 import { useRef, useState, type FormEvent } from "react";
 
 const input = "min-w-0 min-h-12 w-full rounded-xl border border-[#cbd6e5] bg-white px-4 py-3 text-base font-normal text-[#263852] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1f5bbd]";
-const labels: Record<string, string> = { full_name: "Full name", phone: "Phone", country: "Country", province: "Province / Region", city: "City / Town", provinceOther: "Province / Region", cityOther: "City / Town", qualification: "Qualification", institution: "Institution", subjects: "Subjects", programmes: "Programmes", levels: "Levels", experience_years: "Experience", teaching_experience: "Teaching experience", availability: "Availability", motivation: "Motivation", consent: "Declaration", documents: "Supporting documents", ...Object.fromEntries(REQUIRED_TUTOR_DOCUMENTS.map(({ name, label }) => [name, label])) };
+const labels: Record<string, string> = { full_name: "Full name", phone: "Phone", country: "Country", province: "Province / Region", city: "City / Town", provinceOther: "Province / Region", cityOther: "City / Town", qualification: "Qualification", institution: "Institution", subjects: "Subjects", programmes: "Programmes", levels: "Levels", experience_years: "Experience", teaching_experience: "Teaching experience", availability: "Available teaching date and time", motivation: "Motivation", consent: "Declaration", documents: "Supporting documents", ...Object.fromEntries(REQUIRED_TUTOR_DOCUMENTS.map(({ name, label }) => [name, label])) };
 
 export function ApplicationForm({ name, email, location }: { name: string; email: string; location: InitialLocation }) {
   const router = useRouter();
@@ -38,6 +40,12 @@ export function ApplicationForm({ name, email, location }: { name: string; email
     if (!data.getAll("programmes").length) problems.push({ field: "programmes", message: "Choose at least one programme." });
     for (const [field, messages] of Object.entries(validateRequiredTutorDocuments(data))) {
       problems.push(...messages.map(message => ({ field, message })));
+    }
+    const availability = validateTutorAvailability(data);
+    if (!availability.ok) problems.push({ field: "availability", message: availability.error });
+    else data.set("availability", availability.summary + "\nZoom/internet access: confirmed.");
+    if (data.get("zoom_internet_access") !== "yes") {
+      problems.push({ field: "availability", message: "Confirm that you have access to Zoom and reliable internet." });
     }
     if (!problems.length) {
       setPending(true);
@@ -82,7 +90,7 @@ export function ApplicationForm({ name, email, location }: { name: string; email
       <Field label="Grades, levels or university modules" name="levels" minLength={2} maxLength={200} />
       <Field label="Years of teaching or tutoring experience" name="experience_years" type="number" min={0} max={80} step={1} defaultValue={0} />
       <Text label="Describe your teaching or tutoring experience" name="teaching_experience" minLength={10} maxLength={4000} />
-      <Text label="Availability in South African time (UTC+2) and access to Zoom/internet" name="availability" minLength={10} maxLength={2000} />
+      <TutorAvailabilityPicker />
       <Text label="Why would you like to tutor at Amaris?" name="motivation" minLength={20} maxLength={4000} />
     </fieldset>
     <fieldset disabled={pending} className="min-w-0 grid gap-4"><legend className="mb-5 text-xl font-semibold">3. Upload your six required documents</legend>
