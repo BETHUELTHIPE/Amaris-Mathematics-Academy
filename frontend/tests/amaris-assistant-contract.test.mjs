@@ -51,3 +51,23 @@ test("assistant proxy keeps OpenAI credentials off the browser", () => {
   assert.doesNotMatch(component, /OPENAI_API_KEY/);
   assert.match(route, /cache:\s*"no-store"/);
 });
+
+test("course-selection fallback covers catalogue and private-status safety", () => {
+  assert.match(route, /const courses =/);
+  assert.match(route, /To choose a course, visit \/courses/);
+  assert.match(route, /Continue to enrol/);
+  assert.match(route, /purchased course appears in \/dashboard/);
+  assert.match(route, /my course access/);
+  assert.match(route, /payment status/);
+});
+
+test("known registration and lesson facts remain available during provider outages", () => {
+  assert.match(route, /function publishedAnswer/);
+  assert.match(route, /\/register/);
+  assert.match(route, /R250 per hour/);
+  assert.match(route, /\/book-online-live-class/);
+  assert.match(route, /normalizeCmsApiBaseUrl/);
+  assert.match(route, /response\.status >= 500 && fallback/);
+  assert.match(route, /response\.status === 429/);
+  assert.doesNotMatch(route, /OPENAI_API_KEY/);
+});

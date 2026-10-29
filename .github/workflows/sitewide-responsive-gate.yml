@@ -1,0 +1,114 @@
+name: Sitewide 47-Page Responsive and Accessibility Gate
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/app/**'
+      - 'frontend/components/**'
+      - 'frontend/e2e/sitewide_responsive.py'
+      - 'frontend/e2e/private_synthetic_responsive.py'
+      - '.github/workflows/sitewide-responsive-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  route-wide-chrome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Frontend TypeScript, ESLint and all existing unit contracts
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+      - name: Install browser harness
+        run: pip install -r frontend/e2e/requirements.txt
+      - name: Build production-style Nitro/Render frontend
+        working-directory: frontend
+        run: |
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Audit every route at 320px, 390px, 768px and 1440px
+        env:
+          AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: python -u frontend/e2e/sitewide_responsive.py
+      - name: Retain route-wide findings and failure screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-sitewide-responsive-audit
+          path: frontend/artifacts/sitewide-responsive/
+          retention-days: 14
+          if-no-files-found: warn
+
+  isolated-synthetic-student:
+    name: Signed-in student UI (synthetic only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install development-only browser harness
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          python -m pip install -r e2e/requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Check signed-in synthetic student screens at four breakpoints
+        working-directory: frontend
+        env:
+          NODE_ENV: development
+          E2E_SYNTHETIC_STUDENT: 'true'
+          E2E_WORKFLOW_FIXTURES: 'false'
+          E2E_BASE_URL: http://127.0.0.1:3000
+          CMS_API_URL: http://127.0.0.1:3001/api/v1
+          CSP_REPORT_ONLY: 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev:ci > /tmp/amaris-sitewide-synthetic.log 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          for n in $(seq 1 60); do
+            if curl --fail --silent --max-time 4 http://127.0.0.1:3000/ >/dev/null; then break; fi
+            if [ "$n" -eq 60 ]; then cat /tmp/amaris-sitewide-synthetic.log; exit 1; fi
+            sleep 2
+          done
+          python -u e2e/private_synthetic_responsive.py
+      - name: Retain private synthetic screenshots on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-private-synthetic-responsive
+          path: frontend/artifacts/sitewide-private-responsive/
+          retention-days: 14
+          if-no-files-found: warn

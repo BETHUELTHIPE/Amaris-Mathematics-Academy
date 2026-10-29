@@ -90,7 +90,23 @@ class ProductionArchitectureContractTests(unittest.TestCase):
         self.assertIn("severity: HIGH,CRITICAL", workflow)
         self.assertIn("ignore-unfixed: true", workflow)
         self.assertIn("frontend-sbom.cdx.json", workflow)
-        self.assertIn("npm audit --audit-level=high", workflow)
+        self.assertIn("npm audit --omit=dev --audit-level=high", workflow)
+
+    def test_render_booking_services_match_live_python_runtime(self) -> None:
+        blueprint = text("render.yaml")
+        self.assertIn("name: amaris-production-web\n    runtime: python", blueprint)
+        self.assertNotIn("runtime: image", blueprint)
+        self.assertNotIn("dockerCommand:", blueprint)
+        for service in (
+            "amaris-production-critical-worker",
+            "amaris-production-notification-worker",
+            "amaris-production-beat",
+        ):
+            self.assertIn(f"name: {service}\n    runtime: python", blueprint)
+        self.assertIn("healthCheckPath: /health/ready/", blueprint)
+        self.assertIn("preDeployCommand: python manage.py migrate --noinput", blueprint)
+        self.assertIn("value: https://amaris-mathematics-academy-live-students.onrender.com", blueprint)
+        self.assertIn("value: https://amaris-production-web.onrender.com/api/v1/payfast/itn/", blueprint)
 
     def test_operational_governance_is_explicit(self) -> None:
         operations = text("docs/OPERATIONS_READINESS.md")

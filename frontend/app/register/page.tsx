@@ -10,17 +10,21 @@ import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { getStudentIdentity } from "@/lib/auth";
 import { SafeFormDraft } from "@/components/site/safe-form-draft";
+import { LocationFields } from "@/components/site/location-fields";
+import { initialLocation } from "@/lib/location-server";
+import type { LocationValues } from "@/lib/location-data";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Student Registration" };
 
-const provinces = ["Eastern Cape", "Free State", "Gauteng", "KwaZulu-Natal", "Limpopo", "Mpumalanga", "Northern Cape", "North West", "Western Cape"];
-const levels = ["Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12", "TVET / College", "University", "Adult learner"];
+const levels = ["Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12", "TVET / College", "University", "Adult learner"];
 
-export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string } & Partial<LocationValues>> }) {
   const student = await getStudentIdentity();
   if (student?.emailVerified) redirect("/dashboard");
-  const { error } = await searchParams;
+  const params = await searchParams;
+  const { error } = params;
+  const location = await initialLocation(params);
 
   return <main className="min-h-screen bg-[#f5f7fb]">
     <Header />
@@ -35,14 +39,14 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
         <div className="mt-8 flex items-start gap-3 rounded-2xl border border-[#dce4ef] bg-white p-5 text-sm leading-6 text-[#60708a]"><ShieldCheck className="mt-0.5 size-5 shrink-0 text-[#1f5bbd]" />Your password is handled by Supabase Auth and is never stored in the Amaris course database.</div>
       </div>
       <div className="rounded-[2rem] border border-[#dce4ef] bg-white p-6 shadow-[0_25px_75px_rgba(7,21,45,.1)] sm:p-9">
-        <div className="flex items-center gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LockKeyhole className="size-6" /></span><div><h2 className="text-2xl font-semibold tracking-[-.03em]">Student details</h2><p className="mt-1 text-sm text-[#60708a]">All fields are required.</p></div></div>
+        <div className="flex items-center gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><LockKeyhole className="size-6" /></span><div><h2 className="text-2xl font-semibold tracking-[-.03em]">Student details</h2><p className="mt-1 text-sm text-[#60708a]">All fields below are required.</p></div></div>
         {error && <Alert variant="destructive" className="mt-6"><AlertDescription>{error}</AlertDescription></Alert>}
         <form action={registerAction} className="mt-7 grid gap-5">
-          <SafeFormDraft draftKey="student-registration-v1" allowedFields={["firstName", "lastName", "email", "mobile", "province", "academicLevel", "institution"]} />
+          <SafeFormDraft draftKey="student-registration-v1" allowedFields={["firstName", "lastName", "email", "mobile", "academicLevel", "institution"]} />
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="First name" name="firstName" autoComplete="given-name" /><AuthField label="Last name" name="lastName" autoComplete="family-name" /></div>
           <div className="grid gap-5 sm:grid-cols-2"><AuthField label="Email address" name="email" type="email" autoComplete="email" /><AuthField label="Mobile number" name="mobile" type="tel" autoComplete="tel" placeholder="071 234 5678" /></div>
+          <LocationFields initial={location} draftKey="student-registration-v1" returnTo="/register" />
           <div className="grid gap-5 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-semibold text-[#263852]">Province<NativeSelect name="province" required className="h-12 w-full bg-white"><NativeSelectOption value="">Select province</NativeSelectOption>{provinces.map((province) => <NativeSelectOption key={province} value={province}>{province}</NativeSelectOption>)}</NativeSelect></label>
             <label className="grid gap-2 text-sm font-semibold text-[#263852]">Grade or academic level<NativeSelect name="academicLevel" required className="h-12 w-full bg-white"><NativeSelectOption value="">Select level</NativeSelectOption>{levels.map((level) => <NativeSelectOption key={level} value={level}>{level}</NativeSelectOption>)}</NativeSelect></label>
           </div>
           <AuthField label="School, college or university" name="institution" autoComplete="organization" />

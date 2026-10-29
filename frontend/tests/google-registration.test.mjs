@@ -1,0 +1,78 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+import { getSiteUrl } from "../lib/supabase/config.ts";
+
+const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+const registration = source("../app/register/page.tsx");
+const login = source("../app/login/page.tsx");
+const actions = source("../app/auth/actions.ts");
+const callback = source("../app/auth/callback/route.ts");
+const button = source("../components/site/google-auth-button.tsx");
+const identity = source("../lib/auth.ts");
+
+test("students register by email only, without a Google registration button", () => {
+  assert.doesNotMatch(registration, /GoogleAuthButton|Register with Google|or register with email/);
+  assert.match(registration, /<form action=\{registerAction\}/);
+  assert.match(registration, /name="terms"/);
+  assert.match(registration, /name="password"/);
+});
+
+test("returning Google students can sign in and email login remains available", () => {
+  assert.match(login, /GoogleAuthButton label="Sign in with Google"/);
+  assert.match(login, /<form action=\{loginAction\}/);
+});
+
+test("Google OAuth redirects through the local PKCE callback", () => {
+  assert.match(button, /action=\{googleAuthAction\}/);
+  assert.match(actions, /provider: "google"/);
+  assert.match(actions, /safeRelativePath\(String\(formData.get\("next"\)/);
+  assert.match(actions, /getSiteUrl\(\)\}\/auth\/callback/);
+});
+
+test("callback verifies the session and confines redirects to safe relative paths", () => {
+  assert.match(callback, /exchangeCodeForSession\(code\)/);
+  assert.match(callback, /supabase.auth.getUser\(\)/);
+  assert.match(callback, /safeRelativePath\(/);
+  assert.match(callback, /email_confirmed_at/);
+});
+
+test("verified student identity uses the authoritative Supabase user record and Google names", () => {
+  assert.match(identity, /supabase\.auth\.getClaims\(\)/);
+  assert.match(identity, /supabase\.auth\.getUser\(\)/);
+  assert.match(identity, /userData\.user\.id !== data\.claims\.sub/);
+  assert.match(identity, /Boolean\(userData\.user\.email_confirmed_at\)/);
+  assert.match(identity, /metadata\.given_name/);
+  assert.match(identity, /metadata\.family_name/);
+  assert.doesNotMatch(identity, /claims\.email_verified/);
+});
+
+test("Google callback uses the current Render service origin unless SITE_URL overrides it", () => {
+  const originalSite = process.env.SITE_URL;
+  const originalRender = process.env.RENDER_EXTERNAL_URL;
+  try {
+    delete process.env.SITE_URL;
+    process.env.RENDER_EXTERNAL_URL = "https://staging-students.onrender.com";
+    assert.equal(getSiteUrl(), "https://staging-students.onrender.com");
+    process.env.SITE_URL = "https://students.example.test/";
+    assert.equal(getSiteUrl(), "https://students.example.test");
+  } finally {
+    if (originalSite === undefined) delete process.env.SITE_URL;
+    else process.env.SITE_URL = originalSite;
+    if (originalRender === undefined) delete process.env.RENDER_EXTERNAL_URL;
+    else process.env.RENDER_EXTERNAL_URL = originalRender;
+  }
+});
+
+test("Google sign-in remains on login, with no Google signup or GitHub social options", () => {
+  assert.match(login, /GoogleAuthButton label="Sign in with Google"/);
+  assert.doesNotMatch(registration, /GoogleAuthButton|Register with Google/);
+  for (const page of [login, registration]) {
+    assert.doesNotMatch(page, /GitHubAuthButton|GithubAuthButton|githubAuthAction/i);
+    assert.doesNotMatch(page, /provider:\s*["']github["']/i);
+    assert.doesNotMatch(page, /(?:Sign in|Continue|Register) with GitHub/i);
+  }
+  assert.match(actions, /provider:\s*"google"/);
+  assert.doesNotMatch(actions, /provider:\s*"github"/);
+  assert.doesNotMatch(button, /github\.com|githubAuthAction/i);
+});

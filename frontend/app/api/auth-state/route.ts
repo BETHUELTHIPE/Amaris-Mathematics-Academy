@@ -5,7 +5,7 @@ export async function GET() {
   const student = await getStudentIdentity();
   return NextResponse.json(
     {
-      authenticated: Boolean(student),
+      authenticated: Boolean(student?.emailVerified),
       emailVerified: Boolean(student?.emailVerified),
     },
     {

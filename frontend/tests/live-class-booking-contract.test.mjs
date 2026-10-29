@@ -34,8 +34,28 @@ test("booking page exposes the required programme and subject choices", () => {
   assert.match(bookingPage, /30-minute reminder/);
 });
 
+test("main booking route is private and requires the authoritative verified email before timetable lookups", () => {
+  assert.match(bookingPage, /import \{ requireVerifiedStudent \} from "@\/lib\/auth"/);
+  const gate = bookingPage.indexOf("await requireVerifiedStudent(");
+  const timetable = bookingPage.indexOf("await getLiveClassSlots(");
+  assert.ok(gate > -1 && timetable > gate, "verify email before fetching any private tutor availability");
+  assert.match(bookingPage, /new URLSearchParams\(\)/);
+  assert.match(bookingPage, /"programme", "subject", "level", "customLevel", "topic", "customTopic"/);
+  assert.match(bookingPage, /robots: \{ index: false, follow: false \}/);
+});
+
+test("checkout, confirmation and invoice require a verified student identity", () => {
+  const invoice = fs.readFileSync(
+    new URL("../app/book-online-live-class/invoice/route.ts", import.meta.url), "utf8",
+  );
+  for (const protectedSource of [checkoutPage, confirmationPage, invoice]) {
+    assert.match(protectedSource, /await requireVerifiedStudent\(/);
+  }
+});
+
 test("checkout preserves server-owned pricing and PayFast verification language", () => {
-  assert.match(checkoutPage, /Pay R250 with PayFast/);
+  assert.match(checkoutPage, /Pay R\{booking\.amount\} with PayFast/);
+  assert.match(checkoutPage, /booking\.duration_minutes \/ 60/);
   assert.match(checkoutPage, /Server-priced/);
   assert.match(checkoutPage, /verified callback required/);
 });

@@ -1,14 +1,17 @@
 "use server";
 
+import { parseLocation } from "@/lib/location-server";
+import { countryName } from "@/lib/location-data";
 import { z } from "zod";
 import { env } from "cloudflare:workers";
 import { getD1 } from "@/db";
 import type { EnquiryState } from "@/app/contact/state";
+import { contactRequiredErrors, contactRequiredMessages } from "@/lib/contact-validation";
 
 const enquirySchema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name.").max(80, "Keep your name under 80 characters."),
   email: z.string().trim().email("Enter a valid email address.").max(160, "Keep your email under 160 characters."),
-  phone: z.string().trim().max(30, "Keep your phone number under 30 characters."),
+  phone: z.string().trim().min(1, contactRequiredMessages.phone).max(30, "Keep your phone number under 30 characters."),
   enquiryType: z.enum(["course-guidance", "registration", "payments", "student-account", "technical-support", "other"], { message: "Choose an enquiry type." }),
   message: z.string().trim().min(20, "Please provide at least 20 characters so we can help you.").max(2000, "Keep your message under 2,000 characters."),
   consent: z.literal("on", { message: "Please agree so that we may respond to your enquiry." }),
@@ -16,6 +19,12 @@ const enquirySchema = z.object({
 });
 
 export async function submitEnquiry(_previousState: EnquiryState, formData: FormData): Promise<EnquiryState> {
+  const requiredErrors = contactRequiredErrors(Object.fromEntries(formData.entries()));
+  if (Object.keys(requiredErrors).length) {
+    return { status: "error", message: "Please complete the required fields.", errors: requiredErrors };
+  }
+  const location = await parseLocation(Object.fromEntries(formData));
+  if (!location.value) return { status: "error", message: "Please check your location.", errors: location.errors };
   const parsed = enquirySchema.safeParse({
     fullName: formData.get("fullName"),
     email: formData.get("email"),
@@ -40,6 +49,7 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({
+            ...location.raw,
             name: parsed.data.fullName,
             email: parsed.data.email.toLowerCase(),
             phone: parsed.data.phone,
@@ -67,7 +77,7 @@ export async function submitEnquiry(_previousState: EnquiryState, formData: Form
       parsed.data.email.toLowerCase(),
       parsed.data.phone || null,
       parsed.data.enquiryType,
-      parsed.data.message,
+      parsed.data.message + "\n\nCity / Town: " + location.value.city + "\nProvince / Region: " + location.value.province + "\nCountry: " + countryName(location.value.country),
       1,
       "new",
     ).run();
