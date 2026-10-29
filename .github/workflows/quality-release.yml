@@ -380,6 +380,29 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           scanners: vuln
+      - name: Explain blocking HIGH/CRITICAL container findings
+        if: failure() && hashFiles('trivy-results.sarif') != ''
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          scan = json.loads(Path("trivy-results.sarif").read_text(encoding="utf-8"))
+          count = 0
+          for run in scan.get("runs", []):
+              rules = {r["id"]: r for r in run.get("tool", {}).get("driver", {}).get("rules", [])}
+              for result in run.get("results", []):
+                  rule = rules.get(result.get("ruleId"), {})
+                  props = rule.get("properties", {})
+                  locations = result.get("locations") or []
+                  location = locations[0].get("physicalLocation", {}).get("artifactLocation", {}).get("uri", "") if locations else ""
+                  print("BLOCKING_CVE", result.get("ruleId"), "package_location=", location,
+                        "finding=", result.get("message", {}).get("text", "")[:300],
+                        "rule=", rule.get("shortDescription", {}).get("text", ""),
+                        "metadata=", str(props)[:800], flush=True)
+                  count += 1
+          print("BLOCKING_FINDINGS_TOTAL", count)
+          PY
       - name: Upload container scan results
         if: always() && hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
