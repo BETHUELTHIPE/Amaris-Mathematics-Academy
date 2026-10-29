@@ -203,6 +203,27 @@ class TutorApplicationJourneyTests(TestCase):
         self.assertEqual(TutorApplicationDocument.objects.count(), 1)
         self.enqueue.assert_called_once()
 
+    @override_settings(TUTOR_REQUIRE_SIX_DOCUMENTS=True)
+    def test_six_uploads_complete_before_any_database_savepoint(self):
+        # Django TestCase owns an outer rollback transaction. Assert that the
+        # upload path never opens a further atomic block around slow S3 calls.
+        storage = storages["tutor_qualifications"]
+        original_save = storage.save
+        initial_savepoints = len(connection.savepoint_ids)
+        observed = []
+
+        def observe_save(path, content, **kwargs):
+            observed.append(len(connection.savepoint_ids))
+            self.assertEqual(len(connection.savepoint_ids), initial_savepoints)
+            return original_save(path, content, **kwargs)
+
+        with patch.object(storage, "save", side_effect=observe_save):
+            response = self.submit(documents=[], **self.six_documents())
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(observed, [initial_savepoints] * 6)
+        self.assertEqual(TutorApplication.objects.count(), 1)
+        self.assertEqual(TutorApplicationDocument.objects.count(), 6)
+
     def test_upload_failure_rolls_back_record_and_cleans_previously_saved_document(self):
         storage = storages["tutor_qualifications"]
         save = storage.save
