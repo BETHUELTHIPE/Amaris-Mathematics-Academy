@@ -188,7 +188,12 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             page.locator("#province").select_option("Gauteng")
             page.locator("#city").select_option("Pretoria")
             page.locator('input[name="programmes"][value="caps"]').check()
-            page.locator('input[name="documents"]').set_input_files({"name": "qualification.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.7\nsynthetic browser qualification\n%%EOF"})
+            for category in ("id", "cv", "matric", "academic", "tertiary", "other"):
+                page.locator(f'input[name="document_{category}"]').set_input_files({
+                    "name": f"document_{category}.pdf",
+                    "mimeType": "application/pdf",
+                    "buffer": b"%PDF-1.7\nsynthetic private document\n%%EOF",
+                })
             page.locator('input[name="consent"]').check()
             page.get_by_role("button", name="Submit tutor application", exact=True).click()
             page.get_by_role("heading", name="Application received", exact=True).wait_for(timeout=45000)
@@ -198,9 +203,9 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             reference = page.locator("strong").filter(has_text="AMARIS-TUTOR-").inner_text()
             assert page.get_by_text("Your acknowledgement email has been sent.", exact=False).is_visible()
             with page.expect_download() as download_info:
-                page.get_by_role("link", name="qualification.pdf", exact=True).click()
+                page.get_by_role("link", name="document_id.pdf", exact=True).click()
             download = download_info.value
-            assert download.suggested_filename == "qualification.pdf"
+            assert download.suggested_filename == "document_id.pdf"
             assert Path(download.path()).read_bytes().startswith(b"%PDF-")
             messages = [BytesParser(policy=policy.default).parsebytes(path.read_bytes()) for path in (root / "mail").glob("*")]
             assert len(messages) == 1
@@ -209,12 +214,12 @@ with tempfile.TemporaryDirectory(prefix="amaris-tutor-e2e-") as scratch:
             assert reference in message.get_body(preferencelist=("plain",)).get_content()
             assert USER["email"] in str(message["To"])
             assert not list(message.iter_attachments())
-            assert len(list((root / "qualifications").rglob("*.pdf"))) == 1
+            assert len(list((root / "qualifications").rglob("*.pdf"))) == 6
             with sqlite3.connect(root / "database.sqlite3") as connection:
                 assert connection.execute("SELECT country, province, city FROM content_tutorapplication").fetchall() == [("ZA", "Gauteng", "Pretoria")]
             context.close()
             browser.close()
-        print("PASS: registration → verification → fresh-session login → application → private qualification upload → receipt → captured acknowledgement.")
+        print("PASS: registration → verification → fresh-session login → application → six categorized private uploads → receipt → captured acknowledgement.")
         print("PASS: Axe WCAG checks and overflow checks at 320/390/834/1440; authenticated desktop/mobile form and mobile receipt.")
         print("Auth is simulated and mail is captured locally; live Supabase/SMTP acceptance remains separate.")
     finally:

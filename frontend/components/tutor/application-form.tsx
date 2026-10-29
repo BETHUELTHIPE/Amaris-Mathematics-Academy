@@ -4,26 +4,29 @@ import { LocationFields } from "@/components/site/location-fields";
 import type { InitialLocation } from "@/lib/location-data";
 import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
+import { REQUIRED_TUTOR_DOCUMENTS, MAX_TUTOR_DOCUMENTS_TOTAL_BYTES, validateRequiredTutorDocuments } from "@/lib/tutor-required-documents";
 import { useRef, useState, type FormEvent } from "react";
 
 const input = "min-w-0 min-h-12 w-full rounded-xl border border-[#cbd6e5] bg-white px-4 py-3 text-base font-normal text-[#263852] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1f5bbd]";
-const labels: Record<string, string> = { full_name: "Full name", phone: "Phone", country: "Country", province: "Province / Region", city: "City / Town", provinceOther: "Province / Region", cityOther: "City / Town", qualification: "Qualification", institution: "Institution", subjects: "Subjects", programmes: "Programmes", levels: "Levels", experience_years: "Experience", teaching_experience: "Teaching experience", availability: "Availability", motivation: "Motivation", consent: "Declaration", documents: "Qualifications" };
+const labels: Record<string, string> = { full_name: "Full name", phone: "Phone", country: "Country", province: "Province / Region", city: "City / Town", provinceOther: "Province / Region", cityOther: "City / Town", qualification: "Qualification", institution: "Institution", subjects: "Subjects", programmes: "Programmes", levels: "Levels", experience_years: "Experience", teaching_experience: "Teaching experience", availability: "Availability", motivation: "Motivation", consent: "Declaration", documents: "Supporting documents", ...Object.fromEntries(REQUIRED_TUTOR_DOCUMENTS.map(({ name, label }) => [name, label])) };
 
 export function ApplicationForm({ name, email, location }: { name: string; email: string; location: InitialLocation }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const [documents, setDocuments] = useState<File[]>([]);
+  const [documents, setDocuments] = useState<Record<string, File | null>>({});
   const [errors, setErrors] = useState<{ field: string; message: string }[]>([]);
   const errorSummary = useRef<HTMLDivElement>(null);
+  const selectedFiles = REQUIRED_TUTOR_DOCUMENTS.map(({ name }) => documents[name]).filter((file): file is File => Boolean(file));
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
     const form = event.currentTarget;
     const data = new FormData(form);
-    const files = data.getAll("documents").filter((file): file is File => file instanceof File && file.size > 0);
     let problems: { field: string; message: string }[] = [];
     if (!data.getAll("programmes").length) problems.push({ field: "programmes", message: "Choose at least one programme." });
-    if (!files.length || files.length > 5 || files.some(file => file.size > 5 * 1024 * 1024) || files.reduce((sum, file) => sum + file.size, 0) > 15 * 1024 * 1024) problems.push({ field: "documents", message: "Attach 1–5 PDF, JPEG or PNG qualifications, up to 5 MB each and 15 MB total." });
+    for (const [field, messages] of Object.entries(validateRequiredTutorDocuments(data))) {
+      problems.push(...messages.map(message => ({ field, message })));
+    }
     if (!problems.length) {
       setPending(true);
       try {
@@ -57,17 +60,25 @@ export function ApplicationForm({ name, email, location }: { name: string; email
       <Text label="Availability in South African time (UTC+2) and access to Zoom/internet" name="availability" minLength={10} maxLength={2000} />
       <Text label="Why would you like to tutor at Amaris?" name="motivation" minLength={20} maxLength={4000} />
     </fieldset>
-    <fieldset disabled={pending} className="min-w-0 grid gap-4"><legend className="mb-5 text-xl font-semibold">3. Attach your qualifications</legend>
-      <label htmlFor="documents" className="text-sm font-semibold">Qualification certificates or academic transcripts</label>
-      <p id="file-help" className="text-sm leading-6 text-[#60708a]">Attach 1–5 PDF, JPEG or PNG files. Maximum 5 MB per file, 15 MB in total. Use scans of your relevant qualifications. Do not upload identity documents, bank details or other people’s information.</p>
-      <div className="rounded-2xl border border-dashed border-[#cbd6e5] bg-[#f5f7fb] p-5 sm:p-6">
-        <div className="relative inline-flex max-w-full rounded-full bg-[#0b2a5b] text-white transition hover:bg-[#123d79] focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-[#1f5bbd]">
-          <span aria-hidden="true" className="inline-flex min-h-12 items-center justify-center gap-2 px-6 py-3 text-sm font-bold"><Upload className="size-5 shrink-0" />Upload qualifications</span>
-          <input id="documents" name="documents" type="file" accept="application/pdf,image/jpeg,image/png" multiple required aria-label="Upload qualifications" aria-describedby="file-help file-selection" onChange={event => setDocuments(Array.from(event.currentTarget.files ?? []))} className="absolute inset-0 h-full w-full cursor-pointer rounded-full opacity-0 disabled:cursor-wait" />
-        </div>
-        <p id="file-selection" role="status" className="mt-4 text-sm leading-6 text-[#52617a]">{documents.length ? `${documents.length} ${documents.length === 1 ? "file" : "files"} selected · ${(documents.reduce((total, file) => total + file.size, 0) / (1024 * 1024)).toFixed(2)} MB of 15 MB` : "No files selected. You can select several files at once."}</p>
-        {documents.length > 0 && <><ul aria-label="Selected qualifications" className="mt-3 grid gap-2 text-sm text-[#263852]">{documents.map((file, index) => <li key={`${file.name}-${index}`} className="break-all rounded-lg border border-[#dce4ef] bg-white px-3 py-2">{file.name} <span className="text-[#60708a]">({(file.size / (1024 * 1024)).toFixed(2)} MB)</span></li>)}</ul><p className="mt-3 text-xs leading-5 text-[#60708a]">Selecting again replaces your current files. Documents upload when you submit your application.</p></>}
+    <fieldset disabled={pending} className="min-w-0 grid gap-4"><legend className="mb-5 text-xl font-semibold">3. Upload your six required documents</legend>
+      <p id="file-help" className="text-sm leading-6 text-[#60708a]">Every document below is compulsory. Choose one PDF, JPEG or PNG file in each field (maximum 5 MB each, 30 MB total). Make sure your scans are clear and readable. Files are held privately for authorized recruitment review and are never included in confirmation emails.</p>
+      <div className="grid gap-4">
+        {REQUIRED_TUTOR_DOCUMENTS.map(({ name, label, description }, index) => {
+          const file = documents[name];
+          return <div key={name} className="rounded-2xl border border-[#dce4ef] bg-[#f5f7fb] p-4 sm:p-5">
+            <label htmlFor={name} className="block text-sm font-bold text-[#263852]">{index + 1}. {label} <span className="text-red-700" aria-label="required">*</span></label>
+            <p id={`${name}-help`} className="mt-1 text-sm text-[#60708a]">{description}</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative inline-flex w-fit max-w-full rounded-full bg-[#0b2a5b] text-white transition hover:bg-[#123d79] focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-[#1f5bbd]">
+                <span aria-hidden="true" className="inline-flex min-h-11 items-center justify-center gap-2 px-5 py-3 text-sm font-semibold"><Upload className="size-4 shrink-0" />Choose file</span>
+                <input id={name} name={name} type="file" accept="application/pdf,image/jpeg,image/png" required aria-label={label} aria-describedby={`${name}-help ${name}-selection`} onChange={event => { const selected = event.currentTarget.files?.[0] ?? null; setDocuments(current => ({ ...current, [name]: selected })); }} className="absolute inset-0 h-full w-full cursor-pointer rounded-full opacity-0 disabled:cursor-wait" />
+              </div>
+              <span id={`${name}-selection`} role="status" className="min-w-0 break-all text-sm text-[#52617a]">{file ? `${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)` : "No file selected"}</span>
+            </div>
+          </div>;
+        })}
       </div>
+      <p id="documents" role="status" className="text-sm leading-6 text-[#52617a]">{selectedFiles.length} of 6 required files selected · {(selectedFiles.reduce((total, file) => total + file.size, 0) / (1024 * 1024)).toFixed(2)} MB of {(MAX_TUTOR_DOCUMENTS_TOTAL_BYTES / (1024 * 1024)).toFixed(0)} MB.</p>
       <label id="consent" className="flex items-start gap-3 rounded-xl bg-[#f5f7fb] p-5 text-sm leading-6"><input type="checkbox" name="consent" value="true" required className="mt-1 size-5 shrink-0 accent-[#1f5bbd]" /><span>I confirm that this application is accurate and these are my qualifications. I have read the recruitment privacy notice below and consent to Amaris reviewing these documents and contacting me about this application.</span></label>
     </fieldset>
     <p aria-live="polite" className="text-sm text-[#52617a]">{pending ? "Submitting your application and private documents. Please keep this page open." : "Submit once. You can return here to view your reference and status."}</p>

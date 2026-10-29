@@ -24,7 +24,7 @@ export async function createSupabaseServerClient() { return { auth: {
 const stubs = new Set(["@/lib/supabase/config", "@/lib/supabase/server", "@/lib/tutor-applications", "test:applicants"]);
 const vite = await createServer({
   root: fileURLToPath(new URL("..", import.meta.url)), configFile: false, appType: "custom",
-  plugins: [{ name: "applicant-test-services", enforce: "pre", resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubs.has(id)) return "\0test:applicants"; }, load(id) { if (id === "\0test:applicants") return mock; } }],
+  plugins: [{ name: "applicant-test-services", enforce: "pre", resolveId(id) { if (id === "@/lib/location-server" || id === "@/lib/location-data" || id === "@/lib/verified-account-email" || id === "@/lib/tutor-required-documents") return fileURLToPath(new URL("../lib/" + id.split("/").at(-1) + ".ts", import.meta.url)); if (stubs.has(id)) return "\0test:applicants"; }, load(id) { if (id === "\0test:applicants") return mock; } }],
   server: { middlewareMode: true, hmr: false, ws: false },
 });
 const { state } = await vite.ssrLoadModule("test:applicants");
@@ -95,16 +95,42 @@ test("cross-origin application submissions are rejected before checking credenti
   assert.equal(state.tokenChecked, undefined);
   assert.equal(state.forwarded, undefined);
 });
-test("qualification multipart form preserves file bytes and returns private receipt", async () => {
+const mandatoryUploads = ["document_id", "document_cv", "document_matric", "document_academic", "document_tertiary", "document_other"];
+function completedApplicationForm() {
   const form = new FormData();
   form.set("full_name", "Synthetic Applicant");
-  form.set("country", "ZA"); form.set("province", "Gauteng"); form.set("city", "Pretoria");
-  form.append("documents", new File(["%PDF-test"], "qualification.pdf", { type: "application/pdf" }));
+  form.set("country", "ZA");
+  form.set("province", "Gauteng");
+  form.set("city", "Pretoria");
+  for (const name of mandatoryUploads) form.set(name, new File(["%PDF-" + name], name + ".pdf", { type: "application/pdf" }));
+  return form;
+}
+test("all six identity and academic documents are compulsory at the API boundary", async () => {
+  for (const missing of mandatoryUploads) {
+    const form = completedApplicationForm();
+    form.delete(missing);
+    const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
+    assert.equal(response.status, 400, missing);
+    const body = await response.json();
+    assert.ok(body[missing], missing);
+    assert.equal(state.forwarded, undefined);
+  }
+  const extra = completedApplicationForm();
+  extra.set("document_id", new File(["invalid"], "untrusted.exe", { type: "application/octet-stream" }));
+  const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: extra, headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
+  assert.equal(response.status, 400);
+  assert.ok((await response.json()).document_id);
+  assert.equal(state.forwarded, undefined);
+});
+test("qualification multipart form preserves file bytes and returns private receipt", async () => {
+  const form = completedApplicationForm();
   const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "application/json" } }));
   assert.equal(response.status, 201);
   assert.equal(response.headers.get("cache-control"), "private, no-store");
   assert.equal(state.forwarded.token, "synthetic-private-token");
-  assert.equal(await state.forwarded.data.get("documents").text(), "%PDF-test");
+  for (const name of mandatoryUploads) {
+    assert.equal(await state.forwarded.data.get(name).text(), "%PDF-" + name);
+  }
   assert.equal((await response.json()).application.reference, "AMARIS-TUTOR-TEST");
 });
 test("expired applicant session does not forward qualifications", async () => {
@@ -114,13 +140,12 @@ test("expired applicant session does not forward qualifications", async () => {
   assert.equal(state.forwarded, undefined);
 });
 test("oversized uploads are rejected even without a content-length header", async () => {
-  const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: new Uint8Array(16 * 1024 * 1024 + 1), headers: { Origin: "https://academy.example.test", Accept: "application/json", "Content-Type": "multipart/form-data; boundary=test" } }));
+  const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: new Uint8Array(33 * 1024 * 1024 + 1), headers: { Origin: "https://academy.example.test", Accept: "application/json", "Content-Type": "multipart/form-data; boundary=test" } }));
   assert.equal(response.status, 413);
   assert.equal(state.forwarded, undefined);
 });
-test("ordinary HTML form submits redirect to the saved application without JavaScript", async () => {
-  const form = new FormData();
-  for (const [key, value] of Object.entries({ country: "ZA", province: "Gauteng", city: "Pretoria" })) form.set(key, value);
+test("ordinary HTML form submits all six files to the saved application without JavaScript", async () => {
+  const form = completedApplicationForm();
   const response = await POST(new Request("https://academy.example.test/api/tutor-applications", { method: "POST", body: form, headers: { Origin: "https://academy.example.test", Accept: "text/html" } }));
   assert.equal(response.status, 303);
   assert.equal(response.headers.get("location"), "https://academy.example.test/tutor/apply");

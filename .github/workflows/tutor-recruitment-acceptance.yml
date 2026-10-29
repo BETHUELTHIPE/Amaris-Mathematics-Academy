@@ -18,7 +18,8 @@ jobs:
     timeout-minutes: 20
     env:
       # Pin the paired backend contract; changing it requires an explicit review.
-      TUTOR_BACKEND_REF: 1401bb0e20467aa345bc909e30b35d227cd374da
+      TUTOR_BACKEND_REF: 3caeeaa625c43409dc587aee9d488f5aa836875f
+      TUTOR_REQUIRE_SIX_DOCUMENTS: "true"
       TUTOR_E2E_ARTIFACTS: ${{ github.workspace }}/artifacts/tutor-recruitment
       TUTOR_BACKEND_ROOT: ${{ github.workspace }}/paired-backend/backend
     steps:
