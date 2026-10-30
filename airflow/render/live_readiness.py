@@ -98,7 +98,8 @@ def check(env, *, now=None):
 
         health = get("/api/v2/monitor/health")
         for component in ("metadatabase", "scheduler", "dag_processor"):
-            if health.get(component, {}).get("status") != "healthy":
+            component_health = health.get(component)
+            if not isinstance(component_health, dict) or component_health.get("status") != "healthy":
                 raise ReadinessError("Airflow metadata, scheduler or DAG processor is unhealthy.")
 
         dag = get("/api/v2/dags/" + parse.quote(dag_id, safe=""))
@@ -109,7 +110,12 @@ def check(env, *, now=None):
             "/api/v2/dags/" + parse.quote(dag_id, safe="") + "/dagRuns",
             {"limit": 1, "order_by": "-start_date"},
         ).get("dag_runs")
-        if not isinstance(runs, list) or len(runs) != 1 or runs[0].get("state") != "success":
+        if (
+            not isinstance(runs, list)
+            or len(runs) != 1
+            or not isinstance(runs[0], dict)
+            or runs[0].get("state") != "success"
+        ):
             raise ReadinessError("There is no successful latest health DAG run.")
         finished = _parse_timestamp(runs[0].get("end_date"))
         current = now or datetime.now(timezone.utc)
