@@ -154,9 +154,11 @@ def issue_due_statements(now=None, limit=100):
     tutor_ids = list(
         get_user_model().objects.filter(is_active=True).filter(
             Q(finance_contracts__is_active=True) | Q(groups__name__iexact="Tutors")
-        ).distinct().order_by("pk").values_list("pk", flat=True)[:limit]
+        ).distinct().order_by("pk").values_list("pk", flat=True)
     )
     for tutor_id in tutor_ids:
+        if due >= limit:
+            break
         with transaction.atomic():
             tutor = get_user_model().objects.select_for_update().get(pk=tutor_id)
             previous = TutorActivityStatement.objects.filter(tutor=tutor).order_by("-period_end").first()
