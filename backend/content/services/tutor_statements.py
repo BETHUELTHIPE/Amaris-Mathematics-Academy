@@ -202,7 +202,7 @@ def render_tutor_statement_pdf(statement):
     """A4 PDF on the established Amaris logo, colour, contact and font system."""
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
-    from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import LongTable, SimpleDocTemplate, Spacer, Table, TableStyle
     from content.services.invoice_document import (
         BLUE,
         GOLD,
