@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.mail import send_mail
+from django.db import transaction
 from django.utils import timezone
 from content.models import SiteSettings
 from .models import HappyForm
@@ -89,7 +90,7 @@ def remind_due_followups():
         due_at__lte=timezone.now(),
         reminder_sent_at__isnull=True,
     ).select_related("feedback__student")[:100]:
-        with __import__("django").db.transaction.atomic():
+        with transaction.atomic():
             selected = FeedbackFollowUp.objects.select_for_update().get(pk=followup.pk)
             if selected.reminder_sent_at or selected.status != FeedbackFollowUp.Status.PENDING:
                 continue
