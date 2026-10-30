@@ -316,7 +316,7 @@ def render_tutor_statement_pdf(statement):
                 data.append([_pdf_value(item.get(k, "")) for k in keys])
         else:
             data.append([_pdf_value("No verified activity in this period")] + [_pdf_value("")] * (len(keys) - 1))
-        widths = [113, 110, 296] if len(keys) == 3 else [85, 99, 95, 74, 82, 84] if len(keys) == 6 else [125, 250, 144]
+        widths: list[float] = [113, 110, 296] if len(keys) == 3 else [85, 99, 95, 74, 82, 84] if len(keys) == 6 else [125, 250, 144]
         if len(widths) != len(keys):
             widths = [519 / len(keys)] * len(keys)
         tab = LongTable(data, colWidths=widths, repeatRows=1)
