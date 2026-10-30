@@ -438,6 +438,17 @@ if OPENAI_ASSISTANT_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
 CELERY_BEAT_SCHEDULE = {
+    # Beat checks due 30-day windows once daily; issuance uses DB-locked period keys.
+    "create-30-day-tutor-statements": {
+        "task": "content.tutor_statement_tasks.create_due_tutor_statements",
+        "schedule": 86400.0,
+        "options": {"queue": "notifications"},
+    },
+    "deliver-30-day-tutor-statements": {
+        "task": "content.tutor_statement_tasks.deliver_due_tutor_statements",
+        "schedule": 300.0,
+        "options": {"queue": "notifications"},
+    },
     "reconcile-tutor-earnings": {
         "task": "content.tutor_finance_tasks.reconcile_tutor_earnings",
         "schedule": 600.0,
