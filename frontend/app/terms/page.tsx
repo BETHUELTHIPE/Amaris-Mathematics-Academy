@@ -10,6 +10,7 @@ const sections = [
   ["Courses and access", "Course access is personal and may not be shared, copied or redistributed. Access begins only after the applicable payment has been verified."],
   ["Learning materials", "Videos, notes, worked examples and assessments remain the intellectual property of Amaris Mathematics Academy or its licensors."],
   ["Payments and support", "Course prices are shown in South African rand. Payment, refund and access questions should be sent to the academy using the contact details below."],
+  ["Student satisfaction and follow-up", "If a student tells us they are unhappy with a service through our feedback form or directly to the academy, we will contact the student by telephone within two calendar days after receiving the feedback, where valid contact details are available. We will listen to the reasons for their dissatisfaction, discuss possible solutions and ask how we can improve our teaching and services. If we cannot reach the student, we will make a reasonable follow-up attempt using the contact details provided. Any personal information shared during the follow-up will be handled confidentially in accordance with our privacy practices."],
   ["Responsible use", "You may not attempt to bypass authentication, access another student's information or interfere with the website or its learning services."],
 ];
 
