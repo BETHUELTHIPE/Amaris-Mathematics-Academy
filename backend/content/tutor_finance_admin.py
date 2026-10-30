@@ -14,6 +14,7 @@ from .tutor_finance_models import (
     TutorEarning,
     TutorPaymentProfile,
     TutorPayout,
+    TutorActivityStatement,
 )
 
 
@@ -168,3 +169,102 @@ class TutorPayoutAdmin(FinanceSuperuserAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+
+@admin.register(TutorActivityStatement)
+class TutorActivityStatementAdmin(FinanceSuperuserAdmin):
+    """Only Django superusers can list, inspect or download private statements."""
+
+    list_display = (
+        "report_number", "tutor", "period_start", "period_end",
+        "sessions_taught", "video_requests", "tutor_share",
+        "state", "tutor_emailed_at", "admin_emailed_at", "download",
+    )
+    list_filter = ("state", "period_end", "tutor_emailed_at", "admin_emailed_at")
+    search_fields = ("report_number", "tutor__username", "tutor__email")
+    list_select_related = ("tutor",)
+    readonly_fields = (
+        "report_number", "tutor", "period_start", "period_end",
+        "state", "activity_overview", "financial_overview",
+        "pdf_sha256", "download", "tutor_emailed_at", "admin_emailed_at",
+        "created_at", "updated_at",
+    )
+    fields = readonly_fields
+    list_per_page = 30
+    actions = None
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def sessions_taught(self, obj):
+        return obj.snapshot.get("sessions_taught", 0)
+
+    def video_requests(self, obj):
+        return obj.snapshot.get("video_requests", 0)
+
+    def tutor_share(self, obj):
+        return f"R {obj.snapshot.get('tutor_share', '0.00')}"
+
+    @admin.display(description="Activities")
+    def activity_overview(self, obj):
+        d = obj.snapshot
+        return (
+            f"Students served: {d.get('unique_students', 0)}; "
+            f"completed classes: {d.get('sessions_taught', 0)}; "
+            f"teaching hours: {d.get('hours_taught', 0)}; "
+            f"video requests: {d.get('video_requests', 0)}; "
+            f"ready videos: {d.get('videos_delivered', 0)}"
+        )
+
+    @admin.display(description="Finance")
+    def financial_overview(self, obj):
+        d = obj.snapshot
+        return (
+            f"Verified gross: R {d.get('gross_verified', '0.00')}; "
+            f"tutor share: R {d.get('tutor_share', '0.00')}; "
+            f"held: R {d.get('held_earnings', '0.00')}; "
+            f"eligible: R {d.get('ready_earnings', '0.00')}; "
+            f"provider-confirmed payout: R {d.get('confirmed_payouts_in_period', '0.00')}"
+        )
+
+    @admin.display(description="PDF report")
+    def download(self, obj):
+        if not obj or not obj.pdf_storage_path:
+            return "Archive pending"
+        from django.urls import reverse
+        from django.utils.html import format_html
+        link = reverse("admin:content_tutoractivitystatement_download", args=[obj.pk])
+        return format_html('<a href="{}">Download private statement</a>', link)
+
+    def get_urls(self):
+        from django.urls import path
+
+        return [
+            path(
+                "<int:object_id>/download/",
+                self.admin_site.admin_view(self.download_report),
+                name="content_tutoractivitystatement_download",
+            )
+        ] + super().get_urls()
+
+    def download_report(self, request, object_id):
+        from django.core.exceptions import PermissionDenied
+        from django.core.files.storage import storages
+        from django.http import FileResponse
+        from django.shortcuts import get_object_or_404
+
+        if not self.has_view_permission(request):
+            raise PermissionDenied()
+        statement = get_object_or_404(TutorActivityStatement, pk=object_id)
+        if not statement.pdf_storage_path:
+            raise PermissionDenied()
+        stream = storages["default"].open(statement.pdf_storage_path, "rb")
+        response = FileResponse(stream, content_type="application/pdf", as_attachment=True,
+                                filename=f"{statement.report_number}.pdf")
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
