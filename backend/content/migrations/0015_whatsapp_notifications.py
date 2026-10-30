@@ -5,7 +5,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("content", "0001_initial"),
+        ("content", "0008_announcement_media"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
