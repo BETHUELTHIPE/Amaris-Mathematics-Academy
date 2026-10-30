@@ -1,0 +1,118 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<style>
+  .ops-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:18px 0}
+  .ops-card {border:1px solid var(--hairline-color,#cbd5e1);background:var(--body-bg,#fff);border-radius:12px;padding:18px}
+  .ops-card h2 {font-size:1rem;margin:0 0 8px}
+  .ops-number {font-size:1.7rem;font-weight:750;margin:0}
+  .ops-muted {opacity:.8}
+  .ops-table {width:100%;border-collapse:collapse}
+  .ops-table td,.ops-table th {padding:9px;text-align:left;border-bottom:1px solid var(--hairline-color,#ddd)}
+  .ops-notice {border-left:4px solid #64748b;padding:12px 16px;margin:16px 0}
+  .ops-status {font-weight:700}
+</style>
+<nav aria-label="Monitoring navigation">
+  <a href="{% url 'admin:index' %}">Django Admin</a> /
+  <a href="{% url 'admin:amaris_monitoring_home' %}">Monitoring</a> /
+  Task operations
+</nav>
+<h1>Live task operations</h1>
+<p class="ops-muted">Read-only operational snapshots, refreshed every 20 seconds. Airflow schedules its own DAGs; Django background jobs run in Celery and are tracked here or in Flower.</p>
+<p class="ops-notice">
+  <strong>Airflow:</strong>
+  {% if airflow_configured %}
+    API monitoring configured. <a href="{% url 'admin:amaris_airflow_home' %}">Open Airflow DAG and task progress</a>.
+  {% else %}
+    Not connected. <a href="{% url 'admin:amaris_airflow_home' %}">View Airflow configuration status</a>.
+  {% endif %}
+  <br>
+  <strong>Celery history:</strong> <a href="{% url 'admin:amaris_monitoring_home' %}">Open the protected Flower console from Monitoring</a> when available.
+</p>
+<p role="status" aria-live="polite" class="ops-status" id="ops-state">Worker status: {{ snapshot.state }}</p>
+<p class="ops-muted">Snapshot time: <time id="ops-time">{{ snapshot.checked_at }}</time>. The page does not prove Beat is running; an existing Beat schedule is only configuration.</p>
+
+<div class="ops-grid" aria-label="Live Celery task summary">
+  <section class="ops-card"><h2>Redis broker</h2><p id="ops-broker">{% if snapshot.broker_online %}Connected{% else %}Unavailable{% endif %}</p></section>
+  <section class="ops-card"><h2>Workers responding</h2><p id="ops-workers" class="ops-number">{{ snapshot.worker_count }}</p></section>
+  <section class="ops-card"><h2>Running tasks</h2><p id="ops-active" class="ops-number">{{ snapshot.task_counts.active }}</p></section>
+  <section class="ops-card"><h2>Reserved tasks</h2><p id="ops-reserved" class="ops-number">{{ snapshot.task_counts.reserved }}</p></section>
+  <section class="ops-card"><h2>Worker-scheduled tasks</h2><p id="ops-scheduled" class="ops-number">{{ snapshot.task_counts.scheduled }}</p></section>
+  <section class="ops-card"><h2>Recorded terminal failures</h2><p id="ops-failures" class="ops-number">{{ snapshot.failed_task_records|default_if_none:"Unavailable" }}</p></section>
+  <section class="ops-card"><h2>Configured Beat entries</h2><p class="ops-number">{{ snapshot.beat_schedule_count }}</p><small>Not a Beat liveness check</small></section>
+  <section class="ops-card"><h2>Registered application tasks</h2><p class="ops-number">{{ snapshot.registered_tasks|length }}</p><small>Registered does not mean executed</small></section>
+</div>
+
+<h2>Ready queue depth</h2>
+<p class="ops-muted">Redis LLEN counts messages waiting in these known queues. It does not include running tasks.</p>
+<table class="ops-table">
+  <thead><tr><th scope="col">Queue</th><th scope="col">Waiting</th></tr></thead>
+  <tbody id="ops-queues">
+    {% for queue, count in snapshot.queue_depths.items %}
+    <tr><th scope="row">{{ queue }}</th><td>{{ count }}</td></tr>
+    {% empty %}
+    <tr><td colspan="2">Queue information unavailable.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Registered Django background tasks</h2>
+<p class="ops-muted">Names only. Task arguments, student details, payment data, exception text and log content are never returned by this monitor.</p>
+<ul>
+  {% for task in snapshot.registered_tasks %}<li><code>{{ task }}</code></li>
+  {% empty %}<li>No application tasks registered in this process.</li>
+  {% endfor %}
+</ul>
+<p class="ops-notice">A missing or unreachable worker is shown as degraded or unavailable, not healthy. Refreshing this page does not trigger, retry or cancel any task.</p>
+
+<script>
+(function () {
+  "use strict";
+  const endpoint = "{% url 'admin:amaris_task_operations_status' %}";
+  const fields = {
+    "ops-workers": data => data.worker_count,
+    "ops-active": data => data.task_counts.active,
+    "ops-reserved": data => data.task_counts.reserved,
+    "ops-scheduled": data => data.task_counts.scheduled,
+    "ops-failures": data => data.failed_task_records == null ? "Unavailable" : data.failed_task_records,
+    "ops-broker": data => data.broker_online ? "Connected" : "Unavailable",
+    "ops-state": data => "Worker status: " + data.state,
+    "ops-time": data => data.checked_at
+  };
+  async function update() {
+    if (document.hidden) return;
+    try {
+      const response = await fetch(endpoint, {credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
+      if (!response.ok) throw new Error("Unavailable");
+      const data = await response.json();
+      for (const [id, value] of Object.entries(fields)) {
+        document.getElementById(id).textContent = String(value(data));
+      }
+      const body = document.getElementById("ops-queues");
+      body.replaceChildren();
+      const queues = Object.entries(data.queue_depths || {});
+      if (!queues.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 2;
+        td.textContent = "Queue information unavailable.";
+        tr.appendChild(td);
+        body.appendChild(tr);
+      }
+      for (const [name, depth] of queues) {
+        const row = document.createElement("tr");
+        const th = document.createElement("th");
+        th.scope = "row";
+        th.textContent = name;
+        const td = document.createElement("td");
+        td.textContent = String(depth);
+        row.append(th, td);
+        body.appendChild(row);
+      }
+    } catch (_error) {
+      document.getElementById("ops-state").textContent = "Worker status: unavailable (last snapshot may be stale)";
+    }
+  }
+  setInterval(update, 20000);
+})();
+</script>
+{% endblock %}
