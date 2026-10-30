@@ -30,3 +30,31 @@ class HappyForm(models.Model):
 
     def __str__(self):
         return f"{self.student} — {self.service_title}"
+
+class FeedbackFollowUp(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Awaiting call"
+        CONTACTED = "contacted", "Student contacted"
+        RESOLVED = "resolved", "Resolved"
+        UNREACHABLE = "unreachable", "Unable to reach student"
+
+    feedback = models.OneToOneField(
+        HappyForm, on_delete=models.PROTECT, related_name="followup"
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING
+    )
+    due_at = models.DateTimeField(db_index=True)
+    reminder_sent_at = models.DateTimeField(blank=True, null=True)
+    contacted_at = models.DateTimeField(blank=True, null=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Student follow-up"
+        verbose_name_plural = "Student follow-ups"
+        ordering = ("due_at",)
+
+    def __str__(self):
+        return f"Follow-up for {self.feedback.student} ({self.due_at:%Y-%m-%d})"
