@@ -229,7 +229,8 @@ class TutorActivityStatementAdmin(FinanceSuperuserAdmin):
     def activity_overview(self, obj):
         d = obj.snapshot
         return (
-            f"Students served: {d.get('unique_students', 0)}; "
+            f"Students taught: {d.get('students_taught', 0)}; "
+            f"students served: {d.get('unique_students', 0)}; "
             f"completed classes: {d.get('sessions_taught', 0)}; "
             f"teaching hours: {d.get('hours_taught', 0)}; "
             f"video requests: {d.get('video_requests', 0)}; "
