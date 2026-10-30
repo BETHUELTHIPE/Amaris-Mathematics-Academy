@@ -108,9 +108,18 @@ def meta_whatsapp_webhook(request):
                 if not provider_id:
                     continue
                 state = receipt.get("status")
-                if state == "failed":
+                if state in ("delivered", "read"):
                     WhatsAppDelivery.objects.filter(provider_id=provider_id).update(
-                        status=WhatsAppDelivery.Status.FAILED, error_code="provider_failed"
+                        receipt_status=state
+                    )
+                elif state == "sent":
+                    WhatsAppDelivery.objects.filter(provider_id=provider_id).update(
+                        receipt_status="sent"
+                    )
+                elif state == "failed":
+                    WhatsAppDelivery.objects.filter(provider_id=provider_id).update(
+                        status=WhatsAppDelivery.Status.FAILED, error_code="provider_failed",
+                        receipt_status="failed"
                     )
                 # 'sent' is not proof of device delivery. The original model
                 # currently records API acceptance; receipts need separate fields
