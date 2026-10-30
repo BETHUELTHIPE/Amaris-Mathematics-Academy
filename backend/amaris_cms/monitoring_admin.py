@@ -8,12 +8,13 @@ from urllib import request as urllib_request
 from django.conf import settings
 from django.contrib.admin import AdminSite
 from django.core.exceptions import PermissionDenied
-from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseNotFound
+from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseNotFound, JsonResponse
 from django.template.response import TemplateResponse
 from django.urls import path
 from django.views.decorators.csrf import csrf_exempt
 
 from .airflow_client import AirflowUnavailable, get_workflow, get_workflow_tasks, is_configured, monitored_dags
+from .celery_monitor import get_task_snapshot
 
 PROXY_PREFIX = "/admin/monitoring/"
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -37,6 +38,16 @@ class AmarisAdminSite(AdminSite):
 
     def get_urls(self):
         extra = [
+            path(
+                "task-operations/",
+                self.admin_view(self.task_operations_home),
+                name="amaris_task_operations_home",
+            ),
+            path(
+                "task-operations/status/",
+                self.admin_view(self.task_operations_status),
+                name="amaris_task_operations_status",
+            ),
             path(
                 "airflow/",
                 self.admin_view(self.airflow_home),
@@ -70,6 +81,32 @@ class AmarisAdminSite(AdminSite):
         user = request.user
         if not (user.is_authenticated and user.is_active and user.is_staff and user.is_superuser):
             raise PermissionDenied("Monitoring is reserved for Django superusers.")
+
+    def task_operations_home(self, request):
+        self._require_superuser(request)
+        if request.method != "GET":
+            return HttpResponseNotAllowed(["GET"])
+        response = TemplateResponse(
+            request,
+            "admin/amaris_task_operations.html",
+            {
+                **self.each_context(request),
+                "title": "Live task operations",
+                "snapshot": get_task_snapshot(),
+                "airflow_configured": is_configured(),
+            },
+        )
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    def task_operations_status(self, request):
+        self._require_superuser(request)
+        if request.method != "GET":
+            return HttpResponseNotAllowed(["GET"])
+        response = JsonResponse(get_task_snapshot())
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
     def airflow_home(self, request):
         self._require_superuser(request)
