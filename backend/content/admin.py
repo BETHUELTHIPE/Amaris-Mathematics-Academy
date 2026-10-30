@@ -501,3 +501,5 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+from . import whatsapp_admin  # noqa: E402,F401
