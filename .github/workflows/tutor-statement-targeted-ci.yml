@@ -1,0 +1,49 @@
+name: Tutor Statement Targeted PostgreSQL Acceptance
+on:
+  push:
+    branches: [feat/tutor-30day-statements-celery-20261030]
+    paths: [ops/tutor-statement-test-request.txt]
+permissions:
+  contents: read
+jobs:
+  statements:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_ci
+          POSTGRES_USER: amaris_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U amaris_ci -d amaris_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DJANGO_DEBUG: 'false'
+      DJANGO_ALLOWED_HOSTS: 'localhost,127.0.0.1'
+      DATABASE_URL: 'postgresql://amaris_ci@127.0.0.1:5432/amaris_ci'
+      DATABASE_SSL_REQUIRED: 'false'
+      SUPABASE_DATABASE_REQUIRED: 'false'
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: '0'
+      CELERY_BROKER_URL: 'memory://'
+      DJANGO_SECRET_KEY: 'isolated-ci-test-secret-not-deployed-20261030'
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install backend test dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Python style
+        run: black --check . && ruff check .
+      - name: Django schema consistency
+        run: python manage.py makemigrations --check --dry-run
+      - name: Apply migrations to disposable CI PostgreSQL
+        run: python manage.py migrate --noinput
+      - name: Tutor statement private reporting and delivery tests
+        run: python manage.py test content.test_tutor_statements --verbosity 2
