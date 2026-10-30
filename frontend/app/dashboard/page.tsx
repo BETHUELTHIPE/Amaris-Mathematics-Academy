@@ -44,6 +44,7 @@ export default async function DashboardPage() {
       <div className="mx-auto flex max-w-7xl flex-col justify-between gap-6 px-5 py-10 sm:flex-row sm:items-end lg:px-8">
         <div>
           <p className="eyebrow">Student dashboard</p>
+          <Link href="/dashboard/feedback" className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold">Rate a service ⭐</Link>
           <h1 className="mt-3 text-4xl font-semibold tracking-[-.045em] sm:text-5xl">Welcome, {firstName}.</h1>
           <p className="mt-3 text-[#60708a]">Your next mathematics step will always be clear here.</p>
         </div>
