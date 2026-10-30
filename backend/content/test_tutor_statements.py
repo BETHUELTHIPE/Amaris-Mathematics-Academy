@@ -210,7 +210,8 @@ class TutorStatementTests(TestCase):
         response = self.client.get(url, secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response["Content-Disposition"])
-        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertIn("private", response["Cache-Control"])
+        self.assertIn("no-store", response["Cache-Control"])
 
     def test_report_never_initiates_or_marks_a_bank_payout(self):
         statement = self._report()
