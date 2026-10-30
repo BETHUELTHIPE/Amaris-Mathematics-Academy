@@ -20,7 +20,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from content.models import LiveClassBooking, SiteSettings, VideoRequest
-from content.tutor_finance_models import TutorActivityStatement, TutorContract, TutorEarning, TutorPayout
+from content.tutor_finance_models import TutorActivityStatement, TutorEarning, TutorPayout
 
 PERIOD_DAYS = 30
 ZERO = Decimal("0.00")
@@ -203,6 +203,7 @@ def render_tutor_statement_pdf(statement):
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.platypus import LongTable, SimpleDocTemplate, Spacer, Table, TableStyle
+
     from content.services.invoice_document import (
         BLUE,
         GOLD,
