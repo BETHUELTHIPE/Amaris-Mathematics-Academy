@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import HappyForm
+from .models import FeedbackFollowUp, HappyForm
 
 @admin.register(HappyForm)
 class HappyFormAdmin(admin.ModelAdmin):
@@ -11,5 +11,28 @@ class HappyFormAdmin(admin.ModelAdmin):
         return False
     def has_change_permission(self, request, obj=None):
         return False
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+@admin.register(FeedbackFollowUp)
+class FeedbackFollowUpAdmin(admin.ModelAdmin):
+    list_display = (
+        "feedback", "due_at", "status", "contacted_at", "reminder_sent_at"
+    )
+    list_filter = ("status", "due_at")
+    search_fields = (
+        "feedback__student__email", "feedback__service_reference",
+        "feedback__service_title",
+    )
+    readonly_fields = (
+        "feedback", "due_at", "reminder_sent_at", "created_at", "updated_at"
+    )
+    fields = (
+        "feedback", "status", "due_at", "contacted_at", "notes",
+        "reminder_sent_at", "created_at", "updated_at"
+    )
+    def has_add_permission(self, request):
+        return False
+
     def has_delete_permission(self, request, obj=None):
         return False
