@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from content.authentication import SupabaseStudentAuthentication
 from content.models import LiveClassBooking, Enrollment, Payment
 from .models import HappyForm
+from .followup import create_followup_for_form
 from .tasks import deliver_happy_form
 
 class HappyFormThrottle(UserRateThrottle):
@@ -51,6 +52,7 @@ class HappyFormView(APIView):
                     service_title=title, tutor_name=tutor_name, overall_rating=v["overall_rating"],
                     tutor_rating=v.get("tutor_rating"), comments=v.get("comments", ""),
                 )
+                create_followup_for_form(form)
                 transaction.on_commit(lambda: deliver_happy_form.delay(str(form.id)))
         except IntegrityError:
             return Response({"detail": "Feedback has already been submitted for this service."}, status=409)
