@@ -1,3 +1,4 @@
+from .reschedule_views import StudentRescheduleView, TutorRescheduleView
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
@@ -41,6 +42,8 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("student/live-classes/bookings/<str:reference>/reschedule/", StudentRescheduleView.as_view(), name="student-reschedule"),
+    path("tutor/live-classes/bookings/<str:reference>/reschedule/", TutorRescheduleView.as_view(), name="tutor-reschedule"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
