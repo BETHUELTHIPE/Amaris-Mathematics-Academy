@@ -112,7 +112,7 @@ jobs:
           DATABASE_POOL_ENABLED: "true"
         run: python manage.py test tests.test_database_pool
       - name: Unit tests
-        run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests tests.test_monitoring_admin
+        run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests tests.test_monitoring_admin tests.test_web_runtime tests.test_admin_workspace
       - name: Integration tests
         run: python manage.py test content.tests.PublicContentApiTests content.test_integrations
       - name: Load/capacity harness contract (no traffic)
@@ -298,6 +298,19 @@ jobs:
             sleep 2
           done
           python e2e/responsive_browser.py
+      - name: Install Django Admin browser acceptance dependencies
+        working-directory: backend
+        run: python -m pip install -r requirements.txt
+      - name: Verify redesigned Django Admin in a real browser
+        working-directory: backend
+        env:
+          DJANGO_DEBUG: "true"
+          SUPABASE_DATABASE_REQUIRED: "false"
+          DATABASE_URL: sqlite:////tmp/amaris-admin-static.sqlite3
+          ADMIN_BROWSER_ARTIFACT_DIR: ${{ github.workspace }}/frontend/artifacts/admin
+        run: |
+          python manage.py collectstatic --noinput
+          python -m tests.admin_browser
       - name: Preserve responsive-browser evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -305,6 +318,7 @@ jobs:
           name: responsive-browser-evidence
           path: |
             frontend/artifacts/e2e/
+            frontend/artifacts/admin/
             /tmp/amaris-e2e-server.log
             /tmp/amaris-playwright-*.log
           if-no-files-found: warn

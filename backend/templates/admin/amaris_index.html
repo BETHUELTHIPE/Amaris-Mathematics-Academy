@@ -1,13 +1,59 @@
 {% extends "admin/index.html" %}
+{% load i18n log admin_workspace %}
+{% block content_title %}Overview{% endblock %}
 {% block content %}
-  {% if request.user.is_active and request.user.is_staff and request.user.is_superuser %}
-  <div class="card mb-3">
-    <div class="card-header"><strong>Private operations monitoring</strong></div>
-    <div class="card-body">
-      <p>Prometheus, Grafana and Flower are hosted as private Render services. Render-native CPU, memory and HTTP metrics replace cAdvisor.</p>
-      <a class="btn btn-primary" href="{% url 'admin:amaris_monitoring_home' %}">Open monitoring dashboard</a>
+{% academy_workspace app_list as workspace %}
+<div class="amaris-dashboard col-12">
+  <section class="amaris-welcome" aria-labelledby="academy-welcome">
+    <div class="amaris-welcome-copy">
+      <span class="amaris-eyebrow">AMARIS MATHEMATICS ACADEMY</span>
+      <h2 id="academy-welcome">Welcome back, {{ request.user.first_name|default:request.user.get_username }}.</h2>
+      <p>A clear space to manage learning, support your students and move your academy forward.</p>
+      <a class="amaris-hero-link" href="#academy-tools">Explore your workspace <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
     </div>
-  </div>
+    <div class="amaris-welcome-note">
+      <span class="amaris-note-icon" aria-hidden="true"><i class="fas fa-graduation-cap"></i></span>
+      <span class="amaris-eyebrow">LEARNING. PEOPLE. PROGRESS.</span>
+      <strong>Small steps.<br>Extraordinary futures.</strong>
+      <span>Your academy, thoughtfully managed.</span>
+    </div>
+  </section>
+  {% if workspace.shortcuts %}
+  <nav class="amaris-shortcuts" aria-label="Frequently used management tools">
+    {% for shortcut in workspace.shortcuts %}
+    <a class="amaris-shortcut" href="{{ shortcut.url }}"><span class="amaris-shortcut-icon"><i class="fas {{ shortcut.icon }}" aria-hidden="true"></i></span><span>{{ shortcut.label }}</span><i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+    {% endfor %}
+  </nav>
   {% endif %}
-  {{ block.super }}
+  <div class="amaris-workspace-layout" id="academy-tools">
+    <section class="amaris-tools" aria-labelledby="academy-tools-title">
+      <div class="amaris-section-heading"><div><span class="amaris-eyebrow">YOUR WORKSPACE</span><h2 id="academy-tools-title">Everything in its place.</h2></div><span class="amaris-tool-count">{{ workspace.tool_count }} tools</span></div>
+      <div class="amaris-tool-search" data-tool-search hidden><label for="academy-tool-filter"><i class="fas fa-search" aria-hidden="true"></i><span class="sr-only">Find a management tool</span></label><input id="academy-tool-filter" type="search" placeholder="Find a management tool…" autocomplete="off" aria-describedby="academy-tool-status"><span id="academy-tool-status" class="sr-only" role="status" aria-live="polite"></span></div>
+      <div class="amaris-tool-grid">
+      {% for group in workspace.groups %}
+        <section class="amaris-workspace-card" data-tool-group aria-labelledby="group-{{ group.key }}">
+          <div class="amaris-card-heading"><span class="amaris-group-icon amaris-icon-{{ group.key }}"><i class="fas {{ group.icon }}" aria-hidden="true"></i></span><div><h3 id="group-{{ group.key }}">{{ group.title }}</h3><p>{{ group.description }}</p></div></div>
+          <ul class="amaris-model-list">
+          {% for model in group.models %}
+            <li data-tool-name="{{ model.name }}"><a class="amaris-model-link" href="{{ model.admin_url }}">{{ model.name }}<i class="fas fa-chevron-right" aria-hidden="true"></i></a>{% if model.add_url %}<a class="amaris-add-link" href="{{ model.add_url }}" aria-label="Add {{ model.name }}"><i class="fas fa-plus" aria-hidden="true"></i></a>{% endif %}</li>
+          {% endfor %}
+          </ul>
+        </section>
+      {% endfor %}
+      </div>
+      <p class="amaris-empty-search" data-tool-empty hidden>No tools match your search. Try another name.</p>
+      {% if not workspace.groups %}<p class="amaris-empty-search">No management tools are assigned to your account. Contact your administrator for access.</p>{% endif %}
+    </section>
+    <aside class="amaris-activity" aria-labelledby="academy-activity-title">
+      <span class="amaris-eyebrow">YOUR ACTIVITY</span><h2 id="academy-activity-title">Recently updated</h2><p class="amaris-muted">Your latest changes, at a glance.</p>
+      {% get_admin_log 6 as admin_log for_user user %}
+      {% if admin_log %}<ol class="amaris-activity-list">
+        {% for entry in admin_log %}
+        <li><span class="amaris-activity-dot" aria-hidden="true"><i class="fas {% if entry.is_addition %}fa-plus{% elif entry.is_deletion %}fa-minus{% else %}fa-pen{% endif %}"></i></span><div>{% if entry.is_deletion or not entry.get_admin_url %}<strong>{{ entry.object_repr|truncatechars:45 }}</strong>{% else %}<a href="{{ entry.get_admin_url }}">{{ entry.object_repr|truncatechars:45 }}</a>{% endif %}<span>{% if entry.is_addition %}Added{% elif entry.is_deletion %}Deleted{% else %}Updated{% endif %} · <time datetime="{{ entry.action_time|date:'c' }}">{{ entry.action_time|timesince }} ago</time></span></div></li>
+        {% endfor %}
+      </ol>{% else %}<div class="amaris-activity-empty"><i class="far fa-clock" aria-hidden="true"></i><strong>A fresh start.</strong><p>Your recent changes will appear here as you work.</p></div>{% endif %}
+      <div class="amaris-workspace-tip"><i class="far fa-lightbulb" aria-hidden="true"></i><strong>A little clarity goes a long way.</strong><p>Use the workspace filter to jump straight to the tool you need.</p></div>
+    </aside>
+  </div>
+</div>
 {% endblock %}
