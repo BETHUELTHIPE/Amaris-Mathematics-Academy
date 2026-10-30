@@ -123,6 +123,12 @@ print(json.dumps(sorted(model['admin_url'] for app in admin.site.get_app_list(re
                     assert_desktop_shell(page)
                     expect(page.locator(".amaris-model-link").first).to_have_css("color", "rgb(66, 84, 108)")
                     page.screenshot(path=str(artifacts / "admin-desktop.png"), full_page=True, animations="disabled")
+                    menu = page.get_by_role("button", name="Toggle navigation")
+                    menu.press(" ")
+                    page.wait_for_function("""() => document.body.classList.contains('sidebar-collapse') &&
+                        document.querySelector('.content-wrapper').getBoundingClientRect().left < 100""")
+                    menu.press(" ")
+                    assert_desktop_shell(page)
                     page.get_by_label("Find a management tool").fill("invoice")
                     expect(page.locator("[data-tool-name]:visible")).to_have_count(1)
                     expect(page.get_by_role("status")).to_contain_text("1 management tool found")
