@@ -13,7 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 from pypdf import PdfReader
 
-from content.models import LiveClassBooking, StudentRecord, TutorAvailabilitySlot, VideoRequest
+from content.models import LiveClassBooking, StudentRecord, TutorAvailabilitySlot
 from content.services.tutor_statements import (
     activity_snapshot,
     archive_statement,
