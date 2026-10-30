@@ -111,6 +111,7 @@ class TutorStatementTests(TestCase):
         statement = self._report()
         d = statement.snapshot
         self.assertEqual(d["unique_students"], 1)
+        self.assertEqual(d["students_taught"], 1)
         self.assertEqual(d["sessions_taught"], 1)
         self.assertEqual(d["hours_taught"], 2)
         self.assertEqual(d["gross_verified"], "500.00")
