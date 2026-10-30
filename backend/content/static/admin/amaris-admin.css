@@ -35,6 +35,12 @@ a, button, .btn { transition: color .16s ease, background-color .16s ease, borde
 .main-header .form-control-navbar { border: 1px solid var(--am-line); border-radius: 9px 0 0 9px; background: #f4f7fa; min-height: 38px; }
 .main-header .btn-navbar { border: 1px solid var(--am-line); border-left: 0; border-radius: 0 9px 9px 0; background: #f4f7fa; }
 .content-wrapper { background: var(--am-surface); }
+/* Keep the fixed desktop sidebar clear on the first page after sign-in. */
+@media (min-width: 992px) {
+  body.sidebar-mini:not(.sidebar-collapse):not(.popup) .content-wrapper,
+  body.sidebar-mini:not(.sidebar-collapse):not(.popup) .main-header,
+  body.sidebar-mini:not(.sidebar-collapse):not(.popup) .main-footer { margin-left: 250px; }
+}
 .content-wrapper > .content.border-bottom { border-bottom: none !important; padding: 24px 24px 10px; margin-bottom: 0 !important; }
 .content-wrapper > .content.border-bottom h1 { font-size: 14px; font-weight: 650; color: var(--am-ink); }
 .content-wrapper > .content { padding: 12px 24px 24px; }
@@ -65,8 +71,8 @@ a, button, .btn { transition: color .16s ease, background-color .16s ease, borde
 .amaris-tool-search { display: flex; align-items: center; gap: 12px; padding: 0 15px; background: #fff; border: 1px solid var(--am-line); border-radius: 11px; margin-bottom: 18px; }
 .amaris-tool-search label { margin: 0; color: #64748b; font-size: 12px; }
 .amaris-tool-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--am-ink); padding: 13px 0; font-size: 12px; }
-.amaris-tool-search:focus-within { box-shadow: 0 0 0 3px #0d70671a; border-color: var(--am-teal); }
-.amaris-tool-search input:focus-visible { outline-offset: -1px; }
+.amaris-tool-search:focus-within { outline: 3px solid var(--am-teal); outline-offset: 3px; border-color: var(--am-teal); }
+.amaris-tool-search input:focus-visible { outline: none !important; }
 .amaris-tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
 .amaris-workspace-card { background: white; border: 1px solid var(--am-line); border-radius: 14px; padding: 20px 18px 10px; box-shadow: var(--am-shadow); min-width: 0; }
 .amaris-card-heading { display: flex; gap: 12px; align-items: flex-start; padding-bottom: 15px; }
@@ -77,7 +83,7 @@ a, button, .btn { transition: color .16s ease, background-color .16s ease, borde
 .amaris-icon-bookings, .amaris-icon-content { background: #faf3e6; color: #806220; }
 .amaris-model-list { list-style: none; padding: 0; margin: 0; }
 .amaris-model-list li { display: flex; align-items: center; gap: 4px; border-top: 1px solid #edf1f5; }
-.amaris-model-link { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 4px; min-height: 44px; font-size: 11px; font-weight: 550; color: #42546c; border-radius: 5px; overflow-wrap: anywhere; }
+.amaris-model-link { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 4px; min-height: 44px; font-size: 12px; font-weight: 550; color: #42546c; border-radius: 5px; overflow-wrap: anywhere; }
 .amaris-model-link:hover { text-decoration: none; color: var(--am-teal); background: #f4f8f7; }
 .amaris-model-link i { color: #8494a5; font-size: 8px; }
 .amaris-add-link { display: grid; place-items: center; width: 38px; min-height: 44px; border-radius: 7px; font-size: 9px; color: var(--am-teal); }
@@ -111,8 +117,10 @@ a, button, .btn { transition: color .16s ease, background-color .16s ease, borde
 .form-group label { font-size: 12px; font-weight: 650; color: #42546c; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--am-teal); }
 .btn { border-radius: 8px; font-size: 12px; font-weight: 650; padding: 9px 15px; }
-.btn-primary, .btn-success { background: var(--am-teal); border-color: var(--am-teal); }
+.btn-primary, .btn-success { color: white !important; background: var(--am-teal); border-color: var(--am-teal); }
 .btn-primary:hover, .btn-primary:focus, .btn-success:hover, .btn-success:focus { background: #09584f; border-color: #09584f; }
+.btn-info { color: #24594f !important; background: #e5f0ed; border-color: #bfd7ce; }
+.btn-info:hover, .btn-info:focus { background: #d1e6df; border-color: #94b9aa; }
 .btn-primary:active { transform: translateY(1px); }
 .btn-outline-secondary { color: #526279; border-color: #cbd7e0; }
 .nav-tabs .nav-link.active { color: var(--am-teal); border-top: 3px solid var(--am-teal); font-weight: 650; }
@@ -164,5 +172,6 @@ body.jazzmin-login-page { min-height: 100vh; background: radial-gradient(ellipse
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .amaris-shortcut:hover, .amaris-hero-link:hover i, .btn-primary:active { transform: none; }
 }
 @media print { .amaris-welcome-note, .amaris-shortcuts, .amaris-tool-search, .amaris-workspace-tip { display: none; } .amaris-workspace-layout, .amaris-tool-grid { display: block; } .amaris-workspace-card { break-inside: avoid; margin-bottom: 15px; } }

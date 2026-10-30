@@ -16,12 +16,24 @@ from playwright.sync_api import expect, sync_playwright
 BACKEND = Path(__file__).resolve().parent.parent
 
 
-def login(page, origin, username, password):
+def login(page, origin, username, password, *, keyboard=False):
     page.goto(origin + "/admin/")
     page.get_by_label("Username", exact=True).fill(username)
     page.get_by_label("Password", exact=True).fill(password)
-    page.get_by_role("button", name="Sign in to workspace").click()
+    if keyboard:
+        page.get_by_label("Password", exact=True).press("Enter")
+    else:
+        page.get_by_role("button", name="Sign in to workspace").click()
     expect(page.locator(".amaris-welcome")).to_be_visible()
+
+
+def assert_desktop_shell(page):
+    # Read settled layout, including the framework's sidebar transitions.
+    page.wait_for_function("""() => {
+            const sidebar = document.querySelector('.main-sidebar').getBoundingClientRect();
+            return ['.content-wrapper', '.main-header', '.main-footer'].every(selector =>
+                document.querySelector(selector).getBoundingClientRect().left >= sidebar.right - 1);
+        }""")
 
 
 def main():
@@ -95,12 +107,13 @@ editor.user_permissions.add(Permission.objects.get(codename='view_course',conten
                     errors = []
                     page.on("pageerror", lambda error: errors.append(str(error)))
                     page.goto(origin + "/admin/login/")
-                    page.screenshot(path=str(artifacts / "admin-login.png"), full_page=True)
+                    page.screenshot(path=str(artifacts / "admin-login.png"), full_page=True, animations="disabled")
                     login(page, origin, "academy-qa", password)
                     expect(page.get_by_role("heading", name="Welcome back, Alex.")).to_be_visible()
                     expect(page.get_by_role("button", name="Toggle navigation")).to_be_visible()
-                    page.wait_for_timeout(550)
-                    page.screenshot(path=str(artifacts / "admin-desktop.png"), full_page=True)
+                    assert_desktop_shell(page)
+                    expect(page.locator(".amaris-model-link").first).to_have_css("color", "rgb(66, 84, 108)")
+                    page.screenshot(path=str(artifacts / "admin-desktop.png"), full_page=True, animations="disabled")
                     page.get_by_label("Find a management tool").fill("invoice")
                     expect(page.locator("[data-tool-name]:visible")).to_have_count(1)
                     expect(page.get_by_role("status")).to_contain_text("1 management tool found")
@@ -123,12 +136,14 @@ editor.user_permissions.add(Permission.objects.get(codename='view_course',conten
                     expect(page.locator("#changelist")).to_be_visible()
                     page.goto(origin + "/admin/content/course/add/")
                     expect(page.locator("#course_form")).to_be_visible()
+                    assert_desktop_shell(page)
+                    expect(page.locator('[name="_save"]')).to_have_css("color", "rgb(255, 255, 255)")
                     page.screenshot(path=str(artifacts / "admin-editor.png"), full_page=True)
                     assert not errors, errors
                     context.close()
                     restricted = browser.new_context(viewport={"width": 390, "height": 844}, java_script_enabled=False)
                     editor_page = restricted.new_page()
-                    login(editor_page, origin, "course-editor", password)
+                    login(editor_page, origin, "course-editor", password, keyboard=True)
                     expect(editor_page.locator(".amaris-model-link")).to_have_count(1)
                     expect(editor_page.locator('.amaris-model-link[href="/admin/content/course/"]')).to_be_visible()
                     assert editor_page.locator('a[href*="/monitoring/"]').count() == 0

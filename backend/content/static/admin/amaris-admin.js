@@ -1,7 +1,15 @@
 (() => {
   "use strict";
   const menu = document.querySelector('[data-widget="pushmenu"]');
-  if (menu) menu.setAttribute("aria-label", "Toggle navigation");
+  if (menu) {
+    menu.setAttribute("aria-label", "Toggle navigation");
+    menu.addEventListener("keydown", event => {
+      if (event.key === " ") {
+        event.preventDefault();
+        menu.click();
+      }
+    });
+  }
   document.querySelectorAll('.form-inline button[type="submit"]').forEach(button => {
     if (!button.getAttribute("aria-label")) button.setAttribute("aria-label", "Search courses");
   });
