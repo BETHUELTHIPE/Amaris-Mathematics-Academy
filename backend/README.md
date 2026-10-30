@@ -29,6 +29,8 @@ The stack also starts encrypted backup, payment-reconciliation and isolated rest
 
 The public content API is available under `/api/v1/`, with interactive documentation at `/api/docs/`.
 
+See [API query efficiency](docs/API_PERFORMANCE.md) for cold-request query budgets, course pagination, batched media loading and tutor dashboard data-access checks.
+
 Load and resilience tests are in [`load_tests/`](load_tests/README.md). The suite covers public browsing, authentication entry points, protected student activity, progress, checkout creation and payment polling, with normal, peak, spike and controlled dependency-failure profiles. It blocks the live Amaris and PayFast hosts by default.
 
 The monitoring interfaces are available through the same NGINX entrypoint:

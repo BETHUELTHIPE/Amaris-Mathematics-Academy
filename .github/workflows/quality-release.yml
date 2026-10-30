@@ -114,7 +114,7 @@ jobs:
       - name: Unit tests
         run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests tests.test_monitoring_admin tests.test_web_runtime tests.test_admin_workspace
       - name: Integration tests
-        run: python manage.py test content.tests.PublicContentApiTests content.test_integrations
+        run: python manage.py test content.tests.PublicContentApiTests content.test_integrations content.test_api_performance
       - name: Load/capacity harness contract (no traffic)
         run: |
           python -m unittest load_tests.test_contract
