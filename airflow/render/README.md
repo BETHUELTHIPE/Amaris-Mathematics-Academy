@@ -129,3 +129,42 @@ change does not expose raw Airflow APIs or task logs to either role.
 The integration workflow checks the official Render JSON schema, TLS and
 startup behavior, Docker build/fresh PostgreSQL boot, and Django authorization.
 It uses generated, disposable credentials and certificates only.
+
+## Live readiness acceptance (fail closed)
+
+Before approving Airflow for production, first restore the dependent Render
+services and separately approve/provision this paid Airflow Blueprint. Run the
+following **from a trusted Render shell that can reach the private API**;
+a public GitHub-hosted runner cannot reach a Render private service directly.
+
+Set these secret values only in that service's managed environment or private
+secret files (never in command arguments, GitHub logs or the repository):
+
+- `AIRFLOW_API_BASE_URL`: `https://<actual-private-hostname>:8443`
+- `AIRFLOW_API_CA_CERT_FILE`: absolute path to the issuing private CA file
+- `AIRFLOW_API_TOKEN`: a **Viewer-only**, short-lived bearer token
+- `AIRFLOW_MONITORED_DAG`: `amaris_service_health`
+- `AIRFLOW_MAX_RUN_AGE_MINUTES`: `35` for the ten-minute DAG schedule
+
+From the same reviewed repository revision, run:
+
+```sh
+python airflow/render/live_readiness.py
+```
+
+A PASS requires authenticated verified-TLS API access, healthy Airflow metadata
+DB/scheduler/DAG processor, an **unpaused** approved health DAG, and its **latest**
+run successful within the configured freshness window. It sends only GET
+requests, follows no redirects and never prints raw API exceptions or tokens.
+Missing secrets, missing TLS CA, inaccessible services, stale/failed DAG runs
+and malformed responses produce a non-zero exit code. A PASS is **not** proof
+of verified backups, metadata restore, logs/alerts or real production capacity.
+
+The corresponding mock-only regression suite runs through
+`.github/workflows/airflow-integration.yml` as part of
+`python -m unittest discover -s airflow/tests -v`. It performs no real
+PayFast, email, WhatsApp, Zoom or paid AI calls.
+
+Do not enable the Django Airflow Admin monitor or mark Airflow production-ready
+until this live check, a Viewer permission review, an isolated metadata restore,
+resource/logging checks and the staging acceptance gates all succeed.
