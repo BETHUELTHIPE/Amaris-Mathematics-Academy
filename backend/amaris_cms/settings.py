@@ -138,7 +138,9 @@ if not DEBUG and not os.getenv("DATABASE_URL"):
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        conn_max_age=int(os.getenv("DATABASE_CONN_MAX_AGE", "600")),
+        # ASGI requests must release thread-local connections. Reuse physical
+        # sessions with the bounded psycopg pool below, not CONN_MAX_AGE.
+        conn_max_age=int(os.getenv("DATABASE_CONN_MAX_AGE", "0")),
         conn_health_checks=True,
         ssl_require=env_bool("DATABASE_SSL_REQUIRED", False),
     )
@@ -149,6 +151,24 @@ SUPABASE_PROJECT_REF = os.getenv("SUPABASE_PROJECT_REF", "").strip()
 if SUPABASE_DATABASE_REQUIRED:
     assert_supabase_database(DATABASES["default"], SUPABASE_PROJECT_REF)
 if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    if env_bool("DATABASE_POOL_ENABLED", False):
+        pool_max_size = int(os.getenv("DATABASE_POOL_MAX_SIZE", "4"))
+        pool_min_size = int(os.getenv("DATABASE_POOL_MIN_SIZE", "0"))
+        pool_max_waiting = int(os.getenv("DATABASE_POOL_MAX_WAITING", "32"))
+        pool_timeout = float(os.getenv("DATABASE_POOL_TIMEOUT", "5"))
+        if not (
+            0 <= pool_min_size <= pool_max_size and pool_max_size > 0 and pool_max_waiting > 0 and pool_timeout > 0
+        ):
+            raise RuntimeError("Database pool limits must be positive and min_size must not exceed max_size.")
+        DATABASES["default"]["CONN_MAX_AGE"] = 0
+        DATABASES["default"].setdefault("OPTIONS", {})["pool"] = {
+            "min_size": pool_min_size,
+            "max_size": pool_max_size,
+            "max_waiting": pool_max_waiting,
+            "timeout": pool_timeout,
+            "max_idle": 60,
+            "max_lifetime": 600,
+        }
     database_schema = os.getenv("DATABASE_SCHEMA", "").strip()
     if database_schema and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", database_schema):
         raise RuntimeError("DATABASE_SCHEMA must be a simple Postgres schema identifier.")

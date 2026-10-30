@@ -103,6 +103,14 @@ jobs:
         run: python manage.py migrate --noinput
       - name: Collect production static assets
         run: python manage.py collectstatic --noinput
+      - name: Install Nginx for isolated ASGI runtime acceptance
+        run: sudo apt-get update -qq && sudo apt-get install --no-install-recommends -y nginx
+      - name: Nginx, Gunicorn and Uvicorn real loopback acceptance
+        run: python -m tests.runtime_smoke
+      - name: Bounded PostgreSQL connection pool integration
+        env:
+          DATABASE_POOL_ENABLED: "true"
+        run: python manage.py test tests.test_database_pool
       - name: Unit tests
         run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests tests.test_monitoring_admin
       - name: Integration tests
@@ -363,6 +371,13 @@ jobs:
           docker compose --env-file backend/.env -f backend/docker-compose.yml config --quiet
       - name: Build production backend image
         run: docker build --tag amaris-backend:${{ github.sha }} backend
+      - name: Verify actual nonroot Docker web runtime without external network
+        run: >-
+          docker run --rm --network none
+          -e DJANGO_DEBUG=true
+          -e SUPABASE_DATABASE_REQUIRED=false
+          -e DATABASE_URL=sqlite:////tmp/runtime-smoke.sqlite3
+          amaris-backend:${{ github.sha }} python -m tests.runtime_smoke
       - name: Generate CycloneDX software bill of materials
         uses: anchore/sbom-action@v0
         with:

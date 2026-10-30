@@ -1,5 +1,7 @@
 # Amaris Django CMS and Jazzmin Admin
 
+See [Nginx, Gunicorn and Uvicorn](nginx/README.md) for the integrated Docker runtime, bounded ASGI concurrency, PostgreSQL pooling and deployment/testing boundaries.
+
 This service gives Amaris Mathematics Academy a production Django administration system while the existing Next.js website remains the public frontend. The backend is deployed separately and connected to Next.js only through `CMS_API_URL` after it has a stable HTTPS address.
 
 ## What administrators can manage

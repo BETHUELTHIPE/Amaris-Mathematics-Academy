@@ -95,6 +95,9 @@ services:
     init: true
     env_file: .env
     environment: {SERVICE_ROLE: web}
+    # Compose already has its own Nginx service. Only the single-container
+    # managed-host deployment needs the embedded reverse proxy.
+    command: gunicorn amaris_cms.asgi:application --config /app/gunicorn.conf.py
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -103,7 +106,7 @@ services:
       - media_data:/app/media
     networks: [backend_network]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready/"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready/', timeout=4)"]
       interval: 20s
       timeout: 5s
       retries: 5
