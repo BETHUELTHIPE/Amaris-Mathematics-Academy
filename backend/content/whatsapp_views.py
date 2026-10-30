@@ -72,7 +72,7 @@ class TutorWhatsAppPreferenceView(PreferenceBaseView):
     authentication_classes = (SessionAuthentication,)
 
     def owner(self, request):
-        if not request.user.is_active:
+        if not request.user.is_active or not request.user.groups.filter(name__iexact="tutor").exists():
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied()
         return {"tutor": request.user}
