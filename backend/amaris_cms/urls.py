@@ -67,6 +67,7 @@ urlpatterns = [
     path("errors/500/", error_views.error_500, name="error-500"),
     path("admin/", admin.site.urls),
     path("api/v1/", include("content.urls")),
+    path("api/v1/", include("feedback.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="api-docs"),
     path("health/", health_live, name="health"),
