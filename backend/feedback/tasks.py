@@ -47,3 +47,65 @@ def deliver_happy_form(self, form_id):
             raise RuntimeError("Admin email not accepted by SMTP provider.")
         form.admin_emailed_at = timezone.now()
         form.save(update_fields=["admin_emailed_at"])
+
+
+@shared_task(bind=True, autoretry_for=(OSError,), retry_backoff=True, retry_kwargs={"max_retries": 5}, ignore_result=True)
+def notify_new_followup(self, followup_id):
+    from .models import FeedbackFollowUp
+
+    followup = FeedbackFollowUp.objects.select_related("feedback__student").get(pk=followup_id)
+    site = SiteSettings.objects.first()
+    if not site or not site.email:
+        raise OSError("Administrator email is missing.")
+    email = followup.feedback.student.email
+    sent = send_mail(
+        "Action required: unhappy student follow-up",
+        (
+            f"Student: {email}\n"
+            f"Service: {followup.feedback.service_title}\n"
+            f"Overall: {followup.feedback.overall_rating}/5\n"
+            f"Tutor: {followup.feedback.tutor_rating or 'Not rated'}\n"
+            f"Call deadline (South African time): {timezone.localtime(followup.due_at):%d %B %Y %H:%M SAST}\n"
+            "Please review the follow-up task under Django Admin > Feedback forms."
+        ),
+        None,
+        [site.email],
+        fail_silently=False,
+    )
+    if sent != 1:
+        raise OSError("SMTP did not accept follow-up alert.")
+
+
+@shared_task(ignore_result=True)
+def remind_due_followups():
+    """Schedule in Celery Beat; retries can repeat SMTP if interrupted."""
+    from .models import FeedbackFollowUp
+
+    site = SiteSettings.objects.first()
+    if not site or not site.email:
+        raise OSError("Administrator email is missing.")
+    for followup in FeedbackFollowUp.objects.filter(
+        status=FeedbackFollowUp.Status.PENDING,
+        due_at__lte=timezone.now(),
+        reminder_sent_at__isnull=True,
+    ).select_related("feedback__student")[:100]:
+        with __import__("django").db.transaction.atomic():
+            selected = FeedbackFollowUp.objects.select_for_update().get(pk=followup.pk)
+            if selected.reminder_sent_at or selected.status != FeedbackFollowUp.Status.PENDING:
+                continue
+            sent = send_mail(
+                "Due now: Call unhappy Amaris student",
+                (
+                    f"Student: {selected.feedback.student.email}\n"
+                    f"Service: {selected.feedback.service_title}\n"
+                    f"Deadline: {timezone.localtime(selected.due_at):%d %B %Y %H:%M SAST}\n"
+                    "Open Django Admin > Feedback forms > Student follow-ups."
+                ),
+                None,
+                [site.email],
+                fail_silently=False,
+            )
+            if sent != 1:
+                raise OSError("SMTP did not accept due-date reminder.")
+            selected.reminder_sent_at = timezone.now()
+            selected.save(update_fields=["reminder_sent_at", "updated_at"])
