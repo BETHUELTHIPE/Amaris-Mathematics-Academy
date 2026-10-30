@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="WhatsAppPreference",
             fields=[
-                ("id", models.BigAutoField(primary_key=True, serialize=False)),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("number", models.CharField(max_length=20, help_text="E.164 number, e.g. +27821234567")),
                 ("opted_in", models.BooleanField(default=False)),
                 ("consent_recorded_at", models.DateTimeField(blank=True, null=True)),
@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="WhatsAppDelivery",
             fields=[
-                ("id", models.BigAutoField(primary_key=True, serialize=False)),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("kind", models.CharField(max_length=20, choices=[("confirmation", "Booking confirmation"), ("reminder", "30-minute reminder")])),
                 ("slot_start", models.DateTimeField()),
                 ("status", models.CharField(max_length=12, default="pending", choices=[("pending", "Pending"), ("sent", "Accepted by provider"), ("skipped", "Skipped"), ("failed", "Failed")])),
