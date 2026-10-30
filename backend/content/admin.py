@@ -1,3 +1,6 @@
+from django.urls import path, reverse
+from django.utils.html import format_html
+from content.admin_rescheduling import admin_reschedule_view
 from django.contrib import admin, messages
 from django.utils import timezone
 
@@ -452,6 +455,26 @@ class TutorAvailabilitySlotAdmin(TimeStampedAdmin):
 
 @admin.register(LiveClassBooking)
 class LiveClassBookingAdmin(TimeStampedAdmin):
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/reschedule/",
+                self.admin_site.admin_view(self.reschedule_view),
+                name="content_liveclassbooking_reschedule",
+            ),
+        ] + super().get_urls()
+
+    def reschedule_view(self, request, object_id):
+        return admin_reschedule_view(self, request, object_id)
+
+    def reschedule_link(self, obj):
+        if not obj or obj.status != LiveClassBooking.Status.CONFIRMED:
+            return "Not available"
+        url = reverse("admin:content_liveclassbooking_reschedule", args=[obj.pk])
+        return format_html('<a href="{}">Reschedule lesson</a>', url)
+
+    reschedule_link.short_description = "Reschedule"
+
     list_display = (
         "reference",
         "student",
@@ -473,6 +496,7 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
         "invoice_number",
     )
     readonly_fields = (
+        "reschedule_link",
         "id",
         "reference",
         "idempotency_key",

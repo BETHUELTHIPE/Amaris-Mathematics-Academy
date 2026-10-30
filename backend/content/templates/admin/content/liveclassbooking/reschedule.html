@@ -1,0 +1,13 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <p>Booking: <strong>{{ booking.reference }}</strong></p>
+  <p>Student: {{ booking.student.email }}</p>
+  <p>Current session: {{ booking.slot.starts_at|date:"D, d M Y H:i" }} (South African time)</p>
+  <p>Tutor: {{ booking.slot.tutor_display_name }}</p>
+  <p>Both student and tutor will be notified by email once the session is changed.</p>
+  <form method="post">{% csrf_token %}
+    {{ form.as_p }}
+    <input type="submit" class="default" value="Confirm rescheduling">
+    <a href="{% url 'admin:content_liveclassbooking_change' booking.pk %}">Cancel</a>
+  </form>
+{% endblock %}
