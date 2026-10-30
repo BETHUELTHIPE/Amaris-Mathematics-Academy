@@ -198,15 +198,15 @@ class TutorStatementTests(TestCase):
         archive_statement(statement)
         url = reverse("admin:content_tutoractivitystatement_download", args=[statement.pk])
         self.client.force_login(self.tutor)
-        self.assertNotEqual(self.client.get(url).status_code, 200)
+        self.assertNotEqual(self.client.get(url, secure=True).status_code, 200)
         self.tutor.is_staff = True
         self.tutor.save(update_fields=["is_staff"])
-        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.get(url, secure=True).status_code, 403)
         superuser = get_user_model().objects.create_superuser(
             username="statement-admin", email="statement-admin@example.test", password="test-only-secret"
         )
         self.client.force_login(superuser)
-        response = self.client.get(url)
+        response = self.client.get(url, secure=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response["Content-Disposition"])
         self.assertEqual(response["Cache-Control"], "private, no-store")
