@@ -14,6 +14,7 @@ app.conf.task_routes = {
     "content.tasks.deliver_notification_outbox": {"queue": "notifications"},
 }
 app.autodiscover_tasks()
+app.conf.imports = tuple(app.conf.imports or ()) + ("content.whatsapp",)
 
 # Register reliability hooks after Celery has loaded Django settings.
 from amaris_cms import celery_signals as _celery_signals  # noqa: E402,F401
