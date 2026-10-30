@@ -199,3 +199,18 @@ export async function saveStudentProgress(input: {
     }),
   });
 }
+
+export type StudentWhatsAppPreference = { number: string; opted_in: boolean };
+
+export async function getStudentWhatsAppPreference(): Promise<StudentWhatsAppPreference> {
+  return studentFetch<StudentWhatsAppPreference>("/student/whatsapp-preference/");
+}
+
+export async function setStudentWhatsAppPreference(
+  input: StudentWhatsAppPreference,
+): Promise<{ opted_in: boolean }> {
+  return studentFetch<{ opted_in: boolean }>("/student/whatsapp-preference/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
