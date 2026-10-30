@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "storages",
     "content",
+    "feedback.apps.FeedbackConfig",
 ]
 
 MIDDLEWARE = [
@@ -281,7 +282,7 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
-    "DEFAULT_THROTTLE_RATES": {"anon": "120/hour", "user": "1000/hour", "enquiries": "5/hour", "assistant": "30/hour"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "120/hour", "user": "1000/hour", "enquiries": "5/hour", "assistant": "30/hour", "feedback": "8/hour"},
 }
 
 SPECTACULAR_SETTINGS = {
