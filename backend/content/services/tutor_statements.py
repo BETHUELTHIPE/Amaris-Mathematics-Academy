@@ -73,7 +73,8 @@ def activity_snapshot(tutor, start, end):
         .select_related("earning")
         .order_by("confirmed_at")
     )
-    students = {x.student_id for x in completed} | {x.student_id for x in videos}
+    students_taught = {x.student_id for x in completed}
+    students = students_taught | {x.student_id for x in videos}
     valid = [x for x in earnings if x.state != TutorEarning.State.REVERSED]
     by_state = {
         state: _money(sum((x.tutor_amount for x in valid if x.state == state), ZERO))
@@ -86,6 +87,7 @@ def activity_snapshot(tutor, start, end):
         "period_start": _sast(start),
         "period_end_exclusive": _sast(end),
         "unique_students": len(students),
+        "students_taught": len(students_taught),
         "sessions_taught": len(completed),
         "hours_taught": sum((x.slot.duration_hours for x in completed), 0),
         "video_requests": len(videos),
@@ -357,7 +359,7 @@ def render_tutor_statement_pdf(statement):
 
 def archive_statement(statement):
     """Save into the private administrator Supabase S3 bucket, never a public URL."""
-    if not settings.SUPABASE_S3_ADMIN_BUCKET or not settings.SUPABASE_S3_ENDPOINT_URL:
+    if settings.SUPABASE_S3_ADMIN_BUCKET != "amaris-cms-files" or not settings.SUPABASE_S3_ENDPOINT_URL:
         raise RuntimeError("Private Supabase admin bucket is not configured")
     key = f"tutor-statements/{statement.period_end:%Y}/{statement.tutor_id}/{statement.report_number}.pdf"
     storage = storages["default"]
