@@ -506,3 +506,12 @@ AIRFLOW_API_BASE_URL = os.getenv("AIRFLOW_API_BASE_URL", "").rstrip("/")
 AIRFLOW_API_TOKEN = os.getenv("AIRFLOW_API_TOKEN", "")
 AIRFLOW_API_CA_CERT_FILE = os.getenv("AIRFLOW_API_CA_CERT_FILE", "")
 AIRFLOW_MONITORED_DAGS = env_list("AIRFLOW_MONITORED_DAGS", "amaris_service_health")
+
+# Check for due dissatisfied-student calls every hour; deadline is 48 hours.
+CELERY_BEAT_SCHEDULE = {
+    **globals().get("CELERY_BEAT_SCHEDULE", {}),
+    "remind-due-student-feedback-followups": {
+        "task": "feedback.tasks.remind_due_followups",
+        "schedule": 3600.0,
+    },
+}
