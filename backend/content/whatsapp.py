@@ -69,7 +69,7 @@ class WhatsAppDelivery(models.Model):
     slot_start = models.DateTimeField()
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
     sent_at = models.DateTimeField(null=True, blank=True)
-    provider_id = models.CharField(max_length=128, blank=True)
+    provider_id = models.CharField(max_length=128, blank=True)\n    receipt_status = models.CharField(max_length=16, blank=True, default="")
     error_code = models.CharField(max_length=80, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
