@@ -1,0 +1,33 @@
+name: Format tutor statements Python files
+on:
+  push:
+    branches: [feat/tutor-30day-statements-celery-20261030]
+    paths: [ops/format-tutor-statements-20261030.txt]
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/tutor-30day-statements-celery-20261030
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install pinned formatter
+        run: python -m pip install black==26.5.1
+      - name: Format only new tutor statement files
+        run: |
+          black backend/content/services/tutor_statements.py backend/content/test_tutor_statements.py backend/content/tutor_statement_tasks.py backend/content/tutor_finance_admin.py backend/content/tutor_finance_models.py backend/content/migrations/0019_tutor_activity_statements.py
+      - name: Commit formatting to isolated feature branch
+        run: |
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add backend/content/services/tutor_statements.py backend/content/test_tutor_statements.py backend/content/tutor_statement_tasks.py backend/content/tutor_finance_admin.py backend/content/tutor_finance_models.py backend/content/migrations/0019_tutor_activity_statements.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Format tutor statement implementation with repository Black policy"
+            git push origin HEAD:feat/tutor-30day-statements-celery-20261030
+          fi

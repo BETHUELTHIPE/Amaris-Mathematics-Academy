@@ -140,3 +140,40 @@ class TutorPayout(TimeStampedModel):
 
     def __str__(self):
         return f"{self.earning.source_reference}: {self.state}"
+
+
+class TutorActivityStatement(TimeStampedModel):
+    """Immutable 30-day earnings snapshot; report generation never pays a tutor."""
+
+    class State(models.TextChoices):
+        DRAFT = "draft", "Draft / awaiting archive"
+        ARCHIVED = "archived", "Archived / awaiting delivery"
+        DELIVERED = "delivered", "Tutor and administrator notified"
+
+    tutor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="activity_statements")
+    period_start = models.DateTimeField()
+    period_end = models.DateTimeField()
+    report_number = models.CharField(max_length=96, unique=True)
+    state = models.CharField(max_length=16, choices=State.choices, default=State.DRAFT, db_index=True)
+    snapshot = models.JSONField(default=dict, editable=False)
+    pdf_storage_path = models.CharField(max_length=512, blank=True, editable=False)
+    pdf_sha256 = models.CharField(max_length=64, blank=True, editable=False)
+    tutor_emailed_at = models.DateTimeField(blank=True, null=True, editable=False)
+    admin_emailed_at = models.DateTimeField(blank=True, null=True, editable=False)
+
+    class Meta:
+        ordering = ("-period_end", "tutor_id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("tutor", "period_start", "period_end"),
+                name="tutor_stmt_unique_period",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(period_end__gt=models.F("period_start")),
+                name="tutor_stmt_valid_period",
+            ),
+        ]
+        indexes = [models.Index(fields=("state", "period_end"), name="tutor_stmt_pending_idx")]
+
+    def __str__(self):
+        return self.report_number

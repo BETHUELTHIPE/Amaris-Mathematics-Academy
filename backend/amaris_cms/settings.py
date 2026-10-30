@@ -418,6 +418,9 @@ EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT_SECONDS", "10"))
 TUTOR_BANK_FERNET_KEY = os.getenv("TUTOR_BANK_FERNET_KEY", "")
+# Tutor statements are delivered to the configured administrator; never a public inbox.
+# Explicitly set this for production. Existing SMTP owner is a fallback.
+TUTOR_STATEMENT_ADMIN_EMAIL = os.getenv("TUTOR_STATEMENT_ADMIN_EMAIL", "").strip() or str(EMAIL_HOST_USER or "").strip()
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@example.invalid>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
@@ -435,6 +438,17 @@ if OPENAI_ASSISTANT_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
 CELERY_BEAT_SCHEDULE = {
+    # Beat checks due 30-day windows once daily; issuance uses DB-locked period keys.
+    "create-30-day-tutor-statements": {
+        "task": "content.tutor_statement_tasks.create_due_tutor_statements",
+        "schedule": 86400.0,
+        "options": {"queue": "notifications"},
+    },
+    "deliver-30-day-tutor-statements": {
+        "task": "content.tutor_statement_tasks.deliver_due_tutor_statements",
+        "schedule": 300.0,
+        "options": {"queue": "notifications"},
+    },
     "reconcile-tutor-earnings": {
         "task": "content.tutor_finance_tasks.reconcile_tutor_earnings",
         "schedule": 600.0,
