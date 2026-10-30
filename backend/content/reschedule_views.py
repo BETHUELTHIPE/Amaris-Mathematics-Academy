@@ -31,6 +31,8 @@ def move_booking(*, reference, new_slot_id, actor, actor_id, reason):
         )
         if booking is None:
             return Response({"detail": "Booking not found."}, status=404)
+        if actor not in ("student", "tutor", "admin"):
+            return Response({"detail": "Invalid reschedule actor."}, status=403)
         if actor == "student" and booking.student_id != actor_id:
             return Response({"detail": "Booking not found."}, status=404)
         if actor == "tutor" and booking.slot.tutor_id != actor_id:
