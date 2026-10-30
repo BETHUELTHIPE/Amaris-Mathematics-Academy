@@ -418,6 +418,9 @@ EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT_SECONDS", "10"))
 TUTOR_BANK_FERNET_KEY = os.getenv("TUTOR_BANK_FERNET_KEY", "")
+# Tutor statements are delivered to the configured administrator; never a public inbox.
+# Explicitly set this for production. Existing SMTP owner is a fallback.
+TUTOR_STATEMENT_ADMIN_EMAIL = os.getenv("TUTOR_STATEMENT_ADMIN_EMAIL", "").strip() or EMAIL_HOST_USER.strip()
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Amaris Mathematics Academy <no-reply@example.invalid>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
