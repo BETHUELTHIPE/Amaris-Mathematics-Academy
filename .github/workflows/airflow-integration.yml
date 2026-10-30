@@ -6,9 +6,11 @@ on:
       - "airflow/**"
       - "backend/amaris_cms/airflow_client.py"
       - "backend/amaris_cms/monitoring_admin.py"
+      - "backend/amaris_cms/celery_monitor.py"
       - "backend/amaris_cms/settings.py"
       - "backend/templates/admin/**"
       - "backend/tests/test_airflow_admin.py"
+      - "backend/tests/test_task_operations_admin.py"
       - "backend/tests/test_shared_airflow.py"
       - "backend/ops/shared_airflow/**"
       - "backend/Dockerfile"
@@ -30,7 +32,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Validate DAG and Django Python syntax
-        run: python -m compileall -q airflow/dags backend/amaris_cms/airflow_client.py backend/amaris_cms/monitoring_admin.py backend/tests/test_airflow_admin.py
+        run: python -m compileall -q airflow/dags backend/amaris_cms/airflow_client.py backend/amaris_cms/monitoring_admin.py backend/amaris_cms/celery_monitor.py backend/tests/test_airflow_admin.py backend/tests/test_task_operations_admin.py
       - name: Validate isolated Docker Compose profile
         working-directory: airflow
         run: |
@@ -48,7 +50,7 @@ jobs:
         working-directory: backend
         env:
           DJANGO_DEBUG: "true"
-        run: python manage.py test tests.test_airflow_admin tests.test_monitoring_admin tests.test_shared_airflow --verbosity 2
+        run: python manage.py test tests.test_airflow_admin tests.test_monitoring_admin tests.test_shared_airflow tests.test_task_operations_admin --verbosity 2
 
   shared-container-smoke:
     runs-on: ubuntu-latest
