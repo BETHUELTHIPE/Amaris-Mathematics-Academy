@@ -1,6 +1,7 @@
 import json
 import logging
 from celery import shared_task
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.mail import send_mail
@@ -13,6 +14,8 @@ logger = logging.getLogger(__name__)
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_jitter=True, retry_kwargs={"max_retries": 6}, ignore_result=True)
 def deliver_happy_form(self, form_id):
     form = HappyForm.objects.select_related("student").get(pk=form_id)
+    if not settings.CMS_STORAGE_BUCKET_NAME:
+        raise RuntimeError('Private CMS storage bucket is required for feedback archives.')
     if not form.archived_at:
         archive = {
             "id": str(form.pk), "student_email": form.student.email,
