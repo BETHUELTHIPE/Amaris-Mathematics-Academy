@@ -142,7 +142,6 @@ class TutorPayout(TimeStampedModel):
         return f"{self.earning.source_reference}: {self.state}"
 
 
-
 class TutorActivityStatement(TimeStampedModel):
     """Immutable 30-day earnings snapshot; report generation never pays a tutor."""
 
@@ -151,9 +150,7 @@ class TutorActivityStatement(TimeStampedModel):
         ARCHIVED = "archived", "Archived / awaiting delivery"
         DELIVERED = "delivered", "Tutor and administrator notified"
 
-    tutor = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="activity_statements"
-    )
+    tutor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="activity_statements")
     period_start = models.DateTimeField()
     period_end = models.DateTimeField()
     report_number = models.CharField(max_length=96, unique=True)

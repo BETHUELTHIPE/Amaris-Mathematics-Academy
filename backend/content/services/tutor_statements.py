@@ -43,7 +43,9 @@ def activity_snapshot(tutor, start, end):
             gateway_verified_at__isnull=False,
             slot__ends_at__gte=start,
             slot__ends_at__lt=end,
-        ).select_related("slot").order_by("slot__ends_at", "reference")
+        )
+        .select_related("slot")
+        .order_by("slot__ends_at", "reference")
     )
     videos = list(
         VideoRequest.objects.filter(
@@ -66,7 +68,10 @@ def activity_snapshot(tutor, start, end):
             state=TutorPayout.State.PAID,
             confirmed_at__gte=start,
             confirmed_at__lt=end,
-        ).exclude(provider_reference="").select_related("earning").order_by("confirmed_at")
+        )
+        .exclude(provider_reference="")
+        .select_related("earning")
+        .order_by("confirmed_at")
     )
     students = {x.student_id for x in completed} | {x.student_id for x in videos}
     valid = [x for x in earnings if x.state != TutorEarning.State.REVERSED]
@@ -152,9 +157,12 @@ def issue_due_statements(now=None, limit=100):
     period_anchor = now.replace(hour=0, minute=0, second=0, microsecond=0)
     due = 0
     tutor_ids = list(
-        get_user_model().objects.filter(is_active=True).filter(
-            Q(finance_contracts__is_active=True) | Q(groups__name__iexact="Tutors")
-        ).distinct().order_by("pk").values_list("pk", flat=True)
+        get_user_model()
+        .objects.filter(is_active=True)
+        .filter(Q(finance_contracts__is_active=True) | Q(groups__name__iexact="Tutors"))
+        .distinct()
+        .order_by("pk")
+        .values_list("pk", flat=True)
     )
     for tutor_id in tutor_ids:
         if due >= limit:
@@ -172,7 +180,9 @@ def issue_due_statements(now=None, limit=100):
                 start = end - timedelta(days=PERIOD_DAYS)
             number = f"ATS-{start:%Y%m%d}-{end:%Y%m%d}-T{tutor.pk:07d}"
             _, created = TutorActivityStatement.objects.get_or_create(
-                tutor=tutor, period_start=start, period_end=end,
+                tutor=tutor,
+                period_start=start,
+                period_end=end,
                 defaults={
                     "report_number": number,
                     "snapshot": activity_snapshot(tutor, start, end),
@@ -184,6 +194,7 @@ def issue_due_statements(now=None, limit=100):
 
 def _pdf_value(value):
     from content.services.invoice_document import _paragraph
+
     return _paragraph(str(value), size=7.4)
 
 
@@ -193,7 +204,14 @@ def render_tutor_statement_pdf(statement):
     from reportlab.lib.pagesizes import A4
     from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     from content.services.invoice_document import (
-        BLUE, GOLD, LINE, NAVY, SLATE, _logo, _paragraph, _register_fonts,
+        BLUE,
+        GOLD,
+        LINE,
+        NAVY,
+        SLATE,
+        _logo,
+        _paragraph,
+        _register_fonts,
     )
 
     _register_fonts()
@@ -208,11 +226,11 @@ def render_tutor_statement_pdf(statement):
         page.setTitle(f"Amaris tutor statement {statement.report_number}")
         page.setAuthor("Amaris Mathematics Academy")
         page.setFillColor(NAVY)
-        page.rect(0, height - 6, width * .62, 6, fill=1, stroke=0)
+        page.rect(0, height - 6, width * 0.62, 6, fill=1, stroke=0)
         page.setFillColor(BLUE)
-        page.rect(width * .62, height - 6, width * .28, 6, fill=1, stroke=0)
+        page.rect(width * 0.62, height - 6, width * 0.28, 6, fill=1, stroke=0)
         page.setFillColor(GOLD)
-        page.rect(width * .9, height - 6, width * .1, 6, fill=1, stroke=0)
+        page.rect(width * 0.9, height - 6, width * 0.1, 6, fill=1, stroke=0)
         page.drawImage(logo, 38, height - 91, 53, 53, preserveAspectRatio=True, mask="auto")
         page.setFillColor(NAVY)
         page.setFont("AmarisSans-Bold", 14)
@@ -229,15 +247,22 @@ def render_tutor_statement_pdf(statement):
         page.restoreState()
 
     doc = SimpleDocTemplate(
-        out, pagesize=A4, leftMargin=38, rightMargin=38,
-        topMargin=132, bottomMargin=76, title=statement.report_number,
+        out,
+        pagesize=A4,
+        leftMargin=38,
+        rightMargin=38,
+        topMargin=132,
+        bottomMargin=76,
+        title=statement.report_number,
     )
     flow = [
         _paragraph("PRIVATE • 30-DAY REPORT", color=BLUE, bold=True, size=9),
         Spacer(1, 8),
         _paragraph(details["tutor_name"], color=NAVY, bold=True, size=15),
         _paragraph(details["tutor_email"], size=8),
-        _paragraph(f"Reporting period: {details['period_start']} to {details['period_end_exclusive']} (exclusive)", size=8),
+        _paragraph(
+            f"Reporting period: {details['period_start']} to {details['period_end_exclusive']} (exclusive)", size=8
+        ),
         _paragraph(f"Statement reference: {statement.report_number}", size=8),
         Spacer(1, 16),
     ]
@@ -258,14 +283,18 @@ def render_tutor_statement_pdf(statement):
     ]
     rows = [[_pdf_value(k), _pdf_value(v)] for k, v in summary]
     table = Table(rows, colWidths=[335, 184], repeatRows=0)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f5f7fb")),
-        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#f5f7fb")]),
-        ("LINEBELOW", (0, 0), (-1, -1), .45, LINE),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-    ]))
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f5f7fb")),
+                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#f5f7fb")]),
+                ("LINEBELOW", (0, 0), (-1, -1), 0.45, LINE),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ]
+        )
+    )
     flow += [table, Spacer(1, 13), _paragraph(details["disclaimer"], size=7.5), Spacer(1, 18)]
 
     def section(title, labels, items, keys):
@@ -277,30 +306,47 @@ def render_tutor_statement_pdf(statement):
                 data.append([_pdf_value(item.get(k, "")) for k in keys])
         else:
             data.append([_pdf_value("No verified activity in this period")] + [_pdf_value("")] * (len(keys) - 1))
-        widths = ([113, 110, 296] if len(keys) == 3 else
-                  [85, 99, 95, 74, 82, 84] if len(keys) == 6 else
-                  [125, 250, 144])
+        widths = [113, 110, 296] if len(keys) == 3 else [85, 99, 95, 74, 82, 84] if len(keys) == 6 else [125, 250, 144]
         if len(widths) != len(keys):
             widths = [519 / len(keys)] * len(keys)
         tab = LongTable(data, colWidths=widths, repeatRows=1)
-        tab.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), NAVY),
-            ("LINEBELOW", (0, 1), (-1, -1), .35, LINE),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 7),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-        ]))
+        tab.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+                    ("LINEBELOW", (0, 1), (-1, -1), 0.35, LINE),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            )
+        )
         flow.extend([tab, Spacer(1, 16)])
 
-    section("Completed teaching sessions", ("Date", "Reference", "Activity"), details["session_activity"], ("date", "reference", "activity"))
-    section("Tutor video requests", ("Date", "Reference", "Activity / status"), [
-        {**row, "activity": row["activity"] + " — " + row["status"]} for row in details["video_activity"]
-    ], ("date", "reference", "activity"))
-    section("Verified earnings ledger", ("Date", "Reference", "Service", "Gross", "Tutor share", "Status"),
-            details["ledger_lines"], ("date", "reference", "service", "gross", "tutor_share", "status"))
-    section("Provider-confirmed bank payouts", ("Date", "Reference", "Paid amount"), [
-        {**row, "amount": "R " + row["amount"]} for row in details["payout_lines"]
-    ], ("date", "reference", "amount"))
+    section(
+        "Completed teaching sessions",
+        ("Date", "Reference", "Activity"),
+        details["session_activity"],
+        ("date", "reference", "activity"),
+    )
+    section(
+        "Tutor video requests",
+        ("Date", "Reference", "Activity / status"),
+        [{**row, "activity": row["activity"] + " — " + row["status"]} for row in details["video_activity"]],
+        ("date", "reference", "activity"),
+    )
+    section(
+        "Verified earnings ledger",
+        ("Date", "Reference", "Service", "Gross", "Tutor share", "Status"),
+        details["ledger_lines"],
+        ("date", "reference", "service", "gross", "tutor_share", "status"),
+    )
+    section(
+        "Provider-confirmed bank payouts",
+        ("Date", "Reference", "Paid amount"),
+        [{**row, "amount": "R " + row["amount"]} for row in details["payout_lines"]],
+        ("date", "reference", "amount"),
+    )
     doc.build(flow, onFirstPage=heading, onLaterPages=heading)
     pdf = out.getvalue()
     if not pdf.startswith(b"%PDF") or len(pdf) > 15_000_000:

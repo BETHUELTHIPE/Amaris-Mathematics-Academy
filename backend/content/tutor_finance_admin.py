@@ -171,24 +171,40 @@ class TutorPayoutAdmin(FinanceSuperuserAdmin):
         return False
 
 
-
 @admin.register(TutorActivityStatement)
 class TutorActivityStatementAdmin(FinanceSuperuserAdmin):
     """Only Django superusers can list, inspect or download private statements."""
 
     list_display = (
-        "report_number", "tutor", "period_start", "period_end",
-        "sessions_taught", "video_requests", "tutor_share",
-        "state", "tutor_emailed_at", "admin_emailed_at", "download",
+        "report_number",
+        "tutor",
+        "period_start",
+        "period_end",
+        "sessions_taught",
+        "video_requests",
+        "tutor_share",
+        "state",
+        "tutor_emailed_at",
+        "admin_emailed_at",
+        "download",
     )
     list_filter = ("state", "period_end", "tutor_emailed_at", "admin_emailed_at")
     search_fields = ("report_number", "tutor__username", "tutor__email")
     list_select_related = ("tutor",)
     readonly_fields = (
-        "report_number", "tutor", "period_start", "period_end",
-        "state", "activity_overview", "financial_overview",
-        "pdf_sha256", "download", "tutor_emailed_at", "admin_emailed_at",
-        "created_at", "updated_at",
+        "report_number",
+        "tutor",
+        "period_start",
+        "period_end",
+        "state",
+        "activity_overview",
+        "financial_overview",
+        "pdf_sha256",
+        "download",
+        "tutor_emailed_at",
+        "admin_emailed_at",
+        "created_at",
+        "updated_at",
     )
     fields = readonly_fields
     list_per_page = 30
@@ -237,6 +253,7 @@ class TutorActivityStatementAdmin(FinanceSuperuserAdmin):
             return "Archive pending"
         from django.urls import reverse
         from django.utils.html import format_html
+
         link = reverse("admin:content_tutoractivitystatement_download", args=[obj.pk])
         return format_html('<a href="{}">Download private statement</a>', link)
 
@@ -263,8 +280,9 @@ class TutorActivityStatementAdmin(FinanceSuperuserAdmin):
         if not statement.pdf_storage_path:
             raise PermissionDenied()
         stream = storages["default"].open(statement.pdf_storage_path, "rb")
-        response = FileResponse(stream, content_type="application/pdf", as_attachment=True,
-                                filename=f"{statement.report_number}.pdf")
+        response = FileResponse(
+            stream, content_type="application/pdf", as_attachment=True, filename=f"{statement.report_number}.pdf"
+        )
         response["Cache-Control"] = "private, no-store"
         response["X-Content-Type-Options"] = "nosniff"
         return response

@@ -36,13 +36,18 @@ class TutorStatementTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.tutor = User.objects.create_user(
-            username="monthly-tutor", email="monthly-tutor@example.test",
-            password="test-account-only", first_name="Monthly", last_name="Tutor",
+            username="monthly-tutor",
+            email="monthly-tutor@example.test",
+            password="test-account-only",
+            first_name="Monthly",
+            last_name="Tutor",
         )
         Group.objects.get_or_create(name="Tutors")[0].user_set.add(self.tutor)
         self.student = StudentRecord.objects.create(
-            supabase_user_id=uuid.uuid4(), email="private-student@example.test",
-            first_name="Private", last_name="Learner",
+            supabase_user_id=uuid.uuid4(),
+            email="private-student@example.test",
+            first_name="Private",
+            last_name="Learner",
         )
         self.now = timezone.now()
         self.contract = TutorContract.objects.create(
@@ -54,26 +59,40 @@ class TutorStatementTests(TestCase):
         )
         start = self.now - timedelta(days=3)
         self.slot = TutorAvailabilitySlot.objects.create(
-            tutor=self.tutor, programme=TutorAvailabilitySlot.Programme.CAPS,
+            tutor=self.tutor,
+            programme=TutorAvailabilitySlot.Programme.CAPS,
             subject=TutorAvailabilitySlot.Subject.MATHEMATICS,
-            level="Grade 12", starts_at=start, ends_at=start + timedelta(hours=2),
+            level="Grade 12",
+            starts_at=start,
+            ends_at=start + timedelta(hours=2),
             zoom_join_url="https://zoom.us/j/111111111",
         )
         self.booking = LiveClassBooking.objects.create(
-            reference="PRIVATE-LIVE-001", idempotency_key="tutor-report-private-class-001",
-            student=self.student, slot=self.slot,
-            programme=self.slot.programme, subject=self.slot.subject,
-            level="Grade 12", topic="Differential calculus",
-            amount=Decimal("500.00"), status=LiveClassBooking.Status.COMPLETED,
-            paid_at=start, gateway_verified_at=start,
+            reference="PRIVATE-LIVE-001",
+            idempotency_key="tutor-report-private-class-001",
+            student=self.student,
+            slot=self.slot,
+            programme=self.slot.programme,
+            subject=self.slot.subject,
+            level="Grade 12",
+            topic="Differential calculus",
+            amount=Decimal("500.00"),
+            status=LiveClassBooking.Status.COMPLETED,
+            paid_at=start,
+            gateway_verified_at=start,
         )
         self.earning = TutorEarning.objects.create(
-            tutor=self.tutor, contract=self.contract,
+            tutor=self.tutor,
+            contract=self.contract,
             service=TutorContract.Service.LIVE_CLASS,
-            source_reference=self.booking.reference, service_label="Online class",
-            gross=Decimal("500.00"), tutor_percent=Decimal("60.00"),
-            tutor_amount=Decimal("300.00"), academy_amount=Decimal("200.00"),
-            payment_verified_at=start, service_delivered_at=self.slot.ends_at,
+            source_reference=self.booking.reference,
+            service_label="Online class",
+            gross=Decimal("500.00"),
+            tutor_percent=Decimal("60.00"),
+            tutor_amount=Decimal("300.00"),
+            academy_amount=Decimal("200.00"),
+            payment_verified_at=start,
+            service_delivered_at=self.slot.ends_at,
             state=TutorEarning.State.READY,
         )
 
@@ -81,7 +100,9 @@ class TutorStatementTests(TestCase):
         start = self.now - timedelta(days=30)
         end = self.now + timedelta(minutes=1)
         return TutorActivityStatement.objects.create(
-            tutor=self.tutor, period_start=start, period_end=end,
+            tutor=self.tutor,
+            period_start=start,
+            period_end=end,
             report_number=f"ATS-TEST-{self.tutor.pk}",
             snapshot=activity_snapshot(self.tutor, start, end),
         )

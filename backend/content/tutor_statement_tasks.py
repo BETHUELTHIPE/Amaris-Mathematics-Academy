@@ -60,11 +60,7 @@ def send_statement_recipient(statement_id: int, recipient_kind: str):
     if recipient_kind not in ("tutor", "admin"):
         raise ValueError("Unrecognised statement recipient")
     with transaction.atomic():
-        statement = (
-            TutorActivityStatement.objects.select_for_update()
-            .select_related("tutor")
-            .get(pk=statement_id)
-        )
+        statement = TutorActivityStatement.objects.select_for_update().select_related("tutor").get(pk=statement_id)
         field = "tutor_emailed_at" if recipient_kind == "tutor" else "admin_emailed_at"
         if getattr(statement, field):
             return False
@@ -81,6 +77,7 @@ def send_statement_recipient(statement_id: int, recipient_kind: str):
         with storages["default"].open(statement.pdf_storage_path, "rb") as source:
             pdf = source.read()
         import hashlib
+
         if hashlib.sha256(pdf).hexdigest() != statement.pdf_sha256 or not pdf.startswith(b"%PDF"):
             raise RuntimeError("Private statement archive integrity verification failed")
 
@@ -105,8 +102,9 @@ def send_statement_recipient(statement_id: int, recipient_kind: str):
         return True
 
 
-@shared_task(ignore_result=True, bind=True, autoretry_for=(OSError,), retry_backoff=True,
-             retry_kwargs={"max_retries": 5})
+@shared_task(
+    ignore_result=True, bind=True, autoretry_for=(OSError,), retry_backoff=True, retry_kwargs={"max_retries": 5}
+)
 def deliver_due_tutor_statements(_task):
     """Beat sweep with bounded work, private PDF archive and separate role delivery."""
     pending = list(
