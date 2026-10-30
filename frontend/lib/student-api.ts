@@ -199,3 +199,13 @@ export async function saveStudentProgress(input: {
     }),
   });
 }
+
+export async function submitStudentFeedback(input: {
+  service: string;
+  service_reference: string;
+  overall_rating: number;
+  tutor_rating: number | null;
+  comments: string;
+}): Promise<{ id: string; message: string }> {
+  return studentFetch("/student/feedback/", { method: "POST", body: JSON.stringify(input) });
+}
