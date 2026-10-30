@@ -1,5 +1,6 @@
 """Real-browser admin acceptance using temporary SQLite and synthetic local users."""
 
+import json
 import os
 import secrets
 import signal
@@ -65,16 +66,24 @@ def main():
             stdout=subprocess.DEVNULL,
         )
         seed = """
-import os,django
+import json,os,django
 django.setup()
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.test import RequestFactory
 User=get_user_model()
 User.objects.create_superuser('academy-qa','qa@example.invalid',os.environ['ADMIN_QA_PASSWORD'],first_name='Alex')
 editor=User.objects.create_user('course-editor','editor@example.invalid',os.environ['ADMIN_QA_PASSWORD'],is_staff=True)
 editor.user_permissions.add(Permission.objects.get(codename='view_course',content_type__app_label='content'))
+request=RequestFactory().get('/admin/')
+request.user=editor
+print(json.dumps(sorted(model['admin_url'] for app in admin.site.get_app_list(request)
+    for model in app['models'] if model.get('admin_url'))))
 """
-        subprocess.run([sys.executable, "-c", seed], cwd=BACKEND, env=env, check=True)
+        authorized_editor_urls = json.loads(
+            subprocess.check_output([sys.executable, "-c", seed], cwd=BACKEND, env=env, text=True)
+        )
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
@@ -144,9 +153,25 @@ editor.user_permissions.add(Permission.objects.get(codename='view_course',conten
                     restricted = browser.new_context(viewport={"width": 390, "height": 844}, java_script_enabled=False)
                     editor_page = restricted.new_page()
                     login(editor_page, origin, "course-editor", password, keyboard=True)
-                    expect(editor_page.locator(".amaris-model-link")).to_have_count(1)
+                    # Existing read-only admin overrides can grant access without a model permission.
+                    # Compare with Django's native app list rather than assuming exactly one tool.
+                    expect(editor_page.locator(".amaris-model-link")).to_have_count(len(authorized_editor_urls))
+                    assert (
+                        sorted(
+                            editor_page.locator(".amaris-model-link").evaluate_all(
+                                "links => links.map(link => link.getAttribute('href'))"
+                            )
+                        )
+                        == authorized_editor_urls
+                    )
                     expect(editor_page.locator('.amaris-model-link[href="/admin/content/course/"]')).to_be_visible()
                     assert editor_page.locator('a[href*="/monitoring/"]').count() == 0
+                    assert editor_page.locator('a[href="/admin/content/payment/"]').count() == 0
+                    expect(editor_page.locator("[data-tool-search]")).to_be_hidden()
+                    editor_page.screenshot(path=str(artifacts / "admin-restricted-no-js.png"), animations="disabled")
+                    editor_page.locator('.amaris-model-link[href="/admin/content/course/"]').press("Enter")
+                    expect(editor_page.locator("#changelist")).to_be_visible()
+                    assert editor_page.goto(origin + "/admin/content/payment/").status == 403
                     restricted.close()
                     browser.close()
                 print(
