@@ -39,7 +39,7 @@ class Migration(migrations.Migration):
                 ("slot_start", models.DateTimeField()),
                 ("status", models.CharField(max_length=12, default="pending", choices=[("pending", "Pending"), ("sent", "Accepted by provider"), ("skipped", "Skipped"), ("failed", "Failed")])),
                 ("sent_at", models.DateTimeField(blank=True, null=True)),
-                ("provider_id", models.CharField(blank=True, max_length=128)),
+                ("provider_id", models.CharField(blank=True, max_length=128)),\n                ("receipt_status", models.CharField(blank=True, max_length=16, default="")),
                 ("error_code", models.CharField(blank=True, max_length=80)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("booking", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="whatsapp_deliveries", to="content.liveclassbooking")),
