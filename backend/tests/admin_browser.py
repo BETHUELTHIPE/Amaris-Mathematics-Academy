@@ -98,7 +98,7 @@ editor.user_permissions.add(Permission.objects.get(codename='view_course',conten
                     page.screenshot(path=str(artifacts / "admin-login.png"), full_page=True)
                     login(page, origin, "academy-qa", password)
                     expect(page.get_by_role("heading", name="Welcome back, Alex.")).to_be_visible()
-                    expect(page.get_by_role("link", name="Toggle navigation")).to_be_visible()
+                    expect(page.get_by_role("button", name="Toggle navigation")).to_be_visible()
                     page.wait_for_timeout(550)
                     page.screenshot(path=str(artifacts / "admin-desktop.png"), full_page=True)
                     page.get_by_label("Find a management tool").fill("invoice")
@@ -117,7 +117,7 @@ editor.user_permissions.add(Permission.objects.get(codename='view_course',conten
                             "document.documentElement.scrollWidth <= window.innerWidth + 1"
                         ), f"Overview overflow at {width}px"
                     page.set_viewport_size({"width": 390, "height": 844})
-                    page.screenshot(path=str(artifacts / "admin-mobile.png"), full_page=True)
+                    page.screenshot(path=str(artifacts / "admin-mobile.png"))
                     page.set_viewport_size({"width": 1440, "height": 1000})
                     page.locator('.amaris-model-link[href="/admin/content/course/"]').click()
                     expect(page.locator("#changelist")).to_be_visible()

@@ -298,19 +298,6 @@ jobs:
             sleep 2
           done
           python e2e/responsive_browser.py
-      - name: Install Django Admin browser acceptance dependencies
-        working-directory: backend
-        run: python -m pip install -r requirements.txt
-      - name: Verify redesigned Django Admin in a real browser
-        working-directory: backend
-        env:
-          DJANGO_DEBUG: "true"
-          SUPABASE_DATABASE_REQUIRED: "false"
-          DATABASE_URL: sqlite:////tmp/amaris-admin-static.sqlite3
-          ADMIN_BROWSER_ARTIFACT_DIR: ${{ github.workspace }}/frontend/artifacts/admin
-        run: |
-          python manage.py collectstatic --noinput
-          python -m tests.admin_browser
       - name: Preserve responsive-browser evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -318,11 +305,45 @@ jobs:
           name: responsive-browser-evidence
           path: |
             frontend/artifacts/e2e/
-            frontend/artifacts/admin/
             /tmp/amaris-e2e-server.log
             /tmp/amaris-playwright-*.log
           if-no-files-found: warn
           retention-days: 30
+
+  admin-browser:
+    name: Admin visual and interaction acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble
+      options: --init --ipc=host --user 1001
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install pinned Django and browser dependencies
+        run: python -m pip install -r requirements.txt -r ../frontend/e2e/requirements.txt
+      - name: Verify academy workspace, login and editors
+        env:
+          DJANGO_DEBUG: "true"
+          SUPABASE_DATABASE_REQUIRED: "false"
+          DATABASE_URL: sqlite:////tmp/amaris-admin-static.sqlite3
+          ADMIN_BROWSER_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/admin
+        run: |
+          python manage.py collectstatic --noinput
+          python -m tests.admin_browser
+      - name: Preserve synthetic admin visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-workspace-visual-evidence
+          path: artifacts/admin/
+          if-no-files-found: warn
+          retention-days: 14
 
   dependency-security:
     name: Dependency vulnerability gates
@@ -372,7 +393,7 @@ jobs:
     runs-on: ubuntu-latest
     # Container security is intentionally independent of Lighthouse timing noise.
     # Overall release/publish still requires both this job and frontend-quality.
-    needs: [backend-quality, responsive-browser, dependency-security, secret-security]
+    needs: [backend-quality, responsive-browser, admin-browser, dependency-security, secret-security]
     permissions:
       contents: read
       security-events: write
