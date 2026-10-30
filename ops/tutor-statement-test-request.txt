@@ -1,2 +1,4 @@
 Run isolated PostgreSQL 17 tests for new tutor statements, PDF and email delivery. No student data or production infrastructure touched.
 Rerun after HTTPS-only admin access test fix, reporting metric corrections and exact private bucket guard.
+
+Third acceptance run: middleware-added cache-control headers are permitted while still requiring private no-store.
