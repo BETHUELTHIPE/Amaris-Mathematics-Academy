@@ -91,7 +91,13 @@ def activity_snapshot(tutor, start, end):
         "sessions_taught": len(completed),
         "hours_taught": sum((x.slot.duration_hours for x in completed), 0),
         "video_requests": len(videos),
-        "videos_delivered": sum(1 for x in videos if x.status == VideoRequest.Status.READY and x.video_ready_at),
+        "videos_delivered": VideoRequest.objects.filter(
+            assigned_tutor=tutor,
+            status=VideoRequest.Status.READY,
+            gateway_verified_at__isnull=False,
+            video_ready_at__gte=start,
+            video_ready_at__lt=end,
+        ).count(),
         "paid_video_requests": len(videos),
         "earnings_count": len(valid),
         "gross_verified": _money(sum((x.gross for x in valid), ZERO)),
@@ -271,7 +277,8 @@ def render_tutor_statement_pdf(statement):
     ]
 
     summary = [
-        ("Students taught / served", details["unique_students"]),
+        ("Students taught in completed classes", details["students_taught"]),
+        ("Unique students served incl. videos", details["unique_students"]),
         ("Completed classes", details["sessions_taught"]),
         ("Teaching hours", details["hours_taught"]),
         ("Paid video requests assigned", details["video_requests"]),
