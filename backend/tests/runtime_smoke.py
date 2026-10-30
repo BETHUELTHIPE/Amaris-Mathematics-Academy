@@ -5,6 +5,7 @@ All requests are synthetic and loopback-only; no emails or payment are issued.
 """
 
 import concurrent.futures
+import gzip
 import json
 import os
 import signal
@@ -90,6 +91,10 @@ def main():
                     assert request(port, path)[0] == 404, path
                 status, headers, _body = request(port, "/static/admin/css/base.css")
                 assert status == 200 and "max-age=3600" in headers.get("Cache-Control", "")
+                status, headers, body = request(port, "/static/admin/css/base.css", headers={"Accept-Encoding": "gzip"})
+                assert status == 200 and headers.get("Content-Encoding") == "gzip"
+                assert gzip.decompress(body) == (BACKEND_DIR / "staticfiles/admin/css/base.css").read_bytes()
+                assert body == (BACKEND_DIR / "staticfiles/admin/css/base.css.gz").read_bytes()
                 assert request(port, "/health/version/")[0] == 200
             except Exception:
                 output.seek(0)

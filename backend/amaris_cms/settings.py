@@ -198,6 +198,8 @@ CACHES = {
             "socket_connect_timeout": 1,
             "socket_timeout": 1,
             "max_connections": int(os.getenv("DJANGO_CACHE_MAX_CONNECTIONS", "30")),
+            "socket_keepalive": True,
+            "health_check_interval": 30,
         },
     },
     "public_content": {
@@ -209,6 +211,8 @@ CACHES = {
             "socket_connect_timeout": 1,
             "socket_timeout": 1,
             "max_connections": int(os.getenv("DJANGO_CACHE_MAX_CONNECTIONS", "30")),
+            "socket_keepalive": True,
+            "health_check_interval": 30,
         },
     },
 }
@@ -397,7 +401,15 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_MAX_TASKS_PER_CHILD = int(os.getenv("CELERY_WORKER_MAX_TASKS_PER_CHILD", "500"))
 CELERY_WORKER_MAX_MEMORY_PER_CHILD = int(os.getenv("CELERY_WORKER_MAX_MEMORY_PER_CHILD_KB", "350000"))
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
-CELERY_BROKER_POOL_LIMIT = int(os.getenv("CELERY_BROKER_POOL_LIMIT", "10"))
+CELERY_BROKER_POOL_LIMIT = int(os.getenv("CELERY_BROKER_POOL_LIMIT", "4"))
+CELERY_REDIS_MAX_CONNECTIONS = int(os.getenv("CELERY_REDIS_MAX_CONNECTIONS", "10"))
+CELERY_REDIS_SOCKET_CONNECT_TIMEOUT = 3.0
+CELERY_REDIS_SOCKET_TIMEOUT = 5.0
+CELERY_REDIS_SOCKET_KEEPALIVE = True
+CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30
+CELERY_RESULT_BACKEND_THREAD_SAFE = True
+CELERY_BROKER_CONNECTION_TIMEOUT = 3.0
+CELERY_VISIBILITY_TIMEOUT = int(os.getenv("CELERY_VISIBILITY_TIMEOUT", "3600"))
 CELERY_RESULT_EXPIRES = int(os.getenv("CELERY_RESULT_EXPIRES_SECONDS", "86400"))
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_TASK_PUBLISH_RETRY = True
@@ -409,23 +421,31 @@ CELERY_TASK_PUBLISH_RETRY_POLICY = {
 }
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "visibility_timeout": 3600,
+    "visibility_timeout": CELERY_VISIBILITY_TIMEOUT,
+    "max_connections": int(os.getenv("CELERY_REDIS_MAX_CONNECTIONS", "10")),
+    "health_check_interval": 30,
+    "socket_keepalive": True,
     "socket_connect_timeout": 5,
     "socket_timeout": 10,
     "retry_on_timeout": True,
     "max_retries": 6,
 }
 CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
+    "visibility_timeout": CELERY_VISIBILITY_TIMEOUT,
     "retry_policy": {
         "timeout": 5.0,
         "max_retries": 6,
         "interval_start": 0,
         "interval_step": 1,
         "interval_max": 10,
-    }
+    },
 }
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
 CELERY_TASK_TIME_LIMIT = 30 * 60
+if CELERY_VISIBILITY_TIMEOUT <= CELERY_TASK_TIME_LIMIT:
+    raise RuntimeError("Celery visibility timeout must exceed the task hard time limit.")
+if CELERY_BROKER_POOL_LIMIT <= 0 or CELERY_REDIS_MAX_CONNECTIONS < 4:
+    raise RuntimeError("Celery requires a bounded producer pool and at least four Redis connections per process.")
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
     "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",

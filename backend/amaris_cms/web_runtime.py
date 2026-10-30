@@ -34,6 +34,8 @@ def render_config(directory: Path, port: int, upstream_port: int) -> Path:
     config = template.replace("@@PORT@@", str(port)).replace("@@UPSTREAM_PORT@@", str(upstream_port))
     config = config.replace("@@STATIC_ROOT@@", json.dumps(str(BACKEND_DIR / "staticfiles") + "/"))
     config = config.replace("@@MIME_TYPES@@", json.dumps(os.getenv("NGINX_MIME_TYPES", "/etc/nginx/mime.types")))
+    keepalive = max(0, int(os.getenv("GUNICORN_KEEPALIVE", "5")) - 1)
+    config = config.replace("@@UPSTREAM_KEEPALIVE@@", str(keepalive))
     config = config.replace("@@TRUST_HTTPS@@", '"https" https;' if trust_https else "")
     path = directory / "nginx.conf"
     path.write_text(config)

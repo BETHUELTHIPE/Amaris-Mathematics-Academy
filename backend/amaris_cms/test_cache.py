@@ -76,6 +76,48 @@ class ResilientRedisFallbackTests(SimpleTestCase):
         self.assertFalse(cache._fallback_set("zero", "value", timeout=0))
         self.assertIsNone(cache._fallback_get("zero"))
 
+    def test_zero_timeout_removes_an_existing_fallback_value(self):
+        cache = self.make_cache()
+        cache._fallback_set("old", "stale", timeout=30)
+        self.assertFalse(cache._fallback_set("old", "replacement", timeout=0))
+        self.assertIsNone(cache._fallback_get("old"))
+
+    def test_outage_cooldown_is_shared_by_fresh_request_cache_instances(self):
+        first = self.make_cache()
+        second = ResilientRedisCache("redis://127.0.0.1:6399/15", {"KEY_PREFIX": "test-fallback"})
+        with patch("django.core.cache.backends.redis.RedisCache.get", side_effect=OSError("synthetic outage")) as get:
+            self.assertIsNone(first.get("missing"))
+            self.assertIsNone(second.get("missing"))
+        self.assertEqual(get.call_count, 1)
+
+    def test_fallback_values_do_not_cross_redis_endpoint_boundaries(self):
+        first = self.make_cache()
+        second = ResilientRedisCache("redis://127.0.0.1:6399/14", {"KEY_PREFIX": "test-fallback"})
+        first._fallback_set("same-key", "private-value", timeout=30)
+        self.assertIsNone(second._fallback_get("same-key"))
+
+    def test_failed_delete_removes_stale_fallback(self):
+        cache = self.make_cache()
+        cache._fallback_set("deleted", "stale", timeout=30)
+        with patch("django.core.cache.backends.redis.RedisCache.delete", side_effect=OSError("synthetic outage")):
+            self.assertFalse(cache.delete("deleted"))
+        self.assertIsNone(cache.get("deleted"))
+
+    def test_confirmed_redis_miss_cannot_reappear_during_later_outage(self):
+        cache = self.make_cache()
+        cache._fallback_set("deleted", "stale", timeout=30)
+        with patch(
+            "django.core.cache.backends.redis.RedisCache.get", side_effect=lambda *args, **kwargs: kwargs["default"]
+        ):
+            self.assertIsNone(cache.get("deleted"))
+        cache._open_redis_circuit()
+        self.assertIsNone(cache.get("deleted"))
+
+    def test_cached_none_is_distinct_from_a_miss(self):
+        cache = self.make_cache()
+        with patch("django.core.cache.backends.redis.RedisCache.get", return_value=None):
+            self.assertIsNone(cache.get("none-value", "missing"))
+
     def test_fallback_is_bounded_lru(self):
         cache = self.make_cache()
         original_limit = cache._fallback_max_entries

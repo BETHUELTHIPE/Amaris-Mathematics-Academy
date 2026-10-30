@@ -37,6 +37,10 @@ class WebRuntimeTests(TestCase):
         with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"NGINX_TRUST_FORWARDED_PROTO": "true"}):
             self.assertIn('"https" https;', render_config(Path(root), 10000, 8001).read_text())
 
+    def test_nginx_retires_idle_upstream_sockets_before_gunicorn(self):
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"GUNICORN_KEEPALIVE": "2"}):
+            self.assertIn("keepalive_timeout 1s;", render_config(Path(root), 10000, 8001).read_text())
+
     def test_invalid_or_colliding_ports_fail_before_startup(self):
         for value in ("80", "65536", "-1", "not-a-port"):
             with self.subTest(value=value), patch.dict(os.environ, {"PORT": value}), self.assertRaises(ValueError):

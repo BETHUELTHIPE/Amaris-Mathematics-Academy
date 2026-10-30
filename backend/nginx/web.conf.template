@@ -24,7 +24,8 @@ http {
 
     upstream amaris_asgi {
         server 127.0.0.1:@@UPSTREAM_PORT@@;
-        keepalive 16;
+        keepalive 8;
+        keepalive_timeout @@UPSTREAM_KEEPALIVE@@s;
     }
 
     server {
@@ -40,9 +41,15 @@ http {
         location /static/ {
             alias @@STATIC_ROOT@@;
             autoindex off;
+            open_file_cache max=1024 inactive=30s;
+            open_file_cache_valid 60s;
+            open_file_cache_min_uses 2;
+            open_file_cache_errors off;
             # Stable filenames (e.g. admin assets) must revalidate after releases.
             expires 1h;
             gzip on;
+            gzip_static on;
+            gzip_proxied any;
             gzip_vary on;
             gzip_min_length 1024;
             gzip_comp_level 4;

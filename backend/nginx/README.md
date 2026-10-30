@@ -33,6 +33,17 @@ Explicitly change an existing DATABASE_CONN_MAX_AGE=600 environment value to zer
 
 Forwarded HTTPS is trusted only behind the configured platform edge; explicitly set NGINX_TRUST_FORWARDED_PROTO=true only when that edge sanitizes the header. Directly exposed HTTP deployments leave it false. Nginx neither caches private responses nor globally compresses personalized dynamic data. Static filenames revalidate after one hour. Its 1025 MiB body ceiling allows a 1 GiB file plus multipart overhead, while each form retains its own file-size validators. Large uploads require realistic staging acceptance. Single-container mode denies all /media/ paths: inventory local-only public media first and use configured storage URLs for public production assets. Private downloads retain application authorization/signed URLs.
 
+## Django, Celery and Redis coordination
+
+- Django's request-local cache clients share a bounded physical Redis pool for each endpoint and connection configuration in a process. The default limit is 30 connections per pool, not 30 per request/cache instance. At most 32 distinct pool configurations are retained. Gunicorn/Celery prefork children create independent pools. This uses Django 5.2's protected Redis client interface, covered by the pinned-version integration tests.
+- Cache read/write outages share a 15-second retry cooldown across fresh cache instances for the same endpoint. The bounded fallback is isolated by endpoint and cache namespace. Deletion, zero TTL and authoritative Redis misses remove stale local entries. Fallback state is cleared after a fork. It remains best-effort process-local caching: use the broker/database, not this fallback, for durable work or distributed locks.
+- Celery defaults to four pooled producer connections and caps each Redis transport/result pool at ten. Result backend pools can be shared across application threads. Redis sockets use keepalive and health checks; result connections have a 3-second connect timeout and 5-second IO timeout. Add all parent/child processes, instances and transport pools when budgeting server connections; ten is not a deployment-wide cap.
+- Broker, backend and application visibility timeout settings agree at 3600 seconds and must exceed the 1800-second task hard limit. Existing one-task prefetch, late acknowledgements, task routing, retries and notification scheduling are preserved. These settings do not promise exactly-once delivery.
+- Compose retains separate Redis services: durable broker with AOF/noeviction, disposable cache with allkeys-lru. Separate Redis database numbers alone do not isolate memory eviction. No new hosted Redis service is provisioned or reconfigured by this PR.
+- Nginx serves precompressed static .gz files and caches hot static-file metadata. Personalized responses are neither shared-cached nor globally compressed. Eight idle upstream sockets leave ASGI admission headroom; managed-container idle expiry is derived from GUNICORN_KEEPALIVE and is one second shorter. Compose uses four seconds: adjust its static upstream timeout if changing the five-second Gunicorn default.
+
+An isolated local Redis comparison used 24 fresh cache instances with the same read/write workload. The previous Django cache client opened **24 new physical connections**; the optimized client opened **1**. This measures connection reuse in a single local process, not production latency or user capacity.
+
 ## Verification
 
 From backend/ with dependencies installed and Nginx available:
@@ -50,10 +61,10 @@ CI builds/scans the changed image and runs the existing release gates. Local smo
 
 ### Observed local validation, 30 October 2026
 
-- Python 3.13.15: full Django run completed with 248 tests, 5 skipped; no failures. The isolated PostgreSQL pool tests are among the skips.
-- Black, Ruff, mypy (42 source files), migration drift and YAML parsing checks passed.
+- Python 3.13.15 with disposable real Redis 7.0.15: full Django run completed with 256 tests, 2 skipped; no failures. Real Redis cache isolation/reuse and both solo/prefork Celery round trips passed. PostgreSQL-specific acceptance still requires CI.
+- Black, Ruff, mypy (43 source files), migration drift and YAML parsing checks passed.
 - Production and installed development dependency audits report no known vulnerabilities after updating Black and pypdf to patched releases.
-- Actual local Nginx 1.24.0, Gunicorn and Uvicorn smoke acceptance passed. The restricted local runner required Nginx single-process mode; CI's separate Docker smoke check must still prove production's nonroot master/worker mode.
+- Actual local Nginx 1.24.0, Gunicorn and Uvicorn smoke acceptance passed, including exact precompressed static bytes. The restricted local runner required Nginx single-process mode; CI's separate Docker smoke check must still prove this revision's production nonroot master/worker mode.
 - Docker image build/security scan, real PostgreSQL pool integration, hosted staging acceptance and before/after performance measurements have not run for this change. Production remains unchanged.
 
 References:
@@ -62,3 +73,5 @@ References:
 - https://docs.djangoproject.com/en/5.2/howto/deployment/asgi/uvicorn/
 - https://nginx.org/en/docs/http/ngx_http_proxy_module.html
 - https://supabase.com/docs/guides/database/connecting-to-postgres
+- https://docs.celeryq.dev/en/v5.5.3/userguide/configuration.html
+- https://redis.io/docs/latest/develop/reference/eviction/
