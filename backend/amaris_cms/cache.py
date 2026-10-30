@@ -1,4 +1,6 @@
+import hashlib
 import logging
+import os
 import threading
 import time
 from collections import OrderedDict
@@ -7,6 +9,8 @@ from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.core.cache.backends.redis import RedisCache
 from redis.exceptions import RedisError
 
+from amaris_cms.redis_client import ProcessRedisCacheClient
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,12 +18,36 @@ class ResilientRedisCache(RedisCache):
     """Use Redis first and bounded process-local TTL storage as outage fallback."""
 
     _cache_errors = (RedisError, OSError, ConnectionError)
+    _servers: list[str]
     _warned_operations: set[str] = set()
     _fallback_lock = threading.RLock()
     _fallback_store: "OrderedDict[str, tuple[float | None, object]]" = OrderedDict()
     _fallback_max_entries = 512
-    _redis_retry_after = 0.0
+    _circuit_states: "OrderedDict[str, float]" = OrderedDict()
     _redis_retry_seconds = 15.0
+
+    def __init__(self, server, params):
+        super().__init__(server, params)
+        self._class = ProcessRedisCacheClient
+        # Namespace fallback data by endpoint as well as Django key prefix.
+        # Hash the URLs so operational state does not retain a printable URL key.
+        self._endpoint_scope = hashlib.sha256(repr(tuple(self._servers)).encode()).hexdigest()
+
+    @property
+    def _redis_retry_after(self):
+        with self._fallback_lock:
+            return self._circuit_states.get(self._endpoint_scope, 0.0)
+
+    @_redis_retry_after.setter
+    def _redis_retry_after(self, value):
+        with self._fallback_lock:
+            if value:
+                self._circuit_states[self._endpoint_scope] = value
+                self._circuit_states.move_to_end(self._endpoint_scope)
+                while len(self._circuit_states) > 32:
+                    self._circuit_states.popitem(last=False)
+            else:
+                self._circuit_states.pop(self._endpoint_scope, None)
 
     def _warn_once(self, operation: str, message: str) -> None:
         if operation not in self._warned_operations:
@@ -27,7 +55,7 @@ class ResilientRedisCache(RedisCache):
             self._warned_operations.add(operation)
 
     def _fallback_key(self, key, version=None) -> str:
-        return self.make_key(key, version=version)
+        return f"{self._endpoint_scope}:{self.make_key(key, version=version)}"
 
     def _fallback_get(self, key, default=None, version=None):
         cache_key = self._fallback_key(key, version=version)
@@ -47,8 +75,8 @@ class ResilientRedisCache(RedisCache):
         cache_key = self._fallback_key(key, version=version)
         resolved_timeout = self.default_timeout if timeout is DEFAULT_TIMEOUT else timeout
         if resolved_timeout is not None and float(resolved_timeout) <= 0:
+            self._fallback_delete(key, version=version)
             return False
-
         if resolved_timeout is None:
             expires_at = None
         else:
@@ -60,6 +88,10 @@ class ResilientRedisCache(RedisCache):
             while len(self._fallback_store) > self._fallback_max_entries:
                 self._fallback_store.popitem(last=False)
         return True
+
+    def _fallback_delete(self, key, version=None):
+        with self._fallback_lock:
+            return self._fallback_store.pop(self._fallback_key(key, version=version), None) is not None
 
     def _redis_available_for_attempt(self) -> bool:
         return time.monotonic() >= self._redis_retry_after
@@ -74,8 +106,9 @@ class ResilientRedisCache(RedisCache):
         if not self._redis_available_for_attempt():
             return self._fallback_get(key, default=default, version=version)
 
+        missing = object()
         try:
-            value = super().get(key, default=None, version=version)
+            value = super().get(key, default=missing, version=version)
             self._close_redis_circuit()
         except self._cache_errors:
             self._open_redis_circuit()
@@ -88,7 +121,10 @@ class ResilientRedisCache(RedisCache):
         # A successful Redis miss is authoritative. Returning a process-local
         # fallback entry here could resurrect stale public data after another
         # worker invalidated the Redis namespace.
-        return default if value is None else value
+        if value is missing:
+            self._fallback_delete(key, version=version)
+            return default
+        return value
 
     def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         fallback_result = self._fallback_set(
@@ -112,6 +148,17 @@ class ResilientRedisCache(RedisCache):
             )
             return fallback_result
 
+    def delete(self, key, version=None):
+        self._fallback_delete(key, version=version)
+        try:
+            result = super().delete(key, version=version)
+            self._close_redis_circuit()
+            return result
+        except self._cache_errors:
+            self._open_redis_circuit()
+            self._warn_once("delete", "Redis cache deletion failed; local fallback entry removed.")
+            return False
+
     def clear(self):
         """Invalidate only this cache alias, never FLUSHDB a shared Redis database.
 
@@ -129,9 +176,10 @@ class ResilientRedisCache(RedisCache):
         if not namespace.startswith(f"{self.key_prefix}:") or not namespace.endswith(":"):
             raise ValueError("Unsupported cache key function for scoped invalidation.")
 
+        fallback_namespace = f"{self._endpoint_scope}:{namespace}"
         with self._fallback_lock:
             for key in tuple(self._fallback_store):
-                if key.startswith(namespace):
+                if key.startswith(fallback_namespace):
                     self._fallback_store.pop(key, None)
 
         # Redis glob characters may be present in a configured KEY_PREFIX.
@@ -157,3 +205,16 @@ class ResilientRedisCache(RedisCache):
                 "Scoped Redis cache invalidation failed; only this alias's local fallback entries were cleared.",
             )
             return False
+
+
+def _reset_local_cache_after_fork():
+    # Celery prefork children must neither inherit another thread's lock nor
+    # serve an inherited fallback value while establishing their own pools.
+    ResilientRedisCache._fallback_lock = threading.RLock()
+    ResilientRedisCache._fallback_store = OrderedDict()
+    ResilientRedisCache._circuit_states = OrderedDict()
+    ResilientRedisCache._warned_operations = set()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_local_cache_after_fork)

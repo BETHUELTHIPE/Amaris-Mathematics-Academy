@@ -103,10 +103,18 @@ jobs:
         run: python manage.py migrate --noinput
       - name: Collect production static assets
         run: python manage.py collectstatic --noinput
+      - name: Install Nginx for isolated ASGI runtime acceptance
+        run: sudo apt-get update -qq && sudo apt-get install --no-install-recommends -y nginx
+      - name: Nginx, Gunicorn and Uvicorn real loopback acceptance
+        run: python -m tests.runtime_smoke
+      - name: Bounded PostgreSQL connection pool integration
+        env:
+          DATABASE_POOL_ENABLED: "true"
+        run: python manage.py test tests.test_database_pool
       - name: Unit tests
-        run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests tests.test_monitoring_admin
+        run: python manage.py test content.tests.HealthAndMetricsTests content.tests.ErrorRecoveryTests tests.test_monitoring_admin tests.test_web_runtime tests.test_admin_workspace
       - name: Integration tests
-        run: python manage.py test content.tests.PublicContentApiTests content.test_integrations
+        run: python manage.py test content.tests.PublicContentApiTests content.test_integrations content.test_api_performance
       - name: Load/capacity harness contract (no traffic)
         run: |
           python -m unittest load_tests.test_contract
@@ -302,6 +310,41 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  admin-browser:
+    name: Admin visual and interaction acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble
+      options: --init --ipc=host --user 1001
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install pinned Django and browser dependencies
+        run: python -m pip install -r requirements.txt -r ../frontend/e2e/requirements.txt
+      - name: Verify academy workspace, login and editors
+        env:
+          DJANGO_DEBUG: "true"
+          SUPABASE_DATABASE_REQUIRED: "false"
+          DATABASE_URL: sqlite:////tmp/amaris-admin-static.sqlite3
+          ADMIN_BROWSER_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/admin
+        run: |
+          python manage.py collectstatic --noinput
+          python -m tests.admin_browser
+      - name: Preserve synthetic admin visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-workspace-visual-evidence
+          path: artifacts/admin/
+          if-no-files-found: warn
+          retention-days: 14
+
   dependency-security:
     name: Dependency vulnerability gates
     runs-on: ubuntu-latest
@@ -350,7 +393,7 @@ jobs:
     runs-on: ubuntu-latest
     # Container security is intentionally independent of Lighthouse timing noise.
     # Overall release/publish still requires both this job and frontend-quality.
-    needs: [backend-quality, responsive-browser, dependency-security, secret-security]
+    needs: [backend-quality, responsive-browser, admin-browser, dependency-security, secret-security]
     permissions:
       contents: read
       security-events: write
@@ -363,6 +406,13 @@ jobs:
           docker compose --env-file backend/.env -f backend/docker-compose.yml config --quiet
       - name: Build production backend image
         run: docker build --tag amaris-backend:${{ github.sha }} backend
+      - name: Verify actual nonroot Docker web runtime without external network
+        run: >-
+          docker run --rm --network none
+          -e DJANGO_DEBUG=true
+          -e SUPABASE_DATABASE_REQUIRED=false
+          -e DATABASE_URL=sqlite:////tmp/runtime-smoke.sqlite3
+          amaris-backend:${{ github.sha }} python -m tests.runtime_smoke
       - name: Generate CycloneDX software bill of materials
         uses: anchore/sbom-action@v0
         with:

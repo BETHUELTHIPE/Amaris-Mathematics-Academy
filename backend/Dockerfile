@@ -45,7 +45,7 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install --no-install-recommends -y ca-certificates libpq5 postgresql-client \
+    && apt-get install --no-install-recommends -y ca-certificates libpq5 postgresql-client nginx \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=restic-builder /out/restic /usr/local/bin/restic
@@ -74,4 +74,4 @@ USER amaris
 
 EXPOSE 8000
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["gunicorn", "amaris_cms.asgi:application", "--config", "/app/gunicorn.conf.py"]
+CMD ["python", "-m", "amaris_cms.web_runtime"]

@@ -3,7 +3,8 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, IntegerField, OuterRef, Prefetch, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -116,21 +117,23 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         now = timezone.now()
-        lesson_queryset = Lesson.objects.filter(live_filter(now)).order_by("order")
+        lesson_queryset = Lesson.objects.filter(live_filter(now)).defer("lesson_body").order_by("order")
         module_queryset = CourseModule.objects.filter(is_published=True).prefetch_related(
             Prefetch("lessons", queryset=lesson_queryset)
+        )
+        # Keep pagination's COUNT on courses alone. A joined aggregate would
+        # group every matching course and lesson before selecting one page.
+        lesson_counts = (
+            Lesson.objects.filter(live_filter(now), module__course_id=OuterRef("pk"))
+            .order_by()
+            .values("module__course_id")
+            .annotate(total=Count("pk"))
+            .values("total")[:1]
         )
         queryset = (
             Course.objects.filter(live_filter(now), status=Course.Status.PUBLISHED)
             .select_related("category")
-            .annotate(
-                lesson_count=Count(
-                    "modules__lessons",
-                    filter=Q(modules__lessons__is_published=True)
-                    & (Q(modules__lessons__publish_at__isnull=True) | Q(modules__lessons__publish_at__lte=now)),
-                    distinct=True,
-                )
-            )
+            .annotate(lesson_count=Coalesce(Subquery(lesson_counts, output_field=IntegerField()), 0))
         )
         if getattr(self, "action", None) in {"list", "featured"}:
             queryset = queryset.defer("description", "outcomes")
@@ -287,8 +290,10 @@ class SiteBootstrapView(generics.GenericAPIView):
     def get(self, request):
         now = timezone.now()
         settings = SiteSettings.objects.first()
-        announcements = Announcement.objects.filter(live_filter(now)).filter(
-            Q(expires_at__isnull=True) | Q(expires_at__gt=now)
+        announcements = (
+            Announcement.objects.filter(live_filter(now))
+            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+            .prefetch_related("media")
         )
         payload = {
             "settings": SiteSettingsSerializer(settings, context={"request": request}).data if settings else None,
