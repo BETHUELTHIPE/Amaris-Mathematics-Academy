@@ -141,11 +141,11 @@ test("invalid IDs and unsafe download locations are rejected", async () => {
 
 
 test("Library cards render escaped metadata, role-specific downloads and tutor-owned controls", () => {
-  const resource = { id, title: "Algebra <script>alert(1)</script>", description: "Practice", resource_type: "worksheet", subject: "Mathematics", level: "Grade 12", original_name: "worksheet.pdf", size_bytes: 1024, is_published: true, can_manage: true };
+  const resource = { id, title: "Algebra <ScRiPt>alert(1)</ScRiPt>", description: "Practice", resource_type: "worksheet", subject: "Mathematics", level: "Grade 12", original_name: "worksheet.pdf", size_bytes: 1024, is_published: true, can_manage: true };
   const data = { results: [resource], count: 25, page: 1, page_size: 24 };
   const student = renderToStaticMarkup(createElement(LibraryShelf, { data, role: "student", query: { q: "a & b" } }));
-  assert.match(student, /&lt;script&gt;/);
-  assert.doesNotMatch(student, /<script>/);
+  assert.match(student, /&lt;ScRiPt&gt;/);
+  assert.doesNotMatch(student, /<script>/i);
   assert.match(student, new RegExp(`/api/library/${id}/download\\?role=student`));
   assert.doesNotMatch(student, /Hide from students/);
   assert.match(student, /page=2/);
