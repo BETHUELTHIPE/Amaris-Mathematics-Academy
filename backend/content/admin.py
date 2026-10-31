@@ -840,3 +840,6 @@ class WebVitalBucketAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
         }
         return TemplateResponse(request, "admin/content/webvitalbucket/report.html", context)
+
+
+from . import library_admin  # noqa: E402,F401

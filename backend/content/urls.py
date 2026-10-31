@@ -1,6 +1,13 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .library_views import (
+    LibraryDownloadView,
+    LibraryListView,
+    TutorLibraryDownloadView,
+    TutorLibraryUpdateView,
+    TutorLibraryView,
+)
 from .live_class_views import (
     LiveClassBookingStatusView,
     LiveClassCheckoutView,
@@ -64,6 +71,15 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("student/library/", LibraryListView.as_view(), name="student-library"),
+    path(
+        "student/library/<uuid:resource_id>/download/", LibraryDownloadView.as_view(), name="student-library-download"
+    ),
+    path("tutor/library/", TutorLibraryView.as_view(), name="tutor-library"),
+    path("tutor/library/<uuid:resource_id>/", TutorLibraryUpdateView.as_view(), name="tutor-library-update"),
+    path(
+        "tutor/library/<uuid:resource_id>/download/", TutorLibraryDownloadView.as_view(), name="tutor-library-download"
+    ),
     path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(
