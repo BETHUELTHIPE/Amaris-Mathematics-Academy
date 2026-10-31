@@ -914,4 +914,5 @@ class WebVitalBucket(models.Model):
 
 
 # Django discovers the recruitment models through this application module.
+from .library_models import LibraryResource  # noqa: E402,F401
 from .tutor_application_models import TutorApplication, TutorApplicationDocument  # noqa: E402,F401

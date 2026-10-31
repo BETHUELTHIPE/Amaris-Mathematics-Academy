@@ -1,0 +1,109 @@
+name: Library Backend Release Checks
+
+on:
+  pull_request:
+    branches: [ops/staging-known-good-af8709c-20261019]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/dashboard-library-backend.yml'
+  push:
+    branches: [feature/dashboard-library-backend-20261031]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: library-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_library_ci
+          POSTGRES_USER: amaris_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U amaris_ci -d amaris_library_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:8-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DJANGO_DEBUG: 'false'
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_library_ci
+      DATABASE_SSL_REQUIRED: 'false'
+      SUPABASE_DATABASE_REQUIRED: 'false'
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: '0'
+      DJANGO_CACHE_URL: redis://127.0.0.1:6379/0
+      DJANGO_PUBLIC_CACHE_URL: redis://127.0.0.1:6379/1
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/2
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - name: Generate ephemeral Django secret
+        shell: bash
+        run: |
+          django_ci_secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$django_ci_secret"
+          printf 'DJANGO_SECRET_KEY=%s\n' "$django_ci_secret" >> "$GITHUB_ENV"
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Formatting, lint and type checks
+        run: |
+          black --check --diff .
+          ruff check .
+          mypy
+      - name: Django configuration and schema checks
+        run: |
+          python manage.py check --deploy --fail-level ERROR
+          python manage.py spectacular --file /tmp/library-openapi.yaml --validate --fail-on-warn
+          python manage.py makemigrations --check --dry-run
+      - name: Create isolated Data API roles for migration verification
+        run: |
+          python manage.py shell <<'PY'
+          from django.db import connection
+          assert connection.settings_dict['HOST'] == '127.0.0.1'
+          assert connection.settings_dict['NAME'] == 'amaris_library_ci'
+          with connection.cursor() as cursor:
+              cursor.execute('CREATE ROLE anon NOLOGIN')
+              cursor.execute('CREATE ROLE authenticated NOLOGIN')
+          PY
+      - name: Apply migrations and verify Library RLS
+        run: |
+          python manage.py migrate --noinput
+          python manage.py shell <<'PY'
+          from django.db import connection
+          with connection.cursor() as cursor:
+              cursor.execute("SELECT relrowsecurity FROM pg_class WHERE oid = 'content_libraryresource'::regclass")
+              assert cursor.fetchone() == (True,), 'Library RLS must be enabled'
+              for role in ('anon', 'authenticated'):
+                  for permission in ('SELECT', 'INSERT', 'UPDATE', 'DELETE'):
+                      cursor.execute('SELECT has_table_privilege(%s, %s, %s)', [role, 'content_libraryresource', permission])
+                      assert cursor.fetchone() == (False,), f'{role} must not have {permission} on Library'
+          print('Library RLS and Data API privilege checks passed')
+          PY
+      - name: Collect static assets and run full Django suite
+        run: |
+          python manage.py collectstatic --noinput
+          python manage.py test --noinput
