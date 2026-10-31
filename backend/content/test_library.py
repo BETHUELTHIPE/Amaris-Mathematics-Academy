@@ -146,7 +146,7 @@ class LibraryTests(TestCase):
         self.assertTrue(own.data["results"][0]["can_manage"])
         result = self.request("get", reverse("tutor-library-download", args=[obj.pk]))
         self.assertEqual(result.status_code, 200)
-        result.close()
+        self.assertIn(b"Synthetic worksheet", b"".join(result.streaming_content))
 
     def test_tutor_can_only_change_publication_for_own_document(self):
         obj = self.create()
@@ -268,4 +268,4 @@ class LibraryTests(TestCase):
         staff.user_permissions.add(Permission.objects.get(codename="view_libraryresource"))
         result = self.client.get(route, secure=True)
         self.assertEqual(result.status_code, 200)
-        result.close()
+        self.assertIn(b"Synthetic worksheet", b"".join(result.streaming_content))
