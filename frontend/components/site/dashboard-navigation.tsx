@@ -5,14 +5,16 @@ import {
   CreditCard,
   GitBranch,
   LayoutDashboard,
+  LibraryBig,
   UserRound,
 } from "lucide-react";
 
-export type DashboardSection = "overview" | "orders" | "notifications";
+export type DashboardSection = "overview" | "orders" | "notifications" | "library";
 
 const items = [
   { key: "overview", label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { key: "courses", label: "My courses", href: "/dashboard#my-courses", icon: BookOpen },
+  { key: "library", label: "Library", href: "/dashboard/library", icon: LibraryBig },
   { key: "workflows", label: "My workflows", href: "/dashboard#my-workflows", icon: GitBranch },
   { key: "orders", label: "Orders & payments", href: "/dashboard/orders", icon: CreditCard },
   { key: "notifications", label: "Notifications", href: "/dashboard/notifications", icon: Bell },

@@ -16,6 +16,9 @@ permissions:
 
 jobs:
   route-wide-chrome:
+    # This job uses the Chrome installed below; avoid a redundant Puppeteer download.
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
