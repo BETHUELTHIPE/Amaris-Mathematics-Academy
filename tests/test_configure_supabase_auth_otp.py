@@ -30,12 +30,15 @@ class SupabaseAuthOtpTests(unittest.TestCase):
         self.assertNotIn("123456", desired["mailer_templates_confirmation_content"])
         self.assertIn("{{ .Token }}", desired["mailer_templates_recovery_content"])
         self.assertIn("{{ .TokenHash }}", desired["mailer_templates_recovery_content"])
-        self.assertIn("{{ .RedirectTo }}", desired["mailer_templates_recovery_content"])
+        self.assertIn("{{ .SiteURL }}/reset-password/verify?token_hash={{ .TokenHash }}", desired["mailer_templates_recovery_content"])
+        self.assertNotIn("{{ .RedirectTo }}", desired["mailer_templates_recovery_content"])
+        self.assertNotIn("localhost", desired["mailer_templates_recovery_content"].lower())
         self.assertNotIn("{{ .ConfirmationURL }}", desired["mailer_templates_recovery_content"])
         self.assertEqual(desired["mailer_subjects_recovery"], "Amaris | Reset your password")
 
     def test_check_requires_templates_confirmation_and_smtp(self):
         configured = module.desired_config() | {
+            "site_url": "https://amaris-mathematics-academy-live-students.onrender.com",
             "smtp_host": "smtp.example.test",
             "smtp_admin_email": "verified@example.test",
             "external_email_enabled": True,
@@ -51,7 +54,7 @@ class SupabaseAuthOtpTests(unittest.TestCase):
         output = io.StringIO()
         with (
             patch.dict(os.environ, {"SUPABASE_ACCESS_TOKEN": "synthetic-only"}, clear=True),
-            patch.object(module, "request_config", return_value={"smtp_host": None}) as api,
+            patch.object(module, "request_config", return_value={"smtp_host": None, "site_url": module.EXPECTED_AUTH_SITE_URL["epkcuseloinygkakxxdu"]}) as api,
             contextlib.redirect_stderr(output),
         ):
             outcome = module.main(["--project-ref", "epkcuseloinygkakxxdu", "--mode", "apply"])
@@ -62,6 +65,7 @@ class SupabaseAuthOtpTests(unittest.TestCase):
 
     def test_apply_patches_only_otp_related_settings_and_verifies(self):
         configured = module.desired_config() | {
+            "site_url": "https://amaris-mathematics-academy-live-students.onrender.com",
             "smtp_host": "smtp.example.test",
             "smtp_admin_email": "verified@example.test",
             "external_email_enabled": True,
@@ -81,6 +85,28 @@ class SupabaseAuthOtpTests(unittest.TestCase):
         self.assertNotIn("smtp_host", patch_payload)
         self.assertNotIn("synthetic-only", out.getvalue())
         self.assertNotIn("smtp.example.test", out.getvalue())
+
+    def test_refuse_wrong_or_localhost_production_site_url_before_patch(self):
+        for site_url in (
+            "http://localhost:3000",
+            "https://localhost:3000",
+            "https://other.example.test",
+        ):
+            config = module.desired_config() | {
+                "site_url": site_url,
+                "smtp_host": "smtp.example.test",
+                "smtp_admin_email": "verified@example.test",
+                "external_email_enabled": True,
+            }
+            with (
+                self.subTest(site_url=site_url),
+                patch.dict(os.environ, {"SUPABASE_ACCESS_TOKEN": "synthetic-only"}, clear=True),
+                patch.object(module, "request_config", return_value=config) as api,
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = module.main(["--project-ref", "epkcuseloinygkakxxdu", "--mode", "apply"])
+            self.assertEqual(result, 3)
+            self.assertEqual(api.call_count, 1, "Never PATCH a project with an invalid Auth Site URL")
 
     def test_missing_token_fails_without_network(self):
         with patch.dict(os.environ, {}, clear=True), contextlib.redirect_stderr(io.StringIO()):

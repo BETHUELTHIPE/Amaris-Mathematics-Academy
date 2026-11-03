@@ -29,6 +29,11 @@ SUBJECTS = {
     "mailer_subjects_recovery": "Amaris | Reset your password",
 }
 PROJECT_REF = re.compile(r"^[a-z0-9]{20}$")
+# The hosted email template uses .SiteURL, so a local development Site URL
+# would create broken or unsafe recovery links. Do not apply in that state.
+EXPECTED_AUTH_SITE_URL = {
+    "epkcuseloinygkakxxdu": "https://amaris-mathematics-academy-live-students.onrender.com",
+}
 API_ORIGIN = "https://api.supabase.com"
 
 
@@ -43,10 +48,17 @@ def desired_config() -> dict[str, object]:
         value = (TEMPLATE_DIR / filename).read_text(encoding="utf-8")
         if "{{ .Token }}" not in value:
             raise ValueError(f"{filename} is missing Supabase's .Token placeholder")
-        if filename == "recovery.html" and (
-            "{{ .TokenHash }}" not in value or "{{ .RedirectTo }}" not in value
-        ):
-            raise ValueError("Recovery email is missing preview-safe recovery link placeholders")
+        if filename == "recovery.html":
+            # .RedirectTo can be an obsolete localhost or user-supplied URL.
+            # Use the project's canonical Auth Site URL for the non-consuming
+            # reset landing; browser GET previews must not redeem any token.
+            if (
+                "{{ .TokenHash }}" not in value
+                or "{{ .SiteURL }}/reset-password/verify?token_hash={{ .TokenHash }}" not in value
+                or "{{ .RedirectTo }}" in value
+                or "localhost" in value.lower()
+            ):
+                raise ValueError("Recovery email must link to the canonical SiteURL reset verification page")
         config[setting] = value
     return config
 
@@ -100,6 +112,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         existing = request_config("GET", args.project_ref, token)
         if args.mode == "apply":
+            expected_site = EXPECTED_AUTH_SITE_URL.get(args.project_ref)
+            actual_site = str(existing.get("site_url") or "").rstrip("/")
+            if expected_site and actual_site != expected_site:
+                print("Auth Site URL does not match the approved production site; no changes applied.", file=sys.stderr)
+                return 3
+            if actual_site.startswith(("http://", "https://localhost", "https://127.", "https://[::1]")) or not actual_site.startswith("https://"):
+                print("Auth Site URL must be a secure public HTTPS URL; no changes applied.", file=sys.stderr)
+                return 3
             if not existing.get("smtp_host") or not existing.get("smtp_admin_email"):
                 print("No custom Auth SMTP host/sender is configured; fix SMTP in Supabase first.", file=sys.stderr)
                 return 3

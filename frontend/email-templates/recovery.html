@@ -7,7 +7,7 @@
       <h2>Reset your password</h2>
       <p>Use this six-digit code to reset your Amaris account password.</p>
       <p style="font-size:34px;font-weight:800;letter-spacing:8px;text-align:center;color:#0b2a5b">{{ .Token }}</p>
-      <p>Or <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}">continue securely to the password reset page</a>. This link does not use your code until you select Continue.</p>
+      <p>Or <a href="{{ .SiteURL }}/reset-password/verify?token_hash={{ .TokenHash }}">continue securely to the password reset page</a>. The link opens the official Amaris recovery page without consuming your code until you choose Continue.</p>
       <p>If you did not request a password reset, ignore this email. For security, use the latest code and never share it with another person.</p>
       <p style="font-size:12px;color:#667">Amaris Mathematics Academy — Account security</p>
     </div>

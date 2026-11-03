@@ -1,0 +1,3 @@
+Read-only staging Supabase Auth recovery template audit: inspect canonical Site URL and hosted recovery token-hash anchor, never print secrets or modify any template. October 27, 2026.
+
+Repeat dual read-only audit of staging and production hosted recovery templates; no mutations.

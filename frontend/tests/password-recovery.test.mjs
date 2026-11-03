@@ -66,7 +66,9 @@ test("email recovery uses a non-consuming landing and six-digit OTP fallback", (
   assert.match(codePage, /Six-digit recovery code/);
   assert.ok(template.includes("{{ .Token }}"));
   assert.ok(template.includes("{{ .TokenHash }}"));
-  assert.ok(template.includes("{{ .RedirectTo }}"));
+  assert.ok(template.includes("{{ .SiteURL }}/reset-password/verify?token_hash={{ .TokenHash }}"));
+  assert.ok(!template.includes("{{ .RedirectTo }}"));
+  assert.doesNotMatch(template, /localhost/i);
   assert.ok(!template.includes("{{ .ConfirmationURL }}"));
   assert.ok(actions.includes('type: "recovery"'));
   assert.ok(actions.includes("recoveryCookies.set(PASSWORD_RECOVERY_COOKIE"));

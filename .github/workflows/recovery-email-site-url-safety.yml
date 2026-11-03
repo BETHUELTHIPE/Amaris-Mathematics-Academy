@@ -1,0 +1,41 @@
+name: Amaris Recovery Link Safety Acceptance
+on:
+  push:
+    branches: ["fix/recovery-email-siteurl-no-localhost-20261027"]
+    paths:
+      - "frontend/email-templates/recovery.html"
+      - "frontend/tests/password-recovery.test.mjs"
+      - "scripts/configure_supabase_auth_otp.py"
+      - "scripts/repair_supabase_recovery_link.py"
+      - "tests/test_configure_supabase_auth_otp.py"
+      - "tests/test_repair_supabase_recovery_link.py"
+      - ".github/workflows/recovery-email-site-url-safety.yml"
+permissions:
+  contents: read
+jobs:
+  safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Offline production-safe Supabase Auth management tests
+        run: python -m unittest discover -s tests -p "test_*supabase*otp.py" -v
+      - name: Exact letterhead preservation and safe recovery-link tests
+        run: python -m unittest discover -s tests -p "test_repair_supabase_recovery_link.py" -v
+      - name: Install frontend dependencies from lockfile
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Type-check password reset experience
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Password recovery and verified login regressions
+        working-directory: frontend
+        run: node --test tests/password-recovery.test.mjs tests/password-recovery-proof.test.mjs tests/universal-email-verification.test.mjs tests/registration-actions.test.mjs
