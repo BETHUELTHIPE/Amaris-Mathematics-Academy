@@ -1,6 +1,6 @@
 "use server";
 
-import { getStudentWhatsAppPreference, setStudentWhatsAppPreference } from "@/lib/student-api";
+import { setStudentWhatsAppPreference } from "@/lib/student-api";
 
 export async function saveWhatsAppPreference(_prev: { message: string; error: boolean }, form: FormData) {
   const optedIn = form.get("opted_in") === "on";
