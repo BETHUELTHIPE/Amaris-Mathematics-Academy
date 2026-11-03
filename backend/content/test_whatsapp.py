@@ -167,6 +167,7 @@ class WhatsAppBookingTests(TestCase):
             data=raw,
             content_type="application/json",
             HTTP_X_HUB_SIGNATURE_256=("sha256=" + digest if signed else "sha256=invalid"),
+            secure=True,
         )
 
     @override_settings(WHATSAPP_NOTIFICATIONS_ENABLED=False)
@@ -244,12 +245,12 @@ class WhatsAppBookingTests(TestCase):
             )
         )
         endpoint = reverse("student-whatsapp-preference")
-        response = api.post(endpoint, {"number": "+27820000005", "opted_in": True}, format="json")
+        response = api.post(endpoint, {"number": "+27820000005", "opted_in": True}, format="json", secure=True)
         self.assertEqual(response.status_code, 200)
         self.preference.refresh_from_db()
         self.assertEqual(self.preference.number, "+27820000005")
         self.assertTrue(self.preference.opted_in)
-        response = api.post(endpoint, {"number": "", "opted_in": False}, format="json")
+        response = api.post(endpoint, {"number": "", "opted_in": False}, format="json", secure=True)
         self.assertEqual(response.status_code, 200)
         self.preference.refresh_from_db()
         self.assertFalse(self.preference.opted_in)
