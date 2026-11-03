@@ -11,10 +11,10 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import serializers
 from rest_framework.authentication import SessionAuthentication
+from rest_framework.generics import GenericAPIView
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
 from .whatsapp import WhatsAppDelivery, WhatsAppPreference
@@ -25,8 +25,9 @@ class PreferenceSerializer(serializers.Serializer):
     opted_in = serializers.BooleanField()
 
 
-class PreferenceBaseView(APIView):
+class PreferenceBaseView(GenericAPIView):
     permission_classes = (IsAuthenticated,)
+    serializer_class = PreferenceSerializer
 
     def owner(self, request):
         raise NotImplementedError
