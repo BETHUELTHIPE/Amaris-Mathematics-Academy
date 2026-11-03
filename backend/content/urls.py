@@ -1,5 +1,4 @@
 from django.urls import include, path
-from .whatsapp_views import StudentWhatsAppPreferenceView, TutorWhatsAppPreferenceView, meta_whatsapp_webhook
 from rest_framework.routers import DefaultRouter
 
 from .live_class_views import LiveClassBookingStatusView, LiveClassCheckoutView, LiveClassSlotView
@@ -29,6 +28,7 @@ from .views import (
     TestimonialViewSet,
     public_marketing_media,
 )
+from .whatsapp_views import StudentWhatsAppPreferenceView, TutorWhatsAppPreferenceView, meta_whatsapp_webhook
 
 router = DefaultRouter()
 router.register("navigation", NavigationViewSet, basename="navigation")

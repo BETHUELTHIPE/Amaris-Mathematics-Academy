@@ -720,4 +720,4 @@ class PaymentReconciliationRun(TimeStampedModel):
         return f"{self.started_at:%Y-%m-%d %H:%M} — {self.status}"
 
 
-from .whatsapp import WhatsAppPreference, WhatsAppDelivery  # noqa: E402,F401
+from .whatsapp import WhatsAppDelivery, WhatsAppPreference  # noqa: E402,F401
