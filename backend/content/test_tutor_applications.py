@@ -96,6 +96,22 @@ class TutorApplicationJourneyTests(TestCase):
         self.assertEqual(mail.outbox[0].to, [application.email])
         self.assertIn(application.reference, mail.outbox[0].body)
         self.assertEqual(mail.outbox[0].attachments, [])
+        self.assertEqual(len(mail.outbox[0].alternatives), 1)
+        branded_html, mime_type = mail.outbox[0].alternatives[0]
+        self.assertEqual(mime_type, "text/html")
+        for required in (
+            "Amaris Mathematics Academy",
+            "Bethuel Moukangwe",
+            "27 Tshivhase Street",
+            "amaris-academy-icon-192.png",
+            "#ffcc66",
+            application.reference,
+            "Your tutor application has been received",
+            "This acknowledgement is not an offer or approval to teach",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, branded_html)
+        self.assertNotIn("qualification.pdf", branded_html)
         self.assertEqual(deliver_application_acknowledgement(), 0)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIsNotNone(self.api.get(self.endpoint, secure=True).data["application"]["acknowledgement_sent_at"])

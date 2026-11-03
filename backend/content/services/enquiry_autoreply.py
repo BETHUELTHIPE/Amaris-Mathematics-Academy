@@ -6,7 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from django.conf import settings
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMultiAlternatives
 from django.db.models import Q
 from django.utils import timezone
 
@@ -21,6 +21,7 @@ from content.models import (
     SiteSettings,
 )
 
+from .branded_email import render_branded_email
 from .live_classes import LIVE_CLASS_PRICE
 
 logger = logging.getLogger(__name__)
@@ -360,12 +361,20 @@ def auto_reply_to_enquiry(enquiry: ContactEnquiry) -> AutoReplyResult:
         site = SiteSettings.objects.first()
         reply_to = [site.email] if site and site.email else None
         clean_subject = _clean(enquiry.subject, 120).title() or "Your enquiry"
-        message = EmailMessage(
+        message = EmailMultiAlternatives(
             subject=f"Re: {clean_subject} — Amaris Mathematics Academy",
             body=reply_text,
             from_email=None,
             to=[enquiry.email],
             reply_to=reply_to,
+        )
+        message.attach_alternative(
+            render_branded_email(
+                f"Your enquiry: {clean_subject}",
+                [reply_text],
+                reference=f"Enquiry #{enquiry.pk}",
+            ),
+            "text/html",
         )
         sent = message.send(fail_silently=False)
         if sent != 1:

@@ -197,6 +197,11 @@ class ProductionTutorFinanceTests(TestCase):
         self.assertEqual(email_tutor_payout_receipt.run(), 0)
         self.assertEqual(len(mail.outbox), 1)
         self.assertNotIn(self.student.email, mail.outbox[0].body)
+        self.assertEqual(len(mail.outbox[0].alternatives), 1)
+        self.assertEqual(mail.outbox[0].alternatives[0][1], "text/html")
+        self.assertIn("amaris-academy-icon-192.png", mail.outbox[0].alternatives[0][0])
+        self.assertIn("TEST-TRANSFER-001", mail.outbox[0].alternatives[0][0])
+        self.assertNotIn(self.student.email, mail.outbox[0].alternatives[0][0])
 
     def test_bank_number_is_encrypted_and_not_activated_automatically(self):
         with override_settings(TUTOR_BANK_FERNET_KEY=Fernet.generate_key().decode()):
