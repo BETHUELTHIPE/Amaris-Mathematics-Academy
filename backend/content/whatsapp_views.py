@@ -1,4 +1,5 @@
 """Self-service WhatsApp consent and signed Meta webhook processing."""
+
 import hashlib
 import hmac
 import json
@@ -20,9 +21,7 @@ from .whatsapp import WhatsAppDelivery, WhatsAppPreference
 
 
 class PreferenceSerializer(serializers.Serializer):
-    number = serializers.RegexField(
-        r"^\+[1-9][0-9]{7,14}$", required=False, allow_blank=True
-    )
+    number = serializers.RegexField(r"^\+[1-9][0-9]{7,14}$", required=False, allow_blank=True)
     opted_in = serializers.BooleanField()
 
 
@@ -50,18 +49,14 @@ class PreferenceBaseView(APIView):
         if values["opted_in"]:
             number = values.get("number", "")
             if not number:
-                return Response(
-                    {"number": ["A valid WhatsApp number is required."]}, status=400
-                )
+                return Response({"number": ["A valid WhatsApp number is required."]}, status=400)
             pref, _created = WhatsAppPreference.objects.update_or_create(
                 **owner,
                 defaults={
                     "number": number,
                     "opted_in": True,
                     "consent_recorded_at": timezone.now(),
-                    "consent_source": (
-                        "student_dashboard" if owner.get("student") else "tutor_account"
-                    ),
+                    "consent_source": ("student_dashboard" if owner.get("student") else "tutor_account"),
                 },
             )
             pref.full_clean()
@@ -83,10 +78,7 @@ class TutorWhatsAppPreferenceView(PreferenceBaseView):
     authentication_classes = (SessionAuthentication,)
 
     def owner(self, request):
-        if (
-            not request.user.is_active
-            or not request.user.groups.filter(name__iexact="tutor").exists()
-        ):
+        if not request.user.is_active or not request.user.groups.filter(name__iexact="tutor").exists():
             raise PermissionDenied("Tutor access is required.")
         return {"tutor": request.user}
 
@@ -101,9 +93,7 @@ def _apply_receipt(receipt):
     if state == "read":
         deliveries.exclude(receipt_status="read").update(receipt_status="read")
     elif state == "delivered":
-        deliveries.filter(receipt_status__in=["", "sent"]).update(
-            receipt_status="delivered"
-        )
+        deliveries.filter(receipt_status__in=["", "sent"]).update(receipt_status="delivered")
     elif state == "sent":
         deliveries.filter(receipt_status="").update(receipt_status="sent")
     elif state == "failed":
@@ -121,9 +111,7 @@ def _apply_inbound(message):
     if not sender.isdecimal() or not isinstance(text, dict):
         return
     body = text.get("body", "")
-    if not isinstance(body, str) or body.strip().upper() not in {
-        "STOP", "UNSUBSCRIBE", "CANCEL", "QUIT", "END"
-    }:
+    if not isinstance(body, str) or body.strip().upper() not in {"STOP", "UNSUBSCRIBE", "CANCEL", "QUIT", "END"}:
         return
     number = f"+{sender}"
     if not re.fullmatch(r"\+[1-9][0-9]{7,14}", number):
@@ -147,11 +135,7 @@ def meta_whatsapp_webhook(request):
     if request.method == "GET":
         token = os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "")
         candidate = request.GET.get("hub.verify_token", "")
-        if (
-            token
-            and request.GET.get("hub.mode") == "subscribe"
-            and hmac.compare_digest(candidate, token)
-        ):
+        if token and request.GET.get("hub.mode") == "subscribe" and hmac.compare_digest(candidate, token):
             return HttpResponse(request.GET.get("hub.challenge", ""))
         return HttpResponse(status=403)
     if request.method != "POST":
@@ -162,9 +146,7 @@ def meta_whatsapp_webhook(request):
     signature = request.headers.get("X-Hub-Signature-256", "")
     if not secret or not signature.startswith("sha256="):
         return HttpResponse(status=403)
-    expected = hmac.new(
-        secret.encode("utf-8"), request.body, hashlib.sha256
-    ).hexdigest()
+    expected = hmac.new(secret.encode("utf-8"), request.body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature[7:], expected):
         return HttpResponse(status=403)
     try:
@@ -186,10 +168,7 @@ def meta_whatsapp_webhook(request):
             # An app may contain several sender numbers. Reject cross-number
             # events when configured, even if the app signature is valid.
             metadata = value.get("metadata") or {}
-            if phone_id and (
-                not isinstance(metadata, dict)
-                or metadata.get("phone_number_id") != phone_id
-            ):
+            if phone_id and (not isinstance(metadata, dict) or metadata.get("phone_number_id") != phone_id):
                 continue
             for receipt in value.get("statuses", []):
                 if isinstance(receipt, dict):

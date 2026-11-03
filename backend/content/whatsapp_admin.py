@@ -1,4 +1,5 @@
 """Read-only compliance records for WhatsApp consent and deliveries."""
+
 from django.contrib import admin
 
 from .whatsapp import WhatsAppDelivery, WhatsAppPreference

@@ -4,6 +4,7 @@ Beat discovers due messages, then a database-backed outbox dispatches them.
 Provider acceptance is NOT proof of handset delivery. Indeterminate network
 outcomes are never automatically retried, to avoid duplicate WhatsApps.
 """
+
 import json
 import logging
 import os
@@ -86,9 +87,7 @@ class WhatsAppDelivery(models.Model):
         FAILED = "failed", "Failed"
         UNKNOWN = "unknown", "Uncertain; manual review"
 
-    booking = models.ForeignKey(
-        LiveClassBooking, related_name="whatsapp_deliveries", on_delete=models.CASCADE
-    )
+    booking = models.ForeignKey(LiveClassBooking, related_name="whatsapp_deliveries", on_delete=models.CASCADE)
     preference = models.ForeignKey(WhatsAppPreference, on_delete=models.PROTECT)
     kind = models.CharField(max_length=20, choices=Kind.choices)
     slot_start = models.DateTimeField()
@@ -182,14 +181,10 @@ def _discover_due(now):
     # receive reminders starting 30 minutes before class. Separate scans
     # prevent newer bookings from starving older soon-to-start sessions.
     newest = (
-        LiveClassBooking.objects.filter(**confirmed)
-        .select_related("slot", "slot__tutor")
-        .order_by("-paid_at")[:500]
+        LiveClassBooking.objects.filter(**confirmed).select_related("slot", "slot__tutor").order_by("-paid_at")[:500]
     )
     upcoming = (
-        LiveClassBooking.objects.filter(
-            **confirmed, slot__starts_at__lte=now + timedelta(minutes=30)
-        )
+        LiveClassBooking.objects.filter(**confirmed, slot__starts_at__lte=now + timedelta(minutes=30))
         .select_related("slot", "slot__tutor")
         .order_by("slot__starts_at")[:500]
     )
@@ -198,9 +193,9 @@ def _discover_due(now):
         if booking.pk in seen:
             continue
         seen.add(booking.pk)
-        prefs = WhatsAppPreference.objects.filter(
-            opted_in=True, consent_recorded_at__isnull=False
-        ).filter(Q(student_id=booking.student_id) | Q(tutor_id=booking.slot.tutor_id))
+        prefs = WhatsAppPreference.objects.filter(opted_in=True, consent_recorded_at__isnull=False).filter(
+            Q(student_id=booking.student_id) | Q(tutor_id=booking.slot.tutor_id)
+        )
         kinds = [WhatsAppDelivery.Kind.CONFIRMATION]
         if booking.slot.starts_at <= now + timedelta(minutes=30):
             kinds.append(WhatsAppDelivery.Kind.REMINDER)
@@ -242,8 +237,7 @@ def _deliver(delivery_id, now):
             or booking.slot.starts_at <= now
             or booking.slot.starts_at != delivery.slot_start
             or (
-                delivery.kind == WhatsAppDelivery.Kind.REMINDER
-                and booking.slot.starts_at > now + timedelta(minutes=30)
+                delivery.kind == WhatsAppDelivery.Kind.REMINDER and booking.slot.starts_at > now + timedelta(minutes=30)
             )
         ):
             delivery.status = WhatsAppDelivery.Status.SKIPPED
@@ -254,19 +248,17 @@ def _deliver(delivery_id, now):
         delivery.attempts += 1
         delivery.last_attempt_at = now
         delivery.next_attempt_at = None
-        delivery.save(
-            update_fields=["status", "attempts", "last_attempt_at", "next_attempt_at"]
-        )
+        delivery.save(update_fields=["status", "attempts", "last_attempt_at", "next_attempt_at"])
         number = pref.number
         template = os.getenv(
-            "WHATSAPP_REMINDER_TEMPLATE"
-            if delivery.kind == WhatsAppDelivery.Kind.REMINDER
-            else "WHATSAPP_CONFIRMATION_TEMPLATE",
+            (
+                "WHATSAPP_REMINDER_TEMPLATE"
+                if delivery.kind == WhatsAppDelivery.Kind.REMINDER
+                else "WHATSAPP_CONFIRMATION_TEMPLATE"
+            ),
             "",
         )
-        when = timezone.localtime(booking.slot.starts_at, SAST).strftime(
-            "%d %b %Y %H:%M SAST"
-        )
+        when = timezone.localtime(booking.slot.starts_at, SAST).strftime("%d %b %Y %H:%M SAST")
         parameters = [
             booking.reference,
             booking.topic,
@@ -279,33 +271,28 @@ def _deliver(delivery_id, now):
         provider_id = _send_template(number, template, parameters)
     except ProviderRateLimitedError:
         if attempt < MAX_ATTEMPTS:
-            WhatsAppDelivery.objects.filter(
-                pk=delivery_id, status=WhatsAppDelivery.Status.SENDING
-            ).update(
+            WhatsAppDelivery.objects.filter(pk=delivery_id, status=WhatsAppDelivery.Status.SENDING).update(
                 status=WhatsAppDelivery.Status.RETRY,
                 error_code="rate_limited",
-                next_attempt_at=timezone.now()
-                + timedelta(seconds=60 * (2 ** (attempt - 1))),
+                next_attempt_at=timezone.now() + timedelta(seconds=60 * (2 ** (attempt - 1))),
             )
         else:
-            WhatsAppDelivery.objects.filter(
-                pk=delivery_id, status=WhatsAppDelivery.Status.SENDING
-            ).update(status=WhatsAppDelivery.Status.FAILED, error_code="rate_limited")
+            WhatsAppDelivery.objects.filter(pk=delivery_id, status=WhatsAppDelivery.Status.SENDING).update(
+                status=WhatsAppDelivery.Status.FAILED, error_code="rate_limited"
+            )
     except ProviderRejectedError:
-        WhatsAppDelivery.objects.filter(
-            pk=delivery_id, status=WhatsAppDelivery.Status.SENDING
-        ).update(status=WhatsAppDelivery.Status.FAILED, error_code="provider_rejected")
+        WhatsAppDelivery.objects.filter(pk=delivery_id, status=WhatsAppDelivery.Status.SENDING).update(
+            status=WhatsAppDelivery.Status.FAILED, error_code="provider_rejected"
+        )
     except Exception:
         # Requests that time out, crash, or return an ambiguous response
         # might already have reached Meta. Escalate for manual review.
         logger.warning("WhatsApp outcome uncertain for delivery_id=%s", delivery_id)
-        WhatsAppDelivery.objects.filter(
-            pk=delivery_id, status=WhatsAppDelivery.Status.SENDING
-        ).update(status=WhatsAppDelivery.Status.UNKNOWN, error_code="uncertain_outcome")
+        WhatsAppDelivery.objects.filter(pk=delivery_id, status=WhatsAppDelivery.Status.SENDING).update(
+            status=WhatsAppDelivery.Status.UNKNOWN, error_code="uncertain_outcome"
+        )
     else:
-        WhatsAppDelivery.objects.filter(
-            pk=delivery_id, status=WhatsAppDelivery.Status.SENDING
-        ).update(
+        WhatsAppDelivery.objects.filter(pk=delivery_id, status=WhatsAppDelivery.Status.SENDING).update(
             status=WhatsAppDelivery.Status.SENT,
             provider_id=provider_id,
             sent_at=timezone.now(),
@@ -329,9 +316,7 @@ def dispatch_whatsapp_booking_notifications():
     ).update(status=WhatsAppDelivery.Status.UNKNOWN, error_code="abandoned_claim")
     _discover_due(now)
     due = list(
-        WhatsAppDelivery.objects.filter(
-            status__in=[WhatsAppDelivery.Status.PENDING, WhatsAppDelivery.Status.RETRY]
-        )
+        WhatsAppDelivery.objects.filter(status__in=[WhatsAppDelivery.Status.PENDING, WhatsAppDelivery.Status.RETRY])
         .filter(Q(next_attempt_at__lte=now) | Q(next_attempt_at__isnull=True))
         .order_by("created_at", "pk")
         .values_list("pk", flat=True)[:300]

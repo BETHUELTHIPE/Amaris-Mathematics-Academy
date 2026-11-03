@@ -1,4 +1,5 @@
 """WhatsApp notification acceptance tests. No external messages are sent."""
+
 import hashlib
 import hmac
 import json
@@ -76,9 +77,7 @@ class WhatsAppBookingTests(TestCase):
         self.assertEqual(parameters[0], self.booking.reference)
         self.assertIn("SAST", parameters[2])
         self.assertNotIn("zoom.example", str(parameters))
-        self.assertEqual(
-            WhatsAppDelivery.objects.get().status, WhatsAppDelivery.Status.SENT
-        )
+        self.assertEqual(WhatsAppDelivery.objects.get().status, WhatsAppDelivery.Status.SENT)
 
     @patch("content.whatsapp._send_template", return_value="wamid.002")
     def test_confirmation_and_30_minute_reminder_once(self, send):
@@ -130,9 +129,7 @@ class WhatsAppBookingTests(TestCase):
         self.assertEqual(dispatch_whatsapp_booking_notifications(), 0)
         self.assertEqual(dispatch_whatsapp_booking_notifications(), 0)
         self.assertEqual(send.call_count, 1)
-        self.assertEqual(
-            WhatsAppDelivery.objects.get().status, WhatsAppDelivery.Status.UNKNOWN
-        )
+        self.assertEqual(WhatsAppDelivery.objects.get().status, WhatsAppDelivery.Status.UNKNOWN)
 
     @patch("content.whatsapp._send_template", return_value="wamid.never")
     def test_opt_out_between_queue_and_delivery(self, send):
@@ -169,9 +166,7 @@ class WhatsAppBookingTests(TestCase):
             reverse("whatsapp-webhook"),
             data=raw,
             content_type="application/json",
-            HTTP_X_HUB_SIGNATURE_256=(
-                "sha256=" + digest if signed else "sha256=invalid"
-            ),
+            HTTP_X_HUB_SIGNATURE_256=("sha256=" + digest if signed else "sha256=invalid"),
         )
 
     @override_settings(WHATSAPP_NOTIFICATIONS_ENABLED=False)
@@ -181,10 +176,18 @@ class WhatsAppBookingTests(TestCase):
     )
     def test_signed_stop_disables_consent_without_disabling_email(self):
         payload = {
-            "entry": [{"changes": [{"value": {
-                "metadata": {"phone_number_id": "123"},
-                "messages": [{"from": "27820000001", "type": "text", "text": {"body": "STOP"}}],
-            }}]}]
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "metadata": {"phone_number_id": "123"},
+                                "messages": [{"from": "27820000001", "type": "text", "text": {"body": "STOP"}}],
+                            }
+                        }
+                    ]
+                }
+            ]
         }
         self.assertEqual(self._signed_webhook(payload, signed=False).status_code, 403)
         self.preference.refresh_from_db()
@@ -207,13 +210,23 @@ class WhatsAppBookingTests(TestCase):
             status=WhatsAppDelivery.Status.SENT,
             provider_id="wamid.read",
         )
+
         def payload(state):
             return {
-                "entry": [{"changes": [{"value": {
-                    "metadata": {"phone_number_id": "123"},
-                    "statuses": [{"id": "wamid.read", "status": state}],
-                }}]}]
+                "entry": [
+                    {
+                        "changes": [
+                            {
+                                "value": {
+                                    "metadata": {"phone_number_id": "123"},
+                                    "statuses": [{"id": "wamid.read", "status": state}],
+                                }
+                            }
+                        ]
+                    }
+                ]
             }
+
         self.assertEqual(self._signed_webhook(payload("read")).status_code, 200)
         self.assertEqual(self._signed_webhook(payload("delivered")).status_code, 200)
         self.assertEqual(self._signed_webhook(payload("failed")).status_code, 200)
@@ -231,16 +244,12 @@ class WhatsAppBookingTests(TestCase):
             )
         )
         endpoint = reverse("student-whatsapp-preference")
-        response = api.post(
-            endpoint, {"number": "+27820000005", "opted_in": True}, format="json"
-        )
+        response = api.post(endpoint, {"number": "+27820000005", "opted_in": True}, format="json")
         self.assertEqual(response.status_code, 200)
         self.preference.refresh_from_db()
         self.assertEqual(self.preference.number, "+27820000005")
         self.assertTrue(self.preference.opted_in)
-        response = api.post(
-            endpoint, {"number": "", "opted_in": False}, format="json"
-        )
+        response = api.post(endpoint, {"number": "", "opted_in": False}, format="json")
         self.assertEqual(response.status_code, 200)
         self.preference.refresh_from_db()
         self.assertFalse(self.preference.opted_in)
