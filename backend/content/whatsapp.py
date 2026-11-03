@@ -181,10 +181,18 @@ def _discover_due(now):
     # New paid bookings receive confirmation promptly; existing bookings
     # receive reminders starting 30 minutes before class. Separate scans
     # prevent newer bookings from starving older soon-to-start sessions.
-    newest = LiveClassBooking.objects.filter(**confirmed).order_by("-paid_at")[:500]
-    upcoming = LiveClassBooking.objects.filter(
-        **confirmed, slot__starts_at__lte=now + timedelta(minutes=30)
-    ).order_by("slot__starts_at")[:500]
+    newest = (
+        LiveClassBooking.objects.filter(**confirmed)
+        .select_related("slot", "slot__tutor")
+        .order_by("-paid_at")[:500]
+    )
+    upcoming = (
+        LiveClassBooking.objects.filter(
+            **confirmed, slot__starts_at__lte=now + timedelta(minutes=30)
+        )
+        .select_related("slot", "slot__tutor")
+        .order_by("slot__starts_at")[:500]
+    )
     seen = set()
     for booking in list(newest) + list(upcoming):
         if booking.pk in seen:
