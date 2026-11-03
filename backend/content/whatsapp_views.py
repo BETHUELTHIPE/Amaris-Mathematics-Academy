@@ -94,7 +94,7 @@ class TutorWhatsAppPreferenceView(PreferenceBaseView):
 def _apply_receipt(receipt):
     provider_id = receipt.get("id")
     state = receipt.get("status")
-    if not isinstance(provider_id, str):
+    if not isinstance(provider_id, str) or not provider_id:
         return
     deliveries = WhatsAppDelivery.objects.filter(provider_id=provider_id)
     # Out-of-order/duplicated webhooks must not downgrade a read receipt.
@@ -185,7 +185,11 @@ def meta_whatsapp_webhook(request):
                 continue
             # An app may contain several sender numbers. Reject cross-number
             # events when configured, even if the app signature is valid.
-            if phone_id and value.get("metadata", {}).get("phone_number_id") != phone_id:
+            metadata = value.get("metadata") or {}
+            if phone_id and (
+                not isinstance(metadata, dict)
+                or metadata.get("phone_number_id") != phone_id
+            ):
                 continue
             for receipt in value.get("statuses", []):
                 if isinstance(receipt, dict):
