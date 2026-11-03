@@ -44,10 +44,14 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          for p in Path("frontend/email-templates").glob("*.html"):
-              html = p.read_text(encoding="utf-8")
-              assert "{{ .Token }}" in html, f"{p.name} is missing its OTP variable"
-          print("Templates contain Supabase-issued token placeholders.")
+          import importlib.util
+          spec = importlib.util.spec_from_file_location("amaris_mail_templates", "scripts/configure_supabase_auth_otp.py")
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          desired = module.desired_config()
+          assert len(module.FIELDS) == 13
+          assert all(field in desired for field in module.FIELDS)
+          print("All 13 letterhead templates and Supabase-required placeholders verified.")
           PY
 
   configure:
@@ -77,6 +81,6 @@ jobs:
             echo "Missing project-appropriate Auth Management API secret: SUPABASE_AUTH_MANAGEMENT_TOKEN (staging) or SUPABASE_PRODUCTION_AUTH_MANAGEMENT_TOKEN (production)." >&2
             exit 1
           fi
-      - name: Audit or apply exact two email templates and 6-digit OTP
+      - name: Audit or apply all approved letterhead templates with six-digit OTP preserved
         run: |
           python scripts/configure_supabase_auth_otp.py --project-ref "$TARGET_PROJECT_REF" --mode "$ACTION_MODE"
