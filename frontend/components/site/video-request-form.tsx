@@ -3,8 +3,9 @@
 import { useState, type FormEvent } from "react";
 import { CurriculumFields } from "@/components/site/curriculum-fields";
 import { resolveCurriculumFields } from "@/lib/school-curriculum.mjs";
-import { CreditCard, FileUp, LoaderCircle, ShieldCheck } from "lucide-react";
+import { FileUp, LoaderCircle, ShieldCheck } from "lucide-react";
 import type { VideoRequestCheckoutSession } from "@/lib/student-api";
+import { PayFastHostedCheckout } from "@/components/site/payfast-hosted-checkout";
 import type { VideoRequestPackage } from "@/lib/video-requests";
 
 export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[] }) {
@@ -60,14 +61,7 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
         <p className="mt-5 text-sm leading-7 text-[#60708a]">
           Your ticket enters the recording queue only after PayFast verifies the payment on the server.
         </p>
-        <form method="post" action={checkout.gateway_url} className="mt-6">
-          {Object.entries(checkout.fields).map(([name, value]) => (
-            <input key={name} type="hidden" name={name} value={value} />
-          ))}
-          <button type="submit" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white">
-            <CreditCard className="size-4" /> Continue to PayFast
-          </button>
-        </form>
+        <PayFastHostedCheckout checkout={checkout} />
         <button type="button" onClick={() => setCheckout(null)} className="mt-3 min-h-11 w-full rounded-full border border-[#b7c5d8] px-5 font-semibold text-[#0b2a5b]">
           Change request details
         </button>
