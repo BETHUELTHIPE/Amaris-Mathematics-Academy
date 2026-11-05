@@ -397,8 +397,13 @@ def video_request_queue_position(request: VideoRequest) -> int | None:
     return in_progress + ahead + 1
 
 
-def video_request_eta(request: VideoRequest) -> tuple[str | None, str | None]:
-    position = video_request_queue_position(request)
+def video_request_eta(
+    request: VideoRequest, *, position: int | None = None
+) -> tuple[str | None, str | None]:
+    # The caller often already calculated a queue position. Reuse it rather
+    # than issuing two more COUNT queries for every status response.
+    if position is None:
+        position = video_request_queue_position(request)
     if position is None:
         return None, None
     capacity = max(1, int(os.getenv("VIDEO_REQUEST_DAILY_CAPACITY", "2")))
