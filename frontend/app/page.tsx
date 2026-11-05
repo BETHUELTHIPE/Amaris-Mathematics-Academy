@@ -5,12 +5,11 @@ import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { AmarisAssistantLauncher } from "@/components/site/amaris-assistant-launcher";
 import { formatRand } from "@/lib/courses";
-import { getManagedCourses } from "@/lib/cms";
+import { getManagedFeaturedCourses } from "@/lib/cms";
 
 export default async function Home() {
   preload("/amaris-math-hero.webp", { as: "image", fetchPriority: "high" });
-  const courses = await getManagedCourses();
-  const featured = courses.filter((course) => course.featured);
+  const featured = await getManagedFeaturedCourses();
   return (
     <main className="home-shell min-h-screen bg-[#f5f7fb] text-[#0a1b36]">
       <Header />
