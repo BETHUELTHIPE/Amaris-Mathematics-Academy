@@ -13,6 +13,15 @@ from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.views.decorators.csrf import csrf_exempt
 
+from .airflow_client import (
+    AirflowUnavailable,
+    get_airflow_health,
+    get_airflow_ui_url,
+    get_workflow,
+    get_workflow_tasks,
+    is_configured,
+    monitored_dags,
+)
 from .monitoring_status import is_private_monitoring_url, monitor_statuses
 
 PROXY_PREFIX = "/admin/monitoring/"
@@ -55,6 +64,15 @@ class AmarisAdminSite(AdminSite):
                             "view_only": True,
                         }
                         for tool, title in (("grafana", "Grafana"), ("prometheus", "Prometheus"), ("flower", "Flower"))
+                    ]
+                    + [
+                        {
+                            "name": "Airflow",
+                            "object_name": "airflow",
+                            "admin_url": reverse("admin:amaris_airflow_home"),
+                            "perms": {"view": True},
+                            "view_only": True,
+                        }
                     ],
                 }
             )
@@ -62,6 +80,8 @@ class AmarisAdminSite(AdminSite):
 
     def get_urls(self):
         extra = [
+            path("airflow/", self.admin_view(self.airflow_home), name="amaris_airflow_home"),
+            path("airflow/<str:dag_id>/", self.admin_view(self.airflow_detail), name="amaris_airflow_detail"),
             path(
                 "monitoring/grafana/api/ds/query",
                 self.admin_view(self.monitoring_query),
@@ -85,11 +105,81 @@ class AmarisAdminSite(AdminSite):
         ]
         return extra + super().get_urls()
 
+    def index(self, request, extra_context=None):
+        context = dict(extra_context or {})
+        user = request.user
+        if user.is_authenticated and user.is_active and user.is_staff and user.is_superuser:
+            context["airflow_ui_url"] = get_airflow_ui_url()
+        return super().index(request, extra_context=context)
+
     @staticmethod
     def _require_superuser(request):
         user = request.user
         if not (user.is_authenticated and user.is_active and user.is_staff and user.is_superuser):
             raise PermissionDenied("Monitoring is reserved for Django superusers.")
+
+    def airflow_home(self, request):
+        self._require_superuser(request)
+        if request.method != "GET":
+            return HttpResponseNotAllowed(["GET"])
+        configured = is_configured()
+        workflows = []
+        unavailable = False
+        health = None
+        if configured:
+            try:
+                health = get_airflow_health()
+            except AirflowUnavailable:
+                unavailable = True
+            if not unavailable:
+                for dag_id in monitored_dags():
+                    try:
+                        workflows.append(get_workflow(dag_id))
+                    except AirflowUnavailable:
+                        unavailable = True
+                        workflows.append({"dag_id": dag_id, "state": "unavailable"})
+                        break
+        return TemplateResponse(
+            request,
+            "admin/amaris_airflow.html",
+            {
+                **self.each_context(request),
+                "title": "Airflow workflow monitoring",
+                "airflow_configured": configured,
+                "airflow_ui_url": get_airflow_ui_url(),
+                "airflow_unavailable": unavailable,
+                "airflow_health": health,
+                "workflows": workflows,
+                "detail": None,
+            },
+        )
+
+    def airflow_detail(self, request, dag_id):
+        self._require_superuser(request)
+        if request.method != "GET":
+            return HttpResponseNotAllowed(["GET"])
+        if dag_id not in monitored_dags():
+            return HttpResponseNotFound()
+        if not is_configured():
+            return HttpResponse("Airflow is not configured.", status=503)
+        try:
+            summary, tasks = get_workflow_tasks(dag_id)
+        except AirflowUnavailable:
+            return HttpResponse("Airflow is temporarily unavailable.", status=503)
+        return TemplateResponse(
+            request,
+            "admin/amaris_airflow.html",
+            {
+                **self.each_context(request),
+                "title": f"Airflow: {dag_id}",
+                "airflow_configured": True,
+                "airflow_ui_url": get_airflow_ui_url(),
+                "airflow_unavailable": False,
+                "workflows": [],
+                "detail": summary,
+                "tasks": tasks,
+            },
+        )
 
     def monitoring_home(self, request):
         self._require_superuser(request)
@@ -101,6 +191,7 @@ class AmarisAdminSite(AdminSite):
                 "title": "Monitoring and operations",
                 "monitoring_enabled": settings.MONITORING_CONSOLE_ENABLED,
                 "monitoring_services": monitor_statuses(),
+                "airflow_ui_url": get_airflow_ui_url(),
             },
         )
 

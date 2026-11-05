@@ -48,4 +48,11 @@
     health results may be cached for up to 30 seconds. Unavailable measurements
     must not be interpreted as zero.</p>
   <a href="{% url 'admin:index' %}">Return to Django Admin</a>
+  <section aria-label="Airflow workflow monitoring">
+    <h2>Apache Airflow</h2>
+    <p>Check the private API connection, scheduler, metadata database, DAG processor and recorded workflow states.</p>
+    <p><a href="{% url 'admin:amaris_airflow_home' %}" class="button">Open Airflow workflow monitor</a></p>
+    {% if airflow_ui_url %}<p><a href="{{ airflow_ui_url }}" target="_blank" rel="noopener noreferrer">Open full Airflow UI (separate sign-in)</a></p>{% endif %}
+  </section>
 {% endblock %}
+

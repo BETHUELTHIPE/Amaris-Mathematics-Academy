@@ -1,0 +1,94 @@
+name: Airflow Django Admin release checks
+
+on:
+  push:
+    branches: [fix/production-airflow-admin-20261105]
+    paths:
+      - backend/amaris_cms/**
+      - backend/templates/admin/**
+      - backend/tests/**
+      - backend/content/management/commands/check_airflow.py
+      - .github/workflows/airflow-admin-release.yml
+  pull_request:
+    branches: [production-release-20260923]
+    paths:
+      - backend/amaris_cms/**
+      - backend/templates/admin/**
+      - backend/tests/**
+      - backend/content/management/commands/check_airflow.py
+      - .github/workflows/airflow-admin-release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: airflow-admin-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  django-admin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: airflow_admin_ci
+          POSTGRES_USER: airflow_admin_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U airflow_admin_ci -d airflow_admin_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      DATABASE_URL: postgresql://airflow_admin_ci@127.0.0.1:5432/airflow_admin_ci
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      SUPABASE_STORAGE_ENABLED: "false"
+      SUPABASE_S3_REQUIRED: "false"
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+      EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
+      DEFAULT_FROM_EMAIL: "Amaris QA <qa@example.invalid>"
+      PAYFAST_MODE: sandbox
+      PAYFAST_ENV: sandbox
+      AIRFLOW_MONITORING_ENABLED: "false"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install backend test dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Formatting and lint
+        run: |
+          python -m black --check amaris_cms/airflow_client.py amaris_cms/monitoring_admin.py amaris_cms/settings.py tests/test_airflow_admin.py tests/test_airflow_readiness.py tests/test_monitoring_admin.py content/management/commands/check_airflow.py
+          python -m ruff check amaris_cms/airflow_client.py amaris_cms/monitoring_admin.py amaris_cms/settings.py tests/test_airflow_admin.py tests/test_airflow_readiness.py tests/test_monitoring_admin.py content/management/commands/check_airflow.py
+      - name: Django checks and migration consistency
+        run: |
+          export DJANGO_SECRET_KEY="$(openssl rand -hex 48)"
+          python manage.py check
+          python manage.py spectacular --file /tmp/airflow-admin-api.yaml --validate --fail-on-warn
+          python manage.py makemigrations --check --dry-run
+          python manage.py collectstatic --noinput
+      - name: Backend type checks
+        run: |
+          export DJANGO_SECRET_KEY="$(openssl rand -hex 48)"
+          python -m mypy
+      - name: Full Django suite including admin authorization and runtime contracts
+        run: |
+          export DJANGO_SECRET_KEY="$(openssl rand -hex 48)"
+          python manage.py test --verbosity 1 --noinput

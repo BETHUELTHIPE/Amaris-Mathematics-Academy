@@ -35,7 +35,8 @@ class MonitoringAdminTests(SimpleTestCase):
         request = self.factory.get("/admin/")
         request.user = self.superuser
         links = self.site.get_app_list(request)[0]["models"]
-        self.assertEqual([link["name"] for link in links], ["Grafana", "Prometheus", "Flower"])
+        self.assertEqual([link["name"] for link in links], ["Grafana", "Prometheus", "Flower", "Airflow"])
+        self.assertEqual(links[-1]["admin_url"], "/admin/airflow/")
         self.assertEqual(links[0]["admin_url"], "/admin/monitoring/grafana/")
         self.assertEqual(self.site.get_app_list(request, "content"), [])
         request.user = self.staff
