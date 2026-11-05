@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import storages
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
@@ -216,6 +216,17 @@ def create_video_request_checkout(
 
     try:
         with transaction.atomic():
+            if connection.vendor == "postgresql":
+                # A row lock cannot protect a key whose first request has not
+                # been inserted yet. Serialize ONLY identical checkout keys,
+                # not unrelated student uploads or purchases.
+                lock_id = int.from_bytes(
+                    hashlib.sha256(key.encode("ascii")).digest()[:8],
+                    byteorder="big",
+                    signed=True,
+                )
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_xact_lock(%s)", [lock_id])
             existing = VideoRequest.objects.select_for_update().filter(idempotency_key=key).first()
             if existing is not None:
                 same_request = (
