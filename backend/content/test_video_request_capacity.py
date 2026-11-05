@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
 from tempfile import TemporaryDirectory
+from threading import Barrier
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import close_old_connections, connection
@@ -60,6 +61,40 @@ def _student_client(student):
         )
     )
     return client
+
+
+def _api_checkout_data(key):
+    return {
+        "programme": "caps",
+        "subject": "mathematics",
+        "level": "Grade 12",
+        "topic": "Integration exam support",
+        "request_type": VideoRequest.RequestType.CHAPTER_TOPIC,
+        "instructions": "Explain all the integration methods step by step.",
+        "explanation_style": "Worked examples",
+        "preferred_duration_minutes": 60,
+        "idempotency_key": key,
+        "documents": [
+            SimpleUploadedFile(
+                "assignment.pdf",
+                b"%PDF-1.4\nsynthetic supporting document\n%%EOF",
+                content_type="application/pdf",
+            )
+        ],
+    }
+
+
+def _private_test_storage(location):
+    return override_settings(
+        STORAGES={
+            "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+            "student_private": {
+                "BACKEND": "django.core.files.storage.FileSystemStorage",
+                "OPTIONS": {"location": location},
+            },
+            "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+        },
+    )
 
 
 class VideoRequestPagingTests(TestCase):
@@ -229,6 +264,67 @@ class VideoRequestsOverOneHundredThousandTest(TestCase):
             self.assertEqual(result.fields["amount"], "450.00")
             self.assertIn("sandbox.payfast.co.za", result.gateway_url)
 
+    def test_student_api_checkout_and_private_history_with_100001_students(self):
+        # Exercise multipart parsing, serializer validation, owner checks and
+        # dashboard responses against the large dataset, not just the service.
+        with TemporaryDirectory() as location, _private_test_storage(location):
+            for index in (0, 50_000, 100_000):
+                with self.subTest(student=index + 1):
+                    student = StudentRecord.objects.get(email=f"video-scale-{index:06d}@example.test")
+                    client = _student_client(student)
+                    key = f"video-api-capacity-{index:06d}"
+                    response = client.post(
+                        reverse("video-request-checkout"),
+                        _api_checkout_data(key),
+                        format="multipart",
+                        secure=True,
+                    )
+                    self.assertEqual(response.status_code, 201, response.data)
+                    self.assertEqual(response["Cache-Control"], "private, no-store")
+                    self.assertEqual(response.data["fields"]["amount"], "450.00")
+                    self.assertIn("sandbox.payfast.co.za", response.data["gateway_url"])
+                    created = VideoRequest.objects.get(reference=response.data["request_reference"])
+                    self.assertEqual(created.student_id, student.pk)
+                    self.assertEqual(created.status, VideoRequest.Status.PENDING_PAYMENT)
+                    self.assertIsNone(created.gateway_verified_at)
+                    self.assertIsNone(created.paid_at)
+                    self.assertEqual(created.documents.count(), 1)
+                    self.assertTrue(
+                        created.documents.get().storage_path.startswith(f"{student.supabase_user_id}/video-requests/")
+                    )
+                    # A retry must return the same order and keep one document.
+                    retry = client.post(
+                        reverse("video-request-checkout"),
+                        _api_checkout_data(key),
+                        format="multipart",
+                        secure=True,
+                    )
+                    self.assertEqual(retry.status_code, 201, retry.data)
+                    self.assertEqual(retry.data["request_reference"], created.reference)
+                    self.assertEqual(created.documents.count(), 1)
+                    history = client.get(reverse("video-request-list"), {"limit": 1}, secure=True)
+                    self.assertEqual(history.status_code, 200, history.data)
+                    self.assertEqual(len(history.data), 1)
+                    self.assertEqual(history.data[0]["request_reference"], created.reference)
+                    self.assertIn("X-Next-Id", history)
+                    other_index = 1 if index == 0 else 0
+                    denied = client.get(
+                        reverse("video-request-status", args=[f"VRQ-CAP-{other_index:06d}"]),
+                        secure=True,
+                    )
+                    self.assertEqual(denied.status_code, 404)
+            self.assertEqual(VideoRequest.objects.count(), 100_004)
+
+    def test_anonymous_student_cannot_submit_to_large_request_dataset(self):
+        response = APIClient().post(
+            reverse("video-request-checkout"),
+            _api_checkout_data("video-anonymous-capacity"),
+            format="multipart",
+            secure=True,
+        )
+        self.assertIn(response.status_code, (401, 403))
+        self.assertEqual(VideoRequest.objects.count(), 100_001)
+
 
 class ConcurrentVideoRequestIdempotencyTest(TransactionTestCase):
     """Retrying the same key concurrently must create one request and document."""
@@ -242,6 +338,7 @@ class ConcurrentVideoRequestIdempotencyTest(TransactionTestCase):
             first_name="Concurrent",
             last_name="Student",
         )
+        start = Barrier(2, timeout=30)
         with (
             TemporaryDirectory() as location,
             override_settings(
@@ -259,6 +356,7 @@ class ConcurrentVideoRequestIdempotencyTest(TransactionTestCase):
             def submit(_):
                 close_old_connections()
                 try:
+                    start.wait()
                     return create_video_request_checkout(
                         student=student,
                         programme="caps",
@@ -295,3 +393,44 @@ class ConcurrentVideoRequestIdempotencyTest(TransactionTestCase):
                 VideoRequest.objects.get(idempotency_key="video-duplicate-checkout-001").documents.count(),
                 1,
             )
+
+    def test_distinct_students_can_submit_simultaneous_api_checkouts(self):
+        if connection.vendor != "postgresql":
+            self.skipTest("PostgreSQL concurrency required")
+        count = 16
+        students = [
+            StudentRecord.objects.create(
+                supabase_user_id=uuid.uuid4(),
+                email=f"video-parallel-{index:02d}@example.test",
+                first_name="Parallel",
+                last_name="Student",
+            )
+            for index in range(count)
+        ]
+        start = Barrier(count, timeout=30)
+        checkout_url = reverse("video-request-checkout")
+        with TemporaryDirectory() as location, _private_test_storage(location):
+
+            def submit(index):
+                close_old_connections()
+                try:
+                    client = _student_client(students[index])
+                    data = _api_checkout_data(f"video-parallel-api-{index:02d}")
+                    start.wait()
+                    response = client.post(checkout_url, data, format="multipart", secure=True)
+                    self.assertEqual(response.status_code, 201, response.data)
+                    return response.data["request_reference"]
+                finally:
+                    connection.close()
+
+            with ThreadPoolExecutor(max_workers=count) as executor:
+                references = list(executor.map(submit, range(count)))
+            self.assertEqual(len(set(references)), count)
+            self.assertEqual(VideoRequest.objects.count(), count)
+            for student, reference in zip(students, references, strict=True):
+                request = VideoRequest.objects.get(reference=reference)
+                self.assertEqual(request.student_id, student.pk)
+                self.assertEqual(request.amount, Decimal("450.00"))
+                self.assertEqual(request.status, VideoRequest.Status.PENDING_PAYMENT)
+                self.assertIsNone(request.paid_at)
+                self.assertEqual(request.documents.count(), 1)
