@@ -279,7 +279,10 @@ class ConcurrentVideoRequestIdempotencyTest(TransactionTestCase):
                         ],
                     )
                 finally:
-                    close_old_connections()
+                    # ThreadPoolExecutor workers outlive a database transaction.
+                    # Explicitly close their thread-local PostgreSQL connection
+                    # so Django can drop the ephemeral CI test database.
+                    connection.close()
 
             with ThreadPoolExecutor(max_workers=2) as executor:
                 results = list(executor.map(submit, (1, 2)))
