@@ -30,7 +30,9 @@ class VideoRequestCheckoutSerializer(serializers.Serializer):
     level = serializers.CharField(min_length=1, max_length=80, trim_whitespace=True)
     topic = serializers.CharField(min_length=2, max_length=180, trim_whitespace=True)
     request_type = serializers.ChoiceField(choices=VideoRequest.RequestType.choices)
-    instructions = serializers.CharField(min_length=10, max_length=2000, allow_blank=False, required=True, trim_whitespace=True)
+    instructions = serializers.CharField(
+        min_length=10, max_length=2000, allow_blank=False, required=True, trim_whitespace=True
+    )
     explanation_style = serializers.CharField(
         min_length=2,
         max_length=120,
@@ -214,9 +216,7 @@ class VideoRequestHistoryQuerySerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if bool(attrs.get("before_created_at")) != bool(attrs.get("before_id")):
-            raise serializers.ValidationError(
-                {"detail": "before_created_at and before_id must be supplied together."}
-            )
+            raise serializers.ValidationError({"detail": "before_created_at and before_id must be supplied together."})
         return attrs
 
 
@@ -233,10 +233,7 @@ class VideoRequestListView(VideoRequestStudentAPIView):
         before = values.get("before_created_at")
         if before is not None:
             previous_id = values["before_id"]
-            history = history.filter(
-                Q(created_at__lt=before)
-                | Q(created_at=before, pk__lt=previous_id)
-            )
+            history = history.filter(Q(created_at__lt=before) | Q(created_at=before, pk__lt=previous_id))
         # Stable keyset paging; existing dashboards still receive an array,
         # while clients can follow the cursor headers for older requests.
         items = list(

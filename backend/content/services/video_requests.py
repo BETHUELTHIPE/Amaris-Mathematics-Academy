@@ -398,18 +398,22 @@ def video_request_queue_position(request: VideoRequest) -> int | None:
     # Break timestamp ties using the request primary key. Without this,
     # two requests paid in the same instant can both report position 1.
     if request.priority_paid_at:
-        ahead = waiting.filter(priority_paid_at__isnull=False).filter(
-            Q(priority_paid_at__lt=request.priority_paid_at)
-            | Q(
-                priority_paid_at=request.priority_paid_at,
-                queue_entered_at__lt=request.queue_entered_at,
+        ahead = (
+            waiting.filter(priority_paid_at__isnull=False)
+            .filter(
+                Q(priority_paid_at__lt=request.priority_paid_at)
+                | Q(
+                    priority_paid_at=request.priority_paid_at,
+                    queue_entered_at__lt=request.queue_entered_at,
+                )
+                | Q(
+                    priority_paid_at=request.priority_paid_at,
+                    queue_entered_at=request.queue_entered_at,
+                    pk__lt=request.pk,
+                )
             )
-            | Q(
-                priority_paid_at=request.priority_paid_at,
-                queue_entered_at=request.queue_entered_at,
-                pk__lt=request.pk,
-            )
-        ).count()
+            .count()
+        )
     else:
         ahead = waiting.filter(
             Q(priority_paid_at__isnull=False)
@@ -426,9 +430,7 @@ def video_request_queue_position(request: VideoRequest) -> int | None:
     return in_progress + ahead + 1
 
 
-def video_request_eta(
-    request: VideoRequest, *, position: int | None = None
-) -> tuple[str | None, str | None]:
+def video_request_eta(request: VideoRequest, *, position: int | None = None) -> tuple[str | None, str | None]:
     # The caller often already calculated a queue position. Reuse it rather
     # than issuing two more COUNT queries for every status response.
     if position is None:

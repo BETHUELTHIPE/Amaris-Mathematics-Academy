@@ -81,9 +81,7 @@ class VideoRequestPagingTests(TestCase):
         for i in range(4):
             item = _synthetic_request(self.student, i, at=timestamp + timedelta(seconds=i))
             item.save()
-            VideoRequest.objects.filter(pk=item.pk).update(
-                created_at=timestamp + timedelta(seconds=i)
-            )
+            VideoRequest.objects.filter(pk=item.pk).update(created_at=timestamp + timedelta(seconds=i))
             item.refresh_from_db()
             self.items.append(item)
 
@@ -176,7 +174,8 @@ class VideoRequestsOverOneHundredThousandTest(TestCase):
             StudentRecord.objects.bulk_create(students, batch_size=500)
             rows = [
                 _synthetic_request(
-                    student, index,
+                    student,
+                    index,
                     at=base + timedelta(microseconds=index),
                 )
                 for index, student in zip(range(start, stop), students)
@@ -191,17 +190,18 @@ class VideoRequestsOverOneHundredThousandTest(TestCase):
         self.assertEqual(older.student_id, student.pk)
         self.assertEqual(video_request_queue_position(older), 100_001)
 
-        with TemporaryDirectory() as location, override_settings(
-            STORAGES={
-                "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-                "student_private": {
-                    "BACKEND": "django.core.files.storage.FileSystemStorage",
-                    "OPTIONS": {"location": location},
+        with (
+            TemporaryDirectory() as location,
+            override_settings(
+                STORAGES={
+                    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+                    "student_private": {
+                        "BACKEND": "django.core.files.storage.FileSystemStorage",
+                        "OPTIONS": {"location": location},
+                    },
+                    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
                 },
-                "staticfiles": {
-                    "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
-                },
-            },
+            ),
         ):
             result = create_video_request_checkout(
                 student=student,
@@ -242,18 +242,20 @@ class ConcurrentVideoRequestIdempotencyTest(TransactionTestCase):
             first_name="Concurrent",
             last_name="Student",
         )
-        with TemporaryDirectory() as location, override_settings(
-            STORAGES={
-                "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-                "student_private": {
-                    "BACKEND": "django.core.files.storage.FileSystemStorage",
-                    "OPTIONS": {"location": location},
+        with (
+            TemporaryDirectory() as location,
+            override_settings(
+                STORAGES={
+                    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+                    "student_private": {
+                        "BACKEND": "django.core.files.storage.FileSystemStorage",
+                        "OPTIONS": {"location": location},
+                    },
+                    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
                 },
-                "staticfiles": {
-                    "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
-                },
-            },
+            ),
         ):
+
             def submit(_):
                 close_old_connections()
                 try:
