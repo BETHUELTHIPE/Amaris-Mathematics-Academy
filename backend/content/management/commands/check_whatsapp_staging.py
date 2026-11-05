@@ -3,6 +3,7 @@
 No live messages are sent and WhatsApp is never enabled by this command.
 Credentials are read from environment variables and never displayed.
 """
+
 import hashlib
 import hmac
 import json
@@ -68,15 +69,14 @@ def check_webhook():
         },
         secure=True,
     )
-    if view(valid_get).status_code != 200 or view(valid_get).content.decode() != challenge:
+    response = view(valid_get)
+    if response.status_code != 200 or response.content.decode() != challenge:
         raise CommandError("Webhook GET verification challenge failed.")
     if view(invalid_get).status_code != 403:
         raise CommandError("Webhook accepted an invalid verification token.")
 
     body = b'{"object":"whatsapp_business_account","entry":[]}'
-    signature = hmac.new(
-        os.environ["WHATSAPP_APP_SECRET"].encode(), body, hashlib.sha256
-    ).hexdigest()
+    signature = hmac.new(os.environ["WHATSAPP_APP_SECRET"].encode(), body, hashlib.sha256).hexdigest()
     valid_post = factory.post(
         WEBHOOK_PATH,
         data=body,
@@ -124,10 +124,7 @@ def fetch_templates():
         }
         if after:
             query["after"] = after
-        url = (
-            f"https://graph.facebook.com/{version}/{waba_id}/message_templates?"
-            + urlencode(query)
-        )
+        url = f"https://graph.facebook.com/{version}/{waba_id}/message_templates?" + urlencode(query)
         request = Request(
             url,
             headers={"Authorization": f"Bearer {os.environ['WHATSAPP_CLOUD_TOKEN']}", "Accept": "application/json"},
@@ -139,7 +136,7 @@ def fetch_templates():
         except HTTPError as exc:
             # Never print URL, response body, access token or account ID.
             raise CommandError(f"Meta template lookup failed (HTTP {exc.code}).") from None
-        except (URLError, TimeoutError, OSError, ValueError) as exc:
+        except (URLError, TimeoutError, OSError, ValueError):
             raise CommandError("Unable to retrieve Meta template status securely.") from None
 
         if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
@@ -197,7 +194,5 @@ class Command(BaseCommand):
                 if record["status"] != "APPROVED" or record["category"] != "UTILITY":
                     bad.append(name)
         if bad:
-            raise CommandError(
-                "Staging blocked: both templates must be APPROVED / UTILITY before sending."
-            )
+            raise CommandError("Staging blocked: both templates must be APPROVED / UTILITY before sending.")
         self.stdout.write(self.style.SUCCESS("Both Meta Utility templates verified. Sending remains disabled."))
