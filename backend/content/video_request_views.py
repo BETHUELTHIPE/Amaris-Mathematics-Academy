@@ -210,7 +210,7 @@ class VideoRequestCheckoutView(VideoRequestStudentAPIView):
 class VideoRequestHistoryQuerySerializer(serializers.Serializer):
     # Limit history responses so student dashboards never load an unbounded
     # collection when the platform has more than 100,000 video requests.
-    limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
+    limit = serializers.IntegerField(min_value=1, max_value=100, default=100)
     before_created_at = serializers.DateTimeField(required=False)
     before_id = serializers.UUIDField(required=False)
 

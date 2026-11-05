@@ -390,22 +390,24 @@ def _deliver_one_video_request_notification() -> bool:
             # loop could issue 25 global COUNT queries on every dispatch.
             # Lock the real head rather than SKIP LOCKED here: two workers
             # must not both tell different students that they are first.
-            processing = VideoRequest.objects.filter(
-                status__in=ACTIVE_QUEUE_STATUSES
-            ).exclude(status=VideoRequest.Status.QUEUED).exists()
+            processing = (
+                VideoRequest.objects.filter(status__in=ACTIVE_QUEUE_STATUSES)
+                .exclude(status=VideoRequest.Status.QUEUED)
+                .exists()
+            )
             if not processing:
                 waiting = (
                     VideoRequest.objects.select_for_update(of=("self",))
                     .select_related("student", "assigned_tutor")
                     .filter(status=VideoRequest.Status.QUEUED)
                 )
-                head = waiting.filter(priority_paid_at__isnull=False).order_by(
-                    "priority_paid_at", "queue_entered_at", "pk"
-                ).first()
+                head = (
+                    waiting.filter(priority_paid_at__isnull=False)
+                    .order_by("priority_paid_at", "queue_entered_at", "pk")
+                    .first()
+                )
                 if head is None:
-                    head = waiting.filter(priority_paid_at__isnull=True).order_by(
-                        "queue_entered_at", "pk"
-                    ).first()
+                    head = waiting.filter(priority_paid_at__isnull=True).order_by("queue_entered_at", "pk").first()
                 if head is not None and head.position_one_sent_at is None:
                     item = head
                     event = "position_one"

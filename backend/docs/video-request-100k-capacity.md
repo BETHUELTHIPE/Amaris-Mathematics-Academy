@@ -33,7 +33,7 @@ fulfilment capacity, published terms and meaningful delivery expectations.
    assigns an invoice number and ticket and schedules confirmation.
 4. Indexed paid-queue lookup supports priority/FIFO ordering, and stable
    timestamp+UUID tie-breaking prevents two requests both being first.
-5. Student dashboards fetch bounded request pages (default 50, maximum 100);
+5. Student dashboards fetch bounded request pages (default 100, maximum 100);
    unchanged consumers still receive an array. If more history exists, follow
    the `X-Next-Created-At` and `X-Next-Id` response headers with query
    parameters `before_created_at` and `before_id`.
