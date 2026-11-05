@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
@@ -24,6 +24,11 @@ class LiveClassSlotFilterSerializer(serializers.Serializer):
         required=False,
     )
     level = serializers.CharField(max_length=80, required=False, trim_whitespace=True)
+    # Keyset paging allows clients to fetch later available slots without
+    # scanning an ever-growing OFFSET into a 100k+ record table.
+    after_start = serializers.DateTimeField(required=False)
+    after_id = serializers.IntegerField(min_value=1, required=False)
+    limit = serializers.IntegerField(min_value=1, max_value=100, default=100)
 
 
 class LiveClassSlotResponseSerializer(serializers.Serializer):
@@ -55,25 +60,26 @@ class LiveClassSlotView(APIView):
         values = filters.validated_data
         now = timezone.now()
 
-        LiveClassBooking.objects.filter(
-            status=LiveClassBooking.Status.PENDING_PAYMENT,
-            hold_expires_at__lte=now,
-        ).update(status=LiveClassBooking.Status.EXPIRED)
-
+        # GET must be read-only. The scheduled expiry worker releases expired
+        # holds, while availability queries treat already-expired holds as
+        # nonblocking immediately (even before the worker runs).
+        active_reservation = LiveClassBooking.objects.filter(
+            slot_id=OuterRef("pk")
+        ).filter(
+            Q(status=LiveClassBooking.Status.CONFIRMED)
+            | Q(
+                status=LiveClassBooking.Status.PENDING_PAYMENT,
+                hold_expires_at__gt=now,
+            )
+        )
         queryset = (
             TutorAvailabilitySlot.objects.filter(
                 is_active=True,
                 starts_at__gt=now,
             )
+            .alias(has_reservation=Exists(active_reservation))
+            .filter(has_reservation=False)
             .select_related("tutor")
-            .exclude(
-                Q(bookings__status=LiveClassBooking.Status.CONFIRMED)
-                | Q(
-                    bookings__status=LiveClassBooking.Status.PENDING_PAYMENT,
-                    bookings__hold_expires_at__gt=now,
-                )
-            )
-            .distinct()
         )
         if values.get("programme"):
             queryset = queryset.filter(programme=values["programme"])
@@ -81,7 +87,19 @@ class LiveClassSlotView(APIView):
             queryset = queryset.filter(subject=values["subject"])
         if values.get("level"):
             queryset = queryset.filter(level__iexact=values["level"])
-        queryset = queryset.order_by("starts_at")[:100]
+
+        after_start = values.get("after_start")
+        after_id = values.get("after_id")
+        if bool(after_start) != bool(after_id):
+            raise serializers.ValidationError(
+                {"detail": "after_start and after_id must be supplied together."}
+            )
+        if after_start is not None:
+            queryset = queryset.filter(
+                Q(starts_at__gt=after_start)
+                | Q(starts_at=after_start, pk__gt=after_id)
+            )
+        queryset = queryset.order_by("starts_at", "pk")[: values["limit"]]
 
         payload = [
             {
