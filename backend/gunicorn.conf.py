@@ -7,6 +7,8 @@ def env_int(name: str, default: int) -> int:
 
 bind = os.getenv("GUNICORN_BIND", "0.0.0.0:8000")
 worker_class = "amaris_cms.workers.PrivacyUvicornWorker"
+# Tracing starts when the application loads inside each worker, after forking.
+preload_app = False
 workers = env_int("WEB_CONCURRENCY", 3)
 timeout = env_int("GUNICORN_TIMEOUT", 60)
 graceful_timeout = env_int("GUNICORN_GRACEFUL_TIMEOUT", 30)

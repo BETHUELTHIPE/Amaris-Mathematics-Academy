@@ -1,0 +1,52 @@
+name: OpenTelemetry and Jaeger
+
+on:
+  pull_request:
+    branches: [main, staging, production-release-20260923]
+    paths:
+      - backend/**
+      - .github/workflows/tracing.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tracing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DJANGO_DEBUG: "true"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      OTEL_DEPLOYMENT_ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.15"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: Install backend and tracing test dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Privacy, propagation and console authorization tests
+        run: python manage.py test tests.test_telemetry tests.test_monitoring_admin --noinput
+      - name: Validate Compose including opt-in tracing
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env --profile tracing config --quiet
+      - name: Validate pinned Jaeger configuration and obtain its matching test binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=jaegertracing/jaeger:2.22.0
+          docker run --rm -v "$PWD/monitoring/tracing/jaeger.yaml:/etc/jaeger/config.yaml:ro" \
+            "$image" validate --config=/etc/jaeger/config.yaml
+          container_id=$(docker create "$image")
+          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
+          docker cp "$container_id:/cmd/jaeger/jaeger-linux" /tmp/amaris-jaeger
+          chmod +x /tmp/amaris-jaeger
+      - name: Actual OTLP ingestion, private-prefix UI and persistent restart smoke
+        run: python monitoring/tracing/smoke.py /tmp/amaris-jaeger

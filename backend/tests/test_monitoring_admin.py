@@ -35,7 +35,7 @@ class MonitoringAdminTests(SimpleTestCase):
         request = self.factory.get("/admin/")
         request.user = self.superuser
         links = self.site.get_app_list(request)[0]["models"]
-        self.assertEqual([link["name"] for link in links], ["Grafana", "Prometheus", "Flower"])
+        self.assertEqual([link["name"] for link in links], ["Grafana", "Prometheus", "Flower", "Jaeger traces"])
         self.assertEqual(links[0]["admin_url"], "/admin/monitoring/grafana/")
         self.assertEqual(self.site.get_app_list(request, "content"), [])
         request.user = self.staff
@@ -46,6 +46,47 @@ class MonitoringAdminTests(SimpleTestCase):
         request.user = self.staff
         with self.assertRaises(PermissionDenied):
             self.site.monitoring_home(request)
+
+    @override_settings(MONITORING_CONSOLE_ENABLED=True, MONITORING_JAEGER_URL="http://jaeger-private:16686")
+    def test_jaeger_console_denies_staff_and_inactive_superusers(self):
+        request = self.factory.get("/admin/monitoring/jaeger/api/v3/services")
+        for user in (
+            self.staff,
+            SimpleNamespace(is_authenticated=True, is_active=False, is_staff=True, is_superuser=True),
+        ):
+            request.user = user
+            with self.assertRaises(PermissionDenied):
+                self.site.monitoring_console(request, "jaeger", "api/v3/services")
+
+    @override_settings(MONITORING_CONSOLE_ENABLED=True, MONITORING_JAEGER_URL="http://jaeger-private:16686")
+    @patch("amaris_cms.monitoring_admin.urllib_request.build_opener")
+    def test_jaeger_proxy_is_read_only_and_strips_credentials(self, opener_factory):
+        reply = opener_factory.return_value.open.return_value
+        reply.__enter__.return_value = reply
+        reply.status = 200
+        reply.headers = {"Content-Type": "application/json"}
+        reply.read.return_value = b'{"services":[]}'
+        request = self.factory.get(
+            "/admin/monitoring/jaeger/api/v3/services",
+            HTTP_COOKIE="sessionid=private-cookie",
+            HTTP_AUTHORIZATION="Bearer private-token",
+        )
+        request.user = self.superuser
+        response = self.site.monitoring_console(request, "jaeger", "api/v3/services")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        outbound = opener_factory.return_value.open.call_args.args[0]
+        self.assertEqual(outbound.full_url, "http://jaeger-private:16686/admin/monitoring/jaeger/api/v3/services")
+        self.assertNotIn("Cookie", outbound.headers)
+        self.assertNotIn("Authorization", outbound.headers)
+        request = self.factory.post("/admin/monitoring/jaeger/api/traces")
+        request.user = self.superuser
+        self.assertEqual(self.site.monitoring_console(request, "jaeger", "api/traces").status_code, 405)
+
+    @patch("amaris_cms.monitoring_status._request", return_value=(200, b'{"services":[]}'))
+    def test_jaeger_health_probe_uses_v3_api(self, request):
+        self.assertEqual(_probe("jaeger", "http://jaeger-private:16686", "jaeger-v3"), "reachable")
+        request.assert_called_once_with("http://jaeger-private:16686/admin/monitoring/jaeger/api/v3/services")
 
     @override_settings(MONITORING_CONSOLE_ENABLED=False)
     def test_disabled_monitoring_returns_503(self):

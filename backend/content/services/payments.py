@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 from django.db import transaction
 from django.utils import timezone
 
+from amaris_cms.telemetry import trace_operation
 from content.metrics import observe_payment_webhook
 from content.models import Course, Enrollment, Payment, StudentRecord
 from content.payment_models import Invoice, NotificationOutbox, PaymentWebhookEvent, ServiceTicket
@@ -130,6 +131,7 @@ def _notification_parameter_string(payload: Mapping[str, str]) -> str:
     )
 
 
+@trace_operation("course.checkout")
 def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: str) -> CheckoutSession:
     """Create a server-priced, signed PayFast checkout without granting access."""
 
@@ -343,6 +345,7 @@ def _fulfill_verified_payment(payment: Payment) -> None:
 
 
 @observe_payment_webhook("payfast")
+@trace_operation("course.payment_callback")
 def process_payfast_notification(
     payload: Mapping[str, str],
     *,
