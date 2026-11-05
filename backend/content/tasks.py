@@ -2,8 +2,8 @@ from datetime import timedelta
 from html import escape
 
 from celery import shared_task
-from django.conf import settings
 from django.apps import apps
+from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, send_mail
 from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
