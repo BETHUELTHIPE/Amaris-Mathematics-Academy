@@ -21,9 +21,7 @@ class CatalogOverFiftyThousandTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        category = CourseCategory.objects.create(
-            name="50k scale catalogue", slug="50k-scale-catalogue"
-        )
+        category = CourseCategory.objects.create(name="50k scale catalogue", slug="50k-scale-catalogue")
         # Keep Python memory bounded and avoid one giant PostgreSQL insert.
         # PUBLISHED and is_published must be consistent because bulk_create
         # deliberately bypasses the Course.save() synchronization.
@@ -53,7 +51,8 @@ class CatalogOverFiftyThousandTests(TestCase):
     def test_course_50001_can_be_found_and_purchased_without_catalogue_truncation(self):
         last_page = (self.COURSE_COUNT - 1) // self.PAGE_SIZE + 1
         response = self.client.get(
-            reverse("courses-list"), {"page": last_page, "page_size": self.PAGE_SIZE},
+            reverse("courses-list"),
+            {"page": last_page, "page_size": self.PAGE_SIZE},
             secure=True,
         )
         self.assertEqual(response.status_code, 200)
@@ -87,7 +86,8 @@ class CatalogOverFiftyThousandTests(TestCase):
             last_name="Student",
         )
         checkout = create_checkout(
-            student=student, course=course,
+            student=student,
+            course=course,
             idempotency_key="catalog-fifty-thousand-one",
         )
         payment = Payment.objects.get(reference=checkout.payment_reference)
