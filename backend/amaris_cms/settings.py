@@ -362,6 +362,16 @@ OPENAI_ENQUIRY_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ENQUIRY_TIMEOUT_SECONDS
 OPENAI_ASSISTANT_MODEL = os.getenv("OPENAI_ASSISTANT_MODEL", OPENAI_ENQUIRY_MODEL)
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
+# Bounded per-task batches avoid one-email-per-minute bottlenecks while
+# protecting the notification worker from unbounded send loops. Tune only
+# after measuring SMTP throughput and queue lag in isolated staging.
+LIVE_CLASS_NOTIFICATION_BATCH_SIZE = max(
+    1, min(int(os.getenv("LIVE_CLASS_NOTIFICATION_BATCH_SIZE", "25")), 100)
+)
+LIVE_CLASS_NOTIFICATION_INTERVAL_SECONDS = max(
+    10.0, float(os.getenv("LIVE_CLASS_NOTIFICATION_INTERVAL_SECONDS", "15"))
+)
+
 CELERY_BEAT_SCHEDULE = {
     "publish-scheduled-content": {
         "task": "content.tasks.publish_scheduled_content",
@@ -378,12 +388,12 @@ CELERY_BEAT_SCHEDULE = {
     },
     "deliver-live-class-confirmation": {
         "task": "content.tasks.deliver_live_class_confirmation",
-        "schedule": 30.0,
+        "schedule": LIVE_CLASS_NOTIFICATION_INTERVAL_SECONDS,
         "options": {"queue": "notifications"},
     },
     "deliver-live-class-reminder": {
         "task": "content.tasks.deliver_live_class_reminder",
-        "schedule": 60.0,
+        "schedule": LIVE_CLASS_NOTIFICATION_INTERVAL_SECONDS,
         "options": {"queue": "notifications"},
     },
     "expire-live-class-holds": {
