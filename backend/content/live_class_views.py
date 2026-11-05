@@ -36,6 +36,10 @@ class LiveClassLevelFilterSerializer(serializers.Serializer):
     subject = serializers.ChoiceField(choices=TutorAvailabilitySlot.Subject.choices)
 
 
+class LiveClassLevelsResponseSerializer(serializers.Serializer):
+    levels = serializers.ListField(child=serializers.CharField())
+
+
 class LiveClassLevelView(APIView):
     """List all future tutor levels, not just those in the first slot page."""
 
@@ -44,7 +48,7 @@ class LiveClassLevelView(APIView):
 
     @extend_schema(
         parameters=[LiveClassLevelFilterSerializer],
-        responses={200: serializers.ListField(child=serializers.CharField())},
+        responses={200: LiveClassLevelsResponseSerializer},
     )
     def get(self, request):
         filters = LiveClassLevelFilterSerializer(data=request.query_params)
@@ -61,7 +65,7 @@ class LiveClassLevelView(APIView):
             .values_list("level", flat=True)
             .distinct()
         )
-        return Response(list(levels))
+        return Response({"levels": list(levels)})
 
 
 class LiveClassSlotResponseSerializer(serializers.Serializer):
