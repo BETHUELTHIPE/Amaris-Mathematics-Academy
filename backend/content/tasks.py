@@ -3,6 +3,7 @@ from html import escape
 
 from celery import shared_task
 from django.apps import apps
+from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, send_mail
 from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
@@ -202,6 +203,11 @@ def _send_live_class_message(
         raise OSError("Transactional email backend did not accept the live-class message.")
 
 
+def _live_class_notification_batch_size() -> int:
+    """Keep each task bounded; parallel workers claim independent rows."""
+    return max(1, min(int(getattr(settings, "LIVE_CLASS_NOTIFICATION_BATCH_SIZE", 25)), 100))
+
+
 @shared_task(
     bind=True,
     ignore_result=True,
@@ -212,40 +218,44 @@ def _send_live_class_message(
     retry_kwargs={"max_retries": 6},
 )
 def deliver_live_class_confirmation(_self) -> int:
-    with transaction.atomic():
-        booking = (
-            LiveClassBooking.objects.select_for_update(skip_locked=True)
-            .select_related("student", "slot", "slot__tutor")
-            .filter(
-                status=LiveClassBooking.Status.CONFIRMED,
-                confirmation_sent_at__isnull=True,
+    processed = 0
+    for _ in range(_live_class_notification_batch_size()):
+        with transaction.atomic():
+            booking = (
+                LiveClassBooking.objects.select_for_update(skip_locked=True, of=("self",))
+                .select_related("student", "slot", "slot__tutor")
+                .filter(
+                    status=LiveClassBooking.Status.CONFIRMED,
+                    confirmation_sent_at__isnull=True,
+                )
+                .order_by("paid_at", "created_at")
+                .first()
             )
-            .order_by("paid_at", "created_at")
-            .first()
-        )
-        if booking is None:
-            return 0
+            if booking is None:
+                break
 
-        _send_live_class_message(
-            booking,
-            subject=f"Amaris live class confirmed — {booking.reference}",
-            heading="Your Zoom live class is confirmed",
-            body_lines=[
-                f"Programme: {booking.get_programme_display()}",
-                f"Subject: {booking.get_subject_display()}",
-                f"Level: {booking.level}",
-                f"Topic: {booking.topic}",
-                f"Tutor: {booking.slot.tutor_display_name}",
-                f"Date and time: {_booking_when(booking)}",
-                f"Zoom link: {booking.slot.zoom_join_url}",
-                f"Invoice: {booking.invoice_number}",
-                f"Amount paid: R{booking.amount:.2f}",
-            ],
-            attach_invoice=True,
-        )
-        booking.confirmation_sent_at = timezone.now()
-        booking.save(update_fields=("confirmation_sent_at", "updated_at"))
-        return 1
+            _send_live_class_message(
+                booking,
+                subject=f"Amaris live class confirmed — {booking.reference}",
+                heading="Your Zoom live class is confirmed",
+                body_lines=[
+                    f"Programme: {booking.get_programme_display()}",
+                    f"Subject: {booking.get_subject_display()}",
+                    f"Level: {booking.level}",
+                    f"Topic: {booking.topic}",
+                    f"Tutor: {booking.slot.tutor_display_name}",
+                    f"Date and time: {_booking_when(booking)}",
+                    f"Zoom link: {booking.slot.zoom_join_url}",
+                    f"Invoice: {booking.invoice_number}",
+                    f"Amount paid: R{booking.amount:.2f}",
+                ],
+                attach_invoice=True,
+            )
+            booking.confirmation_sent_at = timezone.now()
+            booking.save(update_fields=("confirmation_sent_at", "updated_at"))
+            processed += 1
+
+    return processed
 
 
 @shared_task(
@@ -259,38 +269,42 @@ def deliver_live_class_confirmation(_self) -> int:
 )
 def deliver_live_class_reminder(_self) -> int:
     now = timezone.now()
-    with transaction.atomic():
-        booking = (
-            LiveClassBooking.objects.select_for_update(skip_locked=True)
-            .select_related("student", "slot", "slot__tutor")
-            .filter(
-                status=LiveClassBooking.Status.CONFIRMED,
-                confirmation_sent_at__isnull=False,
-                reminder_sent_at__isnull=True,
-                slot__starts_at__gt=now,
-                slot__starts_at__lte=now + timedelta(minutes=30),
+    processed = 0
+    for _ in range(_live_class_notification_batch_size()):
+        with transaction.atomic():
+            booking = (
+                LiveClassBooking.objects.select_for_update(skip_locked=True, of=("self",))
+                .select_related("student", "slot", "slot__tutor")
+                .filter(
+                    status=LiveClassBooking.Status.CONFIRMED,
+                    confirmation_sent_at__isnull=False,
+                    reminder_sent_at__isnull=True,
+                    slot__starts_at__gt=now,
+                    slot__starts_at__lte=now + timedelta(minutes=30),
+                )
+                .order_by("slot__starts_at")
+                .first()
             )
-            .order_by("slot__starts_at")
-            .first()
-        )
-        if booking is None:
-            return 0
+            if booking is None:
+                break
 
-        _send_live_class_message(
-            booking,
-            subject="Reminder: your Amaris Zoom class starts in 30 minutes",
-            heading="Your live class starts soon",
-            body_lines=[
-                f"Topic: {booking.topic}",
-                f"Tutor: {booking.slot.tutor_display_name}",
-                f"Start time: {_booking_when(booking)}",
-                f"Zoom link: {booking.slot.zoom_join_url}",
-                f"Booking reference: {booking.reference}",
-            ],
-        )
-        booking.reminder_sent_at = timezone.now()
-        booking.save(update_fields=("reminder_sent_at", "updated_at"))
-        return 1
+            _send_live_class_message(
+                booking,
+                subject="Reminder: your Amaris Zoom class starts in 30 minutes",
+                heading="Your live class starts soon",
+                body_lines=[
+                    f"Topic: {booking.topic}",
+                    f"Tutor: {booking.slot.tutor_display_name}",
+                    f"Start time: {_booking_when(booking)}",
+                    f"Zoom link: {booking.slot.zoom_join_url}",
+                    f"Booking reference: {booking.reference}",
+                ],
+            )
+            booking.reminder_sent_at = timezone.now()
+            booking.save(update_fields=("reminder_sent_at", "updated_at"))
+            processed += 1
+
+    return processed
 
 
 @shared_task(

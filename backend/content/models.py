@@ -574,7 +574,7 @@ class LiveClassBooking(TimeStampedModel):
         db_index=True,
     )
     hold_expires_at = models.DateTimeField(default=live_class_hold_expiry, db_index=True)
-    provider_reference = models.CharField(max_length=160, blank=True)
+    provider_reference = models.CharField(max_length=160, blank=True, db_index=True)
     paid_at = models.DateTimeField(blank=True, null=True)
     gateway_verified_at = models.DateTimeField(blank=True, null=True)
     invoice_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
@@ -593,6 +593,11 @@ class LiveClassBooking(TimeStampedModel):
         indexes = [
             models.Index(fields=("student", "status", "-created_at"), name="liveclass_student_status_idx"),
             models.Index(fields=("status", "hold_expires_at"), name="liveclass_hold_status_idx"),
+            models.Index(
+                fields=("paid_at", "created_at"),
+                condition=models.Q(status="confirmed", confirmation_sent_at__isnull=True),
+                name="liveclass_confirm_q_idx",
+            ),
         ]
 
     def __str__(self) -> str:
