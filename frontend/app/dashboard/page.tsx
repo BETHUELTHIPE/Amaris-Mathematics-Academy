@@ -65,6 +65,9 @@ async function StudentDashboardContent({ coursesPage, videosPage }: { coursesPag
 
 
   return <>
+       <Link href="/dashboard/analytics" className="mb-6 flex min-w-0 items-center justify-between gap-4 rounded-2xl border border-[#cbdcf2] bg-[#edf4ff] px-5 py-5 text-[#143a68]">
+         <span><strong className="block text-base">Your learning, at a glance</strong><span className="mt-1 block text-sm">Explore your private analytics with the charts you prefer.</span></span><ArrowRight className="size-5 shrink-0" aria-hidden="true" />
+       </Link>
        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
             ["Active courses", String(enrolledCourses.length)],
@@ -186,3 +189,4 @@ export default async function DashboardPage({ searchParams }: {
     </Suspense>
   </StudentDashboardShell>;
 }
+

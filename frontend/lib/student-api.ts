@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { validateAnalytics, type AnalyticsData } from "@/lib/analytics";
 import { env } from "cloudflare:workers";
 import { normalizeCmsApiBaseUrl } from "@/lib/cms-api-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -350,6 +351,10 @@ export async function getStudentNotifications(): Promise<StudentNotification[]> 
   return studentFetch<StudentNotification[]>("/student/notifications/");
 }
 
+export async function getStudentAnalytics(days: 7 | 30 | 90): Promise<AnalyticsData> {
+  return validateAnalytics(await studentFetch<unknown>(`/student/analytics/?days=${days}`), "student");
+}
+
 export async function getProtectedLesson(courseSlug: string, lessonSlug: string): Promise<ProtectedLesson> {
   return studentFetch<ProtectedLesson>(
     `/student/lessons/${encodeURIComponent(courseSlug)}/${encodeURIComponent(lessonSlug)}/`,
@@ -372,3 +377,4 @@ export async function saveStudentProgress(input: {
     }),
   });
 }
+

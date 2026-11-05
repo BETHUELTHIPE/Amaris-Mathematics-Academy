@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { validateAnalytics, type AnalyticsData } from "@/lib/analytics";
 
 import { env } from "cloudflare:workers";
 import { normalizeCmsApiBaseUrl } from "@/lib/cms-api-url";
@@ -111,6 +112,10 @@ export function getTutorDashboard(): Promise<TutorDashboard> {
   return tutorFetch<TutorDashboard>("/tutor/dashboard/");
 }
 
+export async function getTutorAnalytics(days: 7 | 30 | 90): Promise<AnalyticsData> {
+  return validateAnalytics(await tutorFetch<unknown>(`/tutor/analytics/?days=${days}`), "tutor");
+}
+
 export type TutorEarnings = {
   currency: "ZAR";
   categories: Record<"course" | "live_class" | "video", {
@@ -146,3 +151,4 @@ export function createTutorSlot(input: SlotInput): Promise<TutorSlot> {
 export function updateTutorSlot(id: number, input: SlotInput): Promise<TutorSlot> {
   return tutorFetch<TutorSlot>(`/tutor/slots/${id}/`, "PATCH", input);
 }
+
