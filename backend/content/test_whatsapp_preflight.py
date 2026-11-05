@@ -11,7 +11,6 @@ from django.test import SimpleTestCase, override_settings
 
 from content.management.commands import check_whatsapp_staging
 
-
 MOCK_CONFIG = {
     "WHATSAPP_NOTIFICATIONS_ENABLED": "false",
     "WHATSAPP_APP_SECRET": "staging-test-secret",
