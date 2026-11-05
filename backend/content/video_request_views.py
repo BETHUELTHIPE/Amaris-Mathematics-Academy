@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.core.files.storage import storages
+from django.db.models import Q
 from django.http import FileResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -91,7 +92,7 @@ class VideoRequestPackageResponseSerializer(serializers.Serializer):
 
 def _status_payload(request: VideoRequest) -> dict:
     position = video_request_queue_position(request)
-    eta_from, eta_to = video_request_eta(request)
+    eta_from, eta_to = video_request_eta(request, position=position)
     video = None
     if request.status == VideoRequest.Status.READY and request.video_external_id:
         video = {
@@ -204,15 +205,53 @@ class VideoRequestCheckoutView(VideoRequestStudentAPIView):
         )
 
 
+class VideoRequestHistoryQuerySerializer(serializers.Serializer):
+    # Limit history responses so student dashboards never load an unbounded
+    # collection when the platform has more than 100,000 video requests.
+    limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
+    before_created_at = serializers.DateTimeField(required=False)
+    before_id = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        if bool(attrs.get("before_created_at")) != bool(attrs.get("before_id")):
+            raise serializers.ValidationError(
+                {"detail": "before_created_at and before_id must be supplied together."}
+            )
+        return attrs
+
+
 class VideoRequestListView(VideoRequestStudentAPIView):
-    @extend_schema(responses={200: VideoRequestStatusSerializer(many=True)})
+    @extend_schema(
+        parameters=[VideoRequestHistoryQuerySerializer],
+        responses={200: VideoRequestStatusSerializer(many=True)},
+    )
     def get(self, request):
-        requests = (
-            VideoRequest.objects.filter(student=self.student)
-            .select_related("assigned_tutor")
-            .prefetch_related("documents")[:100]
+        filters = VideoRequestHistoryQuerySerializer(data=request.query_params)
+        filters.is_valid(raise_exception=True)
+        values = filters.validated_data
+        history = VideoRequest.objects.filter(student=self.student)
+        before = values.get("before_created_at")
+        if before is not None:
+            previous_id = values["before_id"]
+            history = history.filter(
+                Q(created_at__lt=before)
+                | Q(created_at=before, pk__lt=previous_id)
+            )
+        # Stable keyset paging; existing dashboards still receive an array,
+        # while clients can follow the cursor headers for older requests.
+        items = list(
+            history.select_related("assigned_tutor")
+            .prefetch_related("documents")
+            .order_by("-created_at", "-pk")[: values["limit"] + 1]
         )
-        return Response([_status_payload(item) for item in requests])
+        has_more = len(items) > values["limit"]
+        items = items[: values["limit"]]
+        response = Response([_status_payload(item) for item in items])
+        if has_more and items:
+            response["X-Next-Created-At"] = items[-1].created_at.isoformat()
+            response["X-Next-Id"] = str(items[-1].pk)
+            response["Access-Control-Expose-Headers"] = "X-Next-Created-At, X-Next-Id"
+        return response
 
 
 class VideoRequestStatusView(VideoRequestStudentAPIView):
