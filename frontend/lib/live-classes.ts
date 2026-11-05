@@ -35,7 +35,8 @@ export async function getLiveClassLevels(filters: {
     );
     if (!response.ok) return [];
     const data = (await response.json()) as unknown;
-    return Array.isArray(data) ? data.filter((level): level is string => typeof level === "string") : [];
+    const levels = data && typeof data === "object" && "levels" in data ? data.levels : [];
+    return Array.isArray(levels) ? levels.filter((level): level is string => typeof level === "string") : [];
   } catch {
     return [];
   }
