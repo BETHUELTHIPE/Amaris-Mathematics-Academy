@@ -30,6 +30,7 @@ def _upstreams():
         "grafana": settings.MONITORING_GRAFANA_URL,
         "prometheus": settings.MONITORING_PROMETHEUS_URL,
         "flower": settings.MONITORING_FLOWER_URL,
+        "jaeger": settings.MONITORING_JAEGER_URL,
     }
 
 
@@ -54,7 +55,12 @@ class AmarisAdminSite(AdminSite):
                             "perms": {"view": True},
                             "view_only": True,
                         }
-                        for tool, title in (("grafana", "Grafana"), ("prometheus", "Prometheus"), ("flower", "Flower"))
+                        for tool, title in (
+                            ("grafana", "Grafana"),
+                            ("prometheus", "Prometheus"),
+                            ("flower", "Flower"),
+                            ("jaeger", "Jaeger traces"),
+                        )
                     ],
                 }
             )

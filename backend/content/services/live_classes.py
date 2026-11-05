@@ -12,6 +12,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from amaris_cms.telemetry import trace_operation
 from content.models import LiveClassBooking, StudentRecord, TutorAvailabilitySlot
 
 from .payments import (
@@ -65,6 +66,7 @@ def _public_urls() -> tuple[str, str, str]:
     return return_url, cancel_url, notify_url
 
 
+@trace_operation("booking.checkout")
 def create_live_class_checkout(
     *,
     student: StudentRecord,
@@ -196,6 +198,7 @@ def _decimal(value: object) -> Decimal | None:
         return None
 
 
+@trace_operation("booking.payment_callback")
 def process_live_class_notification(
     payload: Mapping[str, str],
     *,

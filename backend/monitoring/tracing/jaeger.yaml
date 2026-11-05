@@ -1,0 +1,54 @@
+# Jaeger v2 includes its own OpenTelemetry Collector pipeline.
+# Small, single-node installation; validate capacity before a larger rollout.
+extensions:
+  jaeger_storage:
+    backends:
+      traces:
+        badger:
+          ephemeral: false
+          directories:
+            keys: /tmp/amaris-jaeger/keys
+            values: /tmp/amaris-jaeger/values
+          ttl:
+            spans: 48h
+  jaeger_query:
+    storage:
+      traces: traces
+    base_path: /admin/monitoring/jaeger
+    http:
+      endpoint: 0.0.0.0:16686
+  healthcheckv2:
+    use_v2: true
+    http:
+      endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 384
+    spike_limit_mib: 64
+  batch:
+    timeout: 1s
+    send_batch_size: 64
+    send_batch_max_size: 128
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: traces
+
+service:
+  extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [jaeger_storage_exporter]
+  telemetry:
+    logs:
+      level: warn

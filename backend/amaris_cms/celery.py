@@ -25,3 +25,4 @@ app.autodiscover_tasks()
 
 # Register reliability hooks after Celery has loaded Django settings.
 from amaris_cms import celery_signals as _celery_signals  # noqa: E402,F401
+from amaris_cms import telemetry_signals as _telemetry_signals  # noqa: E402,F401

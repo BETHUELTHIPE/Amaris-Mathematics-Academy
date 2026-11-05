@@ -10,6 +10,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import Storage, storages
 from django.utils import timezone
 
+from amaris_cms.telemetry import trace_operation
 from content.models import LiveClassBooking, VideoRequest
 from content.payment_models import Invoice
 from content.services.course_invoice_archive import (
@@ -42,6 +43,7 @@ def _invoice_identity(invoice: LiveClassBooking | VideoRequest) -> tuple[str, st
     return invoice.invoice_number, invoice.student.email
 
 
+@trace_operation("invoice.render")
 def render_invoice_pdf(invoice: Invoice | LiveClassBooking | VideoRequest) -> bytes:
     if isinstance(invoice, Invoice):
         return build_invoice_pdf(invoice)
@@ -99,6 +101,7 @@ def archive_invoice_pdf(
 ) -> bytes: ...
 
 
+@trace_operation("invoice.archive")
 def archive_invoice_pdf(
     invoice: int | Invoice | LiveClassBooking | VideoRequest,
     *,

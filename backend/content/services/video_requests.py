@@ -19,6 +19,7 @@ from django.db.models import Q
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 
+from amaris_cms.telemetry import trace_operation
 from content.models import StudentRecord, VideoRequest, VideoRequestDocument
 
 from .payments import (
@@ -176,6 +177,7 @@ def _checkout_fields(request: VideoRequest) -> tuple[str, dict[str, str]]:
     return gateway_url, fields
 
 
+@trace_operation("video.checkout")
 def create_video_request_checkout(
     *,
     student: StudentRecord,
@@ -293,6 +295,7 @@ def _decimal(value: object) -> Decimal | None:
         return None
 
 
+@trace_operation("video.payment_callback")
 def process_video_request_notification(
     payload: Mapping[str, str],
     *,

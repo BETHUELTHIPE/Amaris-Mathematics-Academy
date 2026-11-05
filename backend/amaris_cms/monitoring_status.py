@@ -30,6 +30,7 @@ TOOL_SPECS = (
         "/admin/monitoring/prometheus/-/healthy",
     ),
     ("flower", "Flower", "MONITORING_FLOWER_URL", "/admin/monitoring/flower/"),
+    ("jaeger", "Jaeger traces", "MONITORING_JAEGER_URL", "/admin/monitoring/jaeger/api/v3/services"),
 )
 TIMEOUT_SECONDS = 1.5
 PROBE_MAX_BYTES = 64 * 1024
@@ -148,6 +149,7 @@ def monitor_statuses():
                     "prometheus": "PromQL, scrape targets and alert rules.",
                     "flower": "Celery task console (worker status needs separate validation).",
                     "render": "Official Render metrics exporter; freshness based on its last refresh.",
+                    "jaeger": "Request and task traces; console reachability does not prove trace ingestion.",
                 }[name],
             }
         )

@@ -8,6 +8,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import Storage, storages
 from django.utils import timezone
 
+from amaris_cms.telemetry import trace_operation
 from content.models import Payment
 from content.payment_models import Invoice
 from content.services.invoice_document import InvoiceDocument, InvoiceLine, render_document
@@ -22,6 +23,7 @@ def invoice_storage_path(invoice: Invoice) -> str:
     return f"{invoice.student.supabase_user_id}/invoices/{safe_number}.pdf"
 
 
+@trace_operation("invoice.render")
 def build_invoice_pdf(invoice: Invoice) -> bytes:
     """Use the same approved letterhead as booking and video invoices."""
     invoice = _ensure_invoice_relations(invoice)
@@ -46,6 +48,7 @@ def build_invoice_pdf(invoice: Invoice) -> bytes:
     )
 
 
+@trace_operation("invoice.archive")
 def archive_invoice_pdf(invoice_id: int, *, storage: Storage | None = None) -> str:
     """Generate and persist one paid invoice under the student's private UUID folder."""
 

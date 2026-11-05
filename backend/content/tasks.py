@@ -10,6 +10,7 @@ from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
 
+from amaris_cms.telemetry import trace_operation
 from content.models import LiveClassBooking, SiteSettings, VideoRequest
 from content.payment_models import Invoice, NotificationOutbox
 from content.services.invoices import archive_invoice_pdf, mark_invoice_archive_failure
@@ -143,6 +144,7 @@ def _booking_when(booking: LiveClassBooking) -> str:
     return starts_at.strftime("%A, %d %B %Y at %H:%M")
 
 
+@trace_operation("notification.email")
 def _send_live_class_message(
     booking: LiveClassBooking,
     *,
@@ -321,6 +323,7 @@ def expire_live_class_holds(_self) -> int:
     ).update(status=LiveClassBooking.Status.EXPIRED)
 
 
+@trace_operation("notification.email")
 def _send_video_request_message(
     request: VideoRequest,
     *,

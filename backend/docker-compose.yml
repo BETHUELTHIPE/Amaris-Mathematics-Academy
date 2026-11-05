@@ -1,6 +1,26 @@
 name: amaris-backend
 
 services:
+  # Optional private tracing backend. Does not start without --profile tracing.
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    profiles: [tracing]
+    restart: unless-stopped
+    command: ["--config=/etc/jaeger/config.yaml"]
+    environment:
+      GOMEMLIMIT: 384MiB
+    volumes:
+      - ./monitoring/tracing/jaeger.yaml:/etc/jaeger/config.yaml:ro
+      - jaeger_data:/tmp
+    networks: [backend_network, monitoring_network]
+    # No published ports. UI requests must pass Django's superuser check.
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    mem_limit: 512m
+    cpus: 0.5
+    stop_grace_period: 30s
+
   db:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -474,6 +494,7 @@ secrets:
     environment: ALERTMANAGER_WEBHOOK_URL
 
 volumes:
+  jaeger_data:
   postgres_data:
   redis_data:
   static_data:
