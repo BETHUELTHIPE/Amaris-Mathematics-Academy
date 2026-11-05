@@ -41,6 +41,6 @@ test("video checkout and package pricing both use the same normalized API prefix
   assert.match(api, /\/student\/video-requests\/checkout\//);
   assert.match(packages, /normalizeCmsApiBaseUrl\(configuredBaseUrl\)/);
   assert.match(packages, /\/video-requests\/packages\//);
-  assert.match(backendUrls, /path\("student\/video-requests\/checkout\/"/);
-  assert.match(backendUrls, /path\("video-requests\/packages\/"/);
+  assert.match(backendUrls, /path\(\s*"student\/video-requests\/checkout\/"/);
+  assert.match(backendUrls, /path\(\s*"video-requests\/packages\/"/);
 });

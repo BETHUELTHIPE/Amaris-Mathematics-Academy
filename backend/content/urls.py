@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .analytics_views import StudentAnalyticsView, TutorAnalyticsView
 from .live_class_views import (
     LiveClassBookingStatusView,
     LiveClassCheckoutView,
@@ -27,7 +28,12 @@ from .tutor_application_views import (
     TutorApplicationDocumentView,
     TutorApplicationView,
 )
-from .tutor_views import TutorDashboardView, TutorEarningsView, TutorSlotCreateView, TutorSlotUpdateView
+from .tutor_views import (
+    TutorDashboardView,
+    TutorEarningsView,
+    TutorSlotCreateView,
+    TutorSlotUpdateView,
+)
 from .video_request_views import (
     VideoRequestCheckoutView,
     VideoRequestInvoiceDownloadView,
@@ -65,7 +71,11 @@ router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
     path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
-    path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
+    path(
+        "marketing-media/<int:pk>/",
+        public_marketing_media,
+        name="public-marketing-media",
+    ),
     path(
         "tutor-applications/acknowledgement/",
         TutorApplicationAcknowledgementView.as_view(),
@@ -80,30 +90,64 @@ urlpatterns = [
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
     path("tutor/dashboard/", TutorDashboardView.as_view(), name="tutor-dashboard"),
+    path("tutor/analytics/", TutorAnalyticsView.as_view(), name="tutor-analytics"),
     path("tutor/earnings/", TutorEarningsView.as_view(), name="tutor-earnings"),
     path("tutor/slots/", TutorSlotCreateView.as_view(), name="tutor-slot-create"),
-    path("tutor/slots/<int:slot_id>/", TutorSlotUpdateView.as_view(), name="tutor-slot-update"),
-    path("video-requests/packages/", VideoRequestPackageView.as_view(), name="video-request-packages"),
+    path(
+        "tutor/slots/<int:slot_id>/",
+        TutorSlotUpdateView.as_view(),
+        name="tutor-slot-update",
+    ),
+    path(
+        "video-requests/packages/",
+        VideoRequestPackageView.as_view(),
+        name="video-request-packages",
+    ),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
-    path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
+    path(
+        "student/acceptance/seed/",
+        AcceptanceSeedView.as_view(),
+        name="student-acceptance-seed",
+    ),
     path(
         "student/acceptance/payments/<str:reference>/complete/",
         AcceptancePaymentCompleteView.as_view(),
         name="student-acceptance-payment-complete",
     ),
     path("student/courses/", StudentCoursesView.as_view(), name="student-courses"),
+    path("student/analytics/", StudentAnalyticsView.as_view(), name="student-analytics"),
     path("student/orders/", StudentOrdersView.as_view(), name="student-orders"),
-    path("student/notifications/", StudentNotificationsView.as_view(), name="student-notifications"),
+    path(
+        "student/notifications/",
+        StudentNotificationsView.as_view(),
+        name="student-notifications",
+    ),
     path(
         "student/orders/<str:reference>/invoice/",
         StudentCourseInvoiceDownloadView.as_view(),
         name="student-course-invoice",
     ),
-    path("student/lessons/<slug:course_slug>/<slug:lesson_slug>/", StudentLessonView.as_view(), name="student-lesson"),
+    path(
+        "student/lessons/<slug:course_slug>/<slug:lesson_slug>/",
+        StudentLessonView.as_view(),
+        name="student-lesson",
+    ),
     path("student/checkout/", CheckoutView.as_view(), name="student-checkout"),
-    path("student/live-classes/checkout/", LiveClassCheckoutView.as_view(), name="live-class-checkout"),
-    path("student/video-requests/", VideoRequestListView.as_view(), name="video-request-list"),
-    path("student/video-requests/checkout/", VideoRequestCheckoutView.as_view(), name="video-request-checkout"),
+    path(
+        "student/live-classes/checkout/",
+        LiveClassCheckoutView.as_view(),
+        name="live-class-checkout",
+    ),
+    path(
+        "student/video-requests/",
+        VideoRequestListView.as_view(),
+        name="video-request-list",
+    ),
+    path(
+        "student/video-requests/checkout/",
+        VideoRequestCheckoutView.as_view(),
+        name="video-request-checkout",
+    ),
     path(
         "student/video-requests/<str:reference>/",
         VideoRequestStatusView.as_view(),
@@ -129,9 +173,17 @@ urlpatterns = [
         LiveClassInvoiceDownloadView.as_view(),
         name="live-class-invoice-download",
     ),
-    path("student/payments/<str:reference>/", PaymentStatusView.as_view(), name="student-payment-status"),
+    path(
+        "student/payments/<str:reference>/",
+        PaymentStatusView.as_view(),
+        name="student-payment-status",
+    ),
     path("student/progress/", ProgressView.as_view(), name="student-progress"),
-    path("student/resume/<slug:course_slug>/", ResumeView.as_view(), name="student-resume"),
+    path(
+        "student/resume/<slug:course_slug>/",
+        ResumeView.as_view(),
+        name="student-resume",
+    ),
     path("bootstrap/", SiteBootstrapView.as_view(), name="site-bootstrap"),
     path("settings/", SiteSettingsView.as_view(), name="site-settings"),
     path("", include(router.urls)),
