@@ -202,6 +202,7 @@ def _send_live_class_message(
     if sent != 1:
         raise OSError("Transactional email backend did not accept the live-class message.")
 
+
 def _live_class_notification_batch_size() -> int:
     """Keep each task bounded; parallel workers claim independent rows."""
     return max(1, min(int(getattr(settings, "LIVE_CLASS_NOTIFICATION_BATCH_SIZE", 25)), 100))
@@ -304,6 +305,7 @@ def deliver_live_class_reminder(_self) -> int:
             processed += 1
 
     return processed
+
 
 @shared_task(
     bind=True,

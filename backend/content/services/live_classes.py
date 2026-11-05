@@ -73,7 +73,6 @@ def create_live_class_checkout(
     now = timezone.now()
     reference = f"LCB-{key}"
     with transaction.atomic():
-        locked_slot = TutorAvailabilitySlot.objects.select_for_update(of=("self",)).select_related("tutor").get(pk=slot.pk)
         if not locked_slot.is_active or locked_slot.starts_at <= now:
             raise PaymentSecurityError("This tutor slot is no longer available.")
         if not locked_slot.zoom_join_url:
@@ -279,12 +278,8 @@ def process_live_class_notification(
         # expired/cancelled booking or confirm the slot twice.
         if booking.status == LiveClassBooking.Status.CONFIRMED:
             if booking.provider_reference == provider_reference:
-                return NotificationResult(
-                    True, booking.status, reason="duplicate_callback", duplicate=True
-                )
-            return NotificationResult(
-                False, booking.status, reason="provider_reference_replay", duplicate=True
-            )
+                return NotificationResult(True, booking.status, reason="duplicate_callback", duplicate=True)
+            return NotificationResult(False, booking.status, reason="provider_reference_replay", duplicate=True)
         if booking.status != LiveClassBooking.Status.PENDING_PAYMENT:
             return NotificationResult(False, booking.status, reason="booking_not_pending")
         if booking.hold_expires_at <= timezone.now():

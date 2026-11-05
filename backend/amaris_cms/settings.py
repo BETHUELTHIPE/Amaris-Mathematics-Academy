@@ -365,12 +365,8 @@ OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SEC
 # Bounded per-task batches avoid one-email-per-minute bottlenecks while
 # protecting the notification worker from unbounded send loops. Tune only
 # after measuring SMTP throughput and queue lag in isolated staging.
-LIVE_CLASS_NOTIFICATION_BATCH_SIZE = max(
-    1, min(int(os.getenv("LIVE_CLASS_NOTIFICATION_BATCH_SIZE", "25")), 100)
-)
-LIVE_CLASS_NOTIFICATION_INTERVAL_SECONDS = max(
-    10.0, float(os.getenv("LIVE_CLASS_NOTIFICATION_INTERVAL_SECONDS", "15"))
-)
+LIVE_CLASS_NOTIFICATION_BATCH_SIZE = max(1, min(int(os.getenv("LIVE_CLASS_NOTIFICATION_BATCH_SIZE", "25")), 100))
+LIVE_CLASS_NOTIFICATION_INTERVAL_SECONDS = max(10.0, float(os.getenv("LIVE_CLASS_NOTIFICATION_INTERVAL_SECONDS", "15")))
 
 CELERY_BEAT_SCHEDULE = {
     "publish-scheduled-content": {

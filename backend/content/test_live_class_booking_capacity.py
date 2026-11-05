@@ -36,9 +36,7 @@ def create_slot(tutor, number=0, *, start=None):
 class ScalableAvailabilityTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.tutor = get_user_model().objects.create_user(
-            username="capacity-tutor", email="capacity-tutor@example.test"
-        )
+        cls.tutor = get_user_model().objects.create_user(username="capacity-tutor", email="capacity-tutor@example.test")
         cls.student = StudentRecord.objects.create(
             supabase_user_id=uuid.uuid4(),
             email="capacity-student@example.test",
@@ -69,9 +67,7 @@ class ScalableAvailabilityTests(TestCase):
 
     def test_keyset_paging_is_stable_when_many_slots_exist(self):
         second = create_slot(self.tutor, 2)
-        first = self.client.get(
-            reverse("live-class-slots"), {"limit": 1}, secure=True
-        )
+        first = self.client.get(reverse("live-class-slots"), {"limit": 1}, secure=True)
         self.assertEqual(first.status_code, 200)
         self.assertEqual([s["id"] for s in first.json()], [str(self.slot.pk)])
         next_page = self.client.get(
@@ -85,9 +81,7 @@ class ScalableAvailabilityTests(TestCase):
         )
         self.assertEqual(next_page.status_code, 200)
         self.assertEqual([s["id"] for s in next_page.json()], [str(second.pk)])
-        invalid = self.client.get(
-            reverse("live-class-slots"), {"after_id": self.slot.pk}, secure=True
-        )
+        invalid = self.client.get(reverse("live-class-slots"), {"after_id": self.slot.pk}, secure=True)
         self.assertEqual(invalid.status_code, 400)
 
     def test_all_levels_are_discoverable_beyond_the_first_hundred_slots(self):
@@ -189,9 +183,7 @@ class MoreThanOneHundredThousandStudentsTest(TestCase):
 
     def test_student_number_100001_can_reserve_a_real_slot(self):
         self.assertEqual(StudentRecord.objects.count(), 100_001)
-        last_student = StudentRecord.objects.get(
-            email="scale-student-100000@example.test"
-        )
+        last_student = StudentRecord.objects.get(email="scale-student-100000@example.test")
         checkout = create_live_class_checkout(
             student=last_student,
             slot=self.slot,
@@ -243,8 +235,6 @@ class ConcurrentSingleSlotBookingTest(TransactionTestCase):
             outcomes = list(executor.map(reserve, range(2)))
         self.assertCountEqual(outcomes, ["reserved", "unavailable"])
         self.assertEqual(
-            LiveClassBooking.objects.filter(
-                slot=slot, status=LiveClassBooking.Status.PENDING_PAYMENT
-            ).count(),
+            LiveClassBooking.objects.filter(slot=slot, status=LiveClassBooking.Status.PENDING_PAYMENT).count(),
             1,
         )

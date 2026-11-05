@@ -96,9 +96,7 @@ class LiveClassSlotView(APIView):
         # GET must be read-only. The scheduled expiry worker releases expired
         # holds, while availability queries treat already-expired holds as
         # nonblocking immediately (even before the worker runs).
-        active_reservation = LiveClassBooking.objects.filter(
-            slot_id=OuterRef("pk")
-        ).filter(
+        active_reservation = LiveClassBooking.objects.filter(slot_id=OuterRef("pk")).filter(
             Q(status=LiveClassBooking.Status.CONFIRMED)
             | Q(
                 status=LiveClassBooking.Status.PENDING_PAYMENT,
@@ -124,14 +122,9 @@ class LiveClassSlotView(APIView):
         after_start = values.get("after_start")
         after_id = values.get("after_id")
         if bool(after_start) != bool(after_id):
-            raise serializers.ValidationError(
-                {"detail": "after_start and after_id must be supplied together."}
-            )
+            raise serializers.ValidationError({"detail": "after_start and after_id must be supplied together."})
         if after_start is not None:
-            queryset = queryset.filter(
-                Q(starts_at__gt=after_start)
-                | Q(starts_at=after_start, pk__gt=after_id)
-            )
+            queryset = queryset.filter(Q(starts_at__gt=after_start) | Q(starts_at=after_start, pk__gt=after_id))
         queryset = queryset.order_by("starts_at", "pk")[: values["limit"]]
 
         payload = [
