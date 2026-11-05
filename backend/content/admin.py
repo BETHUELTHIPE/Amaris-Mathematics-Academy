@@ -140,6 +140,9 @@ class CourseResourceInline(admin.TabularInline):
 
 @admin.register(Course)
 class CourseAdmin(PublishableAdmin):
+    # Keep Django Admin usable with tens of thousands of course records.
+    list_per_page = 50
+    show_full_result_count = False
     list_display = (
         "title",
         "category",
@@ -152,7 +155,7 @@ class CourseAdmin(PublishableAdmin):
     )
     list_filter = ("status", "featured", "category", "curriculum", "academic_level")
     list_editable = ("status", "featured")
-    search_fields = ("title", "slug", "short_description", "description", "curriculum")
+    search_fields = ("title", "slug", "short_description", "curriculum", "academic_level")
     prepopulated_fields = {"slug": ("title",)}
     autocomplete_fields = ("category",)
     inlines = (CourseModuleInline, CourseResourceInline)
