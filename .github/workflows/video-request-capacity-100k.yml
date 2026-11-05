@@ -79,7 +79,7 @@ jobs:
       - name: Validate formatting and lint
         working-directory: backend
         run: |
-          python -m black --check content/models.py content/services/video_requests.py content/video_request_views.py content/tasks.py content/test_video_request_capacity.py content/migrations/0017_video_request_capacity_indexes.py
+          python -m black --check --diff content/models.py content/services/video_requests.py content/video_request_views.py content/tasks.py content/test_video_request_capacity.py content/migrations/0017_video_request_capacity_indexes.py
           python -m ruff check content/models.py content/services/video_requests.py content/video_request_views.py content/tasks.py content/test_video_request_capacity.py content/migrations/0017_video_request_capacity_indexes.py
       - name: Verify schema and migration consistency
         working-directory: backend
