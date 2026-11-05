@@ -384,15 +384,33 @@ def video_request_queue_position(request: VideoRequest) -> int | None:
     active = VideoRequest.objects.filter(status__in=ACTIVE_QUEUE_STATUSES).exclude(pk=request.pk)
     in_progress = active.exclude(status=VideoRequest.Status.QUEUED).count()
     waiting = active.filter(status=VideoRequest.Status.QUEUED)
+    # Break timestamp ties using the request primary key. Without this,
+    # two requests paid in the same instant can both report position 1.
     if request.priority_paid_at:
-        ahead = waiting.filter(
-            priority_paid_at__isnull=False,
-            priority_paid_at__lt=request.priority_paid_at,
+        ahead = waiting.filter(priority_paid_at__isnull=False).filter(
+            Q(priority_paid_at__lt=request.priority_paid_at)
+            | Q(
+                priority_paid_at=request.priority_paid_at,
+                queue_entered_at__lt=request.queue_entered_at,
+            )
+            | Q(
+                priority_paid_at=request.priority_paid_at,
+                queue_entered_at=request.queue_entered_at,
+                pk__lt=request.pk,
+            )
         ).count()
     else:
         ahead = waiting.filter(
             Q(priority_paid_at__isnull=False)
-            | Q(priority_paid_at__isnull=True, queue_entered_at__lt=request.queue_entered_at)
+            | Q(
+                priority_paid_at__isnull=True,
+                queue_entered_at__lt=request.queue_entered_at,
+            )
+            | Q(
+                priority_paid_at__isnull=True,
+                queue_entered_at=request.queue_entered_at,
+                pk__lt=request.pk,
+            )
         ).count()
     return in_progress + ahead + 1
 
