@@ -114,7 +114,7 @@ class ScalableAvailabilityTests(TestCase):
             secure=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), ["Grade 12", "Grade 9"])
+        self.assertEqual(response.json()["levels"], ["Grade 12", "Grade 9"])
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
