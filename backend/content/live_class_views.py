@@ -31,6 +31,39 @@ class LiveClassSlotFilterSerializer(serializers.Serializer):
     limit = serializers.IntegerField(min_value=1, max_value=100, default=100)
 
 
+class LiveClassLevelFilterSerializer(serializers.Serializer):
+    programme = serializers.ChoiceField(choices=TutorAvailabilitySlot.Programme.choices)
+    subject = serializers.ChoiceField(choices=TutorAvailabilitySlot.Subject.choices)
+
+
+class LiveClassLevelView(APIView):
+    """List all future tutor levels, not just those in the first slot page."""
+
+    authentication_classes = ()
+    permission_classes = (AllowAny,)
+
+    @extend_schema(
+        parameters=[LiveClassLevelFilterSerializer],
+        responses={200: serializers.ListField(child=serializers.CharField())},
+    )
+    def get(self, request):
+        filters = LiveClassLevelFilterSerializer(data=request.query_params)
+        filters.is_valid(raise_exception=True)
+        values = filters.validated_data
+        levels = (
+            TutorAvailabilitySlot.objects.filter(
+                programme=values["programme"],
+                subject=values["subject"],
+                is_active=True,
+                starts_at__gt=timezone.now(),
+            )
+            .order_by("level")
+            .values_list("level", flat=True)
+            .distinct()
+        )
+        return Response(list(levels))
+
+
 class LiveClassSlotResponseSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     programme = serializers.CharField()
