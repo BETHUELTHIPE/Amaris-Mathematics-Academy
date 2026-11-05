@@ -73,6 +73,11 @@ def create_live_class_checkout(
     now = timezone.now()
     reference = f"LCB-{key}"
     with transaction.atomic():
+        locked_slot = (
+            TutorAvailabilitySlot.objects.select_for_update(of=("self",))
+            .select_related("tutor")
+            .get(pk=slot.pk)
+        )
         if not locked_slot.is_active or locked_slot.starts_at <= now:
             raise PaymentSecurityError("This tutor slot is no longer available.")
         if not locked_slot.zoom_join_url:
