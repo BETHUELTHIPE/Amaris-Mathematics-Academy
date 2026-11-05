@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
-import { getLiveClassSlots } from "@/lib/live-classes";
+import { getLiveClassLevels, getLiveClassSlots } from "@/lib/live-classes";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -54,6 +54,8 @@ export default async function BookOnlineLiveClassPage({
   const subject = queryValue(params.subject);
   const level = queryValue(params.level);
   const topic = queryValue(params.topic).trim().slice(0, 180);
+  const afterStart = queryValue(params.after_start);
+  const afterId = queryValue(params.after_id);
 
   const validProgramme = programmes.some(([value]) => value === programme)
     ? programme
@@ -62,20 +64,35 @@ export default async function BookOnlineLiveClassPage({
     ? subject
     : "";
 
-  const availableSlots =
-    validProgramme && validSubject
-      ? await getLiveClassSlots({
-          programme: validProgramme,
-          subject: validSubject,
-        })
-      : [];
-
-  const levels = [...new Set(availableSlots.map((slot) => slot.level))].sort(
-    (left, right) => left.localeCompare(right, "en-ZA", { numeric: true }),
-  );
-  const matchingSlots = level
-    ? availableSlots.filter((slot) => slot.level === level)
+  // Level selection must include every available level, not just levels that
+  // happen to appear in the first 100 slots of a 100k-student timetable.
+  const levels = validProgramme && validSubject
+    ? await getLiveClassLevels({ programme: validProgramme, subject: validSubject })
     : [];
+  const readyForQuery = Boolean(validProgramme && validSubject && level && topic.length >= 2);
+  const availableSlots = readyForQuery
+    ? await getLiveClassSlots({
+        programme: validProgramme,
+        subject: validSubject,
+        level,
+        afterStart,
+        afterId,
+        limit: 51,
+      })
+    : [];
+  const matchingSlots = availableSlots.slice(0, 50);
+  const hasMoreSlots = availableSlots.length > 50;
+  const lastVisibleSlot = matchingSlots[matchingSlots.length - 1];
+  const nextPageQuery = lastVisibleSlot && hasMoreSlots
+    ? new URLSearchParams({
+        programme: validProgramme,
+        subject: validSubject,
+        level,
+        topic,
+        after_start: lastVisibleSlot.starts_at,
+        after_id: lastVisibleSlot.id,
+      }).toString()
+    : "";
 
   const readyForSlot = Boolean(validProgramme && validSubject && level && topic.length >= 2);
 
@@ -250,6 +267,17 @@ export default async function BookOnlineLiveClassPage({
                   </article>
                 );
               })}
+              {hasMoreSlots && nextPageQuery && (
+                <div className="flex justify-center lg:col-span-2">
+                  <Link
+                    href={`/book-online-live-class?${nextPageQuery}#available-slots`}
+                    rel="next"
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#0b2a5b] bg-white px-7 py-3 font-semibold text-[#0b2a5b] hover:bg-[#edf2f8]"
+                  >
+                    Show more available tutor times <ArrowRight className="size-4" />
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </section>
