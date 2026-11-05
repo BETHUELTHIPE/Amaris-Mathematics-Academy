@@ -113,7 +113,22 @@ export function CourseBrowser({ catalog, query, programme }: CourseBrowserProps)
                   <ArrowLeft className="size-4" /> Previous
                 </Link>
               ) : <span />}
-              <span className="text-sm font-medium text-[#60708a]">Page {page} of {totalPages}</span>
+              <form action="/courses" method="get" className="flex items-center gap-2" aria-label="Jump to a course catalogue page">
+                {query && <input type="hidden" name="q" value={query} />}
+                {currentFilter !== "All" && <input type="hidden" name="programme" value={currentFilter} />}
+                <label htmlFor="course-page-number" className="text-sm font-medium text-[#60708a]">Page</label>
+                <input
+                  id="course-page-number"
+                  name="page"
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  defaultValue={page}
+                  className="w-20 rounded-lg border border-[#d7e0ec] bg-white px-2 py-2 text-sm text-[#0b2a5b]"
+                />
+                <span className="text-sm text-[#60708a]">of {totalPages}</span>
+                <button type="submit" className="rounded-lg bg-[#edf2f8] px-3 py-2 text-sm font-semibold text-[#0b2a5b] hover:bg-[#dfe8f3]">Go</button>
+              </form>
               {hasNext ? (
                 <Link href={catalogueHref(query, currentFilter, page + 1)} rel="next" className="inline-flex items-center gap-2 rounded-full bg-[#0b2a5b] px-5 py-3 font-semibold text-white hover:bg-[#2767d8]">
                   Next <ArrowRight className="size-4" />
