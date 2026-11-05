@@ -718,3 +718,6 @@ class PaymentReconciliationRun(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.started_at:%Y-%m-%d %H:%M} — {self.status}"
+
+
+from .whatsapp import WhatsAppDelivery, WhatsAppPreference  # noqa: E402,F401

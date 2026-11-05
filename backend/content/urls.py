@@ -28,6 +28,7 @@ from .views import (
     TestimonialViewSet,
     public_marketing_media,
 )
+from .whatsapp_views import StudentWhatsAppPreferenceView, TutorWhatsAppPreferenceView, meta_whatsapp_webhook
 
 router = DefaultRouter()
 router.register("navigation", NavigationViewSet, basename="navigation")
@@ -41,6 +42,9 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("student/whatsapp-preference/", StudentWhatsAppPreferenceView.as_view(), name="student-whatsapp-preference"),
+    path("tutor/whatsapp-preference/", TutorWhatsAppPreferenceView.as_view(), name="tutor-whatsapp-preference"),
+    path("whatsapp/webhook/", meta_whatsapp_webhook, name="whatsapp-webhook"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),

@@ -362,7 +362,14 @@ OPENAI_ENQUIRY_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ENQUIRY_TIMEOUT_SECONDS
 OPENAI_ASSISTANT_MODEL = os.getenv("OPENAI_ASSISTANT_MODEL", OPENAI_ENQUIRY_MODEL)
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
+WHATSAPP_NOTIFICATIONS_ENABLED = env_bool("WHATSAPP_NOTIFICATIONS_ENABLED", False)
+
 CELERY_BEAT_SCHEDULE = {
+    "dispatch-whatsapp-booking-notifications": {
+        "task": "content.whatsapp.dispatch_whatsapp_booking_notifications",
+        "schedule": 60.0,
+        "options": {"queue": "notifications"},
+    },
     "publish-scheduled-content": {
         "task": "content.tasks.publish_scheduled_content",
         "schedule": 60.0,

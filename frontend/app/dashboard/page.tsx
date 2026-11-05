@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   ArrowRight,
   Bell,
+  MessageCircle,
   BookOpen,
   CheckCircle2,
   CreditCard,
@@ -62,6 +63,7 @@ export default async function DashboardPage() {
             [BookOpen, "My courses", null],
             [CreditCard, "Orders & payments", null],
             [Bell, "Notifications", null],
+            [MessageCircle, "WhatsApp reminders", "/dashboard/whatsapp"],
             [UserRound, "Profile & security", "/reset-password"],
           ].map(([Icon, label, href], i) => {
             const C = Icon as typeof LayoutDashboard;
