@@ -11,8 +11,7 @@ from django.urls import reverse
 
 from content.models import Course, CourseCategory, Enrollment, Payment, StudentRecord
 from content.payment_models import Invoice
-from content.services.payments import process_payfast_notification
-from content.services.payments import create_checkout
+from content.services.payments import create_checkout, process_payfast_notification
 
 
 class LargeCourseCatalogTests(TestCase):
