@@ -18,7 +18,6 @@ from django.core.management.base import BaseCommand, CommandError
 from django.test.client import RequestFactory
 from django.urls import Resolver404, resolve
 
-
 WEBHOOK_PATH = "/api/v1/whatsapp/webhook/"
 REQUIRED_SECRETS = (
     "WHATSAPP_APP_SECRET",
