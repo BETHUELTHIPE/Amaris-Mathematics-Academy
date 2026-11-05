@@ -6,6 +6,7 @@ import { resolveCurriculumFields } from "@/lib/school-curriculum.mjs";
 import { CreditCard, FileUp, LoaderCircle, ShieldCheck } from "lucide-react";
 import type { VideoRequestCheckoutSession } from "@/lib/student-api";
 import type { VideoRequestPackage } from "@/lib/video-requests";
+import { validateVideoDocuments } from "@/lib/video-document-limits.mjs";
 
 export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[] }) {
   const [checkout, setCheckout] = useState<VideoRequestCheckoutSession | null>(null);
@@ -20,11 +21,13 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
     const form = event.currentTarget;
     const data = new FormData(form);
     data.set("idempotency_key", `video-${crypto.randomUUID().replaceAll("-", "")}`);
-    const files = data.getAll("documents").filter((value) => value instanceof File && value.size > 0);
+    const files = data.getAll("documents").filter((value): value is File => value instanceof File && value.name !== "");
     data.delete("documents");
     for (const file of files) data.append("documents", file);
 
     try {
+      const fileError = validateVideoDocuments(files);
+      if (fileError) throw new Error(fileError);
       const selection = resolveCurriculumFields(data);
       data.set("level", selection.level);
       data.set("topic", selection.topic);
@@ -105,7 +108,7 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
           <span className="rounded-2xl border border-dashed border-[#aac3ec] bg-[#f8fbff] p-5">
             <span className="flex items-center gap-2"><FileUp className="size-5 text-[#1f5bbd]" />Upload up to five PDF, JPEG or PNG files</span>
             <input name="documents" type="file" multiple accept="application/pdf,image/jpeg,image/png" className="mt-3 block w-full text-sm font-normal" />
-            <span className="mt-2 block text-xs font-normal text-[#60708a]">Maximum 10 MB per file and 25 MB total. Documents stay private.</span>
+            <span className="mt-2 block text-xs font-normal text-[#60708a]">Maximum 1 GB per file and 1 GB total. Documents stay private.</span>
           </span>
         </label>
       </div>
