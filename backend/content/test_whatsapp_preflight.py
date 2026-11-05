@@ -1,4 +1,5 @@
 """Mocked read-only verification: never contacts Meta or sends WhatsApp."""
+
 import io
 import json
 import os
