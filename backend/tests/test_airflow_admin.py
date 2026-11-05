@@ -1,11 +1,18 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
-from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
-from amaris_cms.airflow_client import AirflowUnavailable, get_workflow, get_workflow_tasks, is_configured
+from amaris_cms.airflow_client import (
+    AirflowUnavailable,
+    get_airflow_ui_url,
+    get_workflow,
+    get_workflow_tasks,
+    is_configured,
+)
 from amaris_cms.monitoring_admin import AmarisAdminSite
 
 AIRFLOW_TEST_SETTINGS = {
@@ -141,3 +148,88 @@ class AirflowMonitorTests(SimpleTestCase):
         response = self.site.airflow_home(request)
         self.assertFalse(response.context_data["airflow_configured"])
         self.assertEqual(response.context_data["workflows"], [])
+
+
+
+class AirflowUiUrlTests(SimpleTestCase):
+    @override_settings(DEBUG=False, AIRFLOW_UI_URL="https://airflow.example.internal/airflow/")
+    def test_https_launch_url_is_normalized(self):
+        self.assertEqual(get_airflow_ui_url(), "https://airflow.example.internal/airflow")
+
+    @override_settings(DEBUG=False)
+    def test_production_rejects_insecure_and_credentialed_urls(self):
+        forbidden = (
+            "http://airflow.example.internal",
+            "https://user:password@airflow.example.internal",
+            "https://@airflow.example.internal",
+            "https://airflow.example.internal/?token=secret",
+            "https://airflow.example.internal/#access_token",
+            "javascript:alert(1)",
+            "https://airflow.example.internal\nmalicious",
+            "https://airflow.example.internal:invalid/",
+            "//airflow.example.internal",
+        )
+        for url in forbidden:
+            with self.subTest(url=url), override_settings(AIRFLOW_UI_URL=url):
+                self.assertEqual(get_airflow_ui_url(), "")
+
+    @override_settings(DEBUG=True, AIRFLOW_UI_URL="http://localhost:8080")
+    def test_local_development_allows_http(self):
+        self.assertEqual(get_airflow_ui_url(), "http://localhost:8080")
+
+
+@override_settings(
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "student_data": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        # Browser/template unit tests do not run collectstatic: bypass only
+        # the hashed manifest lookup, not the production storage configuration.
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
+class AirflowUiAdminAccessTests(TestCase):
+    def setUp(self):
+        users = get_user_model()
+        self.superuser = users.objects.create_superuser(
+            username="airflow-admin-test",
+            email="airflow-admin@example.invalid",
+            password="strong-test-password-only",
+        )
+        self.staff = users.objects.create_user(
+            username="airflow-staff-test",
+            email="airflow-staff@example.invalid",
+            password="strong-test-password-only",
+            is_staff=True,
+        )
+
+    @override_settings(
+        AIRFLOW_MONITORING_ENABLED=False,
+        AIRFLOW_UI_URL="https://airflow.example.internal/airflow",
+        AIRFLOW_API_TOKEN="never-render-this-api-token",
+    )
+    def test_full_ui_link_only_shows_to_django_superuser(self):
+        self.client.force_login(self.superuser)
+        for url in ("/admin/", "/admin/airflow/", "/admin/monitoring/"):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'href="https://airflow.example.internal/airflow"')
+                self.assertContains(response, 'rel="noopener noreferrer"')
+                self.assertNotContains(response, "never-render-this-api-token")
+
+        self.client.force_login(self.staff)
+        response = self.client.get("/admin/")
+        self.assertNotContains(response, "Open full Airflow UI")
+        self.assertEqual(self.client.get("/admin/airflow/").status_code, 403)
+
+    @override_settings(DEBUG=False, AIRFLOW_UI_URL="http://insecure.example.com")
+    def test_insecure_configuration_does_not_render_link(self):
+        self.client.force_login(self.superuser)
+        response = self.client.get("/admin/airflow/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'href="http://insecure.example.com"')
+
+    def test_anonymous_cannot_access_airflow_admin(self):
+        response = self.client.get("/admin/airflow/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/login/", response.headers["Location"])

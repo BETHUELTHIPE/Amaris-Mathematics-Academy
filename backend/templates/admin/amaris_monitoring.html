@@ -26,6 +26,7 @@
     <h2>Apache Airflow</h2>
     <p>Superuser-only, read-only workflow progress, latest execution state and task failures. The Airflow API must be configured separately.</p>
     <a class="btn btn-outline-primary" href="{% url 'admin:amaris_airflow_home' %}">Open Airflow workflow monitor</a>
+    {% if airflow_ui_url %}<a class="btn btn-outline-secondary" href="{{ airflow_ui_url }}" target="_blank" rel="noopener noreferrer">Open full Airflow UI (separate sign-in)</a>{% endif %}
   </div></div>
   <a href="{% url 'admin:index' %}">Return to Django Admin</a>
 {% endblock %}
