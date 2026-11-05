@@ -28,6 +28,16 @@ export async function POST(request: NextRequest) {
       );
     }
     const formData = await request.formData();
+    // Reject blank mandatory fields even when HTML validation is bypassed.
+    for (const [field, label] of [["request_type", "video package"], ["preferred_duration_minutes", "duration"], ["explanation_style", "explanation style"], ["instructions", "instructions"]] as const) {
+      if (!String(formData.get(field) ?? "").trim()) {
+        return NextResponse.json({ detail: `Enter the required ${label}.` }, { status: 400, headers: { "Cache-Control": "private, no-store" } });
+      }
+    }
+    const attachments = formData.getAll("documents").filter(item => item instanceof File && item.size > 0);
+    if (!attachments.length) {
+      return NextResponse.json({ detail: "Attach at least one supporting document." }, { status: 400, headers: { "Cache-Control": "private, no-store" } });
+    }
     const selection = resolveCurriculumFields(formData);
     formData.set("level", selection.level);
     formData.set("topic", selection.topic);

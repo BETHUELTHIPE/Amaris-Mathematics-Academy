@@ -23,6 +23,12 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
     const files = data.getAll("documents").filter((value) => value instanceof File && value.size > 0);
     data.delete("documents");
     for (const file of files) data.append("documents", file);
+    // Native required/HTML constraints plus explicit server validation prevent blank requests.
+    if (!String(data.get("explanation_style") ?? "").trim() || !String(data.get("instructions") ?? "").trim() || !files.length) {
+      setError("Complete the explanation style and instructions, and attach at least one supporting document.");
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const selection = resolveCurriculumFields(data);
@@ -88,23 +94,23 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
         </label>
         <label className="grid gap-2 text-sm font-semibold">
           Preferred duration
-          <select name="preferred_duration_minutes" defaultValue="60" className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal">
+          <select name="preferred_duration_minutes" required defaultValue="60" className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal">
             {[30, 45, 60, 90, 120, 180].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
           </select>
         </label>
         <label className="grid gap-2 text-sm font-semibold">
           Explanation style
-          <input name="explanation_style" maxLength={120} placeholder="e.g. Slow steps with exam tips" className="min-h-12 rounded-xl border border-[#c9d5e5] px-4 font-normal" />
+          <input name="explanation_style" required minLength={2} maxLength={120} placeholder="e.g. Slow steps with exam tips" className="min-h-12 rounded-xl border border-[#c9d5e5] px-4 font-normal" />
         </label>
         <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
           Instructions
-          <textarea name="instructions" maxLength={2000} rows={5} placeholder="Tell the tutor which questions or methods need the most attention." className="rounded-xl border border-[#c9d5e5] px-4 py-3 font-normal" />
+          <textarea name="instructions" required minLength={10} maxLength={2000} rows={5} placeholder="Tell the tutor which questions or methods need the most attention." className="rounded-xl border border-[#c9d5e5] px-4 py-3 font-normal" />
         </label>
         <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
-          Supporting documents (optional)
+          Supporting documents (required)
           <span className="rounded-2xl border border-dashed border-[#aac3ec] bg-[#f8fbff] p-5">
-            <span className="flex items-center gap-2"><FileUp className="size-5 text-[#1f5bbd]" />Upload up to five PDF, JPEG or PNG files</span>
-            <input name="documents" type="file" multiple accept="application/pdf,image/jpeg,image/png" className="mt-3 block w-full text-sm font-normal" />
+            <span className="flex items-center gap-2"><FileUp className="size-5 text-[#1f5bbd]" />Attach at least one and up to five PDF, JPEG or PNG files</span>
+            <input name="documents" type="file" required multiple accept="application/pdf,image/jpeg,image/png" className="mt-3 block w-full text-sm font-normal" />
             <span className="mt-2 block text-xs font-normal text-[#60708a]">Maximum 10 MB per file and 25 MB total. Documents stay private.</span>
           </span>
         </label>
