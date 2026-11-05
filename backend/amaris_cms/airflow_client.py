@@ -46,7 +46,7 @@ def is_configured():
         and base
         and token
         and isinstance(token, str)
-        and not any(char.isspace() for char in token)
+        and not any(ord(char) < 33 or ord(char) > 126 for char in token)
         and monitored_dags()
     )
 
@@ -60,7 +60,12 @@ def get_airflow_ui_url():
 
 
 def _safe_url(raw, *, origin_only=False):
-    if not isinstance(raw, str) or not raw or "\\" in raw or any(char.isspace() or ord(char) == 127 for char in raw):
+    if (
+        not isinstance(raw, str)
+        or not raw
+        or "\\" in raw
+        or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in raw)
+    ):
         return ""
     try:
         parsed = url_parse.urlsplit(raw)

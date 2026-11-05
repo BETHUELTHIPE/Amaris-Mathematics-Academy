@@ -83,6 +83,7 @@ jobs:
           python manage.py check
           python manage.py spectacular --file /tmp/airflow-admin-api.yaml --validate --fail-on-warn
           python manage.py makemigrations --check --dry-run
+          python manage.py collectstatic --noinput
       - name: Backend type checks
         run: |
           export DJANGO_SECRET_KEY="$(openssl rand -hex 48)"

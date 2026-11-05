@@ -116,10 +116,16 @@ class AirflowReadinessTests(SimpleTestCase):
             "https://private-airflow/api/v2",
             "https://user:password@private-airflow",
             "https://private-airflow\n",
+            "https://private-airflow\x00",
             "https://private-airflow/?token=private",
             "https://private-airflow\\other-host",
         ):
             with self.subTest(url=url), override_settings(AIRFLOW_API_BASE_URL=url):
+                self.assertFalse(is_configured())
+
+    def test_invalid_bearer_header_is_rejected_before_connecting(self):
+        for token in ("token\x00", "token\n", "token\x7f", "token with spaces", "token-\u00e9"):
+            with self.subTest(token_type="malformed"), override_settings(AIRFLOW_API_TOKEN=token):
                 self.assertFalse(is_configured())
 
     @patch("amaris_cms.airflow_client.url_request.build_opener")
