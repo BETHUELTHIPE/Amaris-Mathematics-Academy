@@ -178,7 +178,7 @@ class VideoRequestsOverOneHundredThousandTest(TestCase):
                     index,
                     at=base + timedelta(microseconds=index),
                 )
-                for index, student in zip(range(start, stop), students)
+                for index, student in zip(range(start, stop), students, strict=True)
             ]
             VideoRequest.objects.bulk_create(rows, batch_size=500)
 
