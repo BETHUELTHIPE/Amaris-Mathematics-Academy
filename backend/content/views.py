@@ -10,6 +10,7 @@ from django.views.decorators.cache import cache_page, never_cache
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 
@@ -99,14 +100,23 @@ class CourseCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = CourseCategory.objects.filter(is_active=True)
 
 
+class CourseCatalogPagination(PageNumberPagination):
+    """Browse every published course without unbounded API responses."""
+
+    page_size = 24
+    page_size_query_param = "page_size"
+    max_page_size = 48
+
+
 @public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class CourseViewSet(viewsets.ReadOnlyModelViewSet):
+    pagination_class = CourseCatalogPagination
     serializer_class = CourseSerializer
     lookup_field = "slug"
     filterset_fields = ("category__slug", "curriculum", "academic_level", "featured")
     search_fields = ("title", "short_description", "description", "curriculum", "academic_level")
     ordering_fields = ("title", "price", "order", "created_at")
-    ordering = ("order", "title")
+    ordering = ("order", "title", "pk")
 
     def get_serializer_class(self):
         if getattr(self, "action", None) in {"list", "featured"}:
@@ -133,13 +143,31 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
         )
         if getattr(self, "action", None) in {"list", "featured"}:
             queryset = queryset.defer("description", "outcomes")
+        if getattr(self, "action", None) == "list":
+            programme = self.request.query_params.get("programme", "").strip().lower()
+            if programme == "caps":
+                queryset = queryset.filter(curriculum__icontains="CAPS")
+            elif programme == "tvet":
+                queryset = queryset.filter(
+                    Q(curriculum__icontains="TVET")
+                    | Q(curriculum__icontains="NATED")
+                    | Q(curriculum__icontains="NC(V)")
+                    | Q(academic_level__icontains="TVET")
+                )
+            elif programme == "university":
+                queryset = queryset.filter(
+                    Q(curriculum__icontains="Higher Education")
+                    | Q(curriculum__icontains="University")
+                    | Q(curriculum__icontains="UNISA")
+                    | Q(academic_level__icontains="University")
+                )
         if getattr(self, "action", None) == "retrieve":
             queryset = queryset.prefetch_related(Prefetch("modules", queryset=module_queryset))
         return queryset
 
     @action(detail=False, methods=["get"])
     def featured(self, request):
-        queryset = self.filter_queryset(self.get_queryset().filter(featured=True))
+        queryset = self.filter_queryset(self.get_queryset().filter(featured=True))[:6]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
