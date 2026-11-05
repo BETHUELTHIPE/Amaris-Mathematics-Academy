@@ -73,7 +73,7 @@ def create_live_class_checkout(
     now = timezone.now()
     reference = f"LCB-{key}"
     with transaction.atomic():
-        locked_slot = TutorAvailabilitySlot.objects.select_for_update().select_related("tutor").get(pk=slot.pk)
+        locked_slot = TutorAvailabilitySlot.objects.select_for_update(of=("self",)).select_related("tutor").get(pk=slot.pk)
         if not locked_slot.is_active or locked_slot.starts_at <= now:
             raise PaymentSecurityError("This tutor slot is no longer available.")
         if not locked_slot.zoom_join_url:
@@ -268,7 +268,31 @@ def process_live_class_notification(
         return NotificationResult(False, booking.status, reason="wrong_service")
 
     with transaction.atomic():
-        booking = LiveClassBooking.objects.select_for_update().select_related("student", "slot").get(pk=booking.pk)
+        booking = (
+            LiveClassBooking.objects.select_for_update(of=("self",))
+            .select_related("student", "slot")
+            .get(pk=booking.pk)
+        )
+        # The payment gateway can send duplicate or delayed callbacks, and
+        # a hold can expire while server verification is in flight. Recheck
+        # after acquiring the row lock so a stale callback cannot revive an
+        # expired/cancelled booking or confirm the slot twice.
+        if booking.status == LiveClassBooking.Status.CONFIRMED:
+            if booking.provider_reference == provider_reference:
+                return NotificationResult(
+                    True, booking.status, reason="duplicate_callback", duplicate=True
+                )
+            return NotificationResult(
+                False, booking.status, reason="provider_reference_replay", duplicate=True
+            )
+        if booking.status != LiveClassBooking.Status.PENDING_PAYMENT:
+            return NotificationResult(False, booking.status, reason="booking_not_pending")
+        if booking.hold_expires_at <= timezone.now():
+            booking.status = LiveClassBooking.Status.EXPIRED
+            booking.save(update_fields=("status", "updated_at"))
+            return NotificationResult(False, booking.status, reason="booking_hold_expired")
+        if booking.provider_reference and booking.provider_reference != provider_reference:
+            return NotificationResult(False, booking.status, reason="provider_reference_replay")
         booking.provider_reference = provider_reference
         booking.gateway_verified_at = timezone.now()
 
