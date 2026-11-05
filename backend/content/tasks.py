@@ -207,8 +207,6 @@ def _live_class_notification_batch_size() -> int:
     return max(1, min(int(getattr(settings, "LIVE_CLASS_NOTIFICATION_BATCH_SIZE", 25)), 100))
 
 
-
-
 @shared_task(
     bind=True,
     ignore_result=True,
@@ -223,7 +221,7 @@ def deliver_live_class_confirmation(_self) -> int:
     for _ in range(_live_class_notification_batch_size()):
         with transaction.atomic():
             booking = (
-                LiveClassBooking.objects.select_for_update(skip_locked=True)
+                LiveClassBooking.objects.select_for_update(skip_locked=True, of=("self",))
                 .select_related("student", "slot", "slot__tutor")
                 .filter(
                     status=LiveClassBooking.Status.CONFIRMED,
@@ -258,6 +256,7 @@ def deliver_live_class_confirmation(_self) -> int:
 
     return processed
 
+
 @shared_task(
     bind=True,
     ignore_result=True,
@@ -273,7 +272,7 @@ def deliver_live_class_reminder(_self) -> int:
     for _ in range(_live_class_notification_batch_size()):
         with transaction.atomic():
             booking = (
-                LiveClassBooking.objects.select_for_update(skip_locked=True)
+                LiveClassBooking.objects.select_for_update(skip_locked=True, of=("self",))
                 .select_related("student", "slot", "slot__tutor")
                 .filter(
                     status=LiveClassBooking.Status.CONFIRMED,
