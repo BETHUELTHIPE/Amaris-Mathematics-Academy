@@ -9,6 +9,7 @@ on:
       - "backend/content/video_request_views.py"
       - "backend/content/tasks.py"
       - "backend/content/test_video_request_capacity.py"
+      - "backend/load_tests/**"
       - "backend/content/migrations/0017_video_request_capacity_indexes.py"
       - ".github/workflows/video-request-capacity-100k.yml"
   pull_request:
@@ -18,6 +19,7 @@ on:
       - "backend/content/video_request_views.py"
       - "backend/content/tasks.py"
       - "backend/content/test_video_request_capacity.py"
+      - "backend/load_tests/**"
       - "backend/content/migrations/0017_video_request_capacity_indexes.py"
       - ".github/workflows/video-request-capacity-100k.yml"
 
@@ -29,6 +31,81 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  video-burst-harness:
+    name: 50000-target harness contracts (loopback only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      LOADTEST_ENVIRONMENT: local
+      LOADTEST_TARGET_URL: http://127.0.0.1:8765
+      LOADTEST_ALLOWED_HOSTS: 127.0.0.1
+      PAYFAST_MODE: sandbox
+      VIDEO_LOAD_ISOLATION_CONFIRMED: "true"
+      VIDEO_LOAD_DEPLOYED_SHA: ${{ github.sha }}
+      VIDEO_LOAD_RUN_ID: harness-only
+      VIDEO_LOAD_STUDENTS_FILE: /tmp/video-burst-inspect.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: grafana/setup-k6-action@v1
+      - name: Offline manifest, target and evidence contracts
+        working-directory: backend
+        run: |
+          node --test load_tests/test_video_burst_config.mjs
+          python -m unittest load_tests.test_video_burst_report -v
+      - name: Inspect 50000-user scenario without sending traffic
+        working-directory: backend
+        run: |
+          python -m load_tests.video_burst_fixture --users 50000 --manifest "$VIDEO_LOAD_STUDENTS_FILE"
+          export VIDEO_LOAD_RELEASE_AT_MS="$(python -c 'import time; print(int(time.time()*1000)+120000)')"
+          k6 inspect load_tests/video_request_burst.mjs > /tmp/video-burst-options.json
+          python -c 'import json; data=json.load(open("/tmp/video-burst-options.json")); assert data["scenarios"]["video_submission_burst"]["vus"] == 50000'
+      - name: Four-user mock burst across two execution segments
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p load_tests/results/video-burst
+          export VIDEO_LOAD_USERS=4
+          export VIDEO_LOAD_STUDENTS_FILE=/tmp/video-burst-smoke.json
+          python -m load_tests.video_burst_fixture --users 4 --manifest "$VIDEO_LOAD_STUDENTS_FILE" --serve &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import socket, time
+          for _ in range(100):
+              try:
+                  with socket.create_connection(("127.0.0.1", 8765), timeout=0.1):
+                      break
+              except OSError:
+                  time.sleep(0.1)
+          else:
+              raise SystemExit("Loopback mock did not start")
+          PY
+          export VIDEO_LOAD_RELEASE_AT_MS="$(python -c 'import time; print(int(time.time()*1000)+45000)')"
+          k6 run --execution-segment '0:1/2' --execution-segment-sequence '0,1/2,1' --console-output load_tests/results/video-burst/shard1.log load_tests/video_request_burst.mjs &
+          first=$!
+          k6 run --execution-segment '1/2:1' --execution-segment-sequence '0,1/2,1' --console-output load_tests/results/video-burst/shard2.log load_tests/video_request_burst.mjs &
+          second=$!
+          status=0
+          wait "$first" || status=1
+          wait "$second" || status=1
+          python -m load_tests.video_burst_report load_tests/results/video-burst/shard*.log --users 4 --run-id "$VIDEO_LOAD_RUN_ID" --deployed-sha "$VIDEO_LOAD_DEPLOYED_SHA" --release-at-ms "$VIDEO_LOAD_RELEASE_AT_MS" --output load_tests/results/video-burst/mock-client-report.json
+          exit "$status"
+      - name: Upload mock-only harness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-burst-harness-mock-only
+          path: backend/load_tests/results/video-burst/
+          if-no-files-found: ignore
+          retention-days: 14
+
   postgres-student-video-requests:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -81,6 +158,8 @@ jobs:
         run: |
           python -m black --check --diff content/models.py content/services/video_requests.py content/video_request_views.py content/tasks.py content/test_video_request_capacity.py content/migrations/0017_video_request_capacity_indexes.py
           python -m ruff check content/models.py content/services/video_requests.py content/video_request_views.py content/tasks.py content/test_video_request_capacity.py content/migrations/0017_video_request_capacity_indexes.py
+          python -m black --check load_tests/video_burst_fixture.py load_tests/video_burst_report.py load_tests/test_video_burst_report.py
+          python -m ruff check load_tests/video_burst_fixture.py load_tests/video_burst_report.py load_tests/test_video_burst_report.py
       - name: Verify schema and migration consistency
         working-directory: backend
         run: |
@@ -93,3 +172,4 @@ jobs:
         run: |
           export DJANGO_SECRET_KEY="$(openssl rand -hex 48)"
           python manage.py test content.test_video_requests content.test_video_request_capacity --verbosity 1 --noinput
+

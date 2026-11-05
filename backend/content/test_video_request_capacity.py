@@ -394,9 +394,11 @@ class ConcurrentVideoRequestIdempotencyTest(TransactionTestCase):
                 1,
             )
 
-    def test_distinct_students_can_submit_simultaneous_api_checkouts(self):
+    def test_distinct_students_simultaneous_api_smoke(self):
         if connection.vendor != "postgresql":
             self.skipTest("PostgreSQL concurrency required")
+        # Small CI regression only. The required 50,000-submission acceptance
+        # uses load_tests/video_request_burst.mjs on distributed generators.
         count = 16
         students = [
             StudentRecord.objects.create(

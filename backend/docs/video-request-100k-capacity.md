@@ -13,6 +13,15 @@ This does **not** prove 100,000 requests at the same second, 100,000 video
 uploads at once, 100,000 finished videos, or guaranteed tutor delivery dates.
 Live traffic throughput needs representative load testing and scale budgeting.
 
+The requested simultaneous-submission acceptance target is now **50,000**.
+The small 16-thread regression test is only a CI smoke check. The new
+[50,000-submission runbook](../load_tests/VIDEO_REQUEST_50000.md) defines
+distinct identities, distributed synchronized multipart checkouts, measured
+client concurrency, preserved latency/error gates and separate server evidence.
+That target is **NOT RUN / NOT VERIFIED** against Amaris until hosting,
+test accounts and monitored load generators are available. Offline harness
+contracts and loopback mock results do not establish production capacity.
+
 The tutor video-production capacity is independent from web checkout capacity.
 The existing queue ETA default is only **two videos per day** unless a
 different `VIDEO_REQUEST_DAILY_CAPACITY` value and sufficient tutors are
@@ -95,3 +104,4 @@ checks and end-to-end retry behavior have been verified.
   request acceptance is unavailable until the account is restored.
 - No student records, real videos, messages or payments were created in the
   production database by this work; no deployments or billing changes.
+
