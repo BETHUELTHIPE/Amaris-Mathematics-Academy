@@ -65,7 +65,7 @@ class LiveClassLevelView(APIView):
 
 
 class LiveClassSlotResponseSerializer(serializers.Serializer):
-    id = serializers.UUIDField()
+    id = serializers.CharField()
     programme = serializers.CharField()
     programme_label = serializers.CharField()
     subject = serializers.CharField()
