@@ -1,0 +1,280 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amaris-config
+data:
+  DJANGO_DEBUG: "false"
+  DATABASE_SSL_REQUIRED: "true"
+  WEB_CONCURRENCY: "3"
+  CELERY_WORKER_PREFETCH_MULTIPLIER: "1"
+  PUBLIC_CONTENT_CACHE_SECONDS: "300"
+  SITE_BOOTSTRAP_CACHE_SECONDS: "60"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amaris-web
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: amaris-web
+  template:
+    metadata:
+      labels:
+        app: amaris-web
+    spec:
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: web
+          image: docker.io/bethuelm/amaris-mathematics-academy:REPLACE_WITH_FULL_GIT_SHA
+          imagePullPolicy: IfNotPresent
+          command: ["gunicorn", "amaris_cms.asgi:application", "--config", "/app/gunicorn.conf.py"]
+          envFrom:
+            - configMapRef:
+                name: amaris-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: amaris-secrets
+                  key: DATABASE_URL_POOLED
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: amaris-secrets
+                  key: DJANGO_SECRET_KEY
+            - name: CELERY_BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: amaris-secrets
+                  key: CELERY_BROKER_URL
+            - name: CELERY_RESULT_BACKEND
+              valueFrom:
+                secretKeyRef:
+                  name: amaris-secrets
+                  key: CELERY_RESULT_BACKEND
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet: {path: /health/ready/, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health/live/, port: http}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+          resources:
+            requests: {cpu: "500m", memory: "512Mi"}
+            limits: {cpu: "1500m", memory: "1Gi"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: amaris-web
+spec:
+  selector: {app: amaris-web}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: amaris-web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: amaris-web
+  minReplicas: 3
+  maxReplicas: 24
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 6
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: amaris-web
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: amaris-web
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: pgbouncer}
+  template:
+    metadata:
+      labels: {app: pgbouncer}
+    spec:
+      containers:
+        - name: pgbouncer
+          image: edoburu/pgbouncer:v1.24.1-p0
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: amaris-secrets
+                  key: DATABASE_URL_DIRECT
+            - name: POOL_MODE
+              value: transaction
+            - name: MAX_CLIENT_CONN
+              value: "2000"
+            - name: DEFAULT_POOL_SIZE
+              value: "50"
+            - name: RESERVE_POOL_SIZE
+              value: "10"
+            - name: SERVER_RESET_QUERY
+              value: DISCARD ALL
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            tcpSocket: {port: postgres}
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests: {cpu: "100m", memory: "64Mi"}
+            limits: {cpu: "500m", memory: "256Mi"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+spec:
+  selector: {app: pgbouncer}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-critical
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: celery-critical}
+  template:
+    metadata:
+      labels: {app: celery-critical}
+    spec:
+      terminationGracePeriodSeconds: 600
+      containers:
+        - name: worker
+          image: docker.io/bethuelm/amaris-mathematics-academy:REPLACE_WITH_FULL_GIT_SHA
+          command: ["celery", "-A", "amaris_cms", "worker", "--loglevel=INFO", "--queues=critical,default", "--concurrency=2", "--events"]
+          envFrom:
+            - configMapRef: {name: amaris-config}
+          env:
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: DATABASE_URL_POOLED}}
+            - name: DJANGO_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: DJANGO_SECRET_KEY}}
+            - name: CELERY_BROKER_URL
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: CELERY_BROKER_URL}}
+            - name: CELERY_RESULT_BACKEND
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: CELERY_RESULT_BACKEND}}
+          resources:
+            requests: {cpu: "500m", memory: "512Mi"}
+            limits: {cpu: "1500m", memory: "1Gi"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-notifications
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: celery-notifications}
+  template:
+    metadata:
+      labels: {app: celery-notifications}
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: docker.io/bethuelm/amaris-mathematics-academy:REPLACE_WITH_FULL_GIT_SHA
+          command: ["celery", "-A", "amaris_cms", "worker", "--loglevel=INFO", "--queues=notifications", "--concurrency=2", "--events"]
+          envFrom:
+            - configMapRef: {name: amaris-config}
+          env:
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: DATABASE_URL_POOLED}}
+            - name: DJANGO_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: DJANGO_SECRET_KEY}}
+            - name: CELERY_BROKER_URL
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: CELERY_BROKER_URL}}
+            - name: CELERY_RESULT_BACKEND
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: CELERY_RESULT_BACKEND}}
+          resources:
+            requests: {cpu: "100m", memory: "128Mi"}
+            limits: {cpu: "500m", memory: "512Mi"}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: amaris-cache-warm
+spec:
+  ttlSecondsAfterFinished: 1800
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: cache-warm
+          image: docker.io/bethuelm/amaris-mathematics-academy:REPLACE_WITH_FULL_GIT_SHA
+          command: ["python", "manage.py", "warm_public_cache"]
+          envFrom:
+            - configMapRef: {name: amaris-config}
+          env:
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: DATABASE_URL_POOLED}}
+            - name: DJANGO_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: DJANGO_SECRET_KEY}}
+            - name: DJANGO_CACHE_URL
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: DJANGO_CACHE_URL}}
+            - name: DJANGO_PUBLIC_CACHE_URL
+              valueFrom: {secretKeyRef: {name: amaris-secrets, key: DJANGO_PUBLIC_CACHE_URL}}

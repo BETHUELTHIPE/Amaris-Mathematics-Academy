@@ -1,0 +1,44 @@
+name: Format Invoice Release Files
+
+on:
+  push:
+    branches: [render-live-current-20260918]
+    paths:
+      - ".github/workflows/format-invoice-release.yml"
+      - "backend/content/services/invoices.py"
+      - "backend/content/services/payments.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-invoice-release
+  cancel-in-progress: true
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: render-live-current-20260918
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Format release files with pinned Black
+        run: |
+          python -m pip install --disable-pip-version-check black==26.5.1
+          black backend/content/services/invoices.py backend/content/services/payments.py
+      - name: Commit formatting if needed
+        shell: bash
+        run: |
+          if git diff --quiet -- backend/content/services/invoices.py backend/content/services/payments.py; then
+            echo "Release files already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/content/services/invoices.py backend/content/services/payments.py
+          git commit -m "Format invoice production release files"
+          git push origin HEAD:render-live-current-20260918

@@ -1,0 +1,17 @@
+# Production migration register
+
+Every schema change must use the expand/migrate/contract procedure in `DISASTER_RECOVERY.md`. The release owner records measured runtime and lock observations from staging before production. Application rollback is preferred while the schema remains backward-compatible; destructive schema reversal is never improvised.
+
+| Migration | Change class | Lock/runtime risk | Reversibility | Production rollback decision |
+|---|---|---|---|---|
+| `0001_initial` | Initial content, student, enrolment and payment schema | High if applied to an already populated database; normal only for an empty initial deployment | Django can technically reverse the initial schema by dropping application tables, which is destructive | **Never reverse on populated production.** Roll application forward/fix or restore the verified pre-migration snapshot into a new database and switch traffic after validation. |
+| `0002_payment_reliability` | Adds gateway verification fields and `PaymentReconciliationRun` | Low–medium; table alteration plus one new table | Fields/table are schema-reversible, but reversing after verification/reconciliation data exists discards audit evidence | Roll the application image first. Reverse only against a restored production-like copy after proving no required verification/reconciliation evidence will be lost; otherwise forward-fix or restore snapshot. |
+| `0003_announcement_announcement_live_idx_and_more` | Adds composite/partial indexes for public content, enrolments and payments | Medium on large tables because index creation can consume I/O and lock resources depending on PostgreSQL execution | Index operations are reversible without deleting business rows | Prefer leaving useful indexes in place during app rollback. Reverse only after staging proves lock/runtime is acceptable and the previous release does not depend on a conflicting index definition. |
+| `0004_payment_authority` | Creates webhook event, invoice, service-ticket and notification-outbox tables plus uniqueness/indexes | Medium; creates several tables/indexes and payment-integrity constraints | Schema-reversible but reverse drops payment/webhook/invoice/outbox evidence | Treat as **high-risk once populated**. Require verified pre-migration backup. Do not reverse after live payment events exist; roll application back only while compatible, otherwise forward-fix or restore a verified recovery point and reconcile gateway events. |
+| `0005_payment_status_cancelled` | Extends payment status choices with `cancelled` | Low; metadata/field alteration | Reversible only if no row contains a value unsupported by the previous state | Before reversing, query for `cancelled` rows. If any exist, do not reverse; keep the compatible schema and roll application forward/fix. |
+
+## Required release record for every new migration
+
+Before production, append a row to this register containing: migration name, affected tables, expected lock type/duration, staging runtime with production-sized data, backward compatibility, reverse-operation test result, backup requirement, rollback/forward-fix decision, reviewer, and evidence link/run ID.
+
+High-risk migrations must pass the release workflow's pre-migration backup gate and produce a non-empty recovery-point identifier before deployment begins.

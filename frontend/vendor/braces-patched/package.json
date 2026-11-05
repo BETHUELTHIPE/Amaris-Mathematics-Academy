@@ -1,0 +1,12 @@
+{
+  "name": "braces",
+  "description": "Amaris security backport of braces 3.0.3 with nesting-depth guards for CVE-2026-93687.",
+  "version": "3.0.4-amaris.0",
+  "homepage": "https://github.com/micromatch/braces",
+  "repository": "micromatch/braces",
+  "license": "MIT",
+  "files": ["index.js", "lib"],
+  "main": "index.js",
+  "engines": {"node": ">=8.3"},
+  "dependencies": {"fill-range": "^7.1.1"}
+}

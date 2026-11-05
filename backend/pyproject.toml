@@ -1,0 +1,30 @@
+[tool.black]
+line-length = 120
+target-version = ["py313"]
+extend-exclude = "/migrations/"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["amaris_cms", "content"]
+
+[tool.mypy]
+python_version = "3.13"
+plugins = ["mypy_django_plugin.main"]
+files = ["amaris_cms", "content/services", "content/tasks.py", "content/management/commands"]
+exclude = ["migrations"]
+ignore_missing_imports = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_equality = true
+
+[tool.django-stubs]
+django_settings_module = "amaris_cms.settings"

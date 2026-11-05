@@ -1,0 +1,35 @@
+name: Private Student and Tutor Dashboard Performance Acceptance
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-render-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install pinned frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Verify types and lint all dashboard changes
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npx eslint app/dashboard/ app/tutor/dashboard/page.tsx components/site/private-pagination.tsx lib/private-pagination.ts tests/private-dashboard-pagination.test.mjs
+      - name: Verify page boundaries, security and workflow contracts
+        working-directory: frontend
+        run: |
+          node --test tests/private-dashboard-pagination.test.mjs tests/dashboard-streaming-performance.test.mjs tests/student-responsive-contract.test.mjs tests/tutor-portal-contract.test.mjs tests/tutor-applications.test.mjs

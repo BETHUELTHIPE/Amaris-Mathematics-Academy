@@ -1,0 +1,29 @@
+# Repository-wide generated and sensitive files
+.DS_Store
+*.pem
+*.py[cod]
+__pycache__/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Local environment files. Commit only the safe templates.
+.env*
+!frontend/.env.example
+!backend/.env.example
+
+# Shared generated work
+/outputs/
+/work/
+/.venv/
+
+# Django backend runtime output
+/backend/staticfiles/
+/backend/media/
+/backend/.venv/
+/backend/db.sqlite3
+/backend/celerybeat-schedule*
+/backend/load_tests/results/
+
+# Frontend-specific generated files are kept in frontend/.gitignore.

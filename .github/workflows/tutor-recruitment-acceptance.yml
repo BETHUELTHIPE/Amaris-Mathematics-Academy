@@ -1,0 +1,66 @@
+name: Tutor recruitment acceptance
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tutor-recruitment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  applicant-journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Pin the paired backend contract; changing it requires an explicit review.
+      TUTOR_BACKEND_REF: 3caeeaa625c43409dc587aee9d488f5aa836875f
+      TUTOR_REQUIRE_SIX_DOCUMENTS: "true"
+      TUTOR_E2E_ARTIFACTS: ${{ github.workspace }}/artifacts/tutor-recruitment
+      TUTOR_BACKEND_ROOT: ${{ github.workspace }}/paired-backend/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TUTOR_BACKEND_REF }}
+          path: paired-backend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Type, lint and applicant contract tests
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+      - name: Install isolated backend and browser harness
+        run: |
+          pip install -r paired-backend/backend/requirements.txt -r frontend/e2e/requirements.txt
+      - name: Build the Render Node runtime
+        working-directory: frontend
+        run: |
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Register, verify, log in, apply, upload and acknowledge
+        env:
+          TUTOR_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: python frontend/e2e/tutor_recruitment.py
+      - name: Preserve synthetic browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tutor-recruitment-evidence
+          path: artifacts/tutor-recruitment
+          retention-days: 7

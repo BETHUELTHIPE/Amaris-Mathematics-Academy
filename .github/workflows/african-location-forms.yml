@@ -1,0 +1,142 @@
+name: African location forms
+on:
+  push:
+    branches: [feat/african-location-forms-20261022]
+  pull_request:
+    branches: [render-live-current-20260918]
+permissions:
+  contents: read
+concurrency:
+  group: african-location-forms-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_ci
+          POSTGRES_USER: amaris_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U amaris_ci -d amaris_ci" --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:8-alpine
+        ports: ['6379:6379']
+    env:
+      DJANGO_DEBUG: 'false'
+      DJANGO_SECRET_KEY: disposable-location-ci-secret-no-real-data-20261022
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      SUPABASE_DATABASE_REQUIRED: 'false'
+      DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_ci
+      DATABASE_SSL_REQUIRED: 'false'
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: '0'
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+      EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1401bb0e20467aa345bc909e30b35d227cd374da
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: python -m pip install -r backend/requirements-dev.txt
+      - name: Backend quality, compatible migration and complete regression
+        working-directory: backend
+        run: |
+          black --check .
+          ruff check .
+          mypy
+          python manage.py check --deploy --fail-level ERROR
+          python manage.py spectacular --file /tmp/location-api.yaml --validate --fail-on-warn
+          python manage.py makemigrations --check --dry-run
+          python manage.py migrate --noinput
+          python manage.py collectstatic --noinput
+          python manage.py test
+      - name: Python dependency security
+        run: python -m pip_audit -r backend/requirements.txt
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble
+      options: --init --ipc=host --user 1001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - run: python -m pip install playwright==1.62.0
+      - name: Frontend checks and release build
+        id: quality
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm audit --omit=dev --audit-level=high
+          npm run build
+          npm run test:unit
+          npm run check:performance
+      - name: Browser executable paths
+        run: |
+          python - <<'PY'
+          import os
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              with open(os.environ['GITHUB_ENV'], 'a') as env:
+                  for name in ('CHROME_PATH', 'PUPPETEER_EXECUTABLE_PATH'):
+                      env.write(name + '=' + p.chromium.executable_path + '\n')
+          PY
+      - name: Existing mobile and desktop Lighthouse gates
+        id: lighthouse
+        working-directory: frontend
+        run: npm run test:lighthouse
+      - name: Explain any retained Lighthouse performance failure
+        if: ${{ !cancelled() && steps.lighthouse.outcome == 'failure' }}
+        working-directory: frontend
+        run: node scripts/performance/summarize-lighthouse-bottlenecks.mjs .lighthouseci/mobile
+      - name: Build Render Node target with isolated real-component fixture
+        id: render_build
+        if: ${{ !cancelled() && steps.quality.outcome == 'success' }}
+        working-directory: frontend
+        run: |
+          mkdir -p app/location-test-fixture
+          cp e2e/fixtures/location-application-page.tsx app/location-test-fixture/page.tsx
+          npm install --no-save nitro @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Cross-browser forms and JavaScript-disabled picker; no POSTs
+        if: ${{ !cancelled() && steps.render_build.outcome == 'success' }}
+        working-directory: frontend
+        shell: bash
+        run: |
+          NODE_ENV=production HOST=0.0.0.0 PORT=3000 node .output/server/index.mjs > /tmp/location-node.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..45}; do
+            if curl --fail --silent http://127.0.0.1:3000/contact >/dev/null; then break; fi
+            if [ "$attempt" -eq 45 ]; then cat /tmp/location-node.log; exit 1; fi
+            sleep 2
+          done
+          python e2e/locations_browser.py
+          npm run test:accessibility
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: african-location-browser-evidence
+          path: |
+            frontend/artifacts/locations/
+            frontend/.lighthouseci/
+            /tmp/location-node.log
+          if-no-files-found: ignore
+          include-hidden-files: true

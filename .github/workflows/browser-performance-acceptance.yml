@@ -1,0 +1,102 @@
+name: Browser LCP CLS and Mobile Responsiveness
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/app/page.tsx'
+      - 'frontend/app/courses/page.tsx'
+      - 'frontend/app/globals.css'
+      - 'frontend/components/site/header.tsx'
+      - 'frontend/components/site/header-navigation.tsx'
+      - 'frontend/e2e/public_browser_performance.py'
+      - 'frontend/scripts/performance/summarize-lighthouse-bottlenecks.mjs'
+      - 'frontend/scripts/performance/run-lighthouse.sh'
+      - '.github/workflows/browser-performance-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-performance:
+    runs-on: ubuntu-latest
+    # Use the same reproducible browser toolchain as the location/release gates.
+    # Unpinned Chromium snapshots produced NO_NAVSTART and inconsistent scores.
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble
+      options: --init --ipc=host --user 1001
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --include=dev
+      - name: Type-check, lint and run public contract tests
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+      - name: Install browser harness
+        run: python -m pip install -r frontend/e2e/requirements.txt
+      - name: Verify pinned browser and expose executable paths
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from importlib.metadata import version
+          from playwright.sync_api import sync_playwright
+
+          assert version("playwright") == "1.62.0"
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              print("Pinned Chromium:", browser.version, flush=True)
+              browser.close()
+              with open(os.environ["GITHUB_ENV"], "a") as env:
+                  for name in ("AMARIS_CHROME_PATH", "CHROME_PATH"):
+                      env.write(name + "=" + p.chromium.executable_path + "\n")
+          PY
+      - name: Build production-equivalent Nitro Node server
+        working-directory: frontend
+        run: |
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Verify 320/390/768/1440 viewport, LCP, CLS and horizontal overflow
+        env:
+          AMARIS_CHROME_PATH: ${{ env.AMARIS_CHROME_PATH }}
+        run: python -u frontend/e2e/public_browser_performance.py
+      - name: Run existing strict mobile Lighthouse LCP, CLS and accessibility gate
+        working-directory: frontend
+        env:
+          CHROME_PATH: ${{ env.AMARIS_CHROME_PATH }}
+        run: npm run test:lighthouse:mobile
+      - name: Diagnose mobile LCP, JavaScript blocking and unused bundles
+        if: always()
+        working-directory: frontend
+        shell: bash
+        run: |
+          node scripts/performance/summarize-lighthouse-bottlenecks.mjs .lighthouseci/mobile | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Preserve Chrome screenshots and browser metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-public-browser-performance
+          path: |
+            frontend/artifacts/browser-performance/
+            frontend/.lighthouseci/mobile/
+          retention-days: 7
+          if-no-files-found: warn

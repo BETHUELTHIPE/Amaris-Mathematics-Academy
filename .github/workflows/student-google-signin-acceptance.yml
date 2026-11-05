@@ -1,0 +1,35 @@
+name: Student Google Sign-In Acceptance
+
+on:
+  push:
+    branches:
+      - fix/student-google-signin-only-20261019
+  pull_request:
+    branches:
+      - render-live-current-20260918
+
+permissions:
+  contents: read
+
+jobs:
+  google-student-signin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install lockfile dependencies
+        run: npm ci
+      - name: Verify Google social provider and absence of GitHub student login
+        run: node --test tests/google-registration.test.mjs tests/registration-actions.test.mjs
+      - name: Check TypeScript safety
+        run: npm run typecheck

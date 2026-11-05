@@ -1,0 +1,52 @@
+import { SCHOOL_GRADES, isSchoolProgramme } from "./school-curriculum.mjs";
+
+/**
+ * Student-facing grade/level choices are independent of tutor availability.
+ * Tutor-specific labels can be added without hiding the standard curriculum choices.
+ */
+export const programmes = [
+  ["caps", "CAPS"],
+  ["ieb", "IEB"],
+  ["tvet", "TVET"],
+  ["university", "University"],
+];
+
+export const subjects = [
+  ["mathematics", "Mathematics"],
+  ["mathematical_literacy", "Mathematical Literacy"],
+];
+
+/** @type {Record<string, readonly string[]>} */
+export const gradeLevelsByProgramme = {
+  caps: SCHOOL_GRADES,
+  ieb: SCHOOL_GRADES,
+  tvet: [
+    "N2",
+    "N3",
+    "N4",
+    "N5",
+    "N6",
+    "NC(V) Level 2",
+    "NC(V) Level 3",
+    "NC(V) Level 4",
+  ],
+  university: ["Year 1", "Year 2", "Year 3", "Year 4", "Honours"],
+};
+
+/**
+ * @param {string} programme
+ * @param {string[]} [offeredLevels]
+ * @param {string} [subject]
+ * @returns {string[]}
+ */
+export function getGradeLevels(programme, offeredLevels = [], subject = "") {
+  const standard = gradeLevelsByProgramme[programme];
+  if (!standard) return [];
+  const additional = offeredLevels
+    .filter((item) => typeof item === "string" && item.trim())
+    .map((item) => item.trim())
+    .sort((a, b) => a.localeCompare(b, "en-ZA", { numeric: true }));
+  return [...new Set([...standard, ...additional])].filter(level =>
+    !(isSchoolProgramme(programme) && subject === "mathematical_literacy" && ["Grade 7", "Grade 8", "Grade 9"].includes(level)),
+  );
+}

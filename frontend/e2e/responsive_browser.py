@@ -1,0 +1,481 @@
+from __future__ import annotations
+
+import os
+import re
+import sys
+import time
+import traceback
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from playwright.sync_api import Browser, Page, sync_playwright
+
+BASE_URL = os.getenv("E2E_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
+ARTIFACT_DIR = Path(os.getenv("E2E_ARTIFACT_DIR", "artifacts/e2e"))
+ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+
+VIEWPORTS = {
+    "narrow-mobile": {"width": 320, "height": 700},
+    "mobile": {"width": 390, "height": 844},
+    "tablet": {"width": 834, "height": 1112},
+    "desktop": {"width": 1440, "height": 1000},
+}
+
+COURSE_PATH = "/courses/caps-grade-12-mathematics"
+AXE_CORE_PATH = Path(__file__).resolve().parents[1] / "node_modules" / "axe-core" / "axe.min.js"
+WCAG22_PATHS = ("/", "/courses", "/contact", "/login", "/register")
+NAMED_DEVICES = ("Pixel 7", "iPhone 13")
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+def goto(page: Page, path: str) -> None:
+    response = page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded", timeout=30_000)
+    require(response is not None, f"No HTTP response for {path}")
+    require(response.status < 400, f"{path} returned HTTP {response.status}")
+    page.wait_for_timeout(150)
+
+
+def assert_no_horizontal_overflow(page: Page, surface: str) -> None:
+    metrics = page.evaluate(
+        """() => ({
+          viewport: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth,
+          bodyWidth: document.body.scrollWidth,
+        })"""
+    )
+    widest = max(metrics["documentWidth"], metrics["bodyWidth"])
+    require(
+        widest <= metrics["viewport"] + 2,
+        f"{surface} overflows horizontally: viewport={metrics['viewport']} content={widest}",
+    )
+
+
+def check_navigation(page: Page, viewport_name: str) -> None:
+    goto(page, "/")
+    require(page.get_by_role("link", name="Amaris Mathematics Academy home").is_visible(), "Home link is not visible")
+    if viewport_name in {"narrow-mobile", "mobile", "tablet"}:
+        menu = page.locator("summary").filter(has_text="Menu")
+        require(menu.is_visible(), f"Compact navigation menu is missing on {viewport_name}")
+        menu.click()
+        courses = page.locator('details a[href="/courses"]').first
+        require(courses.is_visible(), f"Courses navigation is not available from the {viewport_name} menu")
+    else:
+        navigation = page.get_by_role("navigation", name="Main navigation")
+        require(navigation.is_visible(), "Desktop main navigation is not visible")
+        require(navigation.get_by_role("link", name="Courses").is_visible(), "Desktop Courses link is not visible")
+    assert_no_horizontal_overflow(page, "navigation")
+
+
+def check_form(page: Page) -> None:
+    goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
+    page.locator("#fullName").fill("Responsive Test Student")
+    page.locator("#email").fill("responsive.student@example.test")
+    page.locator("#phone").fill("0710000000")
+    page.locator("#enquiryType").select_option("technical-support")
+    page.locator("#message").fill("Synthetic responsive browser test message with sufficient safe detail.")
+    checkbox = page.locator("#consent")
+    checkbox.check()
+
+    require(page.locator("#fullName").input_value() == "Responsive Test Student", "Full-name field did not retain its value")
+    require(page.locator("#email").input_value() == "responsive.student@example.test", "Email field did not retain its value")
+    require(page.locator("#enquiryType").input_value() == "technical-support", "Enquiry type was not selected")
+    require(checkbox.is_checked(), "Consent checkbox was not selected")
+    require(page.get_by_role("button", name=re.compile("Send enquiry")).is_visible(), "Enquiry submit button is not visible")
+    assert_no_horizontal_overflow(page, "enquiry form")
+
+
+
+def check_offline_recovery(page: Page) -> None:
+    goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
+    page.locator("#fullName").fill("Offline Synthetic Student")
+    page.locator("#email").fill("offline.student@example.test")
+    page.locator("#phone").fill("0710000000")
+    page.locator("#enquiryType").select_option("technical-support")
+    page.locator("#message").fill("Synthetic offline submission check with enough safe detail.")
+    page.locator("#consent").check()
+
+    submit_button = page.get_by_role("button", name=re.compile("Send enquiry"))
+    require(submit_button.is_visible(), "Offline recovery submit button is not visible")
+    require(submit_button.is_enabled(), "Offline recovery submit button is disabled before disconnect")
+
+    page.context.set_offline(True)
+    try:
+        # Confirm browser offline state before submitting. This keeps the test
+        # deterministic if Chromium dispatches its offline event asynchronously.
+        page.wait_for_function("() => navigator.onLine === false", timeout=5_000)
+        # Firefox mobile emulation can hold pointer-actionability checks while
+        # the browser is offline. Native keyboard activation still exercises
+        # the real form submit handler without bypassing the application logic.
+        submit_button.focus()
+        page.keyboard.press("Enter")
+        notice = page.locator("#connection-recovery")
+        notice.wait_for(state="visible", timeout=5_000)
+        require(notice.is_visible(), "Connection recovery notice did not appear while offline")
+        require(
+            notice.locator("[data-recovery-title]").inner_text() == "Connection lost",
+            "Offline recovery title is incorrect",
+        )
+        require(
+            "Nothing will be submitted until you reconnect." in notice.locator("[data-recovery-message]").inner_text(),
+            "Offline submission protection message is missing",
+        )
+        require(urlsplit(page.url).path == "/contact", "Offline form submission unexpectedly navigated away")
+    finally:
+        page.context.set_offline(False)
+
+    restored_title = page.locator("#connection-recovery [data-recovery-title]")
+    restored_title.wait_for(state="visible", timeout=5_000)
+    page.wait_for_function(
+        "() => document.querySelector('#connection-recovery [data-recovery-title]')?.textContent === 'Connection restored'",
+        timeout=5_000,
+    )
+    require(
+        restored_title.inner_text() == "Connection restored",
+        "Connection-restored state did not appear after reconnecting",
+    )
+
+def check_slow_submission(page: Page) -> None:
+    goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
+    page.locator("#fullName").fill("Slow Network Synthetic Student")
+    page.locator("#email").fill("slow.network.student@example.test")
+    page.locator("#phone").fill("0710000000")
+    page.locator("#enquiryType").select_option("technical-support")
+    page.locator("#message").fill("Synthetic delayed submission used to verify slow-network recovery without data loss.")
+    page.locator("#consent").check()
+
+    def delay_contact_post(route, request) -> None:
+        if request.method == "POST":
+            time.sleep(2.0)
+        route.continue_()
+
+    page.route("**/contact*", delay_contact_post)
+    started = time.monotonic()
+    try:
+        page.get_by_role("button", name=re.compile("Send enquiry")).click()
+        success = page.get_by_text("Enquiry received", exact=True)
+        success.wait_for(state="visible", timeout=12_000)
+        elapsed = time.monotonic() - started
+        require(elapsed >= 1.8, f"Slow-network delay was not exercised: elapsed={elapsed:.2f}s")
+        require(success.is_visible(), "Delayed enquiry did not recover to a success state")
+        require(urlsplit(page.url).path == "/contact", "Delayed submission navigated away unexpectedly")
+    finally:
+        page.unroute("**/contact*", delay_contact_post)
+
+
+def check_dashboard(page: Page) -> None:
+    goto(page, "/dashboard")
+    require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
+    require(page.get_by_role("heading", name=re.compile(r"Welcome, Responsive\.")).is_visible(), "Synthetic student dashboard did not render")
+    require(page.get_by_role("navigation", name="Dashboard navigation").is_visible(), "Dashboard navigation is not visible")
+    # On a 320px screen the shelf is below the fold. Scroll the actual
+    # anchor into view before asserting; do not treat offscreen content as missing.
+    shelf = page.locator("#my-courses")
+    require(shelf.count() == 1, "Dashboard needs exactly one My courses target")
+    shelf.scroll_into_view_if_needed(timeout=10000)
+    require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(),
+            "Dashboard course shelf is not visible after scrolling")
+
+    navigation = page.get_by_role("navigation", name="Dashboard navigation")
+    require(navigation.is_visible(), "Dashboard navigation is not visible")
+    course_link = navigation.get_by_role("link", name="My courses")
+    require(course_link.is_visible(), "My courses is not navigable on this viewport")
+    require(course_link.get_attribute("href") == "/dashboard#my-courses", "My courses does not link to its section")
+    require(page.locator("#my-courses").count() == 1, "Dashboard needs exactly one My courses target")
+    course_link.focus()
+    require(course_link.evaluate("(el) => document.activeElement === el"), "Dashboard course link is not keyboard focusable")
+    require(page.get_by_text("Your course shelf is waiting.", exact=True).is_visible(), "Dashboard course shelf is not visible")
+    assert_no_horizontal_overflow(page, "dashboard")
+
+    orders_link = navigation.get_by_role("link", name="Orders & payments")
+    notifications_link = navigation.get_by_role("link", name="Notifications")
+    require(orders_link.get_attribute("href") == "/dashboard/orders", "Orders navigation has the wrong destination")
+    require(notifications_link.get_attribute("href") == "/dashboard/notifications", "Notifications navigation has the wrong destination")
+
+    goto(page, "/dashboard/orders")
+    require(page.get_by_role("heading", name="Orders & payments", exact=True).is_visible(), "Orders page is not visible")
+    require(page.get_by_role("heading", name="No orders yet.", exact=True).is_visible(), "Orders empty state is not visible")
+    assert_no_horizontal_overflow(page, "orders")
+
+    goto(page, "/dashboard/notifications")
+    require(page.get_by_role("heading", name="Notifications", exact=True).is_visible(), "Notifications page is not visible")
+    require(page.get_by_role("heading", name="You’re all caught up.", exact=True).is_visible(), "Notifications empty state is not visible")
+    assert_no_horizontal_overflow(page, "notifications")
+
+    goto(page, "/dashboard")
+
+
+def check_table(page: Page) -> None:
+    goto(page, "/documents/invoice")
+    table = page.get_by_role("table")
+    require(table.is_visible(), "Invoice table is not visible")
+    for heading in ("Description", "Qty", "Unit price", "Amount"):
+        require(page.get_by_role("columnheader", name=heading).is_visible(), f"Invoice column {heading!r} is not visible")
+    require(page.get_by_text("Mathematics course enrolment", exact=True).is_visible(), "Invoice line item is not visible")
+    assert_no_horizontal_overflow(page, "invoice table")
+
+
+def check_checkout(page: Page) -> None:
+    goto(page, COURSE_PATH)
+    require(page.get_by_text("Complete course access", exact=True).is_visible(), "Checkout entry card is not visible")
+    require(page.get_by_text(re.compile("secure PayFast checkout", re.IGNORECASE)).first.is_visible(), "PayFast checkout guidance is not visible")
+    cta = page.get_by_role("link", name=re.compile("Continue to enrol"))
+    require(cta.is_visible(), "Verified-student checkout CTA is not visible")
+    href = cta.get_attribute("href") or ""
+    require(href.startswith("/checkout/"), "Checkout entry CTA does not open the protected checkout flow")
+
+    goto(page, "/payments/pending")
+    require(
+        page.get_by_role("heading", name="Your payment is still being confirmed.").is_visible(),
+        "Payment-pending recovery state is not visible",
+    )
+    require(page.get_by_text(re.compile("Please do not pay again", re.IGNORECASE)).is_visible(), "Duplicate-payment warning is not visible")
+    assert_no_horizontal_overflow(page, "checkout/payment state")
+
+
+def check_lesson_interface(page: Page) -> None:
+    goto(page, COURSE_PATH)
+    require(page.get_by_text("Course structure", exact=True).is_visible(), "Course structure is not visible")
+    require(page.get_by_text("Algebra & equations", exact=True).is_visible(), "Representative lesson/module item is not visible")
+    require(
+        page.get_by_text("Video explanation · worked examples · practice", exact=True).first.is_visible(),
+        "Lesson delivery summary is not visible",
+    )
+    assert_no_horizontal_overflow(page, "lesson/course structure")
+
+
+CHECKS = (
+    ("navigation", check_navigation),
+    ("forms", check_form),
+    ("offline-recovery", check_offline_recovery),
+    ("slow-submission", check_slow_submission),
+    ("dashboard", check_dashboard),
+    ("tables", check_table),
+    ("checkout", check_checkout),
+    ("lesson-interface", check_lesson_interface),
+)
+
+
+def run_context(browser: Browser, engine_name: str, viewport_name: str, viewport: dict[str, int]) -> list[str]:
+    failures: list[str] = []
+    context = browser.new_context(
+        viewport=viewport,
+        locale="en-ZA",
+        timezone_id="Africa/Johannesburg",
+        reduced_motion="reduce",
+    )
+    page = context.new_page()
+    page.set_default_timeout(10_000)
+
+    for check_name, check in CHECKS:
+        try:
+            if check_name == "navigation":
+                check(page, viewport_name)
+            else:
+                check(page)
+            print(f"PASS {engine_name:8} {viewport_name:7} {check_name}")
+        except Exception as exc:  # noqa: BLE001 - aggregate all browser failures before exiting
+            screenshot = ARTIFACT_DIR / f"{engine_name}-{viewport_name}-{check_name}.png"
+            try:
+                page.screenshot(path=str(screenshot), full_page=True)
+            except Exception:
+                pass
+            failures.append(f"{engine_name}/{viewport_name}/{check_name}: {exc}")
+            print(f"FAIL {engine_name:8} {viewport_name:7} {check_name}: {exc}", file=sys.stderr)
+            traceback.print_exc()
+
+    context.close()
+    return failures
+
+
+
+def run_named_device(playwright, device_name: str) -> list[str]:
+    failures: list[str] = []
+    descriptor = dict(playwright.devices[device_name])
+    engine_name = descriptor.pop("default_browser_type")
+    browser_type = getattr(playwright, engine_name)
+    browser = browser_type.launch(headless=True)
+    safe_name = device_name.lower().replace(" ", "-")
+    context = browser.new_context(
+        **descriptor,
+        locale="en-ZA",
+        timezone_id="Africa/Johannesburg",
+        reduced_motion="reduce",
+    )
+    page = context.new_page()
+    page.set_default_timeout(15_000)
+
+    try:
+        for check_name, check in CHECKS:
+            try:
+                if check_name == "navigation":
+                    check(page, "mobile")
+                else:
+                    check(page)
+                print(f"PASS {engine_name:8} {safe_name:14} {check_name}")
+            except Exception as exc:  # noqa: BLE001
+                screenshot = ARTIFACT_DIR / f"{safe_name}-{check_name}-failure.png"
+                try:
+                    page.screenshot(path=str(screenshot), full_page=True)
+                except Exception:
+                    pass
+                failures.append(f"{device_name}/{check_name}: {exc}")
+                print(f"FAIL {engine_name:8} {safe_name:14} {check_name}: {exc}", file=sys.stderr)
+                traceback.print_exc()
+
+        for route, slug in (
+            ("/", "home"),
+            ("/courses", "courses"),
+            ("/contact", "contact"),
+            ("/dashboard", "dashboard"),
+        ):
+            try:
+                goto(page, route)
+                page.screenshot(path=str(ARTIFACT_DIR / f"{safe_name}-{slug}.png"), full_page=True)
+            except Exception:
+                pass
+    finally:
+        context.close()
+        browser.close()
+    return failures
+
+
+def check_wcag22_aa(browser: Browser, engine_name: str) -> list[str]:
+    failures: list[str] = []
+    if not AXE_CORE_PATH.exists():
+        return [f"{engine_name}/wcag22: axe-core bundle is missing at {AXE_CORE_PATH}"]
+
+    axe_source = AXE_CORE_PATH.read_text(encoding="utf-8")
+    context = browser.new_context(
+        viewport=VIEWPORTS["desktop"],
+        locale="en-ZA",
+        timezone_id="Africa/Johannesburg",
+        reduced_motion="reduce",
+    )
+    page = context.new_page()
+    page.set_default_timeout(15_000)
+    try:
+        for path in WCAG22_PATHS:
+            try:
+                goto(page, path)
+                page.add_script_tag(content=axe_source)
+                result = page.evaluate(
+                    """async () => await axe.run(document, {
+                      runOnly: {
+                        type: 'tag',
+                        values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'],
+                      },
+                      resultTypes: ['violations'],
+                    })"""
+                )
+                violations = result.get("violations", [])
+                if violations:
+                    details = ", ".join(
+                        f"{item.get('id')}({len(item.get('nodes', []))})" for item in violations[:12]
+                    )
+                    raise AssertionError(f"WCAG 2.2 A/AA violations: {details}")
+                print(f"PASS {engine_name:8} wcag22  {path}")
+            except Exception as exc:  # noqa: BLE001
+                screenshot = ARTIFACT_DIR / f"{engine_name}-wcag22-{path.strip('/').replace('/', '-') or 'home'}.png"
+                try:
+                    page.screenshot(path=str(screenshot), full_page=True)
+                except Exception:
+                    pass
+                failures.append(f"{engine_name}/wcag22/{path}: {exc}")
+                print(f"FAIL {engine_name:8} wcag22  {path}: {exc}", file=sys.stderr)
+                traceback.print_exc()
+    finally:
+        context.close()
+    return failures
+
+
+
+def check_no_javascript_progressive_enhancement(browser: Browser, engine_name: str) -> list[str]:
+    failures: list[str] = []
+    context = browser.new_context(
+        viewport=VIEWPORTS["mobile"],
+        locale="en-ZA",
+        timezone_id="Africa/Johannesburg",
+        java_script_enabled=False,
+    )
+    page = context.new_page()
+    page.set_default_timeout(15_000)
+    try:
+        goto(page, "/")
+        menu = page.locator("summary").filter(has_text="Menu")
+        require(menu.is_visible(), "No-JavaScript compact navigation menu is missing")
+        menu.click()
+        courses_link = page.locator('details a[href="/courses"]').first
+        require(courses_link.is_visible(), "Courses link is unavailable without JavaScript")
+        courses_link.focus()
+        page.keyboard.press("Enter")
+        page.wait_for_url("**/courses*", wait_until="domcontentloaded")
+        require("/courses" in page.url, "Navigation to courses failed without JavaScript")
+
+        goto(page, "/contact?country=ZA&province=Gauteng&city=Pretoria")
+        page.locator("#fullName").fill("No JS Synthetic Student")
+        page.locator("#email").fill("nojs.student@example.test")
+        page.locator("#phone").fill("0710000000")
+        page.locator("#enquiryType").select_option("course-guidance")
+        page.locator("#message").fill("Synthetic no JavaScript enquiry used only for progressive enhancement verification.")
+        page.locator("#consent").check(force=True)
+        submit = page.get_by_role("button", name=re.compile("Send enquiry"))
+        submit.focus()
+        page.keyboard.press("Enter")
+        page.wait_for_load_state("domcontentloaded")
+        success = page.get_by_text("Enquiry received", exact=True)
+        success.wait_for(state="visible", timeout=15_000)
+        require(
+            success.is_visible(),
+            "Contact form did not submit successfully without JavaScript",
+        )
+        print(f"PASS {engine_name:8} no-js   navigation-and-form")
+    except Exception as exc:  # noqa: BLE001
+        screenshot = ARTIFACT_DIR / f"{engine_name}-no-js-progressive-enhancement.png"
+        try:
+            page.screenshot(path=str(screenshot), full_page=True)
+        except Exception:
+            pass
+        failures.append(f"{engine_name}/no-js/navigation-and-form: {exc}")
+        print(f"FAIL {engine_name:8} no-js   navigation-and-form: {exc}", file=sys.stderr)
+        traceback.print_exc()
+    finally:
+        context.close()
+    return failures
+
+def main() -> int:
+    failures: list[str] = []
+    with sync_playwright() as playwright:
+        for engine_name in ("chromium", "firefox", "webkit"):
+            browser_type = getattr(playwright, engine_name)
+            browser = browser_type.launch(headless=True)
+            try:
+                for viewport_name, viewport in VIEWPORTS.items():
+                    failures.extend(run_context(browser, engine_name, viewport_name, viewport))
+                failures.extend(check_no_javascript_progressive_enhancement(browser, engine_name))
+                if engine_name == "chromium":
+                    failures.extend(check_wcag22_aa(browser, engine_name))
+            finally:
+                browser.close()
+
+        for device_name in NAMED_DEVICES:
+            failures.extend(run_named_device(playwright, device_name))
+
+    total = 3 * (len(VIEWPORTS) * len(CHECKS) + 1)
+    total += len(WCAG22_PATHS)
+    total += len(NAMED_DEVICES) * len(CHECKS)
+    passed = total - len(failures)
+    print(f"\nResponsive/browser checks: {passed}/{total} passed")
+    if failures:
+        print("\nFailures:", file=sys.stderr)
+        for failure in failures:
+            print(f"- {failure}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

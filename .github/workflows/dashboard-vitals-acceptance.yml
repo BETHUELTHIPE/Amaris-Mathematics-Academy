@@ -1,0 +1,65 @@
+name: Dashboard Vitals Privacy and Build Acceptance
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - 'frontend/components/site/dashboard-real-user-vitals.tsx'
+      - 'frontend/app/api/monitoring/web-vitals/route.ts'
+      - 'frontend/app/layout.tsx'
+      - 'frontend/tests/dashboard-real-user-vitals.test.mjs'
+      - 'frontend/e2e/live_tutor_dashboard_acceptance.py'
+      - '.github/workflows/dashboard-vitals-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-telemetry-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Verify TypeScript, lint, and privacy contracts
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm run typecheck
+          npm run lint
+          node --test tests/dashboard-real-user-vitals.test.mjs
+      - name: Build production-style Render Nitro server
+        working-directory: frontend
+        run: |
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Check live-equivalent public telemetry endpoint without private accounts
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=18202 HOST=127.0.0.1 NODE_ENV=production node .output/server/index.mjs > /tmp/dashboard-vitals-server.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 45); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18202/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          base=http://127.0.0.1:18202/api/monitoring/web-vitals
+          ok=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base" -H 'Origin: http://127.0.0.1:18202' -H 'Content-Type: application/json' --data '{"device":"mobile","page":"tutor_dashboard","metric":"LCP","value":2100}')
+          test "$ok" = 204 || { echo "expected safe telemetry 204, received $ok"; exit 1; }
+          echo "PASS bounded anonymous vital accepted"
+          cross=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base" -H 'Origin: https://untrusted.example' -H 'Content-Type: application/json' --data '{"device":"mobile","page":"tutor_dashboard","metric":"LCP","value":2100}')
+          test "$cross" = 403 || { echo "expected cross-origin 403, received $cross"; exit 1; }
+          echo "PASS foreign origin rejected"
+          extra=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base" -H 'Origin: http://127.0.0.1:18202' -H 'Content-Type: application/json' --data '{"device":"mobile","page":"tutor_dashboard","metric":"INP","value":100,"email":"should_not_log"}')
+          test "$extra" = 400 || { echo "expected disallowed field 400, received $extra"; exit 1; }
+          echo "PASS private or unexpected telemetry fields rejected"
+          if grep -q 'should_not_log' /tmp/dashboard-vitals-server.log; then echo "Unexpected private field reached logs"; exit 1; fi

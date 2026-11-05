@@ -1,0 +1,18 @@
+{
+  "source": "GeoNames",
+  "url": "https://download.geonames.org/export/dump/",
+  "license": "CC BY 4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "retrieved": "2026-10-22",
+  "selection": "countryInfo continent AF; first-level administrative divisions; cities500 populated places matched to admin1. Names are NFC-normalized and deduplicated. Unmatched places and smaller settlements can use the explicit Other option.",
+  "countries_and_territories": 58,
+  "provinces": 833,
+  "cities": 13594,
+  "unmatched_admin1_places": 81,
+  "sha256": {
+    "countryInfo.txt": "c55f638cfaafb4fe45a9aa15120a0f1f78e8a34a8e1847d7b9320cf740fbc9ab",
+    "cities500.zip": "3b8292a6ffcb11d87aa3b2dff47972fb0c8c0ed7245d54227db8f2ca1c81fc7f",
+    "readme.txt": "b1957379b6c1242c700c98ac9a8aa0a09f56c3c0a50ee72175527005f48ef2c5",
+    "admin1CodesASCII.txt": "b577baa3476bbe94f0454545e517e1835401d79c5b1105c8e02cf1d4a505e8ec"
+  }
+}
