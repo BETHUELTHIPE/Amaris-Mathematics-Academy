@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   Bell,
+  BarChart3,
   BookOpen,
   CreditCard,
   GitBranch,
@@ -8,10 +9,11 @@ import {
   UserRound,
 } from "lucide-react";
 
-export type DashboardSection = "overview" | "orders" | "notifications";
+export type DashboardSection = "overview" | "orders" | "notifications" | "analytics";
 
 const items = [
   { key: "overview", label: "Overview", href: "/dashboard", icon: LayoutDashboard },
+  { key: "analytics", label: "My analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { key: "courses", label: "My courses", href: "/dashboard#my-courses", icon: BookOpen },
   { key: "workflows", label: "My workflows", href: "/dashboard#my-workflows", icon: GitBranch },
   { key: "orders", label: "Orders & payments", href: "/dashboard/orders", icon: CreditCard },
@@ -37,3 +39,4 @@ export function DashboardNavigation({ active }: { active: DashboardSection }) {
     </nav>
   </aside>;
 }
+

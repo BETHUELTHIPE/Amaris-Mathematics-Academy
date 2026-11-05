@@ -123,6 +123,7 @@ export default async function TutorDashboardPage({
       </section>
 
       <div className="mx-auto max-w-7xl space-y-8 px-5 py-10 lg:px-8 lg:py-14">
+        <Link href="/tutor/analytics" className="flex min-w-0 items-center justify-between gap-4 rounded-2xl border border-[#cbdcf2] bg-[#edf4ff] px-5 py-5 text-[#143a68]"><span><strong className="block text-base">Your teaching insights</strong><span className="mt-1 block text-sm">Explore earnings, confirmed payouts and teaching activity in your preferred visual.</span></span><span aria-hidden="true" className="shrink-0 text-xl">→</span></Link>
         <Suspense fallback={<TutorEarningsSkeleton />}><TutorEarningsDetails pending={pendingEarnings} /></Suspense>
         {notices.success && <div role="status" className="flex items-center gap-3 rounded-xl border border-[#a7ddcb] bg-[#ebfbf4] p-4 text-sm text-[#136950]"><CheckCircle2 className="size-5" />{notices.success.slice(0, 180)}</div>}
         {notices.error && <div role="alert" className="rounded-xl border border-[#f5c2bf] bg-[#fff3f3] p-4 text-sm text-[#9b2525]">{notices.error.slice(0, 180)}</div>}
@@ -216,3 +217,4 @@ export default async function TutorDashboardPage({
     </main>
   );
 }
+

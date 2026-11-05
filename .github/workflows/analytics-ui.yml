@@ -1,0 +1,51 @@
+name: Analytics visual and privacy checks
+on:
+  push:
+    branches: [feat/student-tutor-analytics-20261105]
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths: [frontend/**, .github/workflows/analytics-ui.yml]
+permissions:
+  contents: read
+concurrency:
+  group: analytics-ui-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  analytics-visuals:
+    runs-on: ubuntu-24.04
+    container: mcr.microsoft.com/playwright/python:v1.62.0-noble
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install existing locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Frontend types, lint and analytics contracts
+        run: |
+          npm run typecheck
+          npm run lint
+          node --test tests/analytics.test.mjs
+      - name: Build actual chart component with isolated synthetic fixtures
+        run: node e2e/build-analytics-preview.mjs /tmp/analytics-preview
+      - name: Role, chart, mobile, keyboard-data, CSV and accessibility acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r e2e/requirements.txt
+          python -m http.server 4173 --bind 127.0.0.1 --directory /tmp/analytics-preview &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          python e2e/analytics_browser.py
+      - name: Upload synthetic-only screenshots and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analytics-visual-review
+          path: frontend/artifacts/analytics/
+          if-no-files-found: ignore
+          retention-days: 14
