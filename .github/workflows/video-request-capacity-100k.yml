@@ -53,6 +53,8 @@ jobs:
         with:
           python-version: "3.13"
       - uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: "2.3.0"
       - name: Offline manifest, target and evidence contracts
         working-directory: backend
         run: |
@@ -63,7 +65,7 @@ jobs:
         run: |
           python -m load_tests.video_burst_fixture --users 50000 --manifest "$VIDEO_LOAD_STUDENTS_FILE"
           export VIDEO_LOAD_RELEASE_AT_MS="$(python -c 'import time; print(int(time.time()*1000)+120000)')"
-          k6 inspect load_tests/video_request_burst.mjs > /tmp/video-burst-options.json
+          k6 inspect --include-system-env-vars load_tests/video_request_burst.mjs > /tmp/video-burst-options.json
           python -c 'import json; data=json.load(open("/tmp/video-burst-options.json")); assert data["scenarios"]["video_submission_burst"]["vus"] == 50000'
       - name: Four-user mock burst across two execution segments
         working-directory: backend
