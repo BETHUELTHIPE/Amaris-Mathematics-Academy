@@ -2,7 +2,8 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, IntegerField, OuterRef, Prefetch, Q, Subquery, Value
+from django.db.models.functions import Coalesce
 from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -114,7 +115,7 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseSerializer
     lookup_field = "slug"
     filterset_fields = ("category__slug", "curriculum", "academic_level", "featured")
-    search_fields = ("title", "short_description", "description", "curriculum", "academic_level")
+    search_fields = ("title", "short_description", "curriculum", "academic_level")
     ordering_fields = ("title", "price", "order", "created_at")
     ordering = ("order", "title", "pk")
 
@@ -129,15 +130,28 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
         module_queryset = CourseModule.objects.filter(is_published=True).prefetch_related(
             Prefetch("lessons", queryset=lesson_queryset)
         )
+        # Counting lessons via a JOIN would group all published courses
+        # before LIMIT/OFFSET. A correlated subquery keeps catalogue count()
+        # and pagination independent from the number of lessons in 50k+ courses.
+        lesson_totals = (
+            Lesson.objects.filter(
+                module__course_id=OuterRef("pk"),
+                module__is_published=True,
+                is_published=True,
+            )
+            .filter(Q(publish_at__isnull=True) | Q(publish_at__lte=now))
+            .order_by()
+            .values("module__course_id")
+            .annotate(total=Count("pk"))
+            .values("total")[:1]
+        )
         queryset = (
             Course.objects.filter(live_filter(now), status=Course.Status.PUBLISHED)
             .select_related("category")
             .annotate(
-                lesson_count=Count(
-                    "modules__lessons",
-                    filter=Q(modules__lessons__is_published=True)
-                    & (Q(modules__lessons__publish_at__isnull=True) | Q(modules__lessons__publish_at__lte=now)),
-                    distinct=True,
+                lesson_count=Coalesce(
+                    Subquery(lesson_totals, output_field=IntegerField()),
+                    Value(0),
                 )
             )
         )
