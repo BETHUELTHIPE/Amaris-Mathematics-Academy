@@ -37,7 +37,7 @@ type CmsCourse = {
   modules?: Array<{ title: string }>;
 };
 
-type Paginated<T> = { results: T[] };
+type Paginated<T> = { count: number; next: string | null; previous: string | null; results: T[] };
 type CmsBootstrap = {
   settings: CmsSettings | null;
   navigation: CmsNavigationItem[];
@@ -171,9 +171,90 @@ function mapCourse(course: CmsCourse): Course {
   };
 }
 
+export type CourseCatalog = {
+  courses: Course[];
+  count: number;
+  page: number;
+  pageSize: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+  available: boolean;
+};
+
+export type CourseCatalogOptions = {
+  page?: number;
+  query?: string;
+  programme?: string;
+};
+
+// A single bounded API page prevents a 500+ course catalogue from being
+// downloaded and filtered in the student's browser.
+const COURSE_PAGE_SIZE = 24;
+
+export async function getManagedCourseCatalog({
+  page = 1,
+  query = "",
+  programme = "",
+}: CourseCatalogOptions = {}): Promise<CourseCatalog> {
+  const safePage = Number.isSafeInteger(page) && page > 0 ? page : 1;
+  const safeQuery = query.trim().slice(0, 100);
+  const safeProgramme = ["CAPS", "TVET", "University"].includes(programme) ? programme : "";
+  const params = new URLSearchParams({ page: String(safePage), page_size: String(COURSE_PAGE_SIZE) });
+  if (safeQuery) params.set("search", safeQuery);
+  if (safeProgramme) params.set("programme", safeProgramme);
+
+  // Preserve local/demo builds without a CMS backend. When a configured CMS
+  // fails, do not pretend sample courses are real products for sale.
+  if (!cmsBaseUrl) {
+    const filtered = courses.filter((course) => {
+      const text = `${course.title} ${course.description} ${course.curriculum} ${course.level}`.toLowerCase();
+      const matchText = !safeQuery || text.includes(safeQuery.toLowerCase());
+      const matchProgramme = !safeProgramme || (
+        safeProgramme === "CAPS" ? course.curriculum.includes("CAPS") :
+        safeProgramme === "TVET" ? (course.level.includes("TVET") || course.curriculum.includes("NATED")) :
+        (course.level === "University" || course.curriculum === "Higher Education")
+      );
+      return matchText && matchProgramme;
+    });
+    const start = (safePage - 1) * COURSE_PAGE_SIZE;
+    return {
+      courses: filtered.slice(start, start + COURSE_PAGE_SIZE),
+      count: filtered.length,
+      page: safePage,
+      pageSize: COURSE_PAGE_SIZE,
+      hasNext: start + COURSE_PAGE_SIZE < filtered.length,
+      hasPrevious: safePage > 1,
+      available: true,
+    };
+  }
+
+  const response = await cmsFetch<Paginated<CmsCourse>>(`/courses/?${params.toString()}`);
+  if (!response || !Array.isArray(response.results) || typeof response.count !== "number") {
+    return {
+      courses: [], count: 0, page: safePage, pageSize: COURSE_PAGE_SIZE,
+      hasNext: false, hasPrevious: false, available: false,
+    };
+  }
+  return {
+    courses: response.results.map(mapCourse),
+    count: response.count,
+    page: safePage,
+    pageSize: COURSE_PAGE_SIZE,
+    hasNext: Boolean(response.next),
+    hasPrevious: Boolean(response.previous),
+    available: true,
+  };
+}
+
+export async function getManagedFeaturedCourses(): Promise<Course[]> {
+  if (!cmsBaseUrl) return courses.filter((item) => item.featured);
+  const response = await cmsFetch<CmsCourse[]>("/courses/featured/");
+  return Array.isArray(response) ? response.map(mapCourse) : [];
+}
+
+// Retained for existing callers; always returns just the first page.
 export async function getManagedCourses(): Promise<Course[]> {
-  const response = await cmsFetch<Paginated<CmsCourse>>("/courses/?page_size=100");
-  return response?.results?.length ? response.results.map(mapCourse) : courses;
+  return (await getManagedCourseCatalog()).courses;
 }
 
 export async function getManagedCourse(slug: string): Promise<Course | undefined> {

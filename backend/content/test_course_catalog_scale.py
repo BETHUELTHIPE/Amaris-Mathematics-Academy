@@ -1,0 +1,170 @@
+"""End-to-end catalogue and checkout regression at 601 published courses.
+
+Synthetic data only: no real transactions, PayFast calls, or production writes.
+"""
+
+import uuid
+from decimal import Decimal
+
+from django.test import TestCase
+from django.urls import reverse
+
+from content.models import Course, CourseCategory, Enrollment, Payment, StudentRecord
+from content.payment_models import Invoice
+from content.services.payments import create_checkout, process_payfast_notification
+
+
+class LargeCourseCatalogTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.category = CourseCategory.objects.create(name="Scalable catalog", slug="scalable-catalog")
+        batch = []
+        for number in range(601):
+            curriculum = "CAPS"
+            level = "Grade 12"
+            if number == 599:
+                curriculum = "Higher Education"
+                level = "University"
+            elif number == 600:
+                curriculum = "NATED"
+                level = "TVET N4"
+            batch.append(
+                Course(
+                    category=cls.category,
+                    title=f"Course {number:04d}",
+                    slug=f"course-{number:04d}",
+                    short_description=f"Practice course {number:04d}",
+                    description="Synthetic catalogue fixture for pagination and searching.",
+                    curriculum=curriculum,
+                    academic_level=level,
+                    price=Decimal("1250.00") if number == 600 else Decimal("950.00"),
+                    status=Course.Status.PUBLISHED,
+                    is_published=True,  # bulk_create bypasses Course.save()
+                    order=0,
+                )
+            )
+        Course.objects.bulk_create(batch, batch_size=100)
+
+    def test_601_courses_are_discoverable_without_loading_entire_catalogue(self):
+        first = self.client.get(reverse("courses-list"), secure=True)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["count"], 601)
+        self.assertEqual(len(first.json()["results"]), 24)
+        self.assertIsNotNone(first.json()["next"])
+        self.assertEqual(first.json()["results"][0]["slug"], "course-0000")
+
+        last = self.client.get(reverse("courses-list"), {"page": 26}, secure=True)
+        self.assertEqual(last.status_code, 200)
+        self.assertEqual(last.json()["count"], 601)
+        self.assertEqual([x["slug"] for x in last.json()["results"]], ["course-0600"])
+        self.assertIsNone(last.json()["next"])
+
+    def test_page_size_is_bounded_against_unlimited_api_download(self):
+        oversized = self.client.get(reverse("courses-list"), {"page_size": 100000}, secure=True)
+        self.assertEqual(oversized.status_code, 200)
+        self.assertEqual(oversized.json()["count"], 601)
+        self.assertEqual(len(oversized.json()["results"]), 48)
+
+    def test_search_finds_course_that_was_on_last_page(self):
+        response = self.client.get(reverse("courses-list"), {"search": "Course 0600"}, secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(response.json()["results"][0]["slug"], "course-0600")
+
+    def test_programme_filter_applies_before_pagination(self):
+        caps = self.client.get(reverse("courses-list"), {"programme": "CAPS"}, secure=True)
+        tvet = self.client.get(reverse("courses-list"), {"programme": "TVET"}, secure=True)
+        university = self.client.get(reverse("courses-list"), {"programme": "University"}, secure=True)
+        self.assertEqual(caps.json()["count"], 599)
+        self.assertEqual(tvet.json()["count"], 1)
+        self.assertEqual(tvet.json()["results"][0]["slug"], "course-0600")
+        self.assertEqual(university.json()["count"], 1)
+        self.assertEqual(university.json()["results"][0]["slug"], "course-0599")
+
+    def test_checkout_is_available_for_course_beyond_first_500(self):
+        student = StudentRecord.objects.create(
+            supabase_user_id=uuid.uuid4(),
+            email="catalog-601@example.test",
+            first_name="Catalogue",
+            last_name="Student",
+        )
+        course = Course.objects.get(slug="course-0600")
+        detail = self.client.get(reverse("courses-detail", kwargs={"slug": course.slug}), secure=True)
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["slug"], "course-0600")
+
+        checkout = create_checkout(
+            student=student,
+            course=course,
+            idempotency_key="catalog-over-500-test-001",
+        )
+        payment = Payment.objects.get(reference=checkout.payment_reference)
+        self.assertEqual(payment.course_id, course.pk)
+        self.assertEqual(payment.amount, Decimal("1250.00"))
+        self.assertEqual(payment.status, Payment.Status.PENDING)
+        self.assertEqual(checkout.fields["amount"], "1250.00")
+        self.assertIn("sandbox.payfast.co.za", checkout.gateway_url)
+        self.assertEqual(checkout.fields["custom_str2"], course.slug)
+
+    def test_verified_payfast_payment_fulfils_course_beyond_500_exactly_once(self):
+        student = StudentRecord.objects.create(
+            supabase_user_id=uuid.uuid4(),
+            email="catalog-paid-601@example.test",
+            first_name="Paid",
+            last_name="Student",
+        )
+        course = Course.objects.get(slug="course-0600")
+        checkout = create_checkout(
+            student=student,
+            course=course,
+            idempotency_key="catalog-over-500-paid-001",
+        )
+
+        class VerifiedGateway:
+            def verify_notification(self, payload):
+                return True  # Mocked server-side verification; no external request.
+
+        payload = {
+            "m_payment_id": checkout.payment_reference,
+            "pf_payment_id": "PF-SYNTHETIC-COURSE-601",
+            "payment_status": "COMPLETE",
+            "amount_gross": "1250.00",
+            "custom_str1": str(student.supabase_user_id),
+            "custom_str2": course.slug,
+            "signature": "synthetic-signature",
+        }
+        first = process_payfast_notification(payload, gateway=VerifiedGateway())
+        self.assertTrue(first.accepted)
+        self.assertEqual(
+            Enrollment.objects.get(student=student, course=course).status,
+            Enrollment.Status.ACTIVE,
+        )
+        self.assertEqual(Payment.objects.get(reference=checkout.payment_reference).status, Payment.Status.PAID)
+        self.assertEqual(Invoice.objects.filter(payment__reference=checkout.payment_reference).count(), 1)
+
+        process_payfast_notification(payload, gateway=VerifiedGateway())
+        self.assertEqual(Enrollment.objects.filter(student=student, course=course).count(), 1)
+        self.assertEqual(Invoice.objects.filter(payment__reference=checkout.payment_reference).count(), 1)
+
+    def test_unpublished_items_remain_hidden_in_large_catalogue(self):
+        Course.objects.create(
+            category=self.category,
+            title="Course unpublished",
+            slug="course-unpublished",
+            short_description="Not for sale",
+            description="Not ready",
+            curriculum="CAPS",
+            academic_level="Grade 12",
+            price=Decimal("950.00"),
+            status=Course.Status.DRAFT,
+        )
+        response = self.client.get(reverse("courses-list"), {"search": "unpublished"}, secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 0)
+
+    def test_featured_endpoint_is_bounded_for_homepage(self):
+        Course.objects.filter(slug__in=[f"course-{number:04d}" for number in range(20)]).update(featured=True)
+        response = self.client.get(reverse("courses-featured"), secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 6)
+        self.assertTrue(all(item["featured"] for item in response.json()))
