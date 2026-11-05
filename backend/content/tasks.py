@@ -14,7 +14,7 @@ from content.models import LiveClassBooking, SiteSettings, VideoRequest
 from content.payment_models import Invoice, NotificationOutbox
 from content.services.invoices import archive_invoice_pdf, mark_invoice_archive_failure
 from content.services.reconciliation import reconcile_verified_payments
-from content.services.video_requests import video_request_eta, video_request_queue_position
+from content.services.video_requests import ACTIVE_QUEUE_STATUSES, video_request_eta, video_request_queue_position
 
 # Celery autodiscovery imports content.tasks; register the finance jobs.
 from . import tutor_finance_tasks  # noqa: F401
@@ -386,16 +386,31 @@ def _deliver_one_video_request_notification() -> bool:
         )
         event = "confirmation"
         if item is None:
-            for candidate in (
-                VideoRequest.objects.select_for_update(skip_locked=True, of=("self",))
-                .select_related("student", "assigned_tutor")
-                .filter(status=VideoRequest.Status.QUEUED, position_one_sent_at__isnull=True)
-                .order_by("queue_entered_at")[:25]
-            ):
-                if video_request_queue_position(candidate) == 1:
-                    item = candidate
+            # One indexed lookup finds the head of the paid queue. The old
+            # loop could issue 25 global COUNT queries on every dispatch.
+            # Lock the real head rather than SKIP LOCKED here: two workers
+            # must not both tell different students that they are first.
+            processing = (
+                VideoRequest.objects.filter(status__in=ACTIVE_QUEUE_STATUSES)
+                .exclude(status=VideoRequest.Status.QUEUED)
+                .exists()
+            )
+            if not processing:
+                waiting = (
+                    VideoRequest.objects.select_for_update(of=("self",))
+                    .select_related("student", "assigned_tutor")
+                    .filter(status=VideoRequest.Status.QUEUED)
+                )
+                head = (
+                    waiting.filter(priority_paid_at__isnull=False)
+                    .order_by("priority_paid_at", "queue_entered_at", "pk")
+                    .first()
+                )
+                if head is None:
+                    head = waiting.filter(priority_paid_at__isnull=True).order_by("queue_entered_at", "pk").first()
+                if head is not None and head.position_one_sent_at is None:
+                    item = head
                     event = "position_one"
-                    break
         if item is None:
             item = (
                 VideoRequest.objects.select_for_update(skip_locked=True, of=("self",))
@@ -419,7 +434,7 @@ def _deliver_one_video_request_notification() -> bool:
 
         if event == "confirmation":
             position = video_request_queue_position(item)
-            eta_from, eta_to = video_request_eta(item)
+            eta_from, eta_to = video_request_eta(item, position=position)
             _send_video_request_message(
                 item,
                 subject=f"Amaris video request paid and queued — {item.ticket_number}",

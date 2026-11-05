@@ -714,6 +714,24 @@ class VideoRequest(TimeStampedModel):
             models.Index(fields=("student", "status", "-created_at"), name="video_req_student_idx"),
             models.Index(fields=("status", "queue_entered_at"), name="video_req_queue_idx"),
             models.Index(fields=("status", "payment_expires_at"), name="video_req_expiry_idx"),
+            # Student history and the paid queue remain selective beyond 100k rows.
+            models.Index(fields=("student", "-created_at", "-id"), name="video_req_history_v2_idx"),
+            models.Index(
+                fields=("priority_paid_at", "queue_entered_at"),
+                condition=models.Q(status="queued", priority_paid_at__isnull=False),
+                name="video_req_priority_v2_idx",
+            ),
+            models.Index(
+                fields=("queue_entered_at",),
+                condition=models.Q(status="queued", priority_paid_at__isnull=True),
+                name="video_req_fifo_v2_idx",
+            ),
+            models.Index(
+                fields=("queue_entered_at",),
+                condition=models.Q(status="queued", confirmation_sent_at__isnull=True),
+                name="video_req_confirm_v2_idx",
+            ),
+            models.Index(fields=("provider_reference",), name="video_req_provider_v2_idx"),
         ]
 
     def clean(self):

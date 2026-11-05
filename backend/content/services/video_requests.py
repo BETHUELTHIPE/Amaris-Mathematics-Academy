@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import storages
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
@@ -216,6 +216,17 @@ def create_video_request_checkout(
 
     try:
         with transaction.atomic():
+            if connection.vendor == "postgresql":
+                # A row lock cannot protect a key whose first request has not
+                # been inserted yet. Serialize ONLY identical checkout keys,
+                # not unrelated student uploads or purchases.
+                lock_id = int.from_bytes(
+                    hashlib.sha256(key.encode("ascii")).digest()[:8],
+                    byteorder="big",
+                    signed=True,
+                )
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_xact_lock(%s)", [lock_id])
             existing = VideoRequest.objects.select_for_update().filter(idempotency_key=key).first()
             if existing is not None:
                 same_request = (
@@ -384,21 +395,46 @@ def video_request_queue_position(request: VideoRequest) -> int | None:
     active = VideoRequest.objects.filter(status__in=ACTIVE_QUEUE_STATUSES).exclude(pk=request.pk)
     in_progress = active.exclude(status=VideoRequest.Status.QUEUED).count()
     waiting = active.filter(status=VideoRequest.Status.QUEUED)
+    # Break timestamp ties using the request primary key. Without this,
+    # two requests paid in the same instant can both report position 1.
     if request.priority_paid_at:
-        ahead = waiting.filter(
-            priority_paid_at__isnull=False,
-            priority_paid_at__lt=request.priority_paid_at,
-        ).count()
+        ahead = (
+            waiting.filter(priority_paid_at__isnull=False)
+            .filter(
+                Q(priority_paid_at__lt=request.priority_paid_at)
+                | Q(
+                    priority_paid_at=request.priority_paid_at,
+                    queue_entered_at__lt=request.queue_entered_at,
+                )
+                | Q(
+                    priority_paid_at=request.priority_paid_at,
+                    queue_entered_at=request.queue_entered_at,
+                    pk__lt=request.pk,
+                )
+            )
+            .count()
+        )
     else:
         ahead = waiting.filter(
             Q(priority_paid_at__isnull=False)
-            | Q(priority_paid_at__isnull=True, queue_entered_at__lt=request.queue_entered_at)
+            | Q(
+                priority_paid_at__isnull=True,
+                queue_entered_at__lt=request.queue_entered_at,
+            )
+            | Q(
+                priority_paid_at__isnull=True,
+                queue_entered_at=request.queue_entered_at,
+                pk__lt=request.pk,
+            )
         ).count()
     return in_progress + ahead + 1
 
 
-def video_request_eta(request: VideoRequest) -> tuple[str | None, str | None]:
-    position = video_request_queue_position(request)
+def video_request_eta(request: VideoRequest, *, position: int | None = None) -> tuple[str | None, str | None]:
+    # The caller often already calculated a queue position. Reuse it rather
+    # than issuing two more COUNT queries for every status response.
+    if position is None:
+        position = video_request_queue_position(request)
     if position is None:
         return None, None
     capacity = max(1, int(os.getenv("VIDEO_REQUEST_DAILY_CAPACITY", "2")))

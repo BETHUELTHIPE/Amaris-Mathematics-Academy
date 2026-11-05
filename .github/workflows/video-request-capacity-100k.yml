@@ -1,0 +1,177 @@
+name: Video Request Capacity 100k
+
+on:
+  push:
+    branches: [feature/video-requests-100k-20261105]
+    paths:
+      - "backend/content/models.py"
+      - "backend/content/services/video_requests.py"
+      - "backend/content/video_request_views.py"
+      - "backend/content/tasks.py"
+      - "backend/content/test_video_request_capacity.py"
+      - "backend/load_tests/**"
+      - "backend/content/migrations/0017_video_request_capacity_indexes.py"
+      - ".github/workflows/video-request-capacity-100k.yml"
+  pull_request:
+    paths:
+      - "backend/content/models.py"
+      - "backend/content/services/video_requests.py"
+      - "backend/content/video_request_views.py"
+      - "backend/content/tasks.py"
+      - "backend/content/test_video_request_capacity.py"
+      - "backend/load_tests/**"
+      - "backend/content/migrations/0017_video_request_capacity_indexes.py"
+      - ".github/workflows/video-request-capacity-100k.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-capacity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  video-burst-harness:
+    name: 50000-target harness contracts (loopback only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      LOADTEST_ENVIRONMENT: local
+      LOADTEST_TARGET_URL: http://127.0.0.1:8765
+      LOADTEST_ALLOWED_HOSTS: 127.0.0.1
+      PAYFAST_MODE: sandbox
+      VIDEO_LOAD_ISOLATION_CONFIRMED: "true"
+      VIDEO_LOAD_DEPLOYED_SHA: ${{ github.sha }}
+      VIDEO_LOAD_RUN_ID: harness-only
+      VIDEO_LOAD_STUDENTS_FILE: /tmp/video-burst-inspect.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: "2.3.0"
+      - name: Offline manifest, target and evidence contracts
+        working-directory: backend
+        run: |
+          node --test load_tests/test_video_burst_config.mjs
+          python -m unittest load_tests.test_video_burst_report -v
+      - name: Inspect 50000-user scenario without sending traffic
+        working-directory: backend
+        run: |
+          python -m load_tests.video_burst_fixture --users 50000 --manifest "$VIDEO_LOAD_STUDENTS_FILE"
+          export VIDEO_LOAD_RELEASE_AT_MS="$(python -c 'import time; print(int(time.time()*1000)+120000)')"
+          k6 inspect --include-system-env-vars load_tests/video_request_burst.mjs > /tmp/video-burst-options.json
+          python -c 'import json; data=json.load(open("/tmp/video-burst-options.json")); assert data["scenarios"]["video_submission_burst"]["vus"] == 50000'
+      - name: Four-user mock burst across two execution segments
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p load_tests/results/video-burst
+          export VIDEO_LOAD_USERS=4
+          export VIDEO_LOAD_STUDENTS_FILE=/tmp/video-burst-smoke.json
+          python -m load_tests.video_burst_fixture --users 4 --manifest "$VIDEO_LOAD_STUDENTS_FILE" --serve &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import socket, time
+          for _ in range(100):
+              try:
+                  with socket.create_connection(("127.0.0.1", 8765), timeout=0.1):
+                      break
+              except OSError:
+                  time.sleep(0.1)
+          else:
+              raise SystemExit("Loopback mock did not start")
+          PY
+          export VIDEO_LOAD_RELEASE_AT_MS="$(python -c 'import time; print(int(time.time()*1000)+45000)')"
+          k6 run --execution-segment '0:1/2' --execution-segment-sequence '0,1/2,1' --console-output load_tests/results/video-burst/shard1.log load_tests/video_request_burst.mjs &
+          first=$!
+          k6 run --execution-segment '1/2:1' --execution-segment-sequence '0,1/2,1' --console-output load_tests/results/video-burst/shard2.log load_tests/video_request_burst.mjs &
+          second=$!
+          status=0
+          wait "$first" || status=1
+          wait "$second" || status=1
+          python -m load_tests.video_burst_report load_tests/results/video-burst/shard*.log --users 4 --run-id "$VIDEO_LOAD_RUN_ID" --deployed-sha "$VIDEO_LOAD_DEPLOYED_SHA" --release-at-ms "$VIDEO_LOAD_RELEASE_AT_MS" --output load_tests/results/video-burst/mock-client-report.json
+          exit "$status"
+      - name: Upload mock-only harness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-burst-harness-mock-only
+          path: backend/load_tests/results/video-burst/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  postgres-student-video-requests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_video_capacity_ci
+          POSTGRES_USER: amaris_video_capacity_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U amaris_video_capacity_ci -d amaris_video_capacity_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: postgresql://amaris_video_capacity_ci@127.0.0.1:5432/amaris_video_capacity_ci
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      SUPABASE_STORAGE_ENABLED: "false"
+      SUPABASE_S3_REQUIRED: "false"
+      PAYFAST_MODE: sandbox
+      PAYFAST_ENV: sandbox
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+      EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
+      DEFAULT_FROM_EMAIL: "Amaris QA <qa@example.invalid>"
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install backend test dependencies
+        working-directory: backend
+        run: python -m pip install -r requirements-dev.txt
+      - name: Validate formatting and lint
+        working-directory: backend
+        run: |
+          python -m black --check --diff content/models.py content/services/video_requests.py content/video_request_views.py content/tasks.py content/test_video_request_capacity.py content/migrations/0017_video_request_capacity_indexes.py
+          python -m ruff check content/models.py content/services/video_requests.py content/video_request_views.py content/tasks.py content/test_video_request_capacity.py content/migrations/0017_video_request_capacity_indexes.py
+          python -m black --check load_tests/video_burst_fixture.py load_tests/video_burst_report.py load_tests/test_video_burst_report.py
+          python -m ruff check load_tests/video_burst_fixture.py load_tests/video_burst_report.py load_tests/test_video_burst_report.py
+      - name: Verify schema and migration consistency
+        working-directory: backend
+        run: |
+          export DJANGO_SECRET_KEY="$(openssl rand -hex 48)"
+          python manage.py check
+          python manage.py spectacular --file /tmp/amaris-video-api.yaml --validate --fail-on-warn
+          python manage.py makemigrations --check --dry-run
+      - name: Run video payment, authorization, idempotency, and 100k fixture
+        working-directory: backend
+        run: |
+          export DJANGO_SECRET_KEY="$(openssl rand -hex 48)"
+          python manage.py test content.test_video_requests content.test_video_request_capacity --verbosity 1 --noinput
+
