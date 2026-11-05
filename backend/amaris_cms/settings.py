@@ -616,3 +616,11 @@ MONITORING_PROMETHEUS_URL = os.getenv("MONITORING_PROMETHEUS_URL", "").rstrip("/
 MONITORING_FLOWER_URL = os.getenv("MONITORING_FLOWER_URL", "").rstrip("/")
 MONITORING_FLOWER_BASIC_AUTH = os.getenv("MONITORING_FLOWER_BASIC_AUTH", "")
 MONITORING_RENDER_EXPORTER_URL = os.getenv("MONITORING_RENDER_EXPORTER_URL", "").rstrip("/")
+
+# Read-only Airflow 3 monitor; enable only after private runtime acceptance.
+AIRFLOW_MONITORING_ENABLED = env_bool("AIRFLOW_MONITORING_ENABLED", False)
+AIRFLOW_API_BASE_URL = os.getenv("AIRFLOW_API_BASE_URL", "").rstrip("/")
+AIRFLOW_API_TOKEN = os.getenv("AIRFLOW_API_TOKEN", "")
+AIRFLOW_API_CA_CERT_FILE = os.getenv("AIRFLOW_API_CA_CERT_FILE", "")
+AIRFLOW_UI_URL = os.getenv("AIRFLOW_UI_URL", "")
+AIRFLOW_MONITORED_DAGS = env_list("AIRFLOW_MONITORED_DAGS", "amaris_service_health")
