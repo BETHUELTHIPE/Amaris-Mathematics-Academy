@@ -1,0 +1,29 @@
+# Loaded automatically next to docker-compose.yml.
+# Nginx publishes the only public port. Django stays on Gunicorn + Uvicorn.
+services:
+  web:
+    command: gunicorn amaris_cms.asgi:application --config /app/gunicorn.conf.py
+
+  frontend:
+    build:
+      context: ../frontend
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      CMS_API_URL: http://web:8000
+    depends_on:
+      web:
+        condition: service_healthy
+    networks: [backend_network]
+    mem_limit: ${FRONTEND_MEMORY_LIMIT:-1g}
+    cpus: ${FRONTEND_CPU_LIMIT:-1.0}
+
+  nginx:
+    depends_on:
+      web:
+        condition: service_healthy
+      frontend:
+        condition: service_started
