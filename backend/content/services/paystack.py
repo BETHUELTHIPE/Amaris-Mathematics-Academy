@@ -1,4 +1,5 @@
 """Paystack hosted checkout and authoritative server-side transaction verification."""
+
 from __future__ import annotations
 
 import json
@@ -55,13 +56,16 @@ def initialize(*, email: str, amount: Decimal, reference: str, callback_path: st
     cents = int(amount * 100)
     if amount <= 0 or Decimal(cents) / 100 != amount:
         raise PaymentSecurityError("Invalid ZAR payment amount.")
-    data = _request("/transaction/initialize", payload={
-        "email": email,
-        "amount": cents,
-        "currency": "ZAR",
-        "reference": reference,
-        "callback_url": f"{site_url}{callback_path}?reference={quote(reference)}",
-    })
+    data = _request(
+        "/transaction/initialize",
+        payload={
+            "email": email,
+            "amount": cents,
+            "currency": "ZAR",
+            "reference": reference,
+            "callback_url": f"{site_url}{callback_path}?reference={quote(reference)}",
+        },
+    )
     url = str(data.get("authorization_url", ""))
     if not url.startswith("https://checkout.paystack.com/"):
         raise PaymentSecurityError("Paystack returned an unsafe checkout URL.")
@@ -95,7 +99,9 @@ def verify_and_settle(reference: str) -> str:
                 if booking.provider_reference == provider_id:
                     return "already_confirmed"
                 raise PaymentSecurityError("Conflicting transaction for confirmed booking.")
-            if booking.status != LiveClassBooking.Status.PENDING_PAYMENT or booking.hold_expires_at <= timezone.now() or booking.slot.starts_at <= timezone.now():
+            if (
+                booking.status != LiveClassBooking.Status.PENDING_PAYMENT
+                or booking.hold_expires_at <= timezone.now()
                 raise PaymentSecurityError("Booking is no longer payable; review refund manually.")
             if LiveClassBooking.objects.exclude(pk=booking.pk).filter(provider_reference=provider_id).exists():
                 raise PaymentSecurityError("Transaction replay.")
