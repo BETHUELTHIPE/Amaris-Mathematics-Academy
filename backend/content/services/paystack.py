@@ -84,10 +84,14 @@ def verify_and_settle(reference: str) -> str:
         raise PaymentSecurityError("Transaction is not successful.")
     if data.get("currency") != "ZAR":
         raise PaymentSecurityError("Incorrect transaction currency.")
-    try:
-        actual_amount = int(data.get("amount"))
-    except (TypeError, ValueError) as exc:
-        raise PaymentSecurityError("Invalid payment amount.") from exc
+    amount_value = data.get("amount")
+    if isinstance(amount_value, bool) or not isinstance(amount_value, (int, str)):
+        raise PaymentSecurityError("Invalid payment amount.")
+    if not str(amount_value).isdigit():
+        raise PaymentSecurityError("Invalid payment amount.")
+    actual_amount = int(amount_value)
+    if actual_amount <= 0:
+        raise PaymentSecurityError("Invalid payment amount.")
     provider_id = str(data.get("id", ""))
     if not provider_id or not provider_id.isdigit():
         raise PaymentSecurityError("Missing Paystack transaction ID.")
