@@ -38,10 +38,15 @@ export default async function LiveClassCheckoutPage({
   const returnTo =
     `/book-online-live-class/checkout?slot=${encodeURIComponent(slotId)}&topic=${encodeURIComponent(topic)}`;
   await requireVerifiedStudent(returnTo);
+  const selected = value(params.provider);
+  if (selected !== "payfast" && selected !== "paystack") {
+    const base = `/book-online-live-class/checkout?slot=${encodeURIComponent(slotId)}&topic=${encodeURIComponent(topic)}`;
+    return <main className="min-h-screen bg-[#f5f7fb]"><Header /><section className="mx-auto max-w-xl px-5 py-16"><h1 className="text-3xl font-semibold">Choose your payment method</h1><p className="my-5">Pay securely for your Zoom lesson. Confirmation follows verified payment.</p><div className="grid gap-4"><Link href={`${base}&provider=payfast`} className="rounded-xl bg-[#0b2a5b] p-5 text-center font-bold text-white">Pay with PayFast</Link><Link href={`${base}&provider=paystack`} className="rounded-xl border border-[#0b2a5b] p-5 text-center font-bold text-[#0b2a5b]">Pay with Paystack</Link></div></section><Footer /></main>;
+  }
 
   let checkout: Awaited<ReturnType<typeof createStudentLiveClassCheckout>>;
   try {
-    checkout = await createStudentLiveClassCheckout(slotId, topic);
+    checkout = await createStudentLiveClassCheckout(slotId, topic, selected);
   } catch {
     redirect("/book-online-live-class?booking=unavailable");
   }
@@ -77,7 +82,7 @@ export default async function LiveClassCheckoutPage({
 
           <p className="mt-5 text-sm leading-7 text-[#60708a]">
             Booking reference <span className="font-mono font-semibold text-[#263852]">{checkout.booking_reference}</span>.
-            Your Zoom link is released only after the server verifies the PayFast notification.
+            Your Zoom link is released only after the server verifies payment with the selected provider.
           </p>
 
           {sandbox && (
@@ -86,7 +91,7 @@ export default async function LiveClassCheckoutPage({
             </div>
           )}
 
-          <form method="post" action={checkout.gateway_url} className="mt-7">
+          {selected === "paystack" ? <a href={checkout.gateway_url} className="mt-7 flex min-h-12 w-full items-center justify-center rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white"><CreditCard className="size-4" /> Pay R250 with Paystack</a> : <form method="post" action={checkout.gateway_url} className="mt-7">
             {Object.entries(checkout.fields).map(([name, fieldValue]) => (
               <input key={name} type="hidden" name={name} value={fieldValue} />
             ))}
@@ -96,7 +101,7 @@ export default async function LiveClassCheckoutPage({
             >
               <CreditCard className="size-4" /> Pay R250 with PayFast
             </button>
-          </form>
+          </form>}
 
           <div className="mt-5 flex items-center justify-center gap-2 text-center text-xs text-[#60708a]">
             <ShieldCheck className="size-4 shrink-0" />
