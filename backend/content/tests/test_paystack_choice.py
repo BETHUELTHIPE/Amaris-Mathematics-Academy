@@ -63,7 +63,6 @@ class PaystackCheckoutTests(SimpleTestCase):
                 email="x@example.com", amount=Decimal("1.00"), reference="PS-sample", callback_path="/payments/pending"
             )
 
-
     @mock.patch("content.services.paystack._request")
     def test_invalid_verified_amount_does_not_settle_payment(self, request):
         for amount in (None, True, -100, "12.50", 12.5, {}, ""):
