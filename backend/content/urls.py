@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .live_class_views import LiveClassBookingStatusView, LiveClassCheckoutView, LiveClassSlotView
 from .payfast_views import PayFastITNView
+from .paystack_views import paystack_webhook
 from .student_views import (
     AcceptancePaymentCompleteView,
     AcceptanceSeedView,
@@ -45,6 +46,7 @@ urlpatterns = [
     path("assistant/", AmarisAssistantView.as_view(), name="amaris-assistant"),
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
+    path("paystack/webhook/", paystack_webhook, name="paystack-webhook"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
     path(
         "student/acceptance/payments/<str:reference>/complete/",
