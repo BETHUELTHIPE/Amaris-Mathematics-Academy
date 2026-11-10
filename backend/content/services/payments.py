@@ -94,7 +94,9 @@ def generate_payfast_signature(fields: Mapping[str, str], passphrase: str = "") 
     return hashlib.md5(_signature_parameter_string(fields, passphrase).encode("utf-8")).hexdigest()
 
 
-def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: str) -> CheckoutSession:
+def create_checkout(
+    *, student: StudentRecord, course: Course, idempotency_key: str, provider: str = "payfast"
+) -> CheckoutSession:
     """Create a server-priced, signed PayFast checkout without granting access."""
 
     key = idempotency_key.strip()
@@ -105,14 +107,16 @@ def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: 
     if course.status != Course.Status.PUBLISHED or not course.is_published:
         raise PaymentSecurityError("Only published courses can be purchased.")
 
-    reference = f"PF-{key}"
+    if provider not in {"payfast", "paystack"}:
+        raise PaymentSecurityError("Unsupported payment provider.")
+    reference = f"{'PS' if provider == 'paystack' else 'PF'}-{key}"
     with transaction.atomic():
         payment, created = Payment.objects.get_or_create(
             reference=reference,
             defaults={
                 "student": student,
                 "course": course,
-                "provider": Payment.Provider.PAYFAST,
+                "provider": provider,
                 "amount": course.price,
                 "currency": "ZAR",
                 "status": Payment.Status.PENDING,
@@ -122,12 +126,23 @@ def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: 
             expected = (
                 payment.student_id == student.pk
                 and payment.course_id == course.pk
-                and payment.provider == Payment.Provider.PAYFAST
+                and payment.provider == provider
                 and payment.amount == course.price
                 and payment.currency == "ZAR"
             )
             if not expected:
                 raise PaymentSecurityError("Checkout idempotency key is already bound to a different purchase.")
+
+    if provider == "paystack":
+        from .paystack import initialize
+
+        gateway_url = initialize(
+            email=student.email,
+            amount=payment.amount,
+            reference=payment.reference,
+            callback_path="/payments/pending",
+        )
+        return CheckoutSession(payment_reference=payment.reference, gateway_url=gateway_url, fields={})
 
     merchant_id, merchant_key, passphrase = _payfast_credentials()
     mode = _payfast_mode()

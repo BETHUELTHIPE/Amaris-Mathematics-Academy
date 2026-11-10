@@ -121,27 +121,28 @@ async function studentFetch<T>(path: string, init: RequestInit = {}): Promise<T>
   return response.json() as Promise<T>;
 }
 
-async function checkoutKey(courseSlug: string): Promise<string> {
+async function checkoutKey(courseSlug: string, provider: "payfast" | "paystack"): Promise<string> {
   const student = await requireVerifiedStudent();
-  const bytes = new TextEncoder().encode(`${student.id}:${courseSlug}`);
+  const bytes = new TextEncoder().encode(`${student.id}:${courseSlug}:${provider}`);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return `checkout-${Array.from(new Uint8Array(digest)).slice(0, 20).map((value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
-export async function createStudentCheckout(courseSlug: string): Promise<CheckoutSession> {
+export async function createStudentCheckout(courseSlug: string, provider: "payfast" | "paystack" = "payfast"): Promise<CheckoutSession> {
   return studentFetch<CheckoutSession>("/student/checkout/", {
     method: "POST",
     body: JSON.stringify({
       course_slug: courseSlug,
-      idempotency_key: await checkoutKey(courseSlug),
+      idempotency_key: await checkoutKey(courseSlug, provider),
+      provider,
     }),
   });
 }
 
-async function liveClassCheckoutKey(slotId: string, topic: string): Promise<string> {
+async function liveClassCheckoutKey(slotId: string, topic: string, provider: "payfast" | "paystack"): Promise<string> {
   const student = await requireVerifiedStudent();
   const normalizedTopic = topic.trim().replace(/\s+/g, " ").toLowerCase();
-  const bytes = new TextEncoder().encode(`${student.id}:${slotId}:${normalizedTopic}`);
+  const bytes = new TextEncoder().encode(`${student.id}:${slotId}:${normalizedTopic}:${provider}`);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   const hex = Array.from(new Uint8Array(digest))
     .slice(0, 20)
@@ -153,13 +154,15 @@ async function liveClassCheckoutKey(slotId: string, topic: string): Promise<stri
 export async function createStudentLiveClassCheckout(
   slotId: string,
   topic: string,
+  provider: "payfast" | "paystack" = "payfast",
 ): Promise<LiveClassCheckoutSession> {
   return studentFetch<LiveClassCheckoutSession>("/student/live-classes/checkout/", {
     method: "POST",
     body: JSON.stringify({
       slot_id: slotId,
       topic: topic.trim(),
-      idempotency_key: await liveClassCheckoutKey(slotId, topic),
+      idempotency_key: await liveClassCheckoutKey(slotId, topic, provider),
+      provider,
     }),
   });
 }

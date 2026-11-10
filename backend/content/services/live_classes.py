@@ -60,6 +60,7 @@ def create_live_class_checkout(
     slot: TutorAvailabilitySlot,
     topic: str,
     idempotency_key: str,
+    provider: str = "payfast",
 ) -> LiveClassCheckoutSession:
     key = idempotency_key.strip()
     cleaned_topic = " ".join(topic.split()).strip()
@@ -70,6 +71,8 @@ def create_live_class_checkout(
     if not student.is_active:
         raise PaymentSecurityError("Inactive students cannot book live classes.")
 
+    if provider not in {"payfast", "paystack"}:
+        raise PaymentSecurityError("Unsupported payment provider.")
     now = timezone.now()
     reference = f"LCB-{key}"
     with transaction.atomic():
@@ -93,6 +96,7 @@ def create_live_class_checkout(
                 existing.student_id == student.pk
                 and existing.slot_id == locked_slot.pk
                 and existing.topic == cleaned_topic
+                and existing.payment_provider == provider
             )
             if not same_booking:
                 raise PaymentSecurityError("This booking key is already bound to another live class.")
@@ -153,10 +157,22 @@ def create_live_class_checkout(
                     topic=cleaned_topic,
                     amount=LIVE_CLASS_PRICE,
                     currency="ZAR",
+                    payment_provider=provider,
                     status=LiveClassBooking.Status.PENDING_PAYMENT,
                 )
             except IntegrityError as exc:
                 raise PaymentSecurityError("This tutor slot has already been booked.") from exc
+
+    if provider == "paystack":
+        from .paystack import initialize
+
+        gateway_url = initialize(
+            email=student.email,
+            amount=booking.amount,
+            reference=booking.reference,
+            callback_path="/book-online-live-class/confirmation",
+        )
+        return LiveClassCheckoutSession(booking_reference=booking.reference, gateway_url=gateway_url, fields={})
 
     merchant_id, merchant_key, passphrase = _payfast_credentials()
     return_url, cancel_url, notify_url = _public_urls()
@@ -206,6 +222,9 @@ def process_live_class_notification(
         booking = LiveClassBooking.objects.select_related("student", "slot").get(reference=reference)
     except LiveClassBooking.DoesNotExist:
         return NotificationResult(False, "pending_payment", reason="unknown_booking")
+
+    if booking.payment_provider != "payfast":
+        return NotificationResult(False, booking.status, reason="wrong_provider")
 
     if booking.status == LiveClassBooking.Status.CONFIRMED:
         if booking.provider_reference == provider_reference:
