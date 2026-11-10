@@ -110,6 +110,7 @@ class LiveClassCheckoutRequestSerializer(serializers.Serializer):
     slot_id = serializers.UUIDField()
     topic = serializers.CharField(min_length=2, max_length=180, trim_whitespace=True)
     idempotency_key = serializers.RegexField(r"^[A-Za-z0-9_-]{8,64}$")
+    provider = serializers.ChoiceField(choices=("payfast", "paystack"), default="payfast")
 
 
 class LiveClassCheckoutResponseSerializer(serializers.Serializer):
@@ -171,6 +172,7 @@ class LiveClassCheckoutView(LiveClassStudentAPIView):
                 slot=slot,
                 topic=values["topic"],
                 idempotency_key=values["idempotency_key"],
+                provider=values["provider"],
             )
         except PaymentSecurityError as exc:
             raise serializers.ValidationError({"detail": str(exc)}) from exc
