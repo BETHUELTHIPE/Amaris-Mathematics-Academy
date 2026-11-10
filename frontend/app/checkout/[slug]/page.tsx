@@ -12,7 +12,7 @@ export const metadata = { title: "Secure Checkout", robots: { index: false, foll
 export default async function CheckoutPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ provider?: string }> }) {
   await requireVerifiedStudent("/dashboard");
   const { slug } = await params;
-  const selected = (await searchParams).provider;
+  const selected = process.env.PAYSTACK_ENABLED === "true" ? (await searchParams).provider : "payfast";
   if (selected !== "payfast" && selected !== "paystack") {
     return <main className="min-h-screen bg-[#f5f7fb]"><Header /><section className="mx-auto max-w-xl px-5 py-16"><h1 className="text-3xl font-semibold">Choose your payment method</h1><p className="my-5">You will only receive access after we verify payment securely.</p><div className="grid gap-4"><Link className="rounded-xl bg-[#0b2a5b] p-5 text-center font-bold text-white" href={`/checkout/${encodeURIComponent(slug)}?provider=payfast`}>Pay with PayFast</Link><Link className="rounded-xl border border-[#0b2a5b] p-5 text-center font-bold text-[#0b2a5b]" href={`/checkout/${encodeURIComponent(slug)}?provider=paystack`}>Pay with Paystack</Link></div></section><Footer /></main>;
   }
