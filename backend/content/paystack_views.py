@@ -1,4 +1,5 @@
 """Paystack webhook — signed raw bytes plus mandatory API verification."""
+
 import hashlib
 import hmac
 import json
@@ -35,7 +36,9 @@ def paystack_webhook(request):
         ):
             return HttpResponse(status=403)
         expected = hmac.new(secret.encode(), timestamp[0].encode() + b"." + request.body, hashlib.sha512).hexdigest()
-        if not any(re.fullmatch(r"[0-9a-f]{128}", value) and hmac.compare_digest(value, expected) for _, value in signed):
+        if not any(
+            re.fullmatch(r"[0-9a-f]{128}", value) and hmac.compare_digest(value, expected) for _, value in signed
+        ):
             return HttpResponse(status=403)
     else:
         secret = os.getenv("PAYSTACK_SECRET_KEY", "")
