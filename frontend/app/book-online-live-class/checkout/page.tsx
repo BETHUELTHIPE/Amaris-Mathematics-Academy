@@ -38,7 +38,7 @@ export default async function LiveClassCheckoutPage({
   const returnTo =
     `/book-online-live-class/checkout?slot=${encodeURIComponent(slotId)}&topic=${encodeURIComponent(topic)}`;
   await requireVerifiedStudent(returnTo);
-  const selected = value(params.provider);
+  const selected = process.env.PAYSTACK_ENABLED === "true" ? value(params.provider) : "payfast";
   if (selected !== "payfast" && selected !== "paystack") {
     const base = `/book-online-live-class/checkout?slot=${encodeURIComponent(slotId)}&topic=${encodeURIComponent(topic)}`;
     return <main className="min-h-screen bg-[#f5f7fb]"><Header /><section className="mx-auto max-w-xl px-5 py-16"><h1 className="text-3xl font-semibold">Choose your payment method</h1><p className="my-5">Pay securely for your Zoom lesson. Confirmation follows verified payment.</p><div className="grid gap-4"><Link href={`${base}&provider=payfast`} className="rounded-xl bg-[#0b2a5b] p-5 text-center font-bold text-white">Pay with PayFast</Link><Link href={`${base}&provider=paystack`} className="rounded-xl border border-[#0b2a5b] p-5 text-center font-bold text-[#0b2a5b]">Pay with Paystack</Link></div></section><Footer /></main>;
