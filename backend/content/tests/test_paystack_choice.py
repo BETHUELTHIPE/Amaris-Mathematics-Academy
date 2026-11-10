@@ -4,7 +4,7 @@ import hmac
 import json
 from unittest import mock
 
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase
 
 from content.services.payments import PaymentSecurityError
 from content.services.paystack import enabled, initialize
