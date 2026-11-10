@@ -114,7 +114,16 @@ def verify_and_settle(reference: str) -> str:
             booking.invoice_number = booking.invoice_number or (
                 f"INV-LIVE-{booking.paid_at:%Y%m%d}-{str(booking.pk).replace('-', '')[:10].upper()}"
             )
-            booking.save(update_fields=["status", "provider_reference", "gateway_verified_at", "paid_at", "invoice_number", "updated_at"])
+            booking.save(
+                update_fields=[
+                    "status",
+                    "provider_reference",
+                    "gateway_verified_at",
+                    "paid_at",
+                    "invoice_number",
+                    "updated_at",
+                ]
+            )
             return "confirmed"
         payment = Payment.objects.select_for_update().select_related("student", "course").get(reference=reference)
         if payment.provider != Payment.Provider.PAYSTACK or actual_amount != int(payment.amount * 100):
@@ -132,6 +141,15 @@ def verify_and_settle(reference: str) -> str:
         payment.gateway_verified_at = timezone.now()
         payment.verification_source = "paystack_server_verification"
         payment.paid_at = timezone.now()
-        payment.save(update_fields=["status", "provider_reference", "gateway_verified_at", "verification_source", "paid_at", "updated_at"])
+        payment.save(
+            update_fields=[
+                "status",
+                "provider_reference",
+                "gateway_verified_at",
+                "verification_source",
+                "paid_at",
+                "updated_at",
+            ]
+        )
         _fulfill_verified_payment(payment)
         return "paid"
