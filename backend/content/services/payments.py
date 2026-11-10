@@ -94,7 +94,9 @@ def generate_payfast_signature(fields: Mapping[str, str], passphrase: str = "") 
     return hashlib.md5(_signature_parameter_string(fields, passphrase).encode("utf-8")).hexdigest()
 
 
-def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: str, provider: str = "payfast") -> CheckoutSession:
+def create_checkout(
+    *, student: StudentRecord, course: Course, idempotency_key: str, provider: str = "payfast"
+) -> CheckoutSession:
     """Create a server-priced, signed PayFast checkout without granting access."""
 
     key = idempotency_key.strip()
@@ -133,8 +135,11 @@ def create_checkout(*, student: StudentRecord, course: Course, idempotency_key: 
 
     if provider == "paystack":
         from .paystack import initialize
+
         gateway_url = initialize(
-            email=student.email, amount=payment.amount, reference=payment.reference,
+            email=student.email,
+            amount=payment.amount,
+            reference=payment.reference,
             callback_path="/payments/pending",
         )
         return CheckoutSession(payment_reference=payment.reference, gateway_url=gateway_url, fields={})
