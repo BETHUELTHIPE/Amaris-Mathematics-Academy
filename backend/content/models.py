@@ -575,6 +575,7 @@ class LiveClassBooking(TimeStampedModel):
     )
     hold_expires_at = models.DateTimeField(default=live_class_hold_expiry, db_index=True)
     provider_reference = models.CharField(max_length=160, blank=True)
+    payment_provider = models.CharField(max_length=16, default="payfast", choices=[("payfast", "PayFast"), ("paystack", "Paystack")])
     paid_at = models.DateTimeField(blank=True, null=True)
     gateway_verified_at = models.DateTimeField(blank=True, null=True)
     invoice_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
@@ -642,6 +643,7 @@ class Enrollment(TimeStampedModel):
 class Payment(TimeStampedModel):
     class Provider(models.TextChoices):
         PAYFAST = "payfast", "PayFast"
+        PAYSTACK = "paystack", "Paystack"
         GOOGLE_PAY = "google_pay", "Google Pay"
 
     class Status(models.TextChoices):
