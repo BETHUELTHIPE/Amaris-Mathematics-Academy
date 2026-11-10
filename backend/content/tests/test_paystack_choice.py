@@ -5,12 +5,11 @@ import hmac
 import json
 from unittest import mock
 
-from django.test import SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase
 
+from content.paystack_views import paystack_webhook
 from content.services.payments import PaymentSecurityError
 from content.services.paystack import enabled, initialize
-from content.paystack_views import paystack_webhook
-from django.test import RequestFactory
 
 
 class PaystackCheckoutTests(SimpleTestCase):
