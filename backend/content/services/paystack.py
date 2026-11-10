@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from content.models import LiveClassBooking, Payment
+
 from .payments import PaymentSecurityError, _fulfill_verified_payment
 
 PAYSTACK_API = "https://api.paystack.co"
