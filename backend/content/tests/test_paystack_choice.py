@@ -68,3 +68,35 @@ class PaystackWebhookTests(SimpleTestCase):
         request = self.factory.post("/api/v1/paystack/webhook/", data=b'{"event":"charge.success"}', content_type="application/json", secure=True)
         self.assertEqual(paystack_webhook(request).status_code, 403)
         verify.assert_not_called()
+
+    @mock.patch.dict("os.environ", {
+        "PAYSTACK_SECRET_KEY": "sk_test_fake",
+        "PAYSTACK_WEBHOOK_SECRET": "whsec_fake",
+    })
+    @mock.patch("content.paystack_views.verify_and_settle")
+    def test_current_timestamped_webhook_signature(self, verify):
+        import time
+        raw = json.dumps({"event": "charge.success", "data": {"reference": "PS-sample"}}).encode()
+        timestamp = str(int(time.time()))
+        signature = hmac.new(b"whsec_fake", timestamp.encode() + b"." + raw, hashlib.sha512).hexdigest()
+        header = f"t={timestamp},v1=whk_test:{signature}"
+        request = self.factory.post(
+            "/api/v1/paystack/webhook/", data=raw, content_type="application/json",
+            HTTP_PAYSTACK_SIGNATURE=header, secure=True,
+        )
+        self.assertEqual(paystack_webhook(request).status_code, 200)
+        verify.assert_called_once_with("PS-sample")
+
+    @mock.patch.dict("os.environ", {"PAYSTACK_WEBHOOK_SECRET": "whsec_fake"})
+    @mock.patch("content.paystack_views.verify_and_settle")
+    def test_expired_webhook_signature_rejected(self, verify):
+        import time
+        raw = json.dumps({"event": "charge.success", "data": {"reference": "PS-sample"}}).encode()
+        timestamp = str(int(time.time()) - 1200)
+        signature = hmac.new(b"whsec_fake", timestamp.encode() + b"." + raw, hashlib.sha512).hexdigest()
+        request = self.factory.post(
+            "/api/v1/paystack/webhook/", data=raw, content_type="application/json",
+            HTTP_PAYSTACK_SIGNATURE=f"t={timestamp},v1=whk_test:{signature}", secure=True,
+        )
+        self.assertEqual(paystack_webhook(request).status_code, 403)
+        verify.assert_not_called()
