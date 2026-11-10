@@ -9,7 +9,7 @@ from django.test import RequestFactory, SimpleTestCase
 
 from content.paystack_views import paystack_webhook
 from content.services.payments import PaymentSecurityError
-from content.services.paystack import enabled, initialize
+from content.services.paystack import enabled, initialize, verify_and_settle
 
 
 class PaystackCheckoutTests(SimpleTestCase):
@@ -62,6 +62,21 @@ class PaystackCheckoutTests(SimpleTestCase):
             initialize(
                 email="x@example.com", amount=Decimal("1.00"), reference="PS-sample", callback_path="/payments/pending"
             )
+
+
+    @mock.patch("content.services.paystack._request")
+    def test_invalid_verified_amount_does_not_settle_payment(self, request):
+        for amount in (None, True, -100, "12.50", 12.5, {}, ""):
+            with self.subTest(amount=amount):
+                request.return_value = {
+                    "reference": "PS-example",
+                    "status": "success",
+                    "currency": "ZAR",
+                    "amount": amount,
+                    "id": 123456,
+                }
+                with self.assertRaises(PaymentSecurityError):
+                    verify_and_settle("PS-example")
 
 
 class PaystackWebhookTests(SimpleTestCase):
