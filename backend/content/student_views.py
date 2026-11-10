@@ -31,6 +31,7 @@ from .services.payments import PaymentSecurityError, create_checkout, process_pa
 class CheckoutRequestSerializer(serializers.Serializer):
     course_slug = serializers.SlugField(max_length=200)
     idempotency_key = serializers.RegexField(r"^[A-Za-z0-9_-]{8,64}$")
+    provider = serializers.ChoiceField(choices=("payfast", "paystack"), default="payfast")
 
 
 class ProgressRequestSerializer(serializers.Serializer):
@@ -271,6 +272,7 @@ class CheckoutView(StudentAPIView):
                 student=request.user.student,
                 course=course,
                 idempotency_key=values["idempotency_key"],
+                provider=values["provider"],
             )
         except PaymentSecurityError as exc:
             raise serializers.ValidationError({"detail": str(exc)}) from exc
