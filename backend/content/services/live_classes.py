@@ -165,8 +165,11 @@ def create_live_class_checkout(
 
     if provider == "paystack":
         from .paystack import initialize
+
         gateway_url = initialize(
-            email=student.email, amount=booking.amount, reference=booking.reference,
+            email=student.email,
+            amount=booking.amount,
+            reference=booking.reference,
             callback_path="/book-online-live-class/confirmation",
         )
         return LiveClassCheckoutSession(booking_reference=booking.reference, gateway_url=gateway_url, fields={})
