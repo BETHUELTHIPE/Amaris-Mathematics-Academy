@@ -9,13 +9,17 @@ import { createStudentCheckout } from "@/lib/student-api";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Secure Checkout", robots: { index: false, follow: false } };
 
-export default async function CheckoutPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function CheckoutPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ provider?: string }> }) {
   await requireVerifiedStudent("/dashboard");
   const { slug } = await params;
+  const selected = (await searchParams).provider;
+  if (selected !== "payfast" && selected !== "paystack") {
+    return <main className="min-h-screen bg-[#f5f7fb]"><Header /><section className="mx-auto max-w-xl px-5 py-16"><h1 className="text-3xl font-semibold">Choose your payment method</h1><p className="my-5">You will only receive access after we verify payment securely.</p><div className="grid gap-4"><Link className="rounded-xl bg-[#0b2a5b] p-5 text-center font-bold text-white" href={`/checkout/${encodeURIComponent(slug)}?provider=payfast`}>Pay with PayFast</Link><Link className="rounded-xl border border-[#0b2a5b] p-5 text-center font-bold text-[#0b2a5b]" href={`/checkout/${encodeURIComponent(slug)}?provider=paystack`}>Pay with Paystack</Link></div></section><Footer /></main>;
+  }
 
   let checkout: Awaited<ReturnType<typeof createStudentCheckout>>;
   try {
-    checkout = await createStudentCheckout(slug);
+    checkout = await createStudentCheckout(slug, selected);
   } catch {
     redirect("/payments/failed?reason=checkout-unavailable");
   }
@@ -29,14 +33,14 @@ export default async function CheckoutPage({ params }: { params: Promise<{ slug:
         <span className="grid size-14 place-items-center rounded-2xl bg-[#edf3ff] text-[#1f5bbd]"><CreditCard className="size-7" /></span>
         <p className="eyebrow mt-7">Secure checkout</p>
         <h1 className="mt-4 text-4xl font-semibold tracking-[-.045em]">{checkout.course.title}</h1>
-        <p className="mt-4 text-sm leading-7 text-[#60708a]">Payment reference <span className="font-mono font-semibold text-[#263852]">{checkout.payment_reference}</span>. Access is activated only after the server verifies the PayFast notification.</p>
+        <p className="mt-4 text-sm leading-7 text-[#60708a]">Payment reference <span className="font-mono font-semibold text-[#263852]">{checkout.payment_reference}</span>. Access is activated only after the server verifies the payment with the selected provider.</p>
         {sandbox && <div className="mt-5 rounded-xl border border-[#f2d28d] bg-[#fff8e7] p-4 text-sm text-[#765314]">Sandbox mode is active. No real money is charged.</div>}
-        <form method="post" action={checkout.gateway_url} className="mt-7">
+        {selected === "paystack" ? <a href={checkout.gateway_url} className="mt-7 flex min-h-12 items-center justify-center rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white">Continue to Paystack</a> : <form method="post" action={checkout.gateway_url} className="mt-7">
           {Object.entries(checkout.fields).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
           <button type="submit" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white">
             Continue to PayFast
           </button>
-        </form>
+        </form>}
         <div className="mt-5 flex items-center justify-center gap-2 text-xs text-[#60708a]"><ShieldCheck className="size-4" />Server-priced · signed checkout · verified callback required</div>
       </div>
     </section><Footer /></main>;
