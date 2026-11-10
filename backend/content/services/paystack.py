@@ -102,6 +102,8 @@ def verify_and_settle(reference: str) -> str:
             if (
                 booking.status != LiveClassBooking.Status.PENDING_PAYMENT
                 or booking.hold_expires_at <= timezone.now()
+                or booking.slot.starts_at <= timezone.now()
+            ):
                 raise PaymentSecurityError("Booking is no longer payable; review refund manually.")
             if LiveClassBooking.objects.exclude(pk=booking.pk).filter(provider_reference=provider_id).exists():
                 raise PaymentSecurityError("Transaction replay.")
