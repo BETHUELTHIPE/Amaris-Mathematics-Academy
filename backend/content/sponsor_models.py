@@ -34,7 +34,14 @@ class SponsorAccount(TimeStampedModel):
 
 
 class SponsorContribution(TimeStampedModel):
+    class Provider(models.TextChoices):
+        MANUAL = "manual", "Recorded by Amaris"
+        PAYFAST = "payfast", "PayFast"
+        PAYSTACK = "paystack", "Paystack"
+
     class Status(models.TextChoices):
+        PENDING = "pending", "Awaiting payment"
+        FAILED = "failed", "Payment unsuccessful"
         PLEDGED = "pledged", "Pledged"
         RECEIVED = "received", "Received"
         REFUNDED = "refunded", "Refunded"
@@ -46,12 +53,32 @@ class SponsorContribution(TimeStampedModel):
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PLEDGED)
     received_at = models.DateTimeField(blank=True, null=True)
     description = models.CharField(max_length=180, blank=True)
+    provider = models.CharField(max_length=12, choices=Provider.choices, default=Provider.MANUAL, editable=False)
+    payment_mode = models.CharField(max_length=4, blank=True, editable=False)
+    payment_idempotency_key = models.CharField(max_length=64, unique=True, null=True, editable=False)
+    payment_email = models.EmailField(blank=True, editable=False)
+    provider_reference = models.CharField(max_length=160, blank=True, editable=False)
+    gateway_verified_at = models.DateTimeField(null=True, blank=True, editable=False)
+    checkout_url = models.URLField(max_length=500, blank=True, editable=False)
+    initialization_started_at = models.DateTimeField(null=True, blank=True, editable=False)
+    last_error_code = models.CharField(max_length=80, blank=True, editable=False)
 
     class Meta:
         ordering = ("-created_at", "-id")
         indexes = [models.Index(fields=("sponsor", "status", "received_at"), name="sponsor_contribution_idx")]
         constraints = [
             models.CheckConstraint(condition=models.Q(amount__gt=0), name="sponsor_contribution_positive"),
+            models.UniqueConstraint(
+                fields=("provider", "payment_mode", "provider_reference"),
+                condition=~models.Q(provider_reference=""),
+                name="sponsor_gateway_reference_unique",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(provider="manual")
+                | ~models.Q(status="received")
+                | (models.Q(gateway_verified_at__isnull=False) & ~models.Q(provider_reference="")),
+                name="sponsor_gateway_receipt_verified",
+            ),
             models.CheckConstraint(
                 condition=~models.Q(status="received") | models.Q(received_at__isnull=False),
                 name="sponsor_received_timestamp",

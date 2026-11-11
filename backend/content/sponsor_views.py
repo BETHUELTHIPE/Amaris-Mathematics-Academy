@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
+from .services.sponsor_payments import payment_options
 from .sponsor_models import SponsorAccount, SponsorAllocation, SponsorContribution
 
 
@@ -42,7 +43,7 @@ class SupabaseSponsorAuthentication(BaseAuthentication):
             raise AuthenticationFailed("The sponsor identity is invalid.") from exc
         if sponsor is None:
             raise PermissionDenied("Sponsor access has not been approved for this account.")
-        return sponsor, {"provider": "supabase", "role": "sponsor"}
+        return sponsor, {"provider": "supabase", "role": "sponsor", "email": str(payload.get("email") or "")}
 
     def authenticate_header(self, request):
         return "Bearer"
@@ -95,6 +96,8 @@ class SponsorContributionSerializer(serializers.Serializer):
     status = serializers.CharField()
     date = serializers.DateTimeField()
     description = serializers.CharField(allow_blank=True)
+    provider = serializers.CharField()
+    payment_mode = serializers.CharField(allow_blank=True)
 
 
 class SponsorMonthSerializer(serializers.Serializer):
@@ -107,7 +110,15 @@ class SponsorProgrammeSerializer(serializers.Serializer):
     amount = serializers.CharField()
 
 
+class SponsorPaymentOptionSerializer(serializers.Serializer):
+    provider = serializers.CharField()
+    label = serializers.CharField()
+    available = serializers.BooleanField()
+    mode = serializers.CharField()
+
+
 class SponsorDashboardSerializer(serializers.Serializer):
+    payment_options = SponsorPaymentOptionSerializer(many=True)
     sponsor = SponsorIdentitySerializer()
     summary = SponsorSummarySerializer()
     currency = serializers.CharField()
@@ -179,7 +190,7 @@ class SponsorDashboardView(SponsorAPIView):
         page_size = 20
         offset = (page - 1) * page_size
         contributions = SponsorContribution.objects.filter(sponsor=request.user)
-        received = contributions.filter(status=SponsorContribution.Status.RECEIVED)
+        received = contributions.filter(status=SponsorContribution.Status.RECEIVED).exclude(payment_mode="test")
         allocations = SponsorAllocation.objects.filter(sponsor=request.user)
         committed = allocations.filter(status__in=("active", "completed"))
         year_received = received.filter(received_at__year=year)
@@ -196,6 +207,7 @@ class SponsorDashboardView(SponsorAPIView):
         )
         return Response(
             {
+                "payment_options": payment_options(),
                 "sponsor": {
                     "name": request.user.name,
                     "organisation": request.user.organisation,
@@ -231,6 +243,8 @@ class SponsorDashboardView(SponsorAPIView):
                 ],
                 "contributions": [
                     {
+                        "provider": item.provider,
+                        "payment_mode": item.payment_mode,
                         "reference": item.reference,
                         "amount": _money(item.amount),
                         "status": item.status,
@@ -264,7 +278,7 @@ class SponsorStatementView(SponsorAPIView):
             raise serializers.ValidationError("This statement is too large. Contact Amaris for a complete export.")
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["Reference", "Date (SAST)", "Description", "Status", "Amount", "Currency"])
+        writer.writerow(["Reference", "Date (SAST)", "Description", "Status", "Amount", "Provider", "Mode", "Currency"])
         for item in records.iterator(chunk_size=500):
             writer.writerow(
                 [
@@ -273,6 +287,8 @@ class SponsorStatementView(SponsorAPIView):
                     _csv_cell(item.description),
                     item.get_status_display(),
                     _money(item.amount),
+                    item.get_provider_display(),
+                    item.payment_mode or "Recorded",
                     "ZAR",
                 ]
             )

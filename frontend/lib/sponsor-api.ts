@@ -18,6 +18,7 @@ export type SponsorLearner = {
 };
 
 export type SponsorDashboardData = {
+  payment_options?: { provider: "payfast" | "paystack"; label: string; available: boolean; mode: "test" | "live" }[];
   sponsor: { name: string; organisation: string; annual_target: string };
   summary: {
     received: string; pledged: string; allocated: string; balance: string;
@@ -29,7 +30,7 @@ export type SponsorDashboardData = {
   monthly_contributions: { month: string; amount: string }[];
   programme_allocations: { programme: string; amount: string }[];
   learners: SponsorLearner[];
-  contributions: { reference: string; amount: string; status: "pledged" | "received" | "refunded"; date: string; description: string }[];
+  contributions: { reference: string; amount: string; status: "pledged" | "received" | "refunded" | "pending" | "failed"; provider?: "manual" | "payfast" | "paystack"; payment_mode?: string; date: string; description: string }[];
   learners_total: number;
   contributions_total: number;
   page: number;
@@ -42,7 +43,7 @@ export class SponsorApiError extends Error {
   }
 }
 
-async function sponsorFetch(path: string): Promise<Response> {
+async function sponsorFetch(path: string, init: RequestInit = {}): Promise<Response> {
   await requireVerifiedStudent("/sponsor");
   const { data, error } = await (await createSupabaseServerClient()).auth.getSession();
   const token = data.session?.access_token;
@@ -51,9 +52,10 @@ async function sponsorFetch(path: string): Promise<Response> {
   const base = bindings.CMS_API_URL || process.env.CMS_API_URL;
   if (!base) throw new SponsorApiError(503);
   const response = await fetch(`${normalizeCmsApiBaseUrl(base)}${path}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: path.includes("statement") ? "text/csv" : "application/json" },
+    ...init,
+    headers: { ...(init.body ? { "Content-Type": "application/json" } : {}), Authorization: `Bearer ${token}`, Accept: path.includes("statement") ? "text/csv" : "application/json" },
     cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(init.method === "POST" ? 20_000 : 8_000),
     redirect: "error",
   });
   if (!response.ok) throw new SponsorApiError(response.status);
@@ -71,4 +73,30 @@ export async function getSponsorStatement(year?: string): Promise<Response> {
   const query = new URLSearchParams();
   if (year) query.set("year", year);
   return sponsorFetch(`/sponsor/statement/?${query}`);
+}
+
+export type SponsorPaymentStatus = {
+  reference: string;
+  provider: "payfast" | "paystack";
+  mode: "test" | "live";
+  status: "pending" | "failed" | "received" | "refunded";
+  amount: string;
+  currency: string;
+  gateway_verified: boolean;
+  checkout: null | { gateway_url: string; fields: Record<string, string> };
+};
+
+export { validSponsorGatewayUrl } from "./sponsor-payment-url";
+
+export async function createSponsorCheckout(input: { amount: string; provider: string; idempotency_key: string }): Promise<{ reference: string }> {
+  const response = await sponsorFetch("/sponsor/checkout/", { method: "POST", body: JSON.stringify(input) });
+  return response.json() as Promise<{ reference: string }>;
+}
+
+export async function getSponsorPayment(reference: string): Promise<SponsorPaymentStatus> {
+  return (await sponsorFetch(`/sponsor/payments/${encodeURIComponent(reference)}/`)).json() as Promise<SponsorPaymentStatus>;
+}
+
+export async function verifySponsorPayment(reference: string): Promise<void> {
+  await sponsorFetch(`/sponsor/payments/${encodeURIComponent(reference)}/verify/`, { method: "POST" });
 }

@@ -1790,3 +1790,26 @@
     grid-template-columns: repeat(3,1fr);
   }
 }
+
+.sp-funding-panel { margin: 0 0 28px; }
+.sp-funding-panel > .sp-panel-heading > svg { color: #416f62; }
+.sp-funding-form { display: grid; grid-template-columns: 1fr 1.5fr; gap: 20px; padding: 13px 23px 22px; }
+.sp-funding-amount { display: flex; flex-direction: column; gap: 7px; font-size: 11px; font-weight: 600; }
+.sp-funding-amount > span { display: flex; align-items: center; gap: 10px; border: 1px solid #d5dfe4; border-radius: 8px; padding: 10px 13px; }
+.sp-funding-amount strong { color: #60757b; font-weight: 500; }
+.sp-funding-amount input { width: 100%; min-width: 0; border: 0; padding: 3px; color: #183340; background: transparent; }
+.sp-funding-amount small { font-size: 10px; color: #627782; font-weight: 400; }
+.sp-funding-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.sp-funding-form legend { font-size: 11px; font-weight: 600; margin-bottom: 7px; }
+.sp-payment-choices { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+.sp-payment-choices label { display: flex; align-items: center; gap: 10px; border: 1px solid #d5dfe4; border-radius: 8px; padding: 13px; cursor: pointer; }
+.sp-payment-choices label.selected { border-color: #648775; background: #f2f7f3; }
+.sp-payment-choices input { accent-color: #236755; width: 16px; height: 16px; flex-shrink: 0; }
+.sp-payment-choices strong { display: block; font-size: 13px; font-weight: 650; }
+.sp-payment-choices small { display: block; font-size: 9px; color: #627782; margin-top: 2px; }
+.sp-funding-submit { display: flex; align-items: center; gap: 15px; grid-column: 1/-1; flex-wrap: wrap; }
+.sp-funding-submit p { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #627782; }
+.sp-funding-note { grid-column: 1/-1; font-size: 10px; color: #627782; line-height: 1.6; }
+@media(max-width:719px) { .sp-funding-form { grid-template-columns: 1fr; gap: 17px; padding-inline: 18px; } .sp-funding-submit { align-items: start; flex-direction: column; gap: 12px; } .sp-payment-choices label { padding: 12px 10px; gap: 7px; } }
+.sp-status-pending { background: #faf2e2; color: #80622b; }
+.sp-status-failed { background: #f5eded; color: #8a5656; }

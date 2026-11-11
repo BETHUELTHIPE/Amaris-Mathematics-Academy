@@ -9,7 +9,7 @@ never creates a student profile or accepts synthetic student acceptance tokens.
 ## Features and data definitions
 
 - Overview: all-time received funding, students supported, funding allocated and
-  available funding. Received excludes pledges and fully refunded records.
+  available funding. Received excludes pledges, fully refunded records and test-mode transactions.
   Allocated includes active and completed allocations; planned and cancelled
   allocations are excluded. Available funding can be negative and is labelled
   as a funding gap rather than being hidden. It is a planning total, not a
@@ -42,8 +42,9 @@ never creates a student profile or accepts synthetic student acceptance tokens.
    Enable `is_active` only after checking the sponsor's identity.
 3. Record genuine contributions in Sponsor contributions. Mark funding Received
    only after independent receipt verification and enter its receipt timestamp.
-   A pledge is not received money. This release does not add a payment gateway,
-   debit a sponsor or automatically reconcile bank transfers.
+   A pledge is not received money. Sponsors can now also pay through hosted
+   PayFast or Paystack checkout; see SPONSOR_PAYMENTS.md for configuration.
+   Gateway-backed receipt fields remain controlled by server verification.
 4. Create Sponsor allocations for the relevant students, using authorised
    sponsor-visible aliases. Specify programme, level, amount, dates and status.
    To share course progress, link the same student's enrollment and record
@@ -56,7 +57,8 @@ never creates a student profile or accepts synthetic student acceptance tokens.
 All three new tables enable RLS and revoke public/anon/authenticated Data API
 access. Django serves records after identity and account-ownership checks.
 Dashboard, statement and frontend page responses are private/no-store. Sponsor
-APIs are read-only; financial updates remain in permission-controlled Admin.
+record APIs are read-only; separate checkout/verification POST endpoints create
+and verify gateway contributions. Manual financial updates remain in Admin.
 
 ## Verification and release limits
 

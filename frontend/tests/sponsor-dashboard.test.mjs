@@ -91,3 +91,46 @@ test("preview sample warning is explicit and does not offer a real statement dow
   assert.match(html,/href="#preview-statement-note"/);
   assert.doesNotMatch(html,/href="\/sponsor\/statement/);
 });
+
+test("sponsors can choose PayFast or Paystack and enter a rand amount in the preview", () => {
+  const html=visible(render({preview:true}));
+  assert.match(html,/Make a contribution/);
+  assert.match(html,/value="payfast"/);
+  assert.match(html,/value="paystack"/);
+  assert.match(html,/<input(?=[^>]*name="amount")(?=[^>]*min="10")(?=[^>]*max="1000000")(?=[^>]*step="0.01")/);
+  assert.match(html,/Design preview only/);
+  assert.match(html,/type="submit" disabled/);
+});
+
+test("gateway choices remain unavailable when online payments are not configured", () => {
+  const html=visible(render());
+  assert.match(html,/Online contributions are currently unavailable/);
+  assert.match(html,/<input(?=[^>]*value="payfast")(?=[^>]*disabled)/);
+  assert.match(html,/<input(?=[^>]*value="paystack")(?=[^>]*disabled)/);
+});
+
+test("online contribution history links to its private status and labels the test gateway", () => {
+  const html=visible(render({ initialView:"contributions", data:{...base,contributions:[{
+    ...base.contributions[0],reference:"SC-"+"a".repeat(32),provider:"paystack",payment_mode:"test",status:"pending",
+  }]}}));
+  assert.match(html,/href="\/sponsor\/payments\/SC-a{32}"/);
+  assert.match(html,/Paystack · Test/);
+  assert.match(html,/Pending/);
+});
+
+test("checkout navigation accepts only the intended gateway host and scheme", async () => {
+  const { validSponsorGatewayUrl } = await vite.ssrLoadModule("/lib/sponsor-payment-url.ts");
+  assert.equal(validSponsorGatewayUrl("payfast","https://sandbox.payfast.co.za/eng/process"),true);
+  assert.equal(validSponsorGatewayUrl("payfast","https://www.payfast.co.za/eng/process"),true);
+  assert.equal(validSponsorGatewayUrl("paystack","https://checkout.paystack.com/example"),true);
+  for(const [provider,url] of [
+    ["paystack","javascript:alert(1)"],
+    ["paystack","https://checkout.paystack.com.evil.example/example"],
+    ["paystack","https://user@checkout.paystack.com/example"],
+    ["paystack","https://checkout.paystack.com:444/example"],
+    ["paystack","http://checkout.paystack.com/example"],
+    ["payfast","https://www.payfast.co.za/account"],
+    ["payfast","https://www.payfast.co.za.evil.example/eng/process"],
+    ["payfast","https://checkout.paystack.com/example"],
+  ]) assert.equal(validSponsorGatewayUrl(provider,url),false,url);
+});
