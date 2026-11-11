@@ -3,6 +3,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   compress: true,
   poweredByHeader: false,
+  async headers() {
+    return [{ source: "/sponsor/:path*", headers: [
+      { key: "Cache-Control", value: "private, no-store, max-age=0" },
+      { key: "Vary", value: "Cookie" },
+    ] }];
+  },
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 86400,

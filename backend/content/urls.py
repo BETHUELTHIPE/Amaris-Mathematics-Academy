@@ -7,8 +7,16 @@ from .live_class_views import (
     LiveClassInvoiceDownloadView,
     LiveClassSlotView,
 )
+from .motivation_views import unsubscribe
 from .payfast_views import PayFastITNView
 from .rum import collect_web_vitals
+from .sponsor_payment_views import (
+    SponsorCheckoutView,
+    SponsorPaymentStatusView,
+    SponsorPaymentVerifyView,
+    SponsorPaystackWebhookView,
+)
+from .sponsor_views import SponsorDashboardView, SponsorStatementView
 from .student_views import (
     AcceptancePaymentCompleteView,
     AcceptanceSeedView,
@@ -64,6 +72,13 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("sponsor/checkout/", SponsorCheckoutView.as_view(), name="sponsor-checkout"),
+    path("sponsor/payments/<str:reference>/", SponsorPaymentStatusView.as_view(), name="sponsor-payment-status"),
+    path("sponsor/payments/<str:reference>/verify/", SponsorPaymentVerifyView.as_view(), name="sponsor-payment-verify"),
+    path("sponsor/paystack/webhook/", SponsorPaystackWebhookView.as_view(), name="sponsor-paystack-webhook"),
+    path("sponsor/dashboard/", SponsorDashboardView.as_view(), name="sponsor-dashboard"),
+    path("sponsor/statement/", SponsorStatementView.as_view(), name="sponsor-statement"),
+    path("emails/motivation/unsubscribe/", unsubscribe, name="student-motivation-unsubscribe"),
     path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(

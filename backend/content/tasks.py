@@ -560,3 +560,17 @@ def deliver_tutor_application_acknowledgements() -> int:
         if not count:
             break
     return delivered
+
+
+@shared_task(ignore_result=True, queue="notifications")
+def queue_student_motivation_emails():
+    from content.services.student_motivation import queue_due_emails
+
+    return queue_due_emails()
+
+
+@shared_task(ignore_result=True, queue="notifications")
+def deliver_student_motivation_email():
+    from content.services.student_motivation import deliver_due_email
+
+    return deliver_due_email()

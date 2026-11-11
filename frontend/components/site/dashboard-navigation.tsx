@@ -14,6 +14,7 @@ const items = [
   { key: "courses", label: "My courses", href: "/dashboard#my-courses", icon: BookOpen },
   { key: "orders", label: "Orders & payments", href: "/dashboard/orders", icon: CreditCard },
   { key: "notifications", label: "Notifications", href: "/dashboard/notifications", icon: Bell },
+  { key: "sponsor", label: "Sponsor portal", href: "/sponsor", icon: UserRound },
   { key: "profile", label: "Profile & security", href: "/reset-password", icon: UserRound },
 ] as const;
 

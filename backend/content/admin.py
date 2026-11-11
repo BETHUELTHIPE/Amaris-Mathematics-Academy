@@ -26,6 +26,7 @@ from .models import (
     PricingPlan,
     ResourceAsset,
     SiteSettings,
+    StudentMotivationEmail,
     StudentRecord,
     Testimonial,
     TutorAvailabilitySlot,
@@ -836,3 +837,17 @@ class WebVitalBucketAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
         }
         return TemplateResponse(request, "admin/content/webvitalbucket/report.html", context)
+
+
+@admin.register(StudentMotivationEmail)
+class StudentMotivationEmailAdmin(TimeStampedAdmin):
+    list_display = ("supabase_user_id", "registered_at", "status", "sent_at", "unsubscribed_at")
+    list_filter = ("status", "sent_at", "unsubscribed_at")
+    search_fields = ("supabase_user_id",)
+    readonly_fields = tuple(field.name for field in StudentMotivationEmail._meta.fields)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
