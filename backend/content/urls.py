@@ -10,6 +10,7 @@ from .live_class_views import (
 from .motivation_views import unsubscribe
 from .payfast_views import PayFastITNView
 from .rum import collect_web_vitals
+from .sponsor_views import SponsorDashboardView, SponsorStatementView
 from .student_views import (
     AcceptancePaymentCompleteView,
     AcceptanceSeedView,
@@ -65,6 +66,8 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("sponsor/dashboard/", SponsorDashboardView.as_view(), name="sponsor-dashboard"),
+    path("sponsor/statement/", SponsorStatementView.as_view(), name="sponsor-statement"),
     path("emails/motivation/unsubscribe/", unsubscribe, name="student-motivation-unsubscribe"),
     path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),

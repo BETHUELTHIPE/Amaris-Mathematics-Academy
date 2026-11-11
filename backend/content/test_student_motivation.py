@@ -30,6 +30,7 @@ from content.services.student_motivation import (
     queue_due_emails,
     unsubscribe_token,
 )
+from content.sponsor_models import SponsorAccount
 from content.tasks import deliver_student_motivation_email, queue_student_motivation_emails
 from content.tutor_application_models import TutorApplication
 
@@ -135,6 +136,13 @@ class StudentMotivationTests(TestCase):
         student.save()
         self.assertEqual(queue_due_emails(), 0)
         self.assertEqual(StudentMotivationEmail.objects.filter(status="suppressed").count(), 3)
+
+    def test_sponsor_accounts_do_not_receive_student_motivation_emails(self):
+        for is_active in (True, False):
+            user_id, _ = self.register()
+            SponsorAccount.objects.create(supabase_user_id=user_id, name="Sponsor", is_active=is_active)
+        self.assertEqual(queue_due_emails(), 0)
+        self.assertEqual(StudentMotivationEmail.objects.filter(status="suppressed").count(), 2)
 
     def test_all_course_payment_evidence_and_refunds_suppress(self):
         for evidence in (

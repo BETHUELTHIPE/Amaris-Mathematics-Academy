@@ -51,3 +51,18 @@ class ApplicantAuthenticationScheme(OpenApiAuthenticationExtension):
             "bearerFormat": "JWT",
             "description": "Verified Supabase applicant account; does not grant approved tutor permissions.",
         }
+
+
+class SupabaseSponsorAuthenticationScheme(OpenApiAuthenticationExtension):
+    target_class = "content.sponsor_views.SupabaseSponsorAuthentication"
+    name = "SupabaseSponsorBearerAuth"
+
+    def get_security_definition(self, auto_schema):
+        return {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": (
+                "Verified Supabase user with an active, administrator-approved sponsor account linked by Auth UUID."
+            ),
+        }

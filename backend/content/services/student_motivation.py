@@ -22,6 +22,7 @@ from content.models import (
     StudentRecord,
     VideoRequest,
 )
+from content.sponsor_models import SponsorAccount
 from content.tutor_application_models import TutorApplication
 
 TOKEN_SALT = "content.student-motivation.unsubscribe.v1"
@@ -65,6 +66,8 @@ def ineligible(user_id, email):
     # refund, cancellation after payment or review is still a previous payment.
     students = StudentRecord.objects.filter(Q(supabase_user_id=user_id) | Q(email__iexact=email))
     if students.filter(is_active=False).exists():
+        return True
+    if SponsorAccount.objects.filter(supabase_user_id=user_id).exists():
         return True
     if get_user_model().objects.filter(email__iexact=email).exists():
         return True
