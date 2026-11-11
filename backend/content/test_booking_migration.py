@@ -11,6 +11,8 @@ from amaris_cms.celery import app
 class BookingWorkerRoutingTests(SimpleTestCase):
     def test_delivery_and_archive_tasks_use_the_notification_worker(self):
         for task in (
+            "queue_student_motivation_emails",
+            "deliver_student_motivation_email",
             "deliver_transactional_email",
             "deliver_live_class_confirmation",
             "deliver_live_class_reminder",
@@ -26,6 +28,7 @@ class BookingProductionMigrationTests(TransactionTestCase):
         production = [("content", "0007_invoice_pdf_archive")]
         release = [("content", "0010_private_booking_tables")]
         executor = MigrationExecutor(connection)
+        latest = executor.loader.graph.leaf_nodes()
         executor.migrate(production)
         try:
             apps = executor.loader.project_state(production).apps
@@ -68,4 +71,5 @@ class BookingProductionMigrationTests(TransactionTestCase):
             self.assertIn("content_liveclassbooking", connection.introspection.table_names())
             self.assertIn("content_tutoravailabilityslot", connection.introspection.table_names())
         finally:
-            MigrationExecutor(connection).migrate(release)
+            # Restore the full current schema for subsequent transaction tests.
+            MigrationExecutor(connection).migrate(latest)

@@ -202,6 +202,9 @@ PUBLIC_SITE_URL = os.getenv(
     "https://amaris-mathematics-academy-live-students.onrender.com",
 ).rstrip("/")
 
+PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "").rstrip("/")
+STUDENT_MOTIVATION_EMAIL_ENABLED = env_bool("STUDENT_MOTIVATION_EMAIL_ENABLED", True)
+
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 SUPABASE_AUTH_TIMEOUT_SECONDS = float(os.getenv("SUPABASE_AUTH_TIMEOUT_SECONDS", "4"))
@@ -435,6 +438,16 @@ if OPENAI_ASSISTANT_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
 CELERY_BEAT_SCHEDULE = {
+    "queue-student-motivation-emails": {
+        "task": "content.tasks.queue_student_motivation_emails",
+        "schedule": 300.0,
+        "options": {"queue": "notifications"},
+    },
+    "deliver-student-motivation-email": {
+        "task": "content.tasks.deliver_student_motivation_email",
+        "schedule": 60.0,
+        "options": {"queue": "notifications"},
+    },
     "reconcile-tutor-earnings": {
         "task": "content.tutor_finance_tasks.reconcile_tutor_earnings",
         "schedule": 600.0,
