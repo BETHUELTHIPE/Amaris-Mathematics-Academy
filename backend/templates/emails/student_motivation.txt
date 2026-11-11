@@ -1,0 +1,15 @@
+Dear {{ first_name }},
+
+It has been at least two weeks since you registered with {{ academy }}. Thank you for joining us.
+
+Every step you take towards understanding mathematics counts. If you have not started yet, begin with one topic or one question. With practice and support, you can build your confidence at your own pace.
+
+We are ready to help you choose a suitable lesson or learning resource. Visit your dashboard to explore your options, or reply to this email if you need guidance before booking.
+
+Continue your learning journey: {{ dashboard_url }}
+
+Kind regards,
+The {{ academy }} Team
+{{ contact_email }} | {{ phone }}
+
+You received this encouragement because you registered and have not made a payment. You can unsubscribe from motivational emails here: {{ unsubscribe_url }}

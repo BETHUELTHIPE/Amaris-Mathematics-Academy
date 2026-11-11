@@ -913,3 +913,24 @@ class WebVitalBucket(models.Model):
 
 # Django discovers the recruitment models through this application module.
 from .tutor_application_models import TutorApplication, TutorApplicationDocument  # noqa: E402,F401
+
+
+class StudentMotivationEmail(TimeStampedModel):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        SENDING = "sending", "Delivery started; review if interrupted"
+        SENT = "sent", "Sent"
+        SUPPRESSED = "suppressed", "Not eligible or unsubscribed"
+        REVIEW = "review", "Delivery outcome requires review"
+
+    supabase_user_id = models.UUIDField(primary_key=True, editable=False)
+    registered_at = models.DateTimeField(editable=False)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.QUEUED, db_index=True)
+    attempted_at = models.DateTimeField(null=True, blank=True, editable=False)
+    sent_at = models.DateTimeField(null=True, blank=True, editable=False)
+    unsubscribed_at = models.DateTimeField(null=True, blank=True, editable=False)
+    last_error_code = models.CharField(max_length=120, blank=True, editable=False)
+
+    class Meta:
+        verbose_name = "Student motivation email"
+        ordering = ("registered_at", "supabase_user_id")

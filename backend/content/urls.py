@@ -7,6 +7,7 @@ from .live_class_views import (
     LiveClassInvoiceDownloadView,
     LiveClassSlotView,
 )
+from .motivation_views import unsubscribe
 from .payfast_views import PayFastITNView
 from .rum import collect_web_vitals
 from .student_views import (
@@ -64,6 +65,7 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("emails/motivation/unsubscribe/", unsubscribe, name="student-motivation-unsubscribe"),
     path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(
