@@ -1,0 +1,30 @@
+# CI-only replacement of the synthetic frontend by the actual production Node build.
+services:
+  backend:
+    image: amaris-site-backend:test
+    command: ["python", "tests/site_gateway/start_django.py"]
+    environment:
+      DJANGO_DEBUG: "false"
+      DJANGO_SECRET_KEY: "test-only-test-only-test-only-test-only-test-only-test-only"
+      DJANGO_ALLOWED_HOSTS: "academy.example.test,backend,localhost,127.0.0.1"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "https://academy.example.test"
+      PUBLIC_SITE_URL: "https://academy.example.test"
+      PUBLIC_API_URL: "https://academy.example.test"
+      DATABASE_URL: "sqlite:////tmp/site-acceptance.sqlite3"
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      GUNICORN_BIND: "0.0.0.0:8000"
+      WEB_CONCURRENCY: "1"
+      AMARIS_COLOCATE_NOTIFICATIONS: "false"
+      EMAIL_BACKEND: "django.core.mail.backends.locmem.EmailBackend"
+    mem_limit: 512m
+  frontend:
+    image: amaris-site-frontend:test
+    command: ["node", ".output/server/index.mjs"]
+    environment:
+      NODE_ENV: production
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      SITE_URL: "https://academy.example.test"
+      CMS_API_URL: ""
+    mem_limit: 512m

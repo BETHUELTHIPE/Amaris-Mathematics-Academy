@@ -1,0 +1,27 @@
+services:
+  backend:
+    image: python:3.13.15-slim
+    command: ["python", "/fixture/server.py"]
+    environment: {FIXTURE_ROLE: backend, FIXTURE_PORT: "8000"}
+    volumes: ["./server.py:/fixture/server.py:ro"]
+    networks: [site_test]
+    mem_limit: 128m
+  frontend:
+    image: python:3.13.15-slim
+    command: ["python", "/fixture/server.py"]
+    environment: {FIXTURE_ROLE: frontend, FIXTURE_PORT: "3000"}
+    volumes: ["./server.py:/fixture/server.py:ro"]
+    networks: [site_test]
+    mem_limit: 128m
+  gateway:
+    image: nginx:1.29-alpine
+    command: ["nginx", "-c", "/etc/nginx/amaris-site.conf", "-g", "daemon off;"]
+    ports: ["127.0.0.1::8080"]
+    volumes:
+      - ../../../deploy/site-gateway/nginx.conf:/etc/nginx/amaris-site.conf:ro
+      - ../../../deploy/site-gateway/trusted-proxies.conf:/etc/nginx/site-trusted-proxies.conf:ro
+    depends_on: [frontend, backend]
+    networks: [site_test]
+    mem_limit: 128m
+networks:
+  site_test:

@@ -4,6 +4,15 @@ The Docker image's web command runs Nginx on `0.0.0.0:$PORT` (default 8000), wit
 
 Compose retains its separate Nginx service and explicitly starts only Gunicorn in the web container. Background worker commands still override the image's web command. Single-container mode needs no additional hosted service.
 
+## Whole-website gateway
+
+For a single Nginx entry point routing both the current frontend and Django,
+see [deploy/site-gateway](../../deploy/site-gateway/README.md). It keeps frontend
+BFF /api routes separate from Django /api/v1, forwards SSR/static assets and
+private requests, and uses independently reviewed frontend/backend images.
+The backend-only configurations below remain available as their existing
+alternative deployment paths.
+
 ## Deployment boundary
 
 The inspected Render production backend is a **native Python service**, not this Docker image. Its current command continues to run Gunicorn directly. Merging this PR does not install Nginx on that service, change its runtime, resume a billing suspension or deploy anything. Select a supported Docker deployment/migration plan and pass staging acceptance before cutover; preserve the backend URL, storage bindings and PayFast callbacks.

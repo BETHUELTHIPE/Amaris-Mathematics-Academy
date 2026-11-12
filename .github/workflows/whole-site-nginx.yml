@@ -1,0 +1,76 @@
+name: Whole-site Nginx gateway acceptance
+on:
+  pull_request:
+    branches: [production-release-20260923, staging, main]
+    paths:
+      - deploy/site-gateway/**
+      - backend/tests/site_gateway/**
+      - backend/tests/site_gateway_smoke.py
+      - .github/workflows/whole-site-nginx.yml
+permissions:
+  contents: read
+jobs:
+  gateway-routing:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Validate Python and Docker Compose
+        run: |
+          docker compose version
+          python -m py_compile backend/tests/site_gateway/server.py backend/tests/site_gateway_smoke.py
+      - name: Route isolation, cookies, uploads, streaming, upgrades and replica discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u backend/tests/site_gateway_smoke.py | tee /tmp/whole-site-nginx.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whole-site-nginx-routing-evidence
+          path: /tmp/whole-site-nginx.log
+          if-no-files-found: ignore
+          retention-days: 14
+  actual-node-frontend:
+    needs: gateway-routing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      FRONTEND_SOURCE_SHA: fa28c343dba6c4e23510ba69faf2a6c5a8c42877
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: BETHUELTHIPE/Amaris-Mathematics-Academy
+          ref: ${{ env.FRONTEND_SOURCE_SHA }}
+          path: frontend-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build the actual reviewed frontend without credentials
+        run: >-
+          docker build --build-arg FRONTEND_REVISION="$FRONTEND_SOURCE_SHA"
+          -f deploy/site-gateway/Frontend.Dockerfile
+          -t amaris-site-frontend:test frontend-source
+      - name: Build disposable Django HTTP acceptance image
+        run: docker build -f backend/tests/site_gateway/Django.Dockerfile -t amaris-site-backend:test .
+      - name: Actual frontend and Django HTTP acceptance through Nginx
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u backend/tests/site_gateway_smoke.py --real-frontend | tee /tmp/whole-site-node.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whole-site-nginx-node-evidence
+          path: /tmp/whole-site-node.log
+          if-no-files-found: ignore
+          retention-days: 14
