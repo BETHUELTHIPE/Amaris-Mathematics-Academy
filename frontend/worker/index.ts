@@ -24,7 +24,7 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
-const protectedPrefixes = ["/tutor", "/api/tutor-applications", "/dashboard", "/documents", "/checkout", "/book-online-live-class", "/request-a-video", "/api/video-requests", "/api/auth-state"];
+const protectedPrefixes = ["/tutor", "/api/tutor-applications", "/dashboard", "/documents", "/checkout", "/book-online-live-class", "/request-a-video", "/api/video-requests", "/api/auth-state", "/subscriptions/status", "/api/subscriptions"];
 const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const csp = [
   "default-src 'self'",
@@ -100,7 +100,7 @@ function secureResponse(response: Response, pathname: string, env: Env): Respons
     );
   }
 
-  if (protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+  if (protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || /^\/subscriptions\/[^/]+\/checkout\/?$/.test(pathname)) {
     secured.headers.set("Cache-Control", "private, no-store, max-age=0");
     secured.headers.append("Vary", "Cookie");
   }
