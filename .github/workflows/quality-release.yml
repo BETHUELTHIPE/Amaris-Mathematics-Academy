@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, staging, production-release-20260923]
   push:
-    branches: [main]
+    branches: [main, perf/nginx-gunicorn-uvicorn-20261030]
   workflow_dispatch:
     inputs:
       deploy_production:
@@ -469,7 +469,12 @@ jobs:
 
   publish-image:
     name: Publish release image to Docker Hub
-    if: github.event_name != 'pull_request'
+    # The explicit marker permits the user-requested registry save from the reviewed
+    # runtime branch. Normal feature pushes cannot publish or move latest.
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref != 'refs/heads/perf/nginx-gunicorn-uvicorn-20261030' ||
+       (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-dockerhub]')))
     runs-on: ubuntu-latest
     needs: [container-security, frontend-quality, responsive-browser, backend-quality, dependency-security, secret-security]
     permissions:
@@ -492,8 +497,9 @@ jobs:
           images: ${{ env.REGISTRY_IMAGE }}
           tags: |
             type=sha,format=long,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
-      - name: Build and push multi-platform image
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || (github.ref == 'refs/heads/perf/nginx-gunicorn-uvicorn-20261030' && contains(github.event.head_commit.message, '[publish-dockerhub]')) }}
+      - id: build
+        name: Build and push multi-platform image
         uses: docker/build-push-action@v6
         with:
           context: backend
@@ -505,13 +511,64 @@ jobs:
           labels: ${{ steps.metadata.outputs.labels }}
           cache-from: type=gha,scope=amaris-backend
           cache-to: type=gha,mode=max,scope=amaris-backend
+      - name: Verify saved registry digest and platforms
+        env:
+          EXPECTED_DIGEST: ${{ steps.build.outputs.digest }}
+          PUBLISH_LATEST: ${{ github.ref == 'refs/heads/main' || (github.ref == 'refs/heads/perf/nginx-gunicorn-uvicorn-20261030' && contains(github.event.head_commit.message, '[publish-dockerhub]')) }}
+        run: |
+          docker buildx imagetools inspect "${REGISTRY_IMAGE}:${GITHUB_SHA}" --format '{{json .Manifest}}' > commit-descriptor.json
+          docker buildx imagetools inspect "${REGISTRY_IMAGE}@${EXPECTED_DIGEST}" --raw > saved-index.json
+          if [ "$PUBLISH_LATEST" = true ]; then
+            docker buildx imagetools inspect "${REGISTRY_IMAGE}:latest" --format '{{json .Manifest}}' > latest-descriptor.json
+          fi
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          expected = os.environ["EXPECTED_DIGEST"]
+          assert expected.startswith("sha256:"), "Missing build digest"
+          assert json.loads(Path("commit-descriptor.json").read_text())["digest"] == expected
+          if os.environ["PUBLISH_LATEST"] == "true":
+              assert json.loads(Path("latest-descriptor.json").read_text())["digest"] == expected
+          index = json.loads(Path("saved-index.json").read_text())
+          platforms = {
+              (m.get("platform", {}).get("os"), m.get("platform", {}).get("architecture"))
+              for m in index["manifests"]
+          }
+          assert {("linux", "amd64"), ("linux", "arm64")} <= platforms, platforms
+          image = os.environ["REGISTRY_IMAGE"]
+          revision = os.environ["GITHUB_SHA"]
+          result = {
+              "image": image, "revision": revision, "digest": expected,
+              "immutable_reference": f"{image}@{expected}",
+              "commit_tag": f"{image}:{revision}",
+              "latest_verified": os.environ["PUBLISH_LATEST"] == "true",
+              "platforms": ["linux/amd64", "linux/arm64"],
+          }
+          Path("dockerhub-release.json").write_text(json.dumps(result, indent=2) + "\n")
+          print(json.dumps(result, indent=2))
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as summary:
+              summary.write(f"Saved Docker Hub image: \x60{image}@{expected}\x60\n\n")
+              summary.write(f"Commit tag: \x60{image}:{revision}\x60\n\n")
+              summary.write("Verified platforms: linux/amd64 and linux/arm64\n")
+          PY
+      - name: Save verified Docker Hub release manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: dockerhub-release-${{ github.sha }}
+          path: |
+            dockerhub-release.json
+            saved-index.json
+          if-no-files-found: error
+          retention-days: 90
       - id: image
         name: Record immutable image reference
         run: echo "reference=${REGISTRY_IMAGE}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
   deploy-staging:
     name: Deploy and verify staging
-    if: github.event_name != 'pull_request'
+    # A registry-only feature-branch save must never trigger a deployment.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     needs: [publish-image]
     permissions:
