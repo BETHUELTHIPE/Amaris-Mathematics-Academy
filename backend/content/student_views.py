@@ -39,6 +39,8 @@ from .serializers import (
 )
 from .services.invoices import InvoiceArchiveError, archive_invoice_pdf, invoice_storage_path
 from .services.payments import PaymentSecurityError, _payfast_mode, create_checkout, process_payfast_notification
+from .services.subscription_reports import capture_study_activity
+from .services.subscriptions import accessible_enrollments, refresh_subscription_courses
 
 
 class CheckoutRequestSerializer(serializers.Serializer):
@@ -96,8 +98,10 @@ class StudentAPIView(APIView):
 class StudentCoursesView(StudentAPIView):
     @extend_schema(responses=StudentCourseEnrollmentSerializer(many=True))
     def get(self, request):
+        refresh_subscription_courses(self.student)
         enrollments = (
-            Enrollment.objects.filter(
+            Enrollment.objects.filter(accessible_enrollments())
+            .filter(
                 student=request.user.student,
                 status__in=[Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED],
             )
@@ -329,8 +333,9 @@ class StudentCourseInvoiceDownloadView(StudentAPIView):
 class StudentLessonView(StudentAPIView):
     @extend_schema(responses=StudentLessonResponseSerializer)
     def get(self, request, course_slug: str, lesson_slug: str):
+        refresh_subscription_courses(self.student, course_slug)
         enrollment = get_object_or_404(
-            Enrollment.objects.select_related("course"),
+            Enrollment.objects.filter(accessible_enrollments()).select_related("course"),
             student=request.user.student,
             course__slug=course_slug,
             status__in=[Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED],
@@ -344,6 +349,7 @@ class StudentLessonView(StudentAPIView):
             is_published=True,
         )
         video = lesson.video
+        capture_study_activity(enrollment, "lesson_opened", lesson=lesson)
         return Response(
             {
                 "course_slug": enrollment.course.slug,
@@ -569,10 +575,13 @@ class ProgressView(StudentAPIView):
         serializer = ProgressRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         values = serializer.validated_data
+        refresh_subscription_courses(self.student, values["course_slug"])
 
         with transaction.atomic():
             enrollment = get_object_or_404(
-                Enrollment.objects.select_for_update().select_related("course"),
+                Enrollment.objects.filter(accessible_enrollments())
+                .select_for_update(of=("self",))
+                .select_related("course"),
                 student=request.user.student,
                 course__slug=values["course_slug"],
                 status__in=[Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED],
@@ -593,6 +602,7 @@ class ProgressView(StudentAPIView):
                 enrollment.progress_percent = max(enrollment.progress_percent, values["progress_percent"])
                 update_fields.append("progress_percent")
             enrollment.save(update_fields=update_fields)
+            capture_study_activity(enrollment)
 
         return Response(_resume_payload(enrollment))
 
@@ -600,8 +610,11 @@ class ProgressView(StudentAPIView):
 class ResumeView(StudentAPIView):
     @extend_schema(responses=ResumeSerializer)
     def get(self, request, course_slug: str):
+        refresh_subscription_courses(self.student, course_slug)
         enrollment = get_object_or_404(
-            Enrollment.objects.select_related("course", "last_lesson", "last_lesson__module"),
+            Enrollment.objects.filter(accessible_enrollments()).select_related(
+                "course", "last_lesson", "last_lesson__module"
+            ),
             student=request.user.student,
             course__slug=course_slug,
             status__in=[Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED],

@@ -26,6 +26,7 @@ class BookingProductionMigrationTests(TransactionTestCase):
         production = [("content", "0007_invoice_pdf_archive")]
         release = [("content", "0010_private_booking_tables")]
         executor = MigrationExecutor(connection)
+        latest = executor.loader.graph.leaf_nodes()
         executor.migrate(production)
         try:
             apps = executor.loader.project_state(production).apps
@@ -68,4 +69,4 @@ class BookingProductionMigrationTests(TransactionTestCase):
             self.assertIn("content_liveclassbooking", connection.introspection.table_names())
             self.assertIn("content_tutoravailabilityslot", connection.introspection.table_names())
         finally:
-            MigrationExecutor(connection).migrate(release)
+            MigrationExecutor(connection).migrate(latest)

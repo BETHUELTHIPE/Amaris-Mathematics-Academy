@@ -22,6 +22,17 @@ from .student_views import (
     StudentNotificationsView,
     StudentOrdersView,
 )
+from .subscription_report_views import (
+    SubscriptionReportDownloadView,
+    TutorSubscriptionSessionListView,
+    TutorSubscriptionSessionView,
+)
+from .subscription_views import (
+    SubscriptionCheckoutView,
+    SubscriptionInvoiceView,
+    SubscriptionListView,
+    SubscriptionStatusView,
+)
 from .tutor_application_views import (
     TutorApplicationAcknowledgementView,
     TutorApplicationDocumentView,
@@ -64,6 +75,25 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path(
+        "student/subscriptions/<str:reference>/report/",
+        SubscriptionReportDownloadView.as_view(),
+        name="subscription-report",
+    ),
+    path(
+        "tutor/subscription-sessions/<int:session_id>/attendance/",
+        TutorSubscriptionSessionView.as_view(),
+        name="subscription-attendance",
+    ),
+    path(
+        "tutor/subscription-sessions/", TutorSubscriptionSessionListView.as_view(), name="subscription-tutor-sessions"
+    ),
+    path("student/subscriptions/", SubscriptionListView.as_view(), name="student-subscriptions"),
+    path("student/subscriptions/checkout/", SubscriptionCheckoutView.as_view(), name="subscription-checkout"),
+    path("student/subscriptions/<str:reference>/", SubscriptionStatusView.as_view(), name="subscription-status"),
+    path(
+        "student/subscriptions/<str:reference>/invoice/", SubscriptionInvoiceView.as_view(), name="subscription-invoice"
+    ),
     path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(

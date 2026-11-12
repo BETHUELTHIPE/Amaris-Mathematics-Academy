@@ -70,6 +70,7 @@ def env_list(name: str, default: str = "") -> list[str]:
 
 # Enable after the six-file frontend is live and backend/staging acceptance passes.
 TUTOR_REQUIRE_SIX_DOCUMENTS = env_bool("TUTOR_REQUIRE_SIX_DOCUMENTS", False)
+COURSE_SUBSCRIPTIONS_ENABLED = env_bool("COURSE_SUBSCRIPTIONS_ENABLED", False)
 
 DEBUG = env_bool("DJANGO_DEBUG", True)
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
@@ -434,7 +435,16 @@ if OPENAI_ASSISTANT_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
     OPENAI_ASSISTANT_MODEL = "gpt-4.1-mini"
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
+SUBSCRIPTION_REPORTS_EMAIL_ENABLED = env_bool("SUBSCRIPTION_REPORTS_EMAIL_ENABLED", False)
+if SUBSCRIPTION_REPORTS_EMAIL_ENABLED and not DEBUG and not SUPABASE_S3_ENDPOINT_URL:
+    raise RuntimeError("Subscription reports require private Supabase student storage in production.")
+
 CELERY_BEAT_SCHEDULE = {
+    "deliver-ended-subscription-reports": {
+        "task": "content.subscription_report_tasks.deliver_ended_subscription_reports",
+        "schedule": 600.0,
+        "options": {"queue": "notifications"},
+    },
     "reconcile-tutor-earnings": {
         "task": "content.tutor_finance_tasks.reconcile_tutor_earnings",
         "schedule": 600.0,
