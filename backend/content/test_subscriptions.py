@@ -229,7 +229,7 @@ class SubscriptionTests(TestCase):
             pages = PdfReader(BytesIO(data)).pages
             self.assertEqual(len(pages), 1)
             invoice_text = " ".join(" ".join(page.extract_text() for page in pages).split())
-            self.assertIn("2 x 30-minute Zoom sessions per week (1 hour total)", invoice_text)
+            self.assertIn("2 x 2-hour one-to-one Zoom sessions per week (4 hours total)", invoice_text)
             self.assertIn("Published courses in the selected curriculum", invoice_text)
             item.refresh_from_db()
             self.assertTrue(item.pdf_storage_path.startswith(str(self.student.supabase_user_id)))

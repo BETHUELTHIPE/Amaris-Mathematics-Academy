@@ -15,8 +15,8 @@ while implementing this feature.
 Both are fixed-term purchases, without automatic renewal. Prices are the same
 for CAPS, IEB, TVET NATED, TVET NC(V), and University / UNISA. Access covers
 published courses in the selected curriculum, including courses published later
-during the term. Each plan also includes two 30-minute Zoom tutor sessions per
-week (one hour total), in the chosen curriculum throughout the paid term. The
+during the term. Each plan also includes two 2-hour one-to-one Zoom tutor sessions per
+week (four hours total), in the chosen curriculum throughout the paid term. The
 first session focuses on understanding; the second on practice and revision.
 Additional tutoring beyond the included sessions and custom video requests are
 separate purchases. A separately purchased course retains its existing access.
@@ -28,7 +28,7 @@ count or savings claim is made. No particular grade improvement is guaranteed.
 Included sessions are arranged with the academy after verified payment, using
 the subscription reference. The private student pages link to Contact. This
 change does not add an automatic subscription booking/credit engine; academy
-staff must verify the paid term and arrange the two weekly half-hour sessions
+staff must verify the paid term and arrange the two weekly two-hour one-to-one sessions
 without an extra charge. Arrange these separately from the paid hourly checkout;
 that flow does not redeem subscriptions. Do not enable sales until the
 scheduling/attendance process, partial-week treatment, Zoom invitations and student/tutor/admin communication are accepted in staging.
