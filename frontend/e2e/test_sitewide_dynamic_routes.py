@@ -24,10 +24,10 @@ class DynamicRouteCoverageTests(unittest.TestCase):
     def test_positive_and_expected_404_cannot_be_counted_together(self):
         positives = [r for r in self.routes if r["coverage"] == "valid-dynamic"]
         negative = [r for r in self.routes if r["coverage"] == "negative-404"]
-        self.assertEqual(len(positives), 2)
-        self.assertEqual(len(negative), 2)
-        self.assertEqual(len(positives) * len(DEVICES), 14)
-        self.assertEqual(len(negative) * len(DEVICES), 14)
+        self.assertEqual(len(positives), 3)
+        self.assertEqual(len(negative), 3)
+        self.assertEqual(len(positives) * len(DEVICES), 21)
+        self.assertEqual(len(negative) * len(DEVICES), 21)
 
     def test_authenticated_detail_routes_are_not_credited_as_public_pages(self):
         for source in ("app/checkout/[slug]/page.tsx",

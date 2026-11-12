@@ -43,10 +43,18 @@ CONDITIONAL = (
     "/documents/invoice",
     "/dashboard",
     "/tutor/dashboard",
+    "/subscriptions/status",
 )
 
 # Source-backed public fixtures with known-good local fallbacks.
 DYNAMIC_PUBLIC_FIXTURES = {
+    "subscriptions/[plan]": {
+        "route": "/subscriptions/4-months",
+        "heading": "Four months of focus.",
+        "bodyText": "Choose your curriculum",
+        "sourceFixture": ROOT / "lib" / "subscription-plans.ts",
+        "sourceNeedle": 'slug: "4-months"',
+    },
     "courses/[slug]": {
         "route": "/courses/caps-grade-12-mathematics",
         "heading": "CAPS Grade 12 Mathematics",
