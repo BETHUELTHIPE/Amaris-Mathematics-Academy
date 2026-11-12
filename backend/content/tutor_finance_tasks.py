@@ -1,11 +1,12 @@
 """Scheduled reconciliation: no bank transfer without a verified provider integration."""
 
 from celery import shared_task
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.utils import timezone
 
 from content.models import LiveClassBooking, Payment, VideoRequest
+from content.services.branded_email import apply_letterhead
 from content.services.tutor_finance import (
     record_course_sale,
     record_existing_video_sale,
@@ -101,9 +102,9 @@ def email_tutor_payout_receipt(_self):
         tutor = payout.earning.tutor
         if not tutor.email:
             return 0
-        sent = send_mail(
+        message = EmailMultiAlternatives(
             subject="Amaris tutor payment confirmation",
-            message=(
+            body=(
                 f"Dear {tutor.get_full_name().strip() or tutor.get_username()},\n\n"
                 "Your tutor payout has been confirmed by the payment provider.\n"
                 f"Service: {payout.earning.get_service_display()}\n"
@@ -117,9 +118,12 @@ def email_tutor_payout_receipt(_self):
                 "Amaris Mathematics Academy"
             ),
             from_email=None,
-            recipient_list=[tutor.email],
-            fail_silently=False,
+            to=[tutor.email],
         )
+        apply_letterhead(
+            message, "Tutor payment confirmation", message.body.splitlines(), reference=payout.earning.source_reference
+        )
+        sent = message.send(fail_silently=False)
         if sent != 1:
             raise OSError("The mail provider did not accept the payment notification.")
         payout.receipt_emailed_at = timezone.now()

@@ -434,7 +434,21 @@ if OPENAI_ASSISTANT_MODEL in {"gpt-5.6-luna", "gpt-6-luna"}:
     OPENAI_ASSISTANT_MODEL = "gpt-4.1-mini"
 OPENAI_ASSISTANT_TIMEOUT_SECONDS = float(os.getenv("OPENAI_ASSISTANT_TIMEOUT_SECONDS", "10"))
 
+TUTOR_VIDEO_UPLOADS_ENABLED = env_bool("TUTOR_VIDEO_UPLOADS_ENABLED", False)
+TUTOR_VIDEO_MAX_UPLOAD_BYTES = min(
+    50 * 1024 * 1024, int(os.getenv("TUTOR_VIDEO_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
+)
+TUTOR_VIDEO_ADMIN_EMAIL = os.getenv("TUTOR_VIDEO_ADMIN_EMAIL", "").strip()
+PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "").strip()
+if TUTOR_VIDEO_UPLOADS_ENABLED and not DEBUG and not SUPABASE_S3_ENDPOINT_URL:
+    raise RuntimeError("Tutor video uploads require private Supabase CMS storage in production.")
+
 CELERY_BEAT_SCHEDULE = {
+    "tutor-video-admin-alerts": {
+        "task": "content.tutor_video_tasks.deliver_tutor_video_admin_alerts",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
     "reconcile-tutor-earnings": {
         "task": "content.tutor_finance_tasks.reconcile_tutor_earnings",
         "schedule": 600.0,

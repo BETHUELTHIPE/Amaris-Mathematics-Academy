@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
@@ -289,6 +290,8 @@ class TutorDashboardView(TutorOnlyAPIView):
             )
         return Response(
             {
+                "video_uploads_enabled": settings.TUTOR_VIDEO_UPLOADS_ENABLED,
+                "max_video_upload_bytes": settings.TUTOR_VIDEO_MAX_UPLOAD_BYTES,
                 "tutor": {
                     "name": request.user.get_full_name().strip() or request.user.username,
                     "email": request.user.email,

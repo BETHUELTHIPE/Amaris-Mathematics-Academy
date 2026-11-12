@@ -228,6 +228,27 @@ class VideoAsset(PublishableModel):
         S3 = "s3", "Private S3 upload"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    uploaded_by = models.ForeignKey(
+        "auth.User", on_delete=models.PROTECT, null=True, blank=True, editable=False, related_name="uploaded_videos"
+    )
+    curriculum = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=[
+            ("caps", "CAPS"),
+            ("ieb", "IEB"),
+            ("nated", "TVET NATED"),
+            ("ncv", "TVET NC(V)"),
+            ("university", "University / UNISA"),
+        ],
+    )
+    subject = models.CharField(
+        max_length=32,
+        blank=True,
+        choices=[("mathematics", "Mathematics"), ("mathematical_literacy", "Mathematical Literacy")],
+    )
+    academic_level = models.CharField(max_length=100, blank=True)
+    topic = models.CharField(max_length=180, blank=True)
     title = models.CharField(max_length=180)
     provider = models.CharField(max_length=12, choices=Provider.choices, default=Provider.YOUTUBE)
     youtube_video_id = models.CharField(max_length=32, blank=True)

@@ -239,7 +239,9 @@ class VideoRequestWorkflowTests(TestCase):
         self.assertIsNotNone(request.confirmation_sent_at)
         self.assertIsNotNone(request.position_one_sent_at)
         self.assertEqual(len(mail.outbox), 2)
-        self.assertEqual(len(mail.outbox[0].attachments), 1)
+        self.assertEqual(len(mail.outbox[0].attachments), 2)
+        self.assertEqual(mail.outbox[0].attachments[1].get_content_disposition(), "inline")
+        self.assertEqual(mail.outbox[0].attachments[1].get("Content-ID"), "<amaris-letterhead-logo>")
 
         request.status = VideoRequest.Status.READY
         request.video_external_id = "readyVideoId"

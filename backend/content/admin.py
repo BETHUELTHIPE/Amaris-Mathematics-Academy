@@ -34,6 +34,7 @@ from .models import (
     VideoRequestDocument,
     WebVitalBucket,
 )
+from .services.tutor_video_uploads import approved_tutor, save_admin_video
 
 admin.site.site_header = "Amaris Mathematics Academy"
 admin.site.site_title = "Amaris Academy Admin"
@@ -220,17 +221,58 @@ class LessonAdmin(PublishableAdmin):
 class VideoAssetAdmin(PublishableAdmin):
     list_display = ("title", "provider", "duration_seconds", "allow_preview", "is_published", "updated_at")
     list_filter = PublishableAdmin.list_filter + ("provider", "allow_preview")
-    list_editable = ("allow_preview", "is_published")
+    list_editable = ()
     search_fields = ("title", "youtube_video_id", "youtube_url", "transcript")
-    readonly_fields = ("id", "created_at", "updated_at")
+    readonly_fields = ("id", "uploaded_by", "created_at", "updated_at")
     fieldsets = (
         ("Video", {"fields": ("id", "title", "provider", "duration_seconds", "thumbnail")}),
+        ("Academic details", {"fields": ("curriculum", "subject", "academic_level", "topic")}),
         ("Private YouTube", {"fields": ("youtube_video_id", "youtube_url")}),
         ("Private S3 upload", {"fields": ("source_file", "captions_file")}),
         ("Learning content", {"fields": ("transcript", "allow_preview")}),
         ("Publishing", {"fields": ("is_published", "publish_at")}),
-        ("Audit", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+        ("Audit", {"fields": ("uploaded_by", "created_at", "updated_at"), "classes": ("collapse",)}),
     )
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        return (
+            queryset.filter(uploaded_by=request.user)
+            if approved_tutor(request.user) and not request.user.is_superuser
+            else queryset
+        )
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if approved_tutor(request.user):
+            for field in ("curriculum", "subject", "academic_level", "topic"):
+                if field in form.base_fields:
+                    form.base_fields[field].required = True
+        return form
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        if approved_tutor(request.user) and not request.user.is_superuser:
+            return (*fields, "is_published", "publish_at", "allow_preview")
+        return fields
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if approved_tutor(request.user) and not request.user.is_superuser:
+            actions.pop("publish_selected", None)
+            actions.pop("unpublish_selected", None)
+        return actions
+
+    def has_change_permission(self, request, obj=None):
+        if obj is not None and approved_tutor(request.user) and not request.user.is_superuser:
+            if obj.uploaded_by_id != request.user.pk or obj.is_published:
+                return False
+        return super().has_change_permission(request, obj)
+
+    def save_model(self, request, obj, form, change):
+        save_admin_video(
+            obj, request.user, form, change, lambda: super(VideoAssetAdmin, self).save_model(request, obj, form, change)
+        )
 
 
 @admin.register(ResourceAsset)

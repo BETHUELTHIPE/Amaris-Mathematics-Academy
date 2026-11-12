@@ -95,7 +95,9 @@ class TutorApplicationJourneyTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, [application.email])
         self.assertIn(application.reference, mail.outbox[0].body)
-        self.assertEqual(mail.outbox[0].attachments, [])
+        self.assertEqual(len(mail.outbox[0].attachments), 1)
+        self.assertEqual(mail.outbox[0].attachments[0].get("Content-ID"), "<amaris-letterhead-logo>")
+        self.assertEqual(mail.outbox[0].attachments[0].get_content_disposition(), "inline")
         self.assertEqual(deliver_application_acknowledgement(), 0)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIsNotNone(self.api.get(self.endpoint, secure=True).data["application"]["acknowledgement_sent_at"])
@@ -152,7 +154,9 @@ class TutorApplicationJourneyTests(TestCase):
             {"id", "cv", "matric", "academic", "tertiary", "other"},
         )
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].attachments, [])
+        self.assertEqual(len(mail.outbox[0].attachments), 1)
+        self.assertEqual(mail.outbox[0].attachments[0].get("Content-ID"), "<amaris-letterhead-logo>")
+        self.assertEqual(mail.outbox[0].attachments[0].get_content_disposition(), "inline")
         self.assertTrue(all("storage_path" not in str(d) for d in response.data["application"]["documents"]))
         self.enqueue.assert_called_once()
 

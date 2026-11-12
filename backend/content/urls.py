@@ -27,6 +27,7 @@ from .tutor_application_views import (
     TutorApplicationDocumentView,
     TutorApplicationView,
 )
+from .tutor_video_views import TutorVideoView
 from .tutor_views import TutorDashboardView, TutorEarningsView, TutorSlotCreateView, TutorSlotUpdateView
 from .video_request_views import (
     VideoRequestCheckoutView,
@@ -64,6 +65,7 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("tutor/videos/", TutorVideoView.as_view(), name="tutor-videos"),
     path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(
