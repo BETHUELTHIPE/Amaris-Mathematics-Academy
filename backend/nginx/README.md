@@ -10,6 +10,77 @@ The inspected Render production backend is a **native Python service**, not this
 
 The image runs as `amaris` on unprivileged ports; Nginx runtime files live in a private temporary directory. The supervisor validates configuration, exits if either web process dies, and drains Nginx before stopping Gunicorn. Set platform shutdown grace to **at least 100 seconds** for the 30-second proxy drain, 60-second Gunicorn drain and cleanup margin. Gunicorn retains ownership of notification shutdown. No schema migration is introduced. Retain the previous tested artifact/configuration for application rollback; do not reverse external payment/email effects. CI, backup/restore and inbox acceptance remain release gates.
 
+
+## Backend load balancing
+
+Three deployment paths have different behavior:
+
+| Deployment | Traffic routing |
+|---|---|
+| Current native Python Render service | Render edge to Gunicorn; Nginx is not installed by this PR |
+| Single-container Nginx/Gunicorn command | Nginx reverse proxy to one local Gunicorn listener; Gunicorn manages its workers |
+| Separate Compose proxy with two or more web replicas | Nginx balances across replica IPs returned by Docker DNS |
+
+The separate Compose proxy uses Nginx 1.29, a shared upstream zone, least-active-
+connection routing and Docker DNS refresh every five seconds. It discovers new
+or replacement web replicas without restarting the proxy. Connection failures
+passively mark a peer unavailable for ten seconds. This is not an active health
+probe or a promise of zero failed requests when an instance dies.
+
+Keep `proxy_next_upstream off`: an interrupted booking/payment POST must not be
+transparently repeated on another backend. A failed in-flight request can return
+502; later requests use the remaining reachable replicas. Application payment
+idempotency and verified callbacks remain required.
+
+The default Compose stack still has one web replica. After staging acceptance
+and resource/connection budgeting on your existing Docker host, the explicit
+scale operation is:
+
+```sh
+cd backend
+docker compose up -d --scale web=2 web nginx
+```
+
+Do not use `container_name` or fixed published ports on the web service. Only
+the Nginx listener is published; backend replicas share the private network.
+Use one reviewed application image/version, shared production database,
+broker/cache and private object storage, and compatible session/signing keys.
+Do not mix staging and production targets. Validate static-file initialization
+before concurrent startup. Disable colocated notification processes on scaled
+web replicas and use the existing dedicated worker/Beat services. Budget
+database/Redis pools across every process, replica and rolling-release overlap.
+
+For native Render horizontal scaling, Render's own edge balances multiple
+instances. Adding a Docker Nginx file does not change that native runtime.
+Increasing instance count changes compute charges and requires an explicit
+approved rollout; this PR does not provision or scale Render resources.
+
+### Isolated load-balancer acceptance
+
+```sh
+python backend/tests/nginx_load_balancer_smoke.py
+```
+
+This uses the committed separate-proxy configuration and disposable local Docker
+containers, with two then three synthetic HTTP backends. It checks distribution,
+private headers/paths, exact POST body, a write accepted before connection loss
+without proxy replay, survivor routing, replacement and scale-out discovery
+without restarting Nginx. There is no Django database, real payment or email in
+this fixture. Existing `tests.runtime_smoke` separately verifies actual
+Gunicorn/Uvicorn/Django proxy behavior. Neither fixture is a production capacity
+benchmark or proof of hosted load balancing.
+
+Read-only Render verification on 12 November 2026 found production
+`amaris-production-web` configured as native Python, one instance, latest
+recorded deployment `ff4383ba8c4f2bf56174b88274ffd534ebfc80ed`, and suspended
+for billing. Production Nginx load balancing is **not active**. Billing recovery,
+a reviewed hosting/runtime choice and staging acceptance are prerequisites for
+production activation.
+
+References:
+- https://nginx.org/en/docs/http/ngx_http_upstream_module.html
+- https://render.com/docs/scaling
+
 ## Initial settings
 
 | Setting | Default / initial value | Purpose |
