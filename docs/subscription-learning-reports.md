@@ -9,7 +9,7 @@ One private, branded PDF attachment addressed only to the subscribing student, w
 - Name, subscription reference, chosen curriculum, plan, paid price and term dates.
 - Confirmed attended hours/minutes, recorded scheduled time, full/partial/missed/cancelled/unrecorded counts and weekly totals.
 - Each included session's date, scheduled start/end, actual joined/left times, tutor, subject, grade/level, topic, recorded outcomes, tutor feedback and practice recommendations.
-- Dated course access/progress milestones and the latest recorded progress for each course.
+- Dated lesson-open/progress milestones and the latest recorded progress for each course.
 - South African time (Africa/Johannesburg, UTC+2) throughout.
 
 Attendance percentage uses confirmed attended minutes divided by confirmed scheduled minutes (full, partial and missed sessions). Cancelled and unrecorded sessions are excluded. Zero records means unknown attendance, not proof that the student missed lessons. The report never multiplies a calendar term by an assumed number of weeks or converts playback position into attended hours. Course progress is student-reported and is not an assessment mark or verified video-watch time.
@@ -23,7 +23,7 @@ After a session ends, its assigned, approved tutor may confirm full/partial/miss
 - `GET /api/v1/tutor/subscription-sessions/` lists the assigned tutor's latest 100 records without student email addresses.
 - `PATCH /api/v1/tutor/subscription-sessions/<id>/attendance/` accepts `status`, `joined_at`, `left_at`, `learning_summary`, `tutor_feedback` and `next_steps`. Status is `attended`, `partial`, `absent` or `cancelled`. Full/partial attendance requires both timestamps; absent/cancelled must have neither. It does not accept a replacement student, subscription, tutor, or verification identity.
 
-The existing student progress endpoint captures meaningful course/lesson progress changes for the relevant subscription. Repeated playback heartbeats do not create milestones. Historical browser visits, assessment results, unrecorded Zoom attendance, and activity before deployment are not fabricated. A dated snapshot survives enrollment reassignment during renewal.
+Authenticated lesson requests and the existing student progress endpoint capture lesson opens and meaningful progress changes for the relevant subscription. Course-access materialization alone does not create study activity. Repeated same-lesson opens within a day are coalesced. Repeated playback heartbeats do not create milestones. Historical browser visits, assessment results, unrecorded Zoom attendance, and activity before deployment are not fabricated. A dated snapshot survives enrollment reassignment during renewal.
 
 ## Automatic delivery and storage
 

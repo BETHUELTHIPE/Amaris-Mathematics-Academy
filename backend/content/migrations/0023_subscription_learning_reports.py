@@ -89,7 +89,7 @@ class Migration(migrations.Migration):
                 ('course_title', models.CharField(max_length=200)),
                 ('lesson_title', models.CharField(blank=True, max_length=200)),
                 ('progress_percent', models.PositiveSmallIntegerField()),
-                ('kind', models.CharField(choices=[('access_started', 'Course access started'), ('progress', 'Progress updated')], max_length=24)),
+                ('kind', models.CharField(choices=[('lesson_opened', 'Lesson opened'), ('progress', 'Progress updated')], max_length=24)),
             ],
             options={
                 'ordering': ['occurred_at', 'pk'],

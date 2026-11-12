@@ -96,18 +96,9 @@ def refresh_subscription_courses(student, course=None):
                 and enrollment.status != "cancelled"
                 and (enrollment.subscription_access_id or enrollment.status == "pending")
             ):
-                previous_subscription = enrollment.subscription_access_id
                 enrollment.subscription_access = subscription
                 enrollment.status = "active"
                 enrollment.save(update_fields=["subscription_access", "status", "updated_at"])
-                if previous_subscription != subscription.pk:
-                    from .subscription_reports import capture_study_activity
-
-                    capture_study_activity(enrollment, "access_started")
-            if created:
-                from .subscription_reports import capture_study_activity
-
-                capture_study_activity(enrollment, "access_started")
 
 
 def create_subscription_checkout(*, student, curriculum, months, idempotency_key):

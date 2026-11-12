@@ -103,7 +103,7 @@ class ReportFixtures:
             progress_percent=60,
             kind="progress",
         )
-        self.api = APIClient()
+        self.api = APIClient(HTTP_X_FORWARDED_PROTO="https")
         self.api.force_authenticate(
             user=SimpleNamespace(student=self.student, pk=self.student.pk, is_authenticated=True)
         )
@@ -281,7 +281,7 @@ class SubscriptionReportTests(ReportFixtures, TestCase):
         other = StudentRecord.objects.create(supabase_user_id=uuid.uuid4(), email="other@example.test")
         self.api.force_authenticate(user=SimpleNamespace(student=other, pk=other.pk, is_authenticated=True))
         self.assertEqual(self.api.get(url).status_code, 404)
-        self.assertEqual(APIClient().get(url).status_code, 401)
+        self.assertEqual(APIClient(HTTP_X_FORWARDED_PROTO="https").get(url).status_code, 401)
 
     def test_only_assigned_tutor_can_confirm_and_list_sessions(self):
         item = self.session()
@@ -295,7 +295,7 @@ class SubscriptionReportTests(ReportFixtures, TestCase):
         result = self.api.get(reverse("subscription-tutor-sessions"))
         self.assertEqual(len(result.data["results"]), 1)
         self.assertNotIn(self.student.email, str(result.data))
-        client = APIClient()
+        client = APIClient(HTTP_X_FORWARDED_PROTO="https")
         payload = {
             "id": str(self.student.supabase_user_id),
             "email": self.student.email,
@@ -365,6 +365,22 @@ class SubscriptionReportTests(ReportFixtures, TestCase):
         latest = SubscriptionStudyActivity.objects.latest("pk")
         self.assertEqual(latest.progress_percent, 75)
         self.assertEqual(report_snapshot(self.sub, uuid.uuid4())["attended_minutes"], 0)
+
+    def test_course_access_is_not_study_but_authorized_lesson_opens_are_dated(self):
+        self.sub.starts_at = timezone.now() - timedelta(days=7)
+        self.sub.ends_at = add_calendar_months(self.sub.starts_at, 4)
+        self.sub.save()
+        SubscriptionStudyActivity.objects.all().delete()
+        self.assertEqual(self.api.get(reverse("student-courses")).status_code, 200)
+        self.assertFalse(SubscriptionStudyActivity.objects.exists())
+        url = reverse(
+            "student-lesson",
+            kwargs={"course_slug": self.enrollment.course.slug, "lesson_slug": self.enrollment.last_lesson.slug},
+        )
+        self.assertEqual(self.api.get(url).status_code, 200)
+        self.assertEqual(self.api.get(url).status_code, 200)
+        self.assertEqual(SubscriptionStudyActivity.objects.count(), 1)
+        self.assertEqual(SubscriptionStudyActivity.objects.get().kind, "lesson_opened")
 
     def test_refund_after_preparation_suppresses_delivery_and_stale_edits_are_rejected(self):
         session = self.session()

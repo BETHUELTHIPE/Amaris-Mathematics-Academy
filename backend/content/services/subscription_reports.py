@@ -77,7 +77,7 @@ def save_session(session, actor):
 
 
 @transaction.atomic
-def capture_study_activity(enrollment, kind="progress"):
+def capture_study_activity(enrollment, kind="progress", lesson=None):
     if not enrollment.subscription_access_id:
         return
     sub = CurriculumSubscription.objects.select_for_update().get(pk=enrollment.subscription_access_id)
@@ -92,13 +92,20 @@ def capture_study_activity(enrollment, kind="progress"):
         and sub.starts_at <= now < sub.ends_at
     ):
         return
-    lesson_title = enrollment.last_lesson.title if enrollment.last_lesson_id else ""
+    lesson_title = (
+        lesson.title if lesson is not None else (enrollment.last_lesson.title if enrollment.last_lesson_id else "")
+    )
     last = (
         SubscriptionStudyActivity.objects.filter(subscription=sub, enrollment=enrollment)
         .order_by("-occurred_at", "-pk")
         .first()
     )
-    if last and last.progress_percent == enrollment.progress_percent and last.lesson_title == lesson_title:
+    if (
+        last
+        and last.progress_percent == enrollment.progress_percent
+        and last.lesson_title == lesson_title
+        and (kind == "progress" or last.occurred_at.astimezone(SAST).date() == now.astimezone(SAST).date())
+    ):
         return  # Playback heartbeats are not new learning milestones or attended hours.
     SubscriptionStudyActivity.objects.create(
         subscription=sub,

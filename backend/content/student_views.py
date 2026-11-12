@@ -39,6 +39,7 @@ from .serializers import (
 )
 from .services.invoices import InvoiceArchiveError, archive_invoice_pdf, invoice_storage_path
 from .services.payments import PaymentSecurityError, _payfast_mode, create_checkout, process_payfast_notification
+from .services.subscription_reports import capture_study_activity
 from .services.subscriptions import accessible_enrollments, refresh_subscription_courses
 
 
@@ -348,6 +349,7 @@ class StudentLessonView(StudentAPIView):
             is_published=True,
         )
         video = lesson.video
+        capture_study_activity(enrollment, "lesson_opened", lesson=lesson)
         return Response(
             {
                 "course_slug": enrollment.course.slug,
@@ -600,8 +602,6 @@ class ProgressView(StudentAPIView):
                 enrollment.progress_percent = max(enrollment.progress_percent, values["progress_percent"])
                 update_fields.append("progress_percent")
             enrollment.save(update_fields=update_fields)
-            from .services.subscription_reports import capture_study_activity
-
             capture_study_activity(enrollment)
 
         return Response(_resume_payload(enrollment))

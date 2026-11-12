@@ -131,7 +131,7 @@ class SubscriptionStudyActivity(models.Model):
     lesson_title = models.CharField(max_length=200, blank=True)
     progress_percent = models.PositiveSmallIntegerField()
     kind = models.CharField(
-        max_length=24, choices=[("access_started", "Course access started"), ("progress", "Progress updated")]
+        max_length=24, choices=[("lesson_opened", "Lesson opened"), ("progress", "Progress updated")]
     )
 
     class Meta:
