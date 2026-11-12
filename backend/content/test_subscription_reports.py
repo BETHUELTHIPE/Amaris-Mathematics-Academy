@@ -153,6 +153,8 @@ class SubscriptionReportTests(ReportFixtures, TestCase):
         self.assertEqual(mail.outbox[0].to, [self.student.email])
         self.assertEqual(mail.outbox[0].cc, [])
         self.assertEqual(mail.outbox[0].bcc, [])
+        self.assertIn("Official academy communication", mail.outbox[0].alternatives[0][0])
+        self.assertEqual(mail.outbox[0].attachments[1].get("Content-ID"), "<amaris-letterhead-logo>")
         attachment = mail.outbox[0].attachments[0]
         pdf = attachment[1]
         reader = PdfReader(BytesIO(pdf))

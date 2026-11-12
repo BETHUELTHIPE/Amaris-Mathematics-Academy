@@ -15,10 +15,10 @@ from django.core.files.storage import storages
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.db.models import F
-from django.template.loader import render_to_string
 from django.utils import timezone
 
 from content.models import StudentRecord
+from content.services.branded_email import apply_letterhead
 from content.services.payments import _payfast_mode
 from content.subscription_models import CurriculumSubscription
 from content.subscription_report_models import SubscriptionReport, SubscriptionSession, SubscriptionStudyActivity
@@ -293,10 +293,8 @@ def deliver_report(report_id):
                 "X-Amaris-Report-ID": str(report.pk),
             },
         )
-        email.attach_alternative(
-            render_to_string("content/subscription_report_email.html", {"report": snapshot}), "text/html"
-        )
         email.attach(f"Amaris-learning-report-{sub.reference}.pdf", data, "application/pdf")
+        apply_letterhead(email, "Your subscription learning report", email.body.splitlines(), reference=sub.reference)
         # Commit this claim BEFORE SMTP. A crash after acceptance must not auto-resend.
         report.status = "sending"
         report.delivery_started_at = timezone.now()
