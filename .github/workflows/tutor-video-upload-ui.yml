@@ -1,0 +1,43 @@
+name: Tutor video submission UI acceptance
+
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - frontend/components/tutor/video-upload-form.tsx
+      - frontend/app/api/tutor/videos/**
+      - frontend/lib/tutor-api.ts
+      - frontend/lib/tutor-video-request.mjs
+      - frontend/scripts/test-tutor-video-ui.mjs
+      - .github/workflows/tutor-video-upload-ui.yml
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.55.0-noble
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated matching UI test dependencies
+        run: >-
+          npm install --prefix "$RUNNER_TEMP/tutor-video-ui" --no-audit --no-fund
+          react@19.3.0 react-dom@19.3.0 esbuild@0.25.12
+          tailwindcss@4.2.1 @tailwindcss/cli@4.2.1 playwright@1.55.0
+      - name: Exercise the actual form with synthetic backend responses
+        env:
+          TUTOR_UI_FIXTURE: ${{ runner.temp }}/tutor-video-ui
+        run: node frontend/scripts/test-tutor-video-ui.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tutor-video-form-browser-evidence
+          path: artifacts/tutor-video-ui-*.png
+          if-no-files-found: warn
+          retention-days: 14
