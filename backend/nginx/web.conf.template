@@ -1,0 +1,88 @@
+# Same-container reverse proxy. Render/ALB terminates public TLS.
+worker_processes 1;
+pid nginx.pid;
+error_log stderr warn;
+events { worker_connections 1024; }
+http {
+    include @@MIME_TYPES@@;
+    default_type application/octet-stream;
+    server_tokens off;
+    access_log off;
+    sendfile on;
+    tcp_nopush on;
+    keepalive_timeout 15s;
+    client_body_temp_path client_body;
+    proxy_temp_path proxy;
+    fastcgi_temp_path fastcgi;
+    uwsgi_temp_path uwsgi;
+    scgi_temp_path scgi;
+
+    map $http_x_forwarded_proto $amaris_scheme {
+        default $scheme;
+        @@TRUST_HTTPS@@
+    }
+
+    upstream amaris_asgi {
+        server 127.0.0.1:@@UPSTREAM_PORT@@;
+        keepalive 8;
+        keepalive_timeout @@UPSTREAM_KEEPALIVE@@s;
+    }
+
+    server {
+        listen 0.0.0.0:@@PORT@@;
+        server_name _;
+        # Transport ceiling only. Each application form still validates its
+        # allowed file sizes and totals; this adds no new upload entitlement.
+        client_max_body_size 1025m;
+        client_body_timeout 60s;
+        send_timeout 60s;
+        add_header X-Content-Type-Options nosniff always;
+
+        location /static/ {
+            alias @@STATIC_ROOT@@;
+            autoindex off;
+            open_file_cache max=1024 inactive=30s;
+            open_file_cache_valid 60s;
+            open_file_cache_min_uses 2;
+            open_file_cache_errors off;
+            # Stable filenames (e.g. admin assets) must revalidate after releases.
+            expires 1h;
+            gzip on;
+            gzip_static on;
+            gzip_proxied any;
+            gzip_vary on;
+            gzip_min_length 1024;
+            gzip_comp_level 4;
+            gzip_types text/css application/javascript image/svg+xml;
+        }
+
+        # Private invoices, tutor documents and metrics never become public
+        # files simply because a reverse proxy has been enabled.
+        location ^~ /media/ { return 404; }
+        location = /metrics { return 404; }
+        location ^~ /metrics/ { return 404; }
+
+        location / {
+            proxy_pass http://amaris_asgi;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Forwarded-Proto $amaris_scheme;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Correlation-ID "AMR-$request_id";
+            proxy_connect_timeout 3s;
+            proxy_read_timeout 65s;
+            proxy_send_timeout 65s;
+            proxy_request_buffering on;
+            proxy_buffering on;
+            proxy_buffer_size 16k;
+            proxy_buffers 8 16k;
+            # Keep protected responses out of proxy disk files and shared caches.
+            proxy_max_temp_file_size 0;
+            proxy_cache off;
+            proxy_intercept_errors off;
+            # Never transparently replay a booking/payment write on failure.
+            proxy_next_upstream off;
+        }
+    }
+}

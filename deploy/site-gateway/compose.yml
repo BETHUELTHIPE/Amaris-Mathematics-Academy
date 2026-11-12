@@ -1,0 +1,81 @@
+# Application images must be built from their separately reviewed source revisions.
+name: amaris-site-gateway
+services:
+  backend:
+    image: ${AMARIS_BACKEND_IMAGE:?Set an approved immutable backend image}
+    env_file: ${AMARIS_BACKEND_ENV_FILE:?Set the private backend env-file path}
+    environment:
+      PORT: "8000"
+      GUNICORN_BIND: "0.0.0.0:8000"
+      AMARIS_COLOCATE_NOTIFICATIONS: "false"
+    command: ["gunicorn", "-c", "/app/gunicorn.conf.py", "amaris_cms.asgi:application"]
+    expose: ["8000"]
+    restart: unless-stopped
+    stop_grace_period: 90s
+    mem_limit: ${AMARIS_BACKEND_MEMORY:-1g}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import os,urllib.request,urllib.parse;
+          host=urllib.parse.urlsplit(os.environ["PUBLIC_SITE_URL"]).netloc;
+          req=urllib.request.Request("http://127.0.0.1:8000/health/ready/",
+          headers={"Host":host,"X-Forwarded-Proto":"https"});
+          urllib.request.urlopen(req,timeout=4)
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks: [site]
+  frontend:
+    image: ${AMARIS_FRONTEND_IMAGE:?Set an approved immutable frontend image}
+    env_file: ${AMARIS_FRONTEND_ENV_FILE:?Set the private frontend env-file path}
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      NODE_ENV: production
+      SITE_URL: ${AMARIS_PUBLIC_ORIGIN:?Set the public HTTPS origin}
+      CMS_API_URL: ${AMARIS_PUBLIC_ORIGIN:?Set the public HTTPS origin}/api/v1
+    expose: ["3000"]
+    restart: unless-stopped
+    stop_grace_period: 90s
+    mem_limit: ${AMARIS_FRONTEND_MEMORY:-512m}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch("http://127.0.0.1:3000/health/ready/",{signal:AbortSignal.timeout(4000)})
+          .then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks: [site]
+  gateway:
+    image: nginx:1.29-alpine
+    command: ["nginx", "-c", "/etc/nginx/amaris-site.conf", "-g", "daemon off;"]
+    ports: ["127.0.0.1:${AMARIS_GATEWAY_PORT:-8080}:8080"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/amaris-site.conf:ro
+      - ./trusted-proxies.conf:/etc/nginx/site-trusted-proxies.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_signal: SIGQUIT
+    stop_grace_period: 90s
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nginx-health/live/"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    networks: [site]
+networks:
+  site:

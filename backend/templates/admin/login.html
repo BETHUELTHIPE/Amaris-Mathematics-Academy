@@ -1,0 +1,18 @@
+{% extends "registration/base.html" %}
+{% load i18n %}
+{% block content %}
+<span class="amaris-eyebrow">ACADEMY ADMINISTRATION</span>
+<h2 class="amaris-login-title">Welcome back.</h2>
+<p class="amaris-login-intro">Sign in to your Amaris workspace.</p>
+<form action="{{ app_path }}" method="post" class="amaris-login-form">
+  {% csrf_token %}
+  {% if form.errors %}<div class="alert alert-danger" role="alert">{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}{% for field in form %}{% for error in field.errors %}<p>{{ field.label }}: {{ error }}</p>{% endfor %}{% endfor %}</div>{% endif %}
+  {% if user.is_authenticated %}<p class="alert alert-warning" role="alert">Your current account cannot access this workspace. Sign in with an authorized staff account.</p>{% endif %}
+  <div class="form-group"><label for="id_username">{{ form.username.label }}</label><input id="id_username" class="form-control" type="text" name="username" value="{{ form.username.value|default_if_none:'' }}" autocomplete="username" required autofocus></div>
+  <div class="form-group"><label for="id_password">{{ form.password.label }}</label><input id="id_password" class="form-control" type="password" name="password" autocomplete="current-password" required></div>
+  <input type="hidden" name="next" value="{{ next }}">
+  <button class="btn btn-primary btn-block amaris-login-submit" type="submit">Sign in to workspace <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+  {% url 'admin_password_reset' as password_reset_url %}{% if password_reset_url %}<p class="amaris-login-help"><a href="{{ password_reset_url }}">Forgot your password or username?</a></p>{% endif %}
+</form>
+<p class="amaris-login-footer">Amaris Mathematics Academy<br><span>Learning. People. Progress.</span></p>
+{% endblock %}

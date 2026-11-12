@@ -1,0 +1,38 @@
+name: Nginx backend load-balancer acceptance
+on:
+  pull_request:
+    branches: [production-release-20260923, staging, main]
+    paths:
+      - backend/nginx/**
+      - backend/tests/nginx_lb/**
+      - backend/tests/nginx_load_balancer_smoke.py
+      - .github/workflows/nginx-load-balancer.yml
+permissions:
+  contents: read
+jobs:
+  nginx-replicas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify Docker Compose and Python syntax
+        run: |
+          docker compose version
+          python -m py_compile backend/tests/nginx_lb/server.py backend/tests/nginx_load_balancer_smoke.py
+      - name: Distribution, replica discovery, failure recovery, privacy and no write replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u backend/tests/nginx_load_balancer_smoke.py | tee /tmp/amaris-nginx-lb.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nginx-backend-load-balancer-evidence
+          path: /tmp/amaris-nginx-lb.log
+          if-no-files-found: ignore
+          retention-days: 14

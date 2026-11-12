@@ -15,16 +15,16 @@ RUN apt-get update \
          "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic-${RESTIC_VERSION}.tar.gz" \
     && echo "${RESTIC_SOURCE_SHA256}  /tmp/restic.tar.gz" | sha256sum --check --strict \
     && tar -xzf /tmp/restic.tar.gz --strip-components=1 \
-    && go get golang.org/x/crypto@v0.57.0 \
-              golang.org/x/net@v0.60.0 \
-              golang.org/x/text@v0.42.0 \
+    && go get golang.org/x/crypto@v0.58.0 \
+              golang.org/x/net@v0.62.0 \
+              golang.org/x/text@v0.43.0 \
               google.golang.org/grpc@v1.83.2 \
               github.com/klauspost/compress@v1.18.7 \
               github.com/go-jose/go-jose/v4@v4.1.6 \
     && test "$(go list -m -f '{{.Version}}' github.com/go-jose/go-jose/v4)" = "v4.1.6" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/crypto)" = "v0.57.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/net)" = "v0.60.0" \
-    && test "$(go list -m -f '{{.Version}}' golang.org/x/text)" = "v0.42.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/crypto)" = "v0.58.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/net)" = "v0.62.0" \
+    && test "$(go list -m -f '{{.Version}}' golang.org/x/text)" = "v0.43.0" \
     && test "$(go list -m -f '{{.Version}}' google.golang.org/grpc)" = "v1.83.2" \
     && test "$(go list -m -f '{{.Version}}' github.com/klauspost/compress)" = "v1.18.7" \
     && test "$(go env GOVERSION)" = "go1.27.3" \
@@ -45,7 +45,7 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install --no-install-recommends -y ca-certificates libpq5 postgresql-client \
+    && apt-get install --no-install-recommends -y ca-certificates libpq5 postgresql-client nginx \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=restic-builder /out/restic /usr/local/bin/restic
@@ -74,4 +74,4 @@ USER amaris
 
 EXPOSE 8000
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["gunicorn", "amaris_cms.asgi:application", "--config", "/app/gunicorn.conf.py"]
+CMD ["python", "-m", "amaris_cms.web_runtime"]

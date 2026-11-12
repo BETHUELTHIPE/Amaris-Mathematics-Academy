@@ -91,6 +91,25 @@ class PostgreSQLIntegrationTests(TestCase):
 
 
 class RedisIntegrationTests(SimpleTestCase):
+    def test_request_local_cache_instances_reuse_one_real_redis_connection(self):
+        url = _redis_url(12)
+        monitor = _redis_client(self, url)
+        marker = f"pool-reuse-{uuid.uuid4().hex}"
+        before = monitor.info("stats")["total_connections_received"]
+        caches = [_django_redis_cache(url, f"amaris-pool-{index}") for index in range(24)]
+        try:
+            for index, cache in enumerate(caches):
+                cache.set(marker, index, timeout=30)
+                self.assertEqual(cache.get(marker), index)
+            created = monitor.info("stats")["total_connections_received"] - before
+            # One retained physical socket serves all 24 independent cache
+            # instances; a previously warm shared pool may need no new socket.
+            self.assertLessEqual(created, 1)
+        finally:
+            for cache in caches:
+                cache.delete(marker)
+            monitor.close()
+
     def test_django_cache_round_trip_uses_real_redis_and_isolated_aliases(self):
         default_url = _redis_url(12)
         public_url = _redis_url(13)
@@ -139,6 +158,28 @@ class RedisIntegrationTests(SimpleTestCase):
 
 
 class CeleryIntegrationTests(SimpleTestCase):
+    def test_prefork_worker_round_trip_uses_independent_redis_pools(self):
+        _redis_client(self, settings.CELERY_BROKER_URL).close()
+        _redis_client(self, settings.CELERY_RESULT_BACKEND).close()
+        task_name = f"content.prefork_probe.{uuid.uuid4().hex}"
+
+        @celery_app.task(name=task_name, ignore_result=False)
+        def prefork_probe():
+            cache = _django_redis_cache(_redis_url(12), "amaris-prefork-probe")
+            key = f"child-{os.getpid()}"
+            try:
+                cache.set(key, "ok", timeout=30)
+                return {"pid": os.getpid(), "cached": cache.get(key)}
+            finally:
+                cache.delete(key)
+
+        with start_worker(celery_app, perform_ping_check=False, pool="prefork", concurrency=1, loglevel="WARNING"):
+            result = prefork_probe.delay()
+            actual = result.get(timeout=15)
+            self.assertEqual(actual["cached"], "ok")
+            self.assertNotEqual(actual["pid"], os.getpid())
+            result.forget()
+
     def test_django_celery_worker_round_trip_uses_real_redis_broker_and_backend(self):
         broker_client = _redis_client(self, settings.CELERY_BROKER_URL)
         result_client = _redis_client(self, settings.CELERY_RESULT_BACKEND)

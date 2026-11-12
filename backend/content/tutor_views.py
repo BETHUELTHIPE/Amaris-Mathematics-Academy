@@ -11,7 +11,9 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Exists, OuterRef
 from django.utils import timezone
+from django.utils.cache import patch_vary_headers
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
@@ -69,6 +71,12 @@ class SupabaseTutorAuthentication(BaseAuthentication):
 class TutorOnlyAPIView(APIView):
     authentication_classes = (SupabaseTutorAuthentication,)
     permission_classes = (IsAuthenticated,)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response["Cache-Control"] = "private, no-store"
+        patch_vary_headers(response, ("Authorization",))
+        return response
 
 
 class TutorSlotWriteSerializer(serializers.Serializer):
@@ -158,12 +166,6 @@ class TutorEarningsResponseSerializer(serializers.Serializer):
 class TutorEarningsView(TutorOnlyAPIView):
     """Amounts and aggregate paid-student counts, never student identities or bank numbers."""
 
-    def finalize_response(self, request, response, *args, **kwargs):
-        response = super().finalize_response(request, response, *args, **kwargs)
-        response["Cache-Control"] = "private, no-store"
-        response["Vary"] = "Authorization"
-        return response
-
     @extend_schema(responses={200: TutorEarningsResponseSerializer})
     def get(self, request):
         from content.services.tutor_finance import tutor_dashboard_stats
@@ -189,7 +191,11 @@ class TutorEarningsView(TutorOnlyAPIView):
 
 
 def _slot_data(slot):
-    reserved = slot.bookings.filter(status__in=RESERVED_STATUSES).exists()
+    # Dashboard reads use EXISTS in the slots query, without per-slot round trips.
+    # Writes still check fresh booking state after the locked save path.
+    reserved = getattr(slot, "has_reserved_booking", None)
+    if reserved is None:
+        reserved = slot.bookings.filter(status__in=RESERVED_STATUSES).exists()
     return {
         "id": slot.pk,
         "programme": slot.programme,
@@ -253,7 +259,11 @@ class TutorDashboardView(TutorOnlyAPIView):
         now = timezone.now()
         slots = (
             TutorAvailabilitySlot.objects.filter(tutor=request.user)
-            .prefetch_related("bookings")
+            .annotate(
+                has_reserved_booking=Exists(
+                    LiveClassBooking.objects.filter(slot_id=OuterRef("pk"), status__in=RESERVED_STATUSES)
+                )
+            )
             .order_by("-starts_at")[:120]
         )
         bookings = (

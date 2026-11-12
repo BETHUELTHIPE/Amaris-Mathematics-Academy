@@ -138,7 +138,9 @@ if not DEBUG and not os.getenv("DATABASE_URL"):
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        conn_max_age=int(os.getenv("DATABASE_CONN_MAX_AGE", "600")),
+        # ASGI requests must release thread-local connections. Reuse physical
+        # sessions with the bounded psycopg pool below, not CONN_MAX_AGE.
+        conn_max_age=int(os.getenv("DATABASE_CONN_MAX_AGE", "0")),
         conn_health_checks=True,
         ssl_require=env_bool("DATABASE_SSL_REQUIRED", False),
     )
@@ -149,6 +151,24 @@ SUPABASE_PROJECT_REF = os.getenv("SUPABASE_PROJECT_REF", "").strip()
 if SUPABASE_DATABASE_REQUIRED:
     assert_supabase_database(DATABASES["default"], SUPABASE_PROJECT_REF)
 if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    if env_bool("DATABASE_POOL_ENABLED", False):
+        pool_max_size = int(os.getenv("DATABASE_POOL_MAX_SIZE", "4"))
+        pool_min_size = int(os.getenv("DATABASE_POOL_MIN_SIZE", "0"))
+        pool_max_waiting = int(os.getenv("DATABASE_POOL_MAX_WAITING", "32"))
+        pool_timeout = float(os.getenv("DATABASE_POOL_TIMEOUT", "5"))
+        if not (
+            0 <= pool_min_size <= pool_max_size and pool_max_size > 0 and pool_max_waiting > 0 and pool_timeout > 0
+        ):
+            raise RuntimeError("Database pool limits must be positive and min_size must not exceed max_size.")
+        DATABASES["default"]["CONN_MAX_AGE"] = 0
+        DATABASES["default"].setdefault("OPTIONS", {})["pool"] = {
+            "min_size": pool_min_size,
+            "max_size": pool_max_size,
+            "max_waiting": pool_max_waiting,
+            "timeout": pool_timeout,
+            "max_idle": 60,
+            "max_lifetime": 600,
+        }
     database_schema = os.getenv("DATABASE_SCHEMA", "").strip()
     if database_schema and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", database_schema):
         raise RuntimeError("DATABASE_SCHEMA must be a simple Postgres schema identifier.")
@@ -178,6 +198,8 @@ CACHES = {
             "socket_connect_timeout": 1,
             "socket_timeout": 1,
             "max_connections": int(os.getenv("DJANGO_CACHE_MAX_CONNECTIONS", "30")),
+            "socket_keepalive": True,
+            "health_check_interval": 30,
         },
     },
     "public_content": {
@@ -189,6 +211,8 @@ CACHES = {
             "socket_connect_timeout": 1,
             "socket_timeout": 1,
             "max_connections": int(os.getenv("DJANGO_CACHE_MAX_CONNECTIONS", "30")),
+            "socket_keepalive": True,
+            "health_check_interval": 30,
         },
     },
 }
@@ -377,7 +401,15 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_MAX_TASKS_PER_CHILD = int(os.getenv("CELERY_WORKER_MAX_TASKS_PER_CHILD", "500"))
 CELERY_WORKER_MAX_MEMORY_PER_CHILD = int(os.getenv("CELERY_WORKER_MAX_MEMORY_PER_CHILD_KB", "350000"))
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
-CELERY_BROKER_POOL_LIMIT = int(os.getenv("CELERY_BROKER_POOL_LIMIT", "10"))
+CELERY_BROKER_POOL_LIMIT = int(os.getenv("CELERY_BROKER_POOL_LIMIT", "4"))
+CELERY_REDIS_MAX_CONNECTIONS = int(os.getenv("CELERY_REDIS_MAX_CONNECTIONS", "10"))
+CELERY_REDIS_SOCKET_CONNECT_TIMEOUT = 3.0
+CELERY_REDIS_SOCKET_TIMEOUT = 5.0
+CELERY_REDIS_SOCKET_KEEPALIVE = True
+CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30
+CELERY_RESULT_BACKEND_THREAD_SAFE = True
+CELERY_BROKER_CONNECTION_TIMEOUT = 3.0
+CELERY_VISIBILITY_TIMEOUT = int(os.getenv("CELERY_VISIBILITY_TIMEOUT", "3600"))
 CELERY_RESULT_EXPIRES = int(os.getenv("CELERY_RESULT_EXPIRES_SECONDS", "86400"))
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_TASK_PUBLISH_RETRY = True
@@ -389,23 +421,31 @@ CELERY_TASK_PUBLISH_RETRY_POLICY = {
 }
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "visibility_timeout": 3600,
+    "visibility_timeout": CELERY_VISIBILITY_TIMEOUT,
+    "max_connections": int(os.getenv("CELERY_REDIS_MAX_CONNECTIONS", "10")),
+    "health_check_interval": 30,
+    "socket_keepalive": True,
     "socket_connect_timeout": 5,
     "socket_timeout": 10,
     "retry_on_timeout": True,
     "max_retries": 6,
 }
 CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
+    "visibility_timeout": CELERY_VISIBILITY_TIMEOUT,
     "retry_policy": {
         "timeout": 5.0,
         "max_retries": 6,
         "interval_start": 0,
         "interval_step": 1,
         "interval_max": 10,
-    }
+    },
 }
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
 CELERY_TASK_TIME_LIMIT = 30 * 60
+if CELERY_VISIBILITY_TIMEOUT <= CELERY_TASK_TIME_LIMIT:
+    raise RuntimeError("Celery visibility timeout must exceed the task hard time limit.")
+if CELERY_BROKER_POOL_LIMIT <= 0 or CELERY_REDIS_MAX_CONNECTIONS < 4:
+    raise RuntimeError("Celery requires a bounded producer pool and at least four Redis connections per process.")
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
     "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
@@ -524,9 +564,17 @@ JAZZMIN_SETTINGS = {
     "site_title": "Amaris Academy Admin",
     "site_header": "Amaris Mathematics Academy",
     "site_brand": "Amaris Academy",
-    "welcome_sign": "Content and learning operations",
+    "welcome_sign": "Your academy workspace",
+    "site_logo": "invoice-brand/amaris-academy-icon-192.png",
+    "login_logo": "invoice-brand/amaris-academy-icon-192.png",
+    "login_logo_dark": "invoice-brand/amaris-academy-icon-192.png",
+    "site_icon": "invoice-brand/amaris-academy-icon-192.png",
+    "site_logo_classes": "amaris-brand-mark",
+    "custom_css": "admin/amaris-admin.css",
+    "custom_js": "admin/amaris-admin.js",
+    "use_google_fonts_cdn": False,
     "copyright": "Amaris Mathematics Academy",
-    "search_model": ["content.Course", "content.Lesson", "content.ContactEnquiry"],
+    "search_model": "content.Course",
     "topmenu_links": [
         {
             "name": "View website",
@@ -537,7 +585,7 @@ JAZZMIN_SETTINGS = {
         {"model": "content.contactenquiry"},
     ],
     "show_sidebar": True,
-    "navigation_expanded": True,
+    "navigation_expanded": False,
     "order_with_respect_to": [
         "content",
         "content.sitesettings",
@@ -591,13 +639,13 @@ JAZZMIN_UI_TWEAKS = {
     "body_small_text": False,
     "brand_small_text": False,
     "brand_colour": "navbar-navy",
-    "accent": "accent-warning",
-    "navbar": "navbar-navy navbar-dark",
+    "accent": "",
+    "navbar": "navbar-white navbar-light",
     "sidebar": "sidebar-dark-navy",
     "sidebar_nav_child_indent": True,
-    "sidebar_nav_compact_style": True,
-    "theme": "flatly",
-    "dark_mode_theme": "darkly",
+    "sidebar_nav_compact_style": False,
+    "theme": "default",
+    "dark_mode_theme": None,
     "button_classes": {
         "primary": "btn-primary",
         "secondary": "btn-outline-secondary",
