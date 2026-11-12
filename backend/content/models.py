@@ -773,6 +773,14 @@ class Enrollment(TimeStampedModel):
     student = models.ForeignKey(StudentRecord, related_name="enrollments", on_delete=models.PROTECT)
     course = models.ForeignKey(Course, related_name="enrollments", on_delete=models.PROTECT)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
+    subscription_access = models.ForeignKey(
+        "content.CurriculumSubscription",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="course_progress",
+        editable=False,
+    )
     progress_percent = models.PositiveSmallIntegerField(default=0)
     last_lesson = models.ForeignKey(
         Lesson,

@@ -280,6 +280,9 @@ def _fulfill_verified_payment(payment: Payment) -> None:
         course=payment.course,
         defaults={"status": Enrollment.Status.ACTIVE},
     )
+    if enrollment.subscription_access_id:
+        enrollment.subscription_access = None
+        enrollment.save(update_fields=["subscription_access", "updated_at"])
     if enrollment.status not in {Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED}:
         enrollment.status = Enrollment.Status.ACTIVE
         enrollment.save(update_fields=["status", "updated_at"])

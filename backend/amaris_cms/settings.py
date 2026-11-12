@@ -70,6 +70,7 @@ def env_list(name: str, default: str = "") -> list[str]:
 
 # Enable after the six-file frontend is live and backend/staging acceptance passes.
 TUTOR_REQUIRE_SIX_DOCUMENTS = env_bool("TUTOR_REQUIRE_SIX_DOCUMENTS", False)
+COURSE_SUBSCRIPTIONS_ENABLED = env_bool("COURSE_SUBSCRIPTIONS_ENABLED", False)
 
 DEBUG = env_bool("DJANGO_DEBUG", True)
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
