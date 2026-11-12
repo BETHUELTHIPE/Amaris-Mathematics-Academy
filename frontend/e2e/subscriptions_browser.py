@@ -29,15 +29,22 @@ def main():
         browser = playwright.chromium.launch(executable_path=chrome, headless=True, args=["--no-sandbox"])
         page = browser.new_page()
         page.set_default_timeout(30000)
-        for width, height in [(390, 844), (1440, 1000)]:
+        for width, height in [(320, 720), (390, 844), (768, 1024), (1440, 1000)]:
             page.set_viewport_size({"width": width, "height": height})
             page.goto(BASE, wait_until="networkidle")
             expect(page.locator("#course-subscriptions")).to_contain_text("R3,800")
             expect(page.locator("#course-subscriptions")).to_contain_text("R7,600")
+            expect(page.locator("#course-subscriptions")).to_contain_text("Two 30-minute Zoom sessions every week")
+            expect(page.locator("#course-subscriptions")).to_contain_text("1 hour of live tutor support per week")
+            expect(page.locator("#course-subscriptions")).to_contain_text("R950/month equivalent")
             for slug, price in [("4-months", "R3,800"), ("8-months", "R7,600")]:
                 page.goto(BASE + "/subscriptions/" + slug, wait_until="networkidle")
                 expect(page.get_by_role("heading", name="Choose your curriculum", exact=True)).to_be_visible()
                 expect(page.get_by_text(price, exact=True)).to_be_visible()
+                expect(page.locator("aside")).to_contain_text("Two 30-minute Zoom sessions every week")
+                expect(page.locator("aside")).to_contain_text("1 hour of live tutor support per week")
+                expect(page.get_by_role("region", name="Your weekly learning rhythm")).to_contain_text("Understand it")
+                expect(page.get_by_role("region", name="Your weekly learning rhythm")).to_contain_text("Put it into practice")
                 radios = page.locator('input[name="curriculum"]')
                 expect(radios).to_have_count(5)
                 form = page.locator('form[action$="/checkout"]')

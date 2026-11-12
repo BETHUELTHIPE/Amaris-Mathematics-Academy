@@ -7,6 +7,7 @@ on:
       - frontend/app/dashboard/subscriptions/**
       - frontend/app/api/subscriptions/**
       - frontend/components/site/course-subscriptions.tsx
+      - frontend/components/site/subscription-value.tsx
       - frontend/lib/subscription*.ts
       - frontend/lib/supabase/proxy.ts
       - frontend/proxy.ts
@@ -44,7 +45,7 @@ jobs:
         working-directory: frontend
         run: |
           npm run typecheck
-          npx eslint app/subscriptions app/dashboard/subscriptions app/api/subscriptions lib/subscription-api.ts lib/subscription-plans.ts lib/supabase/proxy.ts proxy.ts worker/index.ts components/site/course-subscriptions.tsx components/site/dashboard-navigation.tsx app/page.tsx tests/subscriptions.test.mjs
+          npx eslint app/subscriptions app/dashboard/subscriptions app/api/subscriptions lib/subscription-api.ts lib/subscription-plans.ts lib/supabase/proxy.ts proxy.ts worker/index.ts components/site/course-subscriptions.tsx components/site/subscription-value.tsx components/site/dashboard-navigation.tsx app/page.tsx tests/subscriptions.test.mjs
           node --test tests/subscriptions.test.mjs
       - name: Build Node application
         working-directory: frontend

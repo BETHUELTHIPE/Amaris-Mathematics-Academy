@@ -5,6 +5,20 @@ The homepage now links to `/subscriptions/4-months` (R3,800) and
 detail page requires one explicit curriculum selection: CAPS, IEB, TVET NATED,
 TVET NC(V), or University / UNISA. No curriculum is preselected.
 
+Both plans include one hour of live tutor support per week, delivered as two
+30-minute Zoom sessions, plus published courses in the selected curriculum. The
+first session focuses on understanding; the second on application and revision.
+R950/month is an equivalent comparison, not a monthly billing instruction. The
+upfront totals remain R3,800 and R7,600. No guaranteed grade, invented discount,
+or fixed 16-/32-week session count is advertised for a calendar-month term.
+
+After verified payment, an active subscription links to Contact so the student
+can arrange the included sessions with the academy using their reference. These
+included sessions must not be sent through the separately charged hourly
+checkout. This release does not add an automatic subscription slot allocator.
+Verify the academy's scheduling and attendance process in staging before enabling
+sales; additional tutoring and custom video requests remain separate purchases.
+
 The choice and term survive the verified sign-in redirect. Checkout displays the
 selected curriculum and fixed upfront total, using signed fields from Django's
 student subscription API. There is no automatic renewal. Browser return URLs
