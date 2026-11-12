@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2 } from "lucide-react";
@@ -9,26 +8,12 @@ import { getManagedCourses } from "@/lib/cms";
 import { courseSubscriptionPlans, getCourseSubscriptionPlan, subscriptionRequestMessage } from "@/lib/course-subscriptions";
 
 type PageProps = {
-  params: Promise<{ duration: string }>;
+  duration: "4-months" | "8-months";
   searchParams: Promise<{ course?: string | string[] }>;
 };
 
-export const dynamic = "force-dynamic";
-
-export function generateStaticParams() {
-  return courseSubscriptionPlans.map((plan) => ({ duration: plan.slug }));
-}
-
-export async function generateMetadata({ params }: Pick<PageProps, "params">): Promise<Metadata> {
-  const plan = getCourseSubscriptionPlan((await params).duration);
-  return plan ? {
-    title: `${plan.months}-Month Course Subscription`,
-    description: `Choose your mathematics course and request pricing for a ${plan.months}-month subscription with Amaris Mathematics Academy.`,
-  } : {};
-}
-
-export default async function CourseSubscriptionPage({ params, searchParams }: PageProps) {
-  const plan = getCourseSubscriptionPlan((await params).duration);
+export async function CourseSubscriptionPage({ duration, searchParams }: PageProps) {
+  const plan = getCourseSubscriptionPlan(duration);
   if (!plan) notFound();
   const courses = await getManagedCourses();
   const query = await searchParams;
