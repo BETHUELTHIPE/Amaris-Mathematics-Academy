@@ -7,6 +7,7 @@ import { Footer } from "@/components/site/footer";
 import { AmarisAssistantLauncher } from "@/components/site/amaris-assistant-launcher";
 import { formatRand } from "@/lib/courses";
 import { getManagedCourses } from "@/lib/cms";
+import { CourseSubscriptions } from "@/components/site/course-subscriptions";
 
 function FeaturedCoursesPlaceholder() {
   return (
@@ -75,6 +76,8 @@ export default function Home() {
           {[["6","focused programmes","A concise catalogue without distractions"],["220+","guided lessons","Clear explanations and deliberate practice"],["3","learning pathways","School, TVET and university mathematics"]].map(([value,label,description]) => <div key={label} className="p-6 sm:p-7"><div className="text-3xl font-bold tracking-tight text-[#0b2a5b]">{value}</div><div className="mt-1 font-semibold">{label}</div><div className="mt-2 text-sm leading-6 text-[#60708a]">{description}</div></div>)}
         </div>
       </section>
+
+      <CourseSubscriptions />
 
       <section className="home-deferred-featured mx-auto max-w-7xl px-5 py-24 lg:px-8">
         <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end"><div><p className="eyebrow">Featured courses</p><h2 className="section-title mt-3">Choose the next result<br />you want to earn.</h2></div><a href="/courses" className="inline-flex items-center gap-2 font-bold text-[#1f5bbd]">View all mathematics courses <ArrowRight className="size-4" /></a></div>

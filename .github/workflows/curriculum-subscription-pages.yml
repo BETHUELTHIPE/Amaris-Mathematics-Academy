@@ -1,0 +1,69 @@
+name: Curriculum subscription pages
+on:
+  pull_request:
+    branches: [render-live-current-20260918]
+    paths:
+      - frontend/app/subscriptions/**
+      - frontend/app/dashboard/subscriptions/**
+      - frontend/app/api/subscriptions/**
+      - frontend/components/site/course-subscriptions.tsx
+      - frontend/lib/subscription*.ts
+      - frontend/lib/supabase/proxy.ts
+      - frontend/proxy.ts
+      - frontend/worker/index.ts
+      - frontend/app/page.tsx
+      - frontend/components/site/dashboard-navigation.tsx
+      - frontend/tests/subscriptions.test.mjs
+      - frontend/e2e/subscriptions_browser.py
+      - .github/workflows/curriculum-subscription-pages.yml
+permissions:
+  contents: read
+jobs:
+  subscription-pages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Install locked frontend dependencies and browser harness
+        run: |
+          npm ci --include=dev --prefix frontend
+          python -m pip install -r frontend/e2e/requirements.txt
+      - name: Types, lint and subscription contracts
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npx eslint app/subscriptions app/dashboard/subscriptions app/api/subscriptions lib/subscription-api.ts lib/subscription-plans.ts lib/supabase/proxy.ts proxy.ts worker/index.ts components/site/course-subscriptions.tsx components/site/dashboard-navigation.tsx app/page.tsx tests/subscriptions.test.mjs
+          node --test tests/subscriptions.test.mjs
+      - name: Build Node application
+        working-directory: frontend
+        run: |
+          npm install --no-save --package-lock=false nitro@3.0.260903-beta @tailwindcss/vite@4.3.3
+          NODE_ENV=production NITRO_PRESET=node npx vite build --config vite.node.config.ts
+      - name: Required selection, prices, mobile, desktop, accessibility and sign-in continuation
+        working-directory: frontend
+        env:
+          SUBSCRIPTION_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          PORT=38122 HOST=127.0.0.1 SITE_URL=http://127.0.0.1:38122 NODE_ENV=production node .output/server/index.mjs > /tmp/subscription-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          python e2e/subscriptions_browser.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: curriculum-subscription-preview
+          path: /tmp/amaris-subscription-desktop.png
+          if-no-files-found: ignore
+          retention-days: 7
