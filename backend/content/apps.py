@@ -1,3 +1,4 @@
+# ruff: noqa: F401
 from django.apps import AppConfig
 
 
@@ -8,7 +9,7 @@ class ContentConfig(AppConfig):
 
     def import_models(self):
         super().import_models()
-        from . import payment_models, subscription_models, tutor_finance_models  # noqa: F401
+        from . import payment_models, subscription_models, subscription_report_models, tutor_finance_models
 
     def ready(self):
-        from . import payment_admin, schema, signals, subscription_admin, tutor_finance_admin  # noqa: F401
+        from . import payment_admin, schema, signals, subscription_admin, subscription_report_admin, tutor_finance_admin

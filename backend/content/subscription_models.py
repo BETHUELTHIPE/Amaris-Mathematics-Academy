@@ -46,7 +46,10 @@ class CurriculumSubscription(TimeStampedModel):
                 name="subscription_fixed_price",
             ),
         ]
-        indexes = [models.Index(fields=["student", "status", "ends_at"], name="sub_student_access_idx")]
+        indexes = [
+            models.Index(fields=["student", "status", "ends_at"], name="sub_student_access_idx"),
+            models.Index(fields=["status", "gateway_mode", "ends_at"], name="sub_report_due_idx"),
+        ]
 
     def __str__(self):
         return f"{self.reference} — {self.get_curriculum_display()} / {self.months} months"

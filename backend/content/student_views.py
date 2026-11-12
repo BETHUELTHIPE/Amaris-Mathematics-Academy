@@ -600,6 +600,9 @@ class ProgressView(StudentAPIView):
                 enrollment.progress_percent = max(enrollment.progress_percent, values["progress_percent"])
                 update_fields.append("progress_percent")
             enrollment.save(update_fields=update_fields)
+            from .services.subscription_reports import capture_study_activity
+
+            capture_study_activity(enrollment)
 
         return Response(_resume_payload(enrollment))
 

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -20,6 +22,8 @@ class SubscriptionInput(serializers.Serializer):
 class SubscriptionOutput(serializers.ModelSerializer):
     curriculum_label = serializers.CharField(source="get_curriculum_display")
     active = serializers.SerializerMethodField()
+    report_ready = serializers.SerializerMethodField()
+    report_emailed_at = serializers.SerializerMethodField()
 
     class Meta:
         model = CurriculumSubscription
@@ -35,7 +39,25 @@ class SubscriptionOutput(serializers.ModelSerializer):
             "starts_at",
             "ends_at",
             "active",
+            "report_ready",
+            "report_emailed_at",
         )
+
+    def get_report_ready(self, obj) -> bool:
+        from .subscription_report_models import SubscriptionReport
+
+        try:
+            return bool(obj.final_report.pdf_storage_path)
+        except SubscriptionReport.DoesNotExist:
+            return False
+
+    def get_report_emailed_at(self, obj) -> datetime | None:
+        from .subscription_report_models import SubscriptionReport
+
+        try:
+            return obj.final_report.emailed_at
+        except SubscriptionReport.DoesNotExist:
+            return None
 
     def get_active(self, obj) -> bool:
         from .services.payments import _payfast_mode
@@ -54,7 +76,10 @@ class SubscriptionListView(StudentAPIView):
     @extend_schema(responses=SubscriptionOutput(many=True))
     def get(self, request):
         return Response(
-            SubscriptionOutput(CurriculumSubscription.objects.filter(student=self.student)[:100], many=True).data
+            SubscriptionOutput(
+                CurriculumSubscription.objects.filter(student=self.student).select_related("final_report")[:100],
+                many=True,
+            ).data
         )
 
 
