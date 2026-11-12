@@ -33,8 +33,8 @@ test("two upfront plans have exact prices with the same five curriculum choices"
   assert.deepEqual(subscriptionPlans.map(p => [p.months, p.price]), [[4,3800],[8,7600]]);
   assert.ok(subscriptionPlans.every(p => p.price / p.months === 950));
   assert.equal(subscriptionSupport.sessionsPerWeek, 2);
-  assert.equal(subscriptionSupport.minutesPerSession, 30);
-  assert.equal(subscriptionSupport.sessionsPerWeek * subscriptionSupport.minutesPerSession, 60);
+  assert.equal(subscriptionSupport.minutesPerSession, 120);
+  assert.equal(subscriptionSupport.sessionsPerWeek * subscriptionSupport.minutesPerSession, 240);
   assert.equal(subscriptionPrice(3800), "R3,800");
   assert.equal(subscriptionPrice(7600), "R7,600");
   assert.deepEqual(subscriptionCurricula.map(c=>c.value), ["caps","ieb","nated","ncv","university"]);

@@ -4,9 +4,9 @@ export const subscriptionPlans = [
 ] as const;
 export const subscriptionSupport = {
   sessionsPerWeek: 2,
-  minutesPerSession: 30,
-  weeklySessions: "Two 30-minute Zoom sessions every week",
-  weeklyTotal: "1 hour of live tutor support per week",
+  minutesPerSession: 120,
+  weeklySessions: "Two 2-hour one-to-one Zoom sessions every week",
+  weeklyTotal: "4 hours of one-to-one tutor support per week",
   scheduling: "After payment is verified, contact the academy with your subscription reference to arrange your included sessions.",
   sessions: [
     { title: "Understand it", description: "Bring the concept that has you stuck. Work through the method with your tutor and ask your questions." },
