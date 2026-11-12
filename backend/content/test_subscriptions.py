@@ -1,6 +1,7 @@
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -8,6 +9,7 @@ from django.core.files.storage import InMemoryStorage
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from pypdf import PdfReader
 from rest_framework.test import APIClient
 
 from content.models import Course, CourseCategory, CourseModule, Enrollment, Lesson, Payment, StudentRecord
@@ -224,6 +226,11 @@ class SubscriptionTests(TestCase):
             with subscription_invoice(item) as document:
                 data = document.read()
             self.assertTrue(data.startswith(b"%PDF"))
+            pages = PdfReader(BytesIO(data)).pages
+            self.assertEqual(len(pages), 1)
+            invoice_text = " ".join(" ".join(page.extract_text() for page in pages).split())
+            self.assertIn("2 x 30-minute Zoom sessions per week (1 hour total)", invoice_text)
+            self.assertIn("Published courses in the selected curriculum", invoice_text)
             item.refresh_from_db()
             self.assertTrue(item.pdf_storage_path.startswith(str(self.student.supabase_user_id)))
             with subscription_invoice(item) as document:

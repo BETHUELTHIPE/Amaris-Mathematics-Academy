@@ -244,6 +244,8 @@ def subscription_invoice(item):
                         description=f"{item.months}-month {item.get_curriculum_display()} course subscription",
                         details=(
                             f"Access: {item.starts_at:%d %B %Y} to {item.ends_at:%d %B %Y}",
+                            "Includes 2 x 30-minute Zoom sessions per week (1 hour total)",
+                            "Published courses in the selected curriculum",
                             "One upfront payment",
                         ),
                         quantity=Decimal("1"),

@@ -15,8 +15,24 @@ while implementing this feature.
 Both are fixed-term purchases, without automatic renewal. Prices are the same
 for CAPS, IEB, TVET NATED, TVET NC(V), and University / UNISA. Access covers
 published courses in the selected curriculum, including courses published later
-during the term. Live classes, Zoom bookings and custom video requests remain
+during the term. Each plan also includes two 30-minute Zoom tutor sessions per
+week (one hour total), in the chosen curriculum throughout the paid term. The
+first session focuses on understanding; the second on practice and revision.
+Additional tutoring beyond the included sessions and custom video requests are
 separate purchases. A separately purchased course retains its existing access.
+
+Both totals are equivalent to R950/month; billing remains upfront. Calendar-month
+terms are not advertised as exactly 16 or 32 weeks, and no fixed overall session
+count or savings claim is made. No particular grade improvement is guaranteed.
+
+Included sessions are arranged with the academy after verified payment, using
+the subscription reference. The private student pages link to Contact. This
+change does not add an automatic subscription booking/credit engine; academy
+staff must verify the paid term and arrange the two weekly half-hour sessions
+without an extra charge through the existing hourly checkout. Do not enable
+sales until the scheduling/attendance process, partial-week treatment, Zoom
+invitations and student/tutor/admin communication are accepted in staging.
+The invoice explicitly lists the weekly Zoom inclusion and course access.
 
 The existing course curriculum strings map as follows (case-insensitive):
 
@@ -63,7 +79,7 @@ No new receipt email delivery or second payment provider is implemented.
 4. Complete a real sandbox gateway round trip, then verify ITN, private status,
    invoice download, matching curriculum lessons and progress. Check another
    student's denial, duplicate callback, expiry, reversal, retained direct course
-   purchase access, and a course published after subscription activation. Check
+   purchase access, and a course published after subscription activation. Confirm the included Zoom scheduling process and no extra tutoring charge. Check
    stale pending orders and overlapping purchases with the gateway before launch.
 5. After production authorization and protected checks, take the required backup,
    deploy the backend migration/code before the frontend, and enable live
