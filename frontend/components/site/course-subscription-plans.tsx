@@ -13,11 +13,11 @@ export function CourseSubscriptionPlans() {
               <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${extended ? "bg-white/10 text-[#ffcc66]" : "bg-[#edf3ff] text-[#1f5bbd]"}`}>
                 <CalendarDays aria-hidden="true" className="size-4" /> {plan.months}-month plan
               </span>
-              <span className={`text-xs font-semibold ${extended ? "text-white/75" : "text-[#60708a]"}`}>{plan.focus}</span>
+              <span className={`text-xs font-semibold ${extended ? "text-white/75" : "text-[#46556e]"}`}>{plan.focus}</span>
             </div>
-            <p className="mt-9 flex items-baseline gap-2"><span className="text-6xl font-semibold tracking-[-.06em]">{plan.months}</span><span className={`text-xl ${extended ? "text-white/75" : "text-[#60708a]"}`}>months</span></p>
+            <p className="mt-9 flex items-baseline gap-2"><span className="text-6xl font-semibold tracking-[-.06em]">{plan.months}</span><span className={`text-xl ${extended ? "text-white/75" : "text-[#46556e]"}`}>months</span></p>
             <h3 className="mt-4 text-2xl font-semibold tracking-tight">{plan.title}</h3>
-            <p className={`mt-3 max-w-lg text-base leading-7 ${extended ? "text-white/80" : "text-[#60708a]"}`}>{plan.description}</p>
+            <p className={`mt-3 max-w-lg text-base leading-7 ${extended ? "text-white/80" : "text-[#46556e]"}`}>{plan.description}</p>
             <ul className="mt-7 grid gap-3 text-sm">
               {["Choose your mathematics course", "Tell us your curriculum and study level", "Receive the price and access details before payment"].map((item) => (
                 <li key={item} className="flex items-start gap-3"><Check aria-hidden="true" className={`mt-0.5 size-4 shrink-0 ${extended ? "text-[#ffcc66]" : "text-[#1f5bbd]"}`} /><span>{item}</span></li>
@@ -41,11 +41,11 @@ export function HomeCourseSubscriptions() {
     <section id="course-subscriptions" aria-labelledby="course-subscriptions-title" className="border-y border-[#dce4ef] bg-[#edf2fa]">
       <div className="mx-auto max-w-7xl px-5 py-20 lg:px-8 lg:py-24">
         <div className="mb-10 flex flex-col justify-between gap-6 md:flex-row md:items-end">
-          <div><p className="eyebrow">Course subscriptions</p><h2 id="course-subscriptions-title" className="section-title mt-3 max-w-2xl">Make time for your<br className="hidden sm:block" /> next breakthrough.</h2><p className="mt-5 max-w-2xl text-lg leading-8 text-[#60708a]">Choose a 4-month or 8-month study period. Find your course, request your plan and get clear access details before you commit.</p></div>
+          <div><p className="eyebrow">Course subscriptions</p><h2 id="course-subscriptions-title" className="section-title mt-3 max-w-2xl">Make time for your<br className="hidden sm:block" /> next breakthrough.</h2><p className="mt-5 max-w-2xl text-lg leading-8 text-[#46556e]">Choose a 4-month or 8-month study period. Find your course, request your plan and get clear access details before you commit.</p></div>
           <Link href="/subscriptions" className="inline-flex min-h-11 shrink-0 items-center gap-2 font-bold text-[#1f5bbd] hover:underline">Compare subscription plans <ArrowRight aria-hidden="true" className="size-4" /></Link>
         </div>
         <CourseSubscriptionPlans />
-        <p className="mt-6 text-center text-sm leading-6 text-[#60708a]">Prices and course coverage are confirmed by the Amaris team. Sending a request does not take payment or activate access.</p>
+        <p className="mt-6 text-center text-sm leading-6 text-[#46556e]">Prices and course coverage are confirmed by the Amaris team. Sending a request does not take payment or activate access.</p>
       </div>
     </section>
   );

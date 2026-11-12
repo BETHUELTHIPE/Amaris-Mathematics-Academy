@@ -3,6 +3,11 @@ import pa11y from "pa11y";
 const urls = [
   "http://127.0.0.1:3000/",
   "http://127.0.0.1:3000/courses",
+  "http://127.0.0.1:3000/pricing",
+  "http://127.0.0.1:3000/subscriptions",
+  "http://127.0.0.1:3000/subscriptions/4-months",
+  "http://127.0.0.1:3000/subscriptions/4-months?course=caps-grade-12-mathematics",
+  "http://127.0.0.1:3000/subscriptions/8-months?course=other",
   "http://127.0.0.1:3000/contact",
   "http://127.0.0.1:3000/login",
   "http://127.0.0.1:3000/register",
