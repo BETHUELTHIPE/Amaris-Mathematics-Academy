@@ -29,9 +29,9 @@ Included sessions are arranged with the academy after verified payment, using
 the subscription reference. The private student pages link to Contact. This
 change does not add an automatic subscription booking/credit engine; academy
 staff must verify the paid term and arrange the two weekly half-hour sessions
-without an extra charge through the existing hourly checkout. Do not enable
-sales until the scheduling/attendance process, partial-week treatment, Zoom
-invitations and student/tutor/admin communication are accepted in staging.
+without an extra charge. Arrange these separately from the paid hourly checkout;
+that flow does not redeem subscriptions. Do not enable sales until the
+scheduling/attendance process, partial-week treatment, Zoom invitations and student/tutor/admin communication are accepted in staging.
 The invoice explicitly lists the weekly Zoom inclusion and course access.
 
 The existing course curriculum strings map as follows (case-insensitive):
@@ -79,7 +79,8 @@ No new receipt email delivery or second payment provider is implemented.
 4. Complete a real sandbox gateway round trip, then verify ITN, private status,
    invoice download, matching curriculum lessons and progress. Check another
    student's denial, duplicate callback, expiry, reversal, retained direct course
-   purchase access, and a course published after subscription activation. Confirm the included Zoom scheduling process and no extra tutoring charge. Check
+   purchase access, and a course published after subscription activation. Confirm
+   included Zoom scheduling without an extra fee. Check
    stale pending orders and overlapping purchases with the gateway before launch.
 5. After production authorization and protected checks, take the required backup,
    deploy the backend migration/code before the frontend, and enable live
