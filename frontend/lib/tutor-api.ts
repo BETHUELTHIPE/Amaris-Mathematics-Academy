@@ -37,6 +37,7 @@ export type TutorBooking = {
 };
 
 export type TutorDashboard = {
+  personnel_forms_enabled?: boolean;
   video_uploads_enabled?: boolean;
   max_video_upload_bytes?: number;
   tutor: { name: string; email: string };
@@ -100,13 +101,32 @@ export async function tutorFetch<T>(
     let message = response.status === 401 || response.status === 403
       ? "This account has not been approved as a tutor."
       : "Unable to save your tutor session. Check the details and try again.";
-    if (response.status === 400) {
+    if ([400, 409, 503].includes(response.status)) {
       const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
       if (typeof body.detail === "string") message = body.detail.slice(0, 250);
     }
     throw new TutorApiError(response.status, message);
   }
   return response.json() as Promise<T>;
+}
+
+export async function getTutorPersonnelPDF(id: string): Promise<ArrayBuffer> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new TutorApiError(404, "Form not found.");
+  const token = await verifiedTutorToken();
+  const bindings = env as unknown as { CMS_API_URL?: string };
+  const configured = bindings.CMS_API_URL || process.env.CMS_API_URL;
+  if (!configured) throw new TutorApiError(503, "Tutor services are temporarily unavailable.");
+  let result: Response;
+  try {
+    result = await fetch(`${normalizeCmsApiBaseUrl(configured)}/tutor/forms/${id}/pdf/`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/pdf" }, cache: "no-store", signal: AbortSignal.timeout(12_000),
+    });
+  } catch { throw new TutorApiError(503, "Saved form temporarily unavailable."); }
+  if (!result.ok) throw new TutorApiError([401, 403, 404].includes(result.status) ? result.status : 503, "Saved form unavailable.");
+  if (result.headers.get("content-type")?.split(";")[0] !== "application/pdf") throw new TutorApiError(503, "Invalid saved form.");
+  const data = await result.arrayBuffer();
+  if (data.byteLength > 1048576) throw new TutorApiError(503, "Invalid saved form.");
+  return data;
 }
 
 export function getTutorDashboard(): Promise<TutorDashboard> {

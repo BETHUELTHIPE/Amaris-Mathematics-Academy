@@ -5,13 +5,13 @@ export function BrandLetterhead({ documentLabel }: { documentLabel?: string }) {
   return (
     <header className="letterhead-header">
       <div className="letterhead-accent" />
-      <div className="flex items-start justify-between gap-6 px-8 pb-5 pt-7 sm:px-10">
-        <div className="flex min-w-0 items-center gap-4">
-          <div className="grid size-20 shrink-0 place-items-center rounded-2xl bg-white p-1.5 shadow-[0_8px_24px_rgba(7,21,45,.12)] ring-1 ring-[#dce4ef]">
+      <div className="flex items-start justify-between gap-3 px-4 pb-5 pt-7 sm:gap-6 sm:px-10">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <div className="grid size-14 shrink-0 place-items-center rounded-2xl bg-white p-1.5 shadow-[0_8px_24px_rgba(7,21,45,.12)] ring-1 ring-[#dce4ef] sm:size-20">
             <Image src={academyBrand.logoPath} alt={`${academyBrand.name} logo`} width={80} height={80} unoptimized className="size-full object-contain" />
           </div>
           <div>
-            <p className="text-xl font-bold tracking-[-.025em] text-[#07152d] sm:text-2xl">{academyBrand.name}</p>
+            <p className="text-lg font-bold tracking-[-.025em] text-[#07152d] sm:text-2xl">{academyBrand.name}</p>
             <p className="mt-1 text-xs font-bold uppercase tracking-[.16em] text-[#1f5bbd]">Mathematics · Learning · Progress</p>
             <p className="mt-2 text-sm text-[#60708a]">Managing Director: {academyBrand.managingDirector}</p>
           </div>
