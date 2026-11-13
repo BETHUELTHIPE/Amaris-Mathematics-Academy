@@ -21,10 +21,10 @@ const server = createServer(async (request, response) => {
   catch {response.writeHead(404);response.end();}
 });
 await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
-let browser;
+let browser, page;
 try {
   browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
-  const page=await browser.newPage();
+  page=await browser.newPage();
   const base=`http://127.0.0.1:${server.address().port}`;
   await page.route("**/*", route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
   for (const [label,width] of [["mobile",390],["desktop",1280]]) {
@@ -41,6 +41,16 @@ try {
     await page.screenshot({path:path.join(output,`email-${label}.png`),fullPage:true});
   }
   console.log("PASS actual Django Admin performance HTML and company-letterhead email: mobile/desktop, rankings, PDF link and escaped topic; synthetic records only");
+} catch (error) {
+  if (page) {
+    await page.screenshot({path:path.join(output,"failed.png"),fullPage:true}).catch(()=>{});
+    console.log(await page.locator(".perf").evaluate(node=>{
+      const values=[];
+      for(let element=node;element;element=element.parentElement)values.push({tag:element.tagName,class:element.className,width:element.getBoundingClientRect().width,minWidth:getComputedStyle(element).minWidth});
+      return {viewport:innerWidth,ancestors:values};
+    }).catch(()=>({error:"No dashboard rendered"})));
+  }
+  throw error;
 } finally {
   if(browser)await browser.close();
   await new Promise(resolve=>server.close(resolve));
