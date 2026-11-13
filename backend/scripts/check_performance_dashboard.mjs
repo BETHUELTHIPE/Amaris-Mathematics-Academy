@@ -32,6 +32,7 @@ try {
     await page.goto(base);
     for(const heading of ["Most booked tutors","Most requested video topics","Most purchased courses","Video delivery leaders"]) await page.getByRole("heading",{name:heading,exact:true}).waitFor();
     assert.equal(await page.locator(".perf").evaluate(node=>node.getBoundingClientRect().width <= innerWidth),true);
+    if (width < 520) assert.equal(await page.locator(".perf-scroll").first().evaluate(node=>node.scrollWidth>node.clientWidth),true,"Tables should scroll inside the card rather than squeeze their text");
     assert.equal(await page.locator(".perf script").count(),0,"Untrusted topic markup must stay escaped text");
     assert.ok(await page.getByRole("link",{name:"Download private letterhead PDF"}).count());
     await page.screenshot({path:path.join(output,`dashboard-${label}.png`),fullPage:true});
