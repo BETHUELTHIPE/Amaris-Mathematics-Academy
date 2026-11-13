@@ -66,7 +66,9 @@ def render_performance_pdf(snapshot, reference):
     for heading, lines in report_sections(snapshot):
         title = _paragraph(heading, size=12, color=BLUE, bold=True)
         title.keepWithNext = True
-        story.extend([title, Spacer(1, 6)])
+        spacing = Spacer(1, 6)
+        spacing.keepWithNext = True
+        story.extend([title, spacing])
         for line in lines:
             story.extend([_paragraph(line, size=9), Spacer(1, 8)])
         story.append(Spacer(1, 8))

@@ -306,7 +306,10 @@ class PerformanceReportTests(PerformanceFixtures, TestCase):
         self.assertEqual(first.pk, second.pk)
         self.assertTrue(first.pdf.name.startswith("admin-performance/live/"))
         original = archived_pdf(first)
-        text = "\n".join(page.extract_text() for page in PdfReader(BytesIO(original)).pages)
+        document = PdfReader(BytesIO(original))
+        text = "\n".join(page.extract_text() for page in document.pages)
+        for page in document.pages:
+            self.assertNotEqual(page.extract_text().strip().splitlines()[-1], "Follow-up and data quality")
         for value in [
             "Amaris Mathematics Academy",
             "Most booked tutors",
