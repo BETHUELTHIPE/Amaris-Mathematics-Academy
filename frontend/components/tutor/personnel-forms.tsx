@@ -10,6 +10,14 @@ type SavedForm = {
 const date = (value: string) => new Intl.DateTimeFormat("en-ZA", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg" }).format(new Date(value));
 const inputClass = "mt-2 min-h-12 w-full min-w-0 rounded-xl border border-[#cbd7eb] bg-white px-3 py-3 font-normal text-[#263852] focus:outline-2 focus:outline-[#1f5bbd]";
 
+async function fetchHistory(selected: number) {
+  const response = await fetch(`/api/tutor/forms?page=${selected}`, { cache: "no-store" });
+  if (!response.ok) throw new Error("Unable to load saved forms. Please retry.");
+  const result = await response.json() as { results: SavedForm[]; has_more: boolean };
+  if (!Array.isArray(result.results)) throw new Error("Invalid saved forms response.");
+  return result;
+}
+
 export function TutorPersonnelForms() {
   const [kind, setKind] = useState("leave");
   const [busy, setBusy] = useState(false);
@@ -24,14 +32,20 @@ export function TutorPersonnelForms() {
   const loadHistory = useCallback(async (selected: number) => {
     setLoading(true); setHistoryError("");
     try {
-      const response = await fetch(`/api/tutor/forms?page=${selected}`, { cache: "no-store" });
-      if (!response.ok) throw new Error("Unable to load saved forms. Please retry.");
-      const result = await response.json() as { results: SavedForm[]; has_more: boolean };
+      const result = await fetchHistory(selected);
       setRows(result.results); setMore(result.has_more); setPage(selected);
     } catch { setHistoryError("Unable to load saved forms. Please retry."); }
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { void loadHistory(1); }, [loadHistory]);
+  useEffect(() => {
+    let active = true;
+    void fetchHistory(1).then(result => {
+      if (active) { setRows(result.results); setMore(result.has_more); }
+    }).catch(() => {
+      if (active) setHistoryError("Unable to load saved forms. Please retry.");
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy) return;
