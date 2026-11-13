@@ -17,7 +17,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import InMemoryStorage
 from django.core.mail import EmailMultiAlternatives
 from django.db import close_old_connections, connection
-from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
+from django.test import Client, RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from pypdf import PdfReader
@@ -329,6 +329,117 @@ class TutorPersonnelTests(PersonnelFixtures, TestCase):
         second = self.api.get(reverse("tutor-personnel-forms"), {"page": "2"})
         self.assertEqual(len(second.data["results"]), 1)
         self.assertFalse(second.data["has_more"])
+
+
+@override_settings(
+    TUTOR_PERSONNEL_FORMS_ENABLED=True,
+    TUTOR_PERSONNEL_ADMIN_EMAIL="",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
+class TutorPersonnelWorkflowTests(PersonnelFixtures, TestCase):
+    """Exercise real API/Admin HTTP handlers together; storage and SMTP remain isolated."""
+
+    def journey(self, *, kind, status, expected_status):
+        self.api.force_authenticate(user=None)
+        self.api.credentials(HTTP_AUTHORIZATION="Bearer synthetic-verified-tutor")
+        identity = {
+            "id": str(uuid.uuid4()),
+            "email": self.tutor.email,
+            "email_confirmed_at": "2026-01-01T00:00:00Z",
+        }
+        values = {**self.values, "idempotency_key": f"workflow-{kind}-{status}"}
+        if kind == "resignation":
+            for field in ("leave_type", "start_date", "end_date"):
+                values.pop(field)
+            values.update(kind=kind, last_teaching_day=self.today + timedelta(days=30))
+        reviewer = get_user_model().objects.create_superuser(
+            username="workflow-admin", email="reviewer@example.test", password="synthetic-isolated-only"
+        )
+        admin_client = Client(enforce_csrf_checks=True)
+        admin_client.force_login(reviewer)
+        with patch("content.tutor_views.SupabaseStudentAuthentication._validate_token", return_value=identity):
+            submitted = self.api.post(reverse("tutor-personnel-forms"), values, format="json")
+            self.assertEqual(submitted.status_code, 201, submitted.data)
+            item = TutorPersonnelForm.objects.get(pk=submitted.data["id"])
+            self.assertEqual(item.tutor, self.tutor)
+            self.assertEqual(item.delivery_status, "queued")
+            self.assertEqual(len(mail.outbox), 0, "Submitting the form must not send SMTP inside the request.")
+            original_pdf = self.api.get(reverse("tutor-personnel-pdf", args=[item.pk]))
+            self.assertEqual(original_pdf.status_code, 200)
+            self.assertEqual(original_pdf["Content-Type"], "application/pdf")
+
+            change_url = reverse("admin:content_tutorpersonnelform_change", args=[item.pk])
+            review_page = admin_client.get(change_url, secure=True)
+            self.assertEqual(review_page.status_code, 200)
+            self.assertContains(review_page, str(item.pk))
+            self.assertContains(review_page, "Download private PDF")
+            # A genuine Admin form POST must enforce CSRF, validation and permissions.
+            rejected = admin_client.post(change_url, {"status": status, "review_notes": "Missing CSRF."}, secure=True)
+            self.assertEqual(rejected.status_code, 403)
+            notes = f"Admin reviewed {kind} and confirmed the handover plan."
+            reviewed = admin_client.post(
+                change_url,
+                {
+                    "status": status,
+                    "review_notes": notes,
+                    "_save": "Save",
+                    "csrfmiddlewaretoken": admin_client.cookies["csrftoken"].value,
+                },
+                secure=True,
+                HTTP_REFERER=f"https://testserver{change_url}",
+            )
+            self.assertEqual(reviewed.status_code, 302, getattr(reviewed, "context", None))
+            item.refresh_from_db()
+            self.assertEqual(item.status, status)
+            self.assertEqual(item.reviewed_by_id, reviewer.pk)
+            self.assertIsNotNone(item.reviewed_at)
+            self.assertEqual(item.delivery_status, "queued", "Reviewing a form must not overwrite its outbox.")
+
+            dashboard = self.api.get(reverse("tutor-personnel-forms"))
+            self.assertEqual(dashboard.status_code, 200)
+            saved = dashboard.data["results"][0]
+            self.assertEqual(saved["id"], str(item.pk))
+            self.assertEqual(saved["status"], expected_status)
+            self.assertEqual(saved["review_notes"], notes)
+            admin_pdf = admin_client.get(reverse("admin:content_tutorpersonnelform_pdf", args=[item.pk]), secure=True)
+            tutor_pdf = self.api.get(reverse("tutor-personnel-pdf", args=[item.pk]))
+            self.assertEqual(admin_pdf.status_code, 200)
+            self.assertEqual(admin_pdf.content, original_pdf.content)
+            self.assertEqual(tutor_pdf.content, original_pdf.content)
+            self.assertIn("no-store", admin_pdf["Cache-Control"])
+
+            self.assertEqual(deliver_tutor_personnel_forms(), 1)
+            self.assertEqual(deliver_tutor_personnel_forms(), 0)
+            item.refresh_from_db()
+            self.assertEqual(item.delivery_status, "sent")
+            self.assertEqual(len(mail.outbox), 1)
+            message = mail.outbox[0]
+            self.assertEqual(message.to, ["admin@example.test"])
+            self.assertEqual(message.attachments[0].content, original_pdf.content)
+            self.assertIn("Official academy communication", message.alternatives[0].content)
+            for field in ("reason", "handover", "signature_name", "contact_phone"):
+                self.assertIn(str(values[field]), message.body)
+            self.assertIn(str(item.pk), message.body)
+
+            retry = self.api.post(reverse("tutor-personnel-forms"), values, format="json")
+            self.assertEqual(retry.status_code, 200)
+            self.assertEqual(retry.data["id"], str(item.pk))
+            self.assertEqual(retry.data["status"], expected_status)
+            self.assertEqual(TutorPersonnelForm.objects.count(), 1)
+            self.assertEqual(deliver_tutor_personnel_forms(), 0)
+            self.assertEqual(len(mail.outbox), 1)
+            self.tutor.refresh_from_db()
+            self.assertTrue(self.tutor.is_active)
+            self.assertTrue(self.tutor.groups.filter(name="Tutors").exists())
+
+    def test_leave_submission_admin_approval_dashboard_pdf_and_email(self):
+        self.journey(kind="leave", status="approved", expected_status="Leave approved")
+
+    def test_leave_submission_admin_decline_dashboard_pdf_and_email(self):
+        self.journey(kind="leave", status="declined", expected_status="Leave declined")
+
+    def test_resignation_submission_admin_acknowledgement_dashboard_pdf_and_email(self):
+        self.journey(kind="resignation", status="acknowledged", expected_status="Resignation acknowledged")
 
 
 @skipUnless(connection.vendor == "postgresql", "PostgreSQL row locks / RLS required")
