@@ -181,8 +181,9 @@ connections per worker/pool, with a four-second idle timeout below Gunicorn's
 five-second timeout. TCP keep-alive, sendfile and bounded connection reuse reduce
 connection churn without changing the application worker or database budgets.
 
-The shared cache accepts anonymous GET/HEAD requests only on a strict allowlist:
-frontend home/about/contact/course pages, frontend compiled assets, Django
+Server-rendered frontend pages keep their unbuffered response path. The shared
+cache accepts anonymous GET/HEAD requests only on a strict allowlist:
+frontend compiled assets, Django
 static assets and Django public bootstrap/course endpoints. The origin must
 explicitly return `Cache-Control: public`; its expiration, privacy and Vary
 headers remain authoritative. A response setting cookies, returning an error,

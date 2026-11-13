@@ -304,7 +304,7 @@ def main():
 
         # Real proxy cache behavior for both pools, including privacy and stampede guards.
         for path, role in (
-            ("/courses/cache-public", "frontend"),
+            ("/assets/cache-public.json", "frontend"),
             ("/api/v1/courses/cache-public/", "backend"),
         ):
             status, headers, first = request(path)
