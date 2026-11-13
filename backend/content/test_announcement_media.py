@@ -1,6 +1,7 @@
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -150,7 +151,13 @@ class MarketingMediaTests(TestCase):
     def test_superuser_can_create_change_and_delete_pdf(self):
         self.client.force_login(self.admin)
         with TemporaryDirectory() as media_root:
-            with override_settings(MEDIA_ROOT=media_root):
+            with override_settings(
+                MEDIA_ROOT=media_root,
+                STORAGES={
+                    **settings.STORAGES,
+                    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+                },
+            ):
                 add = self.client.post(
                     reverse("admin:content_announcementmedia_add"),
                     {

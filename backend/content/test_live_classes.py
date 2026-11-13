@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -244,6 +245,21 @@ class MockPayFastGateway:
 )
 class LiveClassBookingTests(TestCase):
     def setUp(self):
+        # Synthetic invoice archives are isolated from production storage policy.
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        private_storage = {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": directory.name, "allow_overwrite": True},
+        }
+        storage_override = override_settings(
+            STORAGES={
+                **settings.STORAGES,
+                **{alias: private_storage for alias in ("student_private", "student_documents", "student_data")},
+            }
+        )
+        storage_override.enable()
+        self.addCleanup(storage_override.disable)
         user_model = get_user_model()
         self.tutor = user_model.objects.create_user(
             username="tutor.priya",

@@ -9,6 +9,9 @@ on:
       - "frontend/tests/student-storage.test.mjs"
       - "frontend/supabase/storage/**"
       - "backend/amaris_cms/settings.py"
+      - "backend/amaris_cms/storage.py"
+      - "backend/amaris_cms/storage_config.py"
+      - "backend/amaris_cms/test_storage*.py"
       - "backend/content/payment_models.py"
       - "backend/content/services/invoices.py"
       - "backend/content/services/payments.py"
@@ -88,7 +91,7 @@ jobs:
           from django.conf import settings
 
           storage = settings.STORAGES["default"]
-          assert storage["BACKEND"] == "storages.backends.s3.S3Storage"
+          assert storage["BACKEND"] == "amaris_cms.storage.SupabaseS3Storage"
           options = storage["OPTIONS"]
           assert options["bucket_name"] == "amaris-cms-files"
           assert options["endpoint_url"] == "https://epkcuseloinygkakxxdu.storage.supabase.co/storage/v1/s3"
@@ -97,8 +100,11 @@ jobs:
           assert options["location"] == "cms"
           assert options["querystring_auth"] is True
 
+          for alias in ("tutor_private", "tutor_qualifications"):
+              assert settings.STORAGES[alias] == storage
+
           student_storage = settings.STORAGES["student_documents"]
-          assert student_storage["BACKEND"] == "storages.backends.s3.S3Storage"
+          assert student_storage["BACKEND"] == "amaris_cms.storage.SupabaseS3Storage"
           student_options = student_storage["OPTIONS"]
           assert student_options["bucket_name"] == "Amaris Mathematics Academy"
           assert student_options["file_overwrite"] is True
@@ -110,4 +116,4 @@ jobs:
           DJANGO_DEBUG: "true"
         run: |
           python manage.py makemigrations --check --dry-run
-          python manage.py test content.test_invoice_archive
+          python manage.py test amaris_cms.test_storage amaris_cms.test_storage_config content.test_invoice_archive
