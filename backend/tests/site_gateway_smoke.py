@@ -189,11 +189,14 @@ def main():
             assets = re.findall(r'<script[^>]+src="([^"]+)"', homepage.decode())
             asset = next(path for path in assets if path.startswith("/_next/"))
             assert request(asset)[0] == 200
+            assert request(asset)[1]["X-Amaris-Cache"] == "HIT", "Actual frontend assets must be cached"
             status, headers, _body = request("/dashboard")
             assert status in {302, 303, 307, 308} and "/login" in headers.get("Location", ""), (status, dict(headers))
             assert request("/api/auth-state")[0] == 200
             status, _headers, body = request("/api/v1/courses/")
             assert status == 200 and isinstance(json.loads(body)["results"], list)
+            assert request("/api/v1/courses/")[1]["X-Amaris-Cache"] == "HIT", "Actual public Django JSON must be cached"
+            assert request("/api/v1/courses/", headers={"Cookie": "synthetic=session"})[1]["X-Amaris-Cache"] == "OFF"
             status, headers, body = request("/admin/login/")
             assert status == 200 and b"csrfmiddlewaretoken" in body
             assert "Secure" in headers.get("Set-Cookie", "")

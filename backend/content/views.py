@@ -31,6 +31,7 @@ from .models import (
     SiteSettings,
     Testimonial,
 )
+from .proxy_cache import public_proxy_cache
 from .serializers import (
     AmarisAssistantRequestSerializer,
     AmarisAssistantResponseSerializer,
@@ -101,6 +102,7 @@ class CourseCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = CourseCategory.objects.filter(is_active=True)
 
 
+@method_decorator(public_proxy_cache, name="dispatch")
 @public_cache(settings.PUBLIC_CONTENT_CACHE_SECONDS)
 class CourseViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseSerializer
@@ -281,6 +283,7 @@ class AmarisAssistantView(generics.GenericAPIView):
         return Response({"answer": answer}, status=status.HTTP_200_OK)
 
 
+@method_decorator(public_proxy_cache, name="dispatch")
 @public_cache(settings.SITE_BOOTSTRAP_CACHE_SECONDS)
 class SiteBootstrapView(generics.GenericAPIView):
     """One request for global website content used by the public frontend shell."""

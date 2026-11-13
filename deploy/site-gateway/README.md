@@ -184,8 +184,10 @@ connection churn without changing the application worker or database budgets.
 Server-rendered frontend pages keep their unbuffered response path. The shared
 cache accepts anonymous GET/HEAD requests only on a strict allowlist:
 frontend compiled assets, Django
-static assets and Django public bootstrap/course endpoints. The origin must
-explicitly return `Cache-Control: public`; its expiration, privacy and Vary
+static assets and Django public bootstrap/course endpoints. Django explicitly opts anonymous course/bootstrap responses into public caching
+only after cache_page has added a positive expiry; authentication/cookies,
+response cookies, errors and existing privacy directives prevent that opt-in.
+The origin must explicitly return `Cache-Control: public`; its expiration, privacy and Vary
 headers remain authoritative. A response setting cookies, returning an error,
 using `Vary: *`, or declaring private/no-store is never stored. There is no
 stale-content serving or background refresh. Privacy changes and content edits
