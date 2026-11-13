@@ -43,7 +43,7 @@ try {
   await page.getByLabel("Subject", { exact: true }).selectOption("mathematics");
   await page.getByLabel("Grade, level or module", { exact: true }).fill("Grade 11");
   await page.getByLabel("Topic", { exact: true }).fill("Factorisation");
-  await page.getByLabel("Lesson video").setInputFiles({ name: "lesson.mp4", mimeType: "video/mp4", buffer: Buffer.from([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 1]) });
+  await page.getByLabel("Lesson video", { exact: true }).setInputFiles({ name: "lesson.mp4", mimeType: "video/mp4", buffer: Buffer.from([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 1]) });
   await page.getByRole("button", { name: "Submit video for review" }).click();
   await page.getByRole("alert").filter({ hasText: "connection was interrupted" }).waitFor();
   await page.getByRole("button", { name: "Submit video for review" }).click();
