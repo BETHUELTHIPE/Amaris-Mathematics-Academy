@@ -6,6 +6,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from amaris_cms.storage import tutor_private_storage
 from content.models import TimeStampedModel
 
 
@@ -50,7 +51,7 @@ class TutorPersonnelForm(TimeStampedModel):
         editable=False,
     )
     reviewed_at = models.DateTimeField(null=True, blank=True, editable=False)
-    pdf = models.FileField(max_length=250, editable=False)
+    pdf = models.FileField(max_length=250, editable=False, storage=tutor_private_storage)
     pdf_sha256 = models.CharField(max_length=64, editable=False)
     recipient = models.EmailField(editable=False)
     delivery_status = models.CharField(max_length=12, choices=Delivery.choices, default=Delivery.QUEUED)

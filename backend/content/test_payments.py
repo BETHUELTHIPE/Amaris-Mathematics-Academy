@@ -3,8 +3,10 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 from decimal import Decimal
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from django.conf import settings
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -58,6 +60,21 @@ class PayFastUrlConfigurationTests(TestCase):
 
 class PayFastPaymentAuthorityTests(TestCase):
     def setUp(self):
+        # Synthetic invoice archives are isolated from production storage policy.
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        private_storage = {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": directory.name, "allow_overwrite": True},
+        }
+        storage_override = override_settings(
+            STORAGES={
+                **settings.STORAGES,
+                **{alias: private_storage for alias in ("student_private", "student_documents", "student_data")},
+            }
+        )
+        storage_override.enable()
+        self.addCleanup(storage_override.disable)
         self.student = StudentRecord.objects.create(
             supabase_user_id=uuid.UUID("00000000-0000-4000-8000-000000000101"),
             email="payment.student@example.test",

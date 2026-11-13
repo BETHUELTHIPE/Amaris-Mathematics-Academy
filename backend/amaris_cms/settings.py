@@ -8,6 +8,7 @@ import dj_database_url
 from dotenv import load_dotenv
 
 from amaris_cms.database_policy import assert_supabase_database
+from amaris_cms.storage_config import build_storage_config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -265,67 +266,24 @@ SUPABASE_S3_STUDENT_BUCKET = (
     or os.getenv("STUDENT_STORAGE_BUCKET_NAME")
     or ""
 ).strip()
-_supabase_s3_values = (
-    SUPABASE_S3_ENDPOINT_URL,
-    SUPABASE_S3_ACCESS_KEY_ID,
-    SUPABASE_S3_SECRET_ACCESS_KEY,
-    SUPABASE_S3_ADMIN_BUCKET,
-    SUPABASE_S3_STUDENT_BUCKET,
-)
-if env_bool("SUPABASE_S3_REQUIRED", False) or any(_supabase_s3_values):
-    if not all(_supabase_s3_values) or not SUPABASE_S3_ENDPOINT_URL.startswith("https://"):
-        raise RuntimeError("Both private Supabase S3 buckets, HTTPS endpoint, and server-side S3 keys are required.")
-    _s3_options = {
-        "endpoint_url": SUPABASE_S3_ENDPOINT_URL,
-        "region_name": os.getenv("SUPABASE_S3_REGION", "us-east-1"),
-        "access_key": SUPABASE_S3_ACCESS_KEY_ID,
-        "secret_key": SUPABASE_S3_SECRET_ACCESS_KEY,
-        "addressing_style": "path",
-        "signature_version": "s3v4",
-        "default_acl": None,
-        "querystring_auth": True,
-        "querystring_expire": 300,
-    }
-    STORAGES = {
-        "default": {
-            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
-            "OPTIONS": {
-                **_s3_options,
-                "bucket_name": SUPABASE_S3_ADMIN_BUCKET,
-                "file_overwrite": False,
-                "location": "cms" if env_bool("SUPABASE_STORAGE_ENABLED", False) else "",
-            },
-        },
-        "student_private": {
-            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
-            "OPTIONS": {**_s3_options, "bucket_name": SUPABASE_S3_STUDENT_BUCKET, "file_overwrite": True},
-        },
-        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
-    }
-else:
-    STORAGES = {
-        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-        "student_private": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
-            "OPTIONS": {"location": MEDIA_ROOT / "student-private", "allow_overwrite": True},
-        },
-        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
-    }
-
-# Recruitment files use the private CMS bucket with a separate local fallback outside public media.
-STORAGES["tutor_qualifications"] = (
-    STORAGES["default"]
-    if _supabase_s3_values[0]
-    else {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-        "OPTIONS": {"location": BASE_DIR / "private-tutor-qualifications"},
-    }
+SUPABASE_S3_TUTOR_BUCKET = os.getenv("SUPABASE_S3_TUTOR_BUCKET", "").strip()
+# Fail closed for production uploads when S3 is absent; never use local media.
+STORAGES = build_storage_config(
+    debug=DEBUG,
+    required=env_bool("SUPABASE_S3_REQUIRED", False),
+    base_dir=BASE_DIR,
+    media_root=MEDIA_ROOT,
+    endpoint=SUPABASE_S3_ENDPOINT_URL,
+    access_key=SUPABASE_S3_ACCESS_KEY_ID,
+    secret_key=SUPABASE_S3_SECRET_ACCESS_KEY,
+    admin_bucket=SUPABASE_S3_ADMIN_BUCKET,
+    student_bucket=SUPABASE_S3_STUDENT_BUCKET,
+    tutor_bucket=SUPABASE_S3_TUTOR_BUCKET,
+    region=os.getenv("SUPABASE_S3_REGION", "us-east-1"),
+    legacy_cms_prefix=env_bool("SUPABASE_STORAGE_ENABLED", False),
 )
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-STORAGES["student_data"] = STORAGES["student_private"]
-STORAGES["student_documents"] = STORAGES["student_private"]
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],

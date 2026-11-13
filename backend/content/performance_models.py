@@ -5,6 +5,7 @@ import uuid
 from django.db import models
 from django.utils import timezone
 
+from amaris_cms.storage import admin_private_storage
 from content.models import TimeStampedModel
 
 
@@ -31,7 +32,7 @@ class PerformanceDigest(TimeStampedModel):
     period_start = models.DateField(editable=False)
     period_end = models.DateField(editable=False, help_text="Exclusive end date at 00:00 SAST.")
     snapshot = models.JSONField(default=dict, editable=False)
-    pdf = models.FileField(max_length=250, editable=False)
+    pdf = models.FileField(max_length=250, editable=False, storage=admin_private_storage)
     pdf_sha256 = models.CharField(max_length=64, editable=False)
     recipient = models.EmailField(editable=False)
     delivery_status = models.CharField(max_length=12, choices=Delivery.choices, default=Delivery.QUEUED)

@@ -69,6 +69,20 @@ class TutorApplicationJourneyTests(TestCase):
     def submit(self, **changes):
         return self.api.post(self.endpoint, self.form(**changes), format="multipart", secure=True)
 
+    @override_settings(
+        STORAGES={
+            **STORAGES,
+            "tutor_qualifications": {"BACKEND": "amaris_cms.storage.UnconfiguredPrivateStorage"},
+        }
+    )
+    def test_unconfigured_production_storage_rejects_application_without_saving_records_or_email(self):
+        result = self.submit()
+        self.assertEqual(result.status_code, 503)
+        self.assertFalse(TutorApplication.objects.exists())
+        self.assertFalse(TutorApplicationDocument.objects.exists())
+        self.enqueue.assert_not_called()
+        self.assertEqual(len(mail.outbox), 0)
+
     def test_complete_authenticated_application_owner_download_and_email(self):
         self.assertIsNone(self.api.get(self.endpoint, secure=True).data["application"])
         result = self.submit(email="attacker@example.test", status="shortlisted", acknowledgement_sent_at="2026-01-01")
