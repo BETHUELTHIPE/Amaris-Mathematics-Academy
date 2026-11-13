@@ -68,17 +68,17 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='liveclassbooking',
             name='payment_mode',
-            field=models.CharField(choices=[('unknown', 'Legacy / unclassified'), ('sandbox', 'Sandbox'), ('live', 'Live')], default='unknown', editable=False, max_length=8),
+            field=models.CharField(choices=[('unknown', 'Legacy / unclassified'), ('sandbox', 'Sandbox'), ('live', 'Live')], default='unknown', db_default='unknown', editable=False, max_length=8),
         ),
         migrations.AddField(
             model_name='payment',
             name='payment_mode',
-            field=models.CharField(choices=[('unknown', 'Legacy / unclassified'), ('sandbox', 'Sandbox'), ('live', 'Live')], default='unknown', editable=False, max_length=8),
+            field=models.CharField(choices=[('unknown', 'Legacy / unclassified'), ('sandbox', 'Sandbox'), ('live', 'Live')], default='unknown', db_default='unknown', editable=False, max_length=8),
         ),
         migrations.AddField(
             model_name='videorequest',
             name='payment_mode',
-            field=models.CharField(choices=[('unknown', 'Legacy / unclassified'), ('sandbox', 'Sandbox'), ('live', 'Live')], default='unknown', editable=False, max_length=8),
+            field=models.CharField(choices=[('unknown', 'Legacy / unclassified'), ('sandbox', 'Sandbox'), ('live', 'Live')], default='unknown', db_default='unknown', editable=False, max_length=8),
         ),
         migrations.AddIndex(
             model_name='liveclassbooking',

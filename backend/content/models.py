@@ -636,7 +636,9 @@ class LiveClassBooking(TimeStampedModel):
     hold_expires_at = models.DateTimeField(default=live_class_hold_expiry, db_index=True)
     provider_reference = models.CharField(max_length=160, blank=True)
     paid_at = models.DateTimeField(blank=True, null=True)
-    payment_mode = models.CharField(max_length=8, choices=PAYMENT_MODE_CHOICES, default="unknown", editable=False)
+    payment_mode = models.CharField(
+        max_length=8, choices=PAYMENT_MODE_CHOICES, default="unknown", db_default="unknown", editable=False
+    )
     gateway_verified_at = models.DateTimeField(blank=True, null=True)
     invoice_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
     confirmation_sent_at = models.DateTimeField(blank=True, null=True)
@@ -717,7 +719,9 @@ class VideoRequest(TimeStampedModel):
     payment_expires_at = models.DateTimeField(default=video_request_payment_expiry, db_index=True)
     provider_reference = models.CharField(max_length=160, blank=True)
     paid_at = models.DateTimeField(blank=True, null=True)
-    payment_mode = models.CharField(max_length=8, choices=PAYMENT_MODE_CHOICES, default="unknown", editable=False)
+    payment_mode = models.CharField(
+        max_length=8, choices=PAYMENT_MODE_CHOICES, default="unknown", db_default="unknown", editable=False
+    )
     gateway_verified_at = models.DateTimeField(blank=True, null=True)
     queue_entered_at = models.DateTimeField(blank=True, null=True, db_index=True)
     priority_paid_at = models.DateTimeField(blank=True, null=True, db_index=True)
@@ -868,7 +872,9 @@ class Payment(TimeStampedModel):
     currency = models.CharField(max_length=3, default="ZAR")
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
     paid_at = models.DateTimeField(blank=True, null=True)
-    payment_mode = models.CharField(max_length=8, choices=PAYMENT_MODE_CHOICES, default="unknown", editable=False)
+    payment_mode = models.CharField(
+        max_length=8, choices=PAYMENT_MODE_CHOICES, default="unknown", db_default="unknown", editable=False
+    )
     gateway_verified_at = models.DateTimeField(
         blank=True,
         null=True,

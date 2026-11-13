@@ -487,6 +487,22 @@ class PerformanceReportTests(PerformanceFixtures, TestCase):
             item.refresh_from_db()
             self.assertEqual(item.payment_mode, "sandbox")
 
+    def test_old_application_insert_without_new_metadata_uses_database_default(self):
+        item = self.purchase()
+        fields = [
+            field for field in Payment._meta.concrete_fields if not field.primary_key and field.name != "payment_mode"
+        ]
+        names = [connection.ops.quote_name(field.column) for field in fields]
+        selected = ["%s" if field.name == "reference" else connection.ops.quote_name(field.column) for field in fields]
+        reference = str(uuid.uuid4())
+        table = connection.ops.quote_name(Payment._meta.db_table)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {table} ({', '.join(names)}) SELECT {', '.join(selected)} FROM {table} WHERE id = %s",
+                [reference, item.pk],
+            )
+        self.assertEqual(Payment.objects.get(reference=reference).payment_mode, "unknown")
+
 
 @skipUnless(connection.vendor == "postgresql", "PostgreSQL locks and RLS required")
 @override_settings(

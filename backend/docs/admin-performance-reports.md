@@ -25,7 +25,7 @@ Snapshots freeze the tutor assignment, course labels and statuses seen at genera
 
 ## Payment environment and historical data
 
-New additive `payment_mode` fields on course Payment, LiveClassBooking and VideoRequest default to `unknown`. Existing rows are deliberately not labelled live or sandbox by guesswork. Each current PayFast verification path records the server-selected environment after successful verification, in the existing transaction; duplicate callbacks do not reclassify old records. It does not change checkout pricing, payment authority, entitlement or tutor earnings.
+New additive `payment_mode` fields on course Payment, LiveClassBooking and VideoRequest default to `unknown`, including a persistent database default so older application instances can still insert orders during deployment or rollback. Existing rows are deliberately not labelled live or sandbox by guesswork. Each current PayFast verification path records the server-selected environment after successful verification, in the existing transaction; duplicate callbacks do not reclassify old records. It does not change checkout pricing, payment authority, entitlement or tutor earnings.
 
 Default reports are **live only**. Sandbox reports use a separate anchor/archive and clear SANDBOX labels. Unclassified positive verified orders are reported as an excluded data-quality count. Historical backfill requires independent provider evidence and a separate reviewed migration. When integrating other provider branches (for example Paystack), capture their verified environment before treating their sales as classified.
 
