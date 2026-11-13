@@ -16,6 +16,9 @@ class TimeStampedModel(models.Model):
         abstract = True
 
 
+PAYMENT_MODE_CHOICES = [("unknown", "Legacy / unclassified"), ("sandbox", "Sandbox"), ("live", "Live")]
+
+
 class PublishableModel(TimeStampedModel):
     is_published = models.BooleanField(default=False, db_index=True)
     publish_at = models.DateTimeField(blank=True, null=True, db_index=True)
@@ -633,6 +636,9 @@ class LiveClassBooking(TimeStampedModel):
     hold_expires_at = models.DateTimeField(default=live_class_hold_expiry, db_index=True)
     provider_reference = models.CharField(max_length=160, blank=True)
     paid_at = models.DateTimeField(blank=True, null=True)
+    payment_mode = models.CharField(
+        max_length=8, choices=PAYMENT_MODE_CHOICES, default="unknown", db_default="unknown", editable=False
+    )
     gateway_verified_at = models.DateTimeField(blank=True, null=True)
     invoice_number = models.CharField(max_length=120, blank=True, null=True, unique=True)
     confirmation_sent_at = models.DateTimeField(blank=True, null=True)
@@ -650,6 +656,11 @@ class LiveClassBooking(TimeStampedModel):
         indexes = [
             models.Index(fields=("student", "status", "-created_at"), name="liveclass_student_status_idx"),
             models.Index(fields=("status", "hold_expires_at"), name="liveclass_hold_status_idx"),
+            models.Index(
+                fields=("payment_mode", "gateway_verified_at"),
+                condition=models.Q(gateway_verified_at__isnull=False),
+                name="perf_booking_verified_idx",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -708,6 +719,9 @@ class VideoRequest(TimeStampedModel):
     payment_expires_at = models.DateTimeField(default=video_request_payment_expiry, db_index=True)
     provider_reference = models.CharField(max_length=160, blank=True)
     paid_at = models.DateTimeField(blank=True, null=True)
+    payment_mode = models.CharField(
+        max_length=8, choices=PAYMENT_MODE_CHOICES, default="unknown", db_default="unknown", editable=False
+    )
     gateway_verified_at = models.DateTimeField(blank=True, null=True)
     queue_entered_at = models.DateTimeField(blank=True, null=True, db_index=True)
     priority_paid_at = models.DateTimeField(blank=True, null=True, db_index=True)
@@ -735,6 +749,16 @@ class VideoRequest(TimeStampedModel):
             models.Index(fields=("student", "status", "-created_at"), name="video_req_student_idx"),
             models.Index(fields=("status", "queue_entered_at"), name="video_req_queue_idx"),
             models.Index(fields=("status", "payment_expires_at"), name="video_req_expiry_idx"),
+            models.Index(
+                fields=("payment_mode", "gateway_verified_at"),
+                condition=models.Q(gateway_verified_at__isnull=False),
+                name="perf_video_verified_idx",
+            ),
+            models.Index(
+                fields=("payment_mode", "video_ready_at"),
+                condition=models.Q(video_ready_at__isnull=False),
+                name="perf_video_ready_idx",
+            ),
         ]
 
     def clean(self):
@@ -848,6 +872,9 @@ class Payment(TimeStampedModel):
     currency = models.CharField(max_length=3, default="ZAR")
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
     paid_at = models.DateTimeField(blank=True, null=True)
+    payment_mode = models.CharField(
+        max_length=8, choices=PAYMENT_MODE_CHOICES, default="unknown", db_default="unknown", editable=False
+    )
     gateway_verified_at = models.DateTimeField(
         blank=True,
         null=True,
@@ -871,6 +898,11 @@ class Payment(TimeStampedModel):
                 name="payment_reconcile_idx",
             ),
             models.Index(fields=["student", "status", "-created_at"], name="payment_student_status_idx"),
+            models.Index(
+                fields=("payment_mode", "gateway_verified_at"),
+                condition=models.Q(gateway_verified_at__isnull=False),
+                name="perf_course_verified_idx",
+            ),
         ]
 
     def __str__(self) -> str:

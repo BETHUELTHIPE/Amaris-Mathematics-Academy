@@ -280,6 +280,7 @@ def process_live_class_notification(
 
         booking.provider_reference = provider_reference
         booking.gateway_verified_at = timezone.now()
+        booking.payment_mode = _payfast_mode()
 
         if gateway_status == "COMPLETE":
             booking.paid_at = timezone.now()
@@ -304,6 +305,7 @@ def process_live_class_notification(
             update_fields=(
                 "provider_reference",
                 "gateway_verified_at",
+                "payment_mode",
                 "status",
                 "paid_at",
                 "invoice_number",

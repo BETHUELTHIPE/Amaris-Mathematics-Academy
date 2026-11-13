@@ -1,6 +1,7 @@
 import os
 import re
 import secrets
+from datetime import date
 from pathlib import Path
 
 import dj_database_url
@@ -441,6 +442,19 @@ TUTOR_VIDEO_MAX_UPLOAD_BYTES = min(
 TUTOR_VIDEO_ADMIN_EMAIL = os.getenv("TUTOR_VIDEO_ADMIN_EMAIL", "").strip()
 TUTOR_PERSONNEL_FORMS_ENABLED = env_bool("TUTOR_PERSONNEL_FORMS_ENABLED", False)
 TUTOR_PERSONNEL_ADMIN_EMAIL = os.getenv("TUTOR_PERSONNEL_ADMIN_EMAIL", "").strip()
+ADMIN_PERFORMANCE_REPORTS_ENABLED = env_bool("ADMIN_PERFORMANCE_REPORTS_ENABLED", False)
+ADMIN_PERFORMANCE_PAYMENT_MODE = os.getenv("ADMIN_PERFORMANCE_PAYMENT_MODE", "live").strip().lower()
+ADMIN_PERFORMANCE_ADMIN_EMAIL = os.getenv("ADMIN_PERFORMANCE_ADMIN_EMAIL", "").strip()
+ADMIN_PERFORMANCE_START_DATE = os.getenv("ADMIN_PERFORMANCE_START_DATE", "").strip()
+if ADMIN_PERFORMANCE_START_DATE:
+    try:
+        date.fromisoformat(ADMIN_PERFORMANCE_START_DATE)
+    except ValueError as exc:
+        raise RuntimeError("Performance start date must use YYYY-MM-DD.") from exc
+if ADMIN_PERFORMANCE_PAYMENT_MODE not in {"live", "sandbox"}:
+    raise RuntimeError("Performance reports require an explicit live or sandbox environment.")
+if ADMIN_PERFORMANCE_REPORTS_ENABLED and not DEBUG and not SUPABASE_S3_ENDPOINT_URL:
+    raise RuntimeError("Performance report archives require private Supabase CMS storage.")
 if TUTOR_PERSONNEL_FORMS_ENABLED and not DEBUG and not SUPABASE_S3_ENDPOINT_URL:
     raise RuntimeError("Tutor personnel forms require private Supabase CMS storage in production.")
 PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "").strip()
@@ -448,6 +462,11 @@ if TUTOR_VIDEO_UPLOADS_ENABLED and not DEBUG and not SUPABASE_S3_ENDPOINT_URL:
     raise RuntimeError("Tutor video uploads require private Supabase CMS storage in production.")
 
 CELERY_BEAT_SCHEDULE = {
+    "admin-fortnightly-performance": {
+        "task": "content.performance_tasks.process_performance_reports",
+        "schedule": 600.0,
+        "options": {"queue": "notifications"},
+    },
     "tutor-personnel-admin-alerts": {
         "task": "content.tutor_personnel_tasks.deliver_tutor_personnel_forms",
         "schedule": 30.0,
@@ -558,6 +577,7 @@ JAZZMIN_SETTINGS = {
         },
         {"model": "content.course"},
         {"model": "content.contactenquiry"},
+        {"model": "content.performancedigest"},
     ],
     "show_sidebar": True,
     "navigation_expanded": True,
@@ -603,6 +623,8 @@ JAZZMIN_SETTINGS = {
         "content.Enrollment": "fas fa-user-check",
         "content.Payment": "fas fa-credit-card",
         "content.PaymentReconciliationRun": "fas fa-sync-alt",
+        "content.PerformanceDigest": "fas fa-chart-line",
+        "content.PerformanceSchedule": "fas fa-calendar-alt",
     },
     "related_modal_active": True,
     "changeform_format": "horizontal_tabs",
