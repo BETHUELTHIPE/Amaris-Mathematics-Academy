@@ -7,16 +7,19 @@ accounts, email, database, payment or hosted Render resource is used.
 
 import argparse
 import base64
+import gzip
 import json
 import os
 import re
 import socket
+import statistics
 import subprocess
 import tempfile
 import time
 import urllib.error
 import urllib.request
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,13 +50,25 @@ def inspect_manifest():
             "AMARIS_PUBLIC_ORIGIN": "https://academy.example.test",
         }
         config = json.loads(
-            run("docker", "compose", "-f", str(DEPLOY / "compose.yml"), "config", "--format", "json", env=env)
+            run(
+                "docker",
+                "compose",
+                "-f",
+                str(DEPLOY / "compose.yml"),
+                "config",
+                "--format",
+                "json",
+                env=env,
+            )
         )
         services = config["services"]
         assert not services["backend"].get("ports") and not services["frontend"].get("ports")
         assert all(port["host_ip"] == "127.0.0.1" for port in services["gateway"]["ports"])
         assert services["frontend"]["environment"]["CMS_API_URL"] == "https://academy.example.test/api/v1"
-        print("PASS production manifest publishes only the gateway and uses one public CMS origin", flush=True)
+        print(
+            "PASS production manifest publishes only the gateway and uses one public CMS origin",
+            flush=True,
+        )
 
 
 def main():
@@ -185,7 +200,10 @@ def main():
             status, headers, body = request("/static/admin/css/base.css")
             assert status == 200 and "text/css" in headers["Content-Type"] and body
             assert request("/api/v1/student/courses/")[0] in {401, 403}
-            print("PASS actual Django API, Admin login/CSRF, CSS and anonymous student denial", flush=True)
+            print(
+                "PASS actual Django API, Admin login/CSRF, CSS and anonymous student denial",
+                flush=True,
+            )
             print(
                 "PASS actual Node frontend SSR, JS asset, frontend API, protected redirect and backend dispatch",
                 flush=True,
@@ -231,7 +249,11 @@ def main():
         for role, paths in (("backend", backend_paths), ("frontend", frontend_paths)):
             for path in paths:
                 status, headers, body = request(
-                    path, headers={"Authorization": "synthetic-student", "Cookie": "synthetic=student"}
+                    path,
+                    headers={
+                        "Authorization": "synthetic-student",
+                        "Cookie": "synthetic=student",
+                    },
                 )
                 data = json.loads(body)
                 assert status == 200 and data["role"] == role and data["path"] == path, (path, status, data)
@@ -244,16 +266,28 @@ def main():
             flush=True,
         )
 
-        for path in ("/media", "/media/student-private/invoice.pdf", "/metrics", "/metrics/", "/monitoring/grafana/"):
+        for path in (
+            "/media",
+            "/media/student-private/invoice.pdf",
+            "/metrics",
+            "/metrics/",
+            "/monitoring/grafana/",
+        ):
             assert request(path)[0] == 404, path
         assert request("/nginx-health/live/")[0] == 200
         payload = b"--boundary\r\nfile=synthetic\x00\x89PNG\xff\r\n--boundary--"
-        for path, role in (("/api/v1/uploads/", "backend"), ("/api/tutor-applications", "frontend")):
+        for path, role in (
+            ("/api/v1/uploads/", "backend"),
+            ("/api/tutor-applications", "frontend"),
+        ):
             status, _headers, body = request(path, body=payload)
             data = json.loads(body)
             assert status == 200 and data["role"] == role
             assert base64.b64decode(data["body_b64"]) == payload
-        for service, path in (("backend", "/api/v1/payfast/itn/"), ("frontend", "/api/auth-state/write-failure")):
+        for service, path in (
+            ("backend", "/api/v1/payfast/itn/"),
+            ("frontend", "/api/auth-state/write-failure"),
+        ):
             status, _headers, _body = request(path, body=b"synthetic=write&signature=unchanged")
             assert status == 502, status
             events = []
@@ -263,15 +297,100 @@ def main():
                     for line in run("docker", "exec", item, "cat", "/tmp/site-writes.jsonl").splitlines()
                 )
             assert len(events) == 1 and events[0]["role"] == service, events
-        print("PASS private-file denial, byte-exact frontend/backend uploads and no POST replay", flush=True)
+        print(
+            "PASS private-file denial, byte-exact frontend/backend uploads and no POST replay",
+            flush=True,
+        )
+
+        # Real proxy cache behavior for both pools, including privacy and stampede guards.
+        for path, role in (
+            ("/courses/cache-public", "frontend"),
+            ("/api/v1/courses/cache-public/", "backend"),
+        ):
+            status, headers, first = request(path)
+            assert status == 200 and headers["X-Amaris-Cache"] == "MISS", dict(headers)
+            assert headers["X-Frame-Options"] == "DENY"
+            assert json.loads(first)["role"] == role
+            assert request(path)[1]["X-Amaris-Cache"] == "HIT"
+            assert request(path)[2] == first
+            for extra in (
+                {"Cookie": "session=synthetic"},
+                {"Authorization": "Bearer synthetic"},
+                {"RSC": "1"},
+                {"Next-Router-State-Tree": "synthetic"},
+                {"Next-Action": "synthetic"},
+                {"Range": "bytes=0-50"},
+                {"Cache-Control": "no-cache"},
+                {"Pragma": "no-cache"},
+            ):
+                _, bypass_headers, uncached = request(path, headers=extra)
+                assert bypass_headers["X-Amaris-Cache"] == "OFF", dict(bypass_headers)
+                assert uncached != first
+            assert request(path + "?token=synthetic")[1]["X-Amaris-Cache"] == "OFF"
+            assert request(path, body=b"write=not-replayed")[1]["X-Amaris-Cache"] == "OFF"
+            assert request(path)[2] == first, "Private requests must never replace public cache entries"
+            time.sleep(2.2)
+            assert request(path)[2] != first, "Expired content must be refreshed"
+            for suffix in ("private", "cookie", "vary", "error"):
+                probe = path.replace("cache-public", "cache-" + suffix)
+                a, b = request(probe), request(probe)
+                assert a[2] != b[2] and b[1]["X-Amaris-Cache"] != "HIT", (
+                    probe,
+                    dict(b[1]),
+                )
+            burst_path = path.replace("cache-public", "cache-stampede")
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                burst = list(executor.map(lambda _, target=burst_path: request(target), range(8)))
+            assert len({body for _, _, body in burst}) == 1, "Cache lock must coalesce cold requests"
+            assert any(h["X-Amaris-Cache"] == "HIT" for _, h, _ in burst)
+            timings = {}
+            for label, extra in (
+                ("origin", {"Cache-Control": "no-cache"}),
+                ("cache", {}),
+            ):
+                samples = []
+                for _ in range(8):
+                    started = time.monotonic()
+                    request(path, headers=extra)
+                    samples.append((time.monotonic() - started) * 1000)
+                timings[label] = round(statistics.median(samples), 2)
+            print(
+                f"MEASURE synthetic {role} median_ms={json.dumps(timings)} origin_delay_ms=40",
+                flush=True,
+            )
+        for path in (
+            "/dashboard/cache-public",
+            "/api/tutor/forms/cache-public",
+            "/api/v1/student/cache-public",
+        ):
+            assert request(path)[1]["X-Amaris-Cache"] == "OFF"
+            assert request(path)[2] != request(path)[2]
+        for path in ("/_next/static/cache-bundle.js", "/static/cache-style.css"):
+            _, headers, compressed = request(path, headers={"Accept-Encoding": "gzip"})
+            assert headers["Content-Encoding"] == "gzip"
+            assert json.loads(gzip.decompress(compressed))["padding"]
+            assert len(compressed) < len(gzip.decompress(compressed)) / 5
+            _, headers, plain = request(path)
+            assert not headers.get("Content-Encoding")
+            assert json.loads(plain)["padding"]
+        print(
+            "PASS frontend/backend public cache hits, expiry, coalescing, privacy bypass and static compression",
+            flush=True,
+        )
 
         streaming("/stream", "frontend")
         streaming("/api/v1/stream", "backend")
         websocket("/socket", "frontend", port)
         websocket("/ws/socket", "backend", port)
-        print("PASS streaming and WebSocket upgrades for both application upstreams", flush=True)
+        print(
+            "PASS streaming and WebSocket upgrades for both application upstreams",
+            flush=True,
+        )
 
-        for service, path in (("frontend", "/identity"), ("backend", "/api/v1/identity")):
+        for service, path in (
+            ("frontend", "/identity"),
+            ("backend", "/api/v1/identity"),
+        ):
             victim, survivor = ids(service)
             run("docker", "stop", "--time", "2", victim)
             distribution(path, service, names([survivor]))
@@ -279,7 +398,10 @@ def main():
             compose("up", "-d", "--scale", service + "=2", "--no-recreate", service)
             distribution(path, service, names(ids(service)))
             assert compose("ps", "-q", "gateway") == gateway
-        print("PASS load balancing and replacement discovery in both pools without gateway restart", flush=True)
+        print(
+            "PASS load balancing and replacement discovery in both pools without gateway restart",
+            flush=True,
+        )
     except Exception:
         print(compose("logs", "--no-color", "--tail", "80", check=False))
         raise

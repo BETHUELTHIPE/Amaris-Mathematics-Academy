@@ -1,7 +1,7 @@
 name: Whole-site Nginx gateway acceptance
 on:
   pull_request:
-    branches: [production-release-20260923, staging, main]
+    branches: [production-release-20260923, staging, main, perf/nginx-gunicorn-uvicorn-20261030]
     paths:
       - deploy/site-gateway/**
       - backend/tests/site_gateway/**

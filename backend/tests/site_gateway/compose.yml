@@ -18,6 +18,8 @@ services:
     command: ["nginx", "-c", "/etc/nginx/amaris-site.conf", "-g", "daemon off;"]
     ports: ["127.0.0.1::8080"]
     volumes:
+      - ../../../deploy/site-gateway/proxy-common.conf:/etc/nginx/site-proxy-common.conf:ro
+      - ../../../deploy/site-gateway/public-cache.conf:/etc/nginx/site-public-cache.conf:ro
       - ../../../deploy/site-gateway/nginx.conf:/etc/nginx/amaris-site.conf:ro
       - ../../../deploy/site-gateway/trusted-proxies.conf:/etc/nginx/site-trusted-proxies.conf:ro
     depends_on: [frontend, backend]

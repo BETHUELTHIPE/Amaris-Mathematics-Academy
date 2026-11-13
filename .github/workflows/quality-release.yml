@@ -2,7 +2,7 @@ name: Quality Gates and Release
 
 on:
   pull_request:
-    branches: [main, staging, production-release-20260923]
+    branches: [main, staging, production-release-20260923, perf/nginx-gunicorn-uvicorn-20261030]
   push:
     branches: [main, perf/nginx-gunicorn-uvicorn-20261030]
   workflow_dispatch:

@@ -30,8 +30,8 @@ available directly on its private port for the container health check.
 Do not route all of `/api/` to Django: frontend BFF endpoints own authentication,
 student/tutor file forwarding and other server operations. The original URI,
 query string, request body, cookies, Authorization, Origin and response
-Set-Cookie/Cache-Control/Vary headers are retained. Response caching and automatic
-request replay are off. Streaming and protocol upgrades are forwarded for both
+Set-Cookie/Cache-Control/Vary headers are retained. Automatic request replay stays
+off. Shared caching is restricted to the public-content policy below. Streaming and protocol upgrades are forwarded for both
 pools; this does not create an application WebSocket feature.
 
 Supabase Auth, private Storage signed downloads and third-party media keep their
@@ -57,7 +57,7 @@ the proxy peer address. Verify client IP/rate-limit behavior before production.
 Backend and frontend ports are not published. Cookies and authorization checks
 remain the applications' responsibility; Nginx never grants student/tutor/admin
 access. Private responses are not stored in a shared proxy cache or response
-temporary file. Requests stream upstream, retaining each form's existing size
+temporary file. Public-cache bypasses use the original unbuffered proxy path. Requests stream upstream, retaining each form's existing size
 validation. The 1025 MiB transport ceiling does not grant a larger upload quota.
 
 ## Build the right frontend revision
@@ -172,3 +172,57 @@ Read-only Render inspection on 12 November 2026 still showed native Python
 backend and native Node frontend services, both suspended. Render does not apply
 this Compose file to those native services. No hosted runtime, billing, DNS,
 paid resource or production route was changed by preparing this configuration.
+
+## Public caching and speed
+
+Both frontend and backend retain independently balanced pools with Docker DNS
+replacement discovery. Upstream keep-alive pools are bounded at 32 idle
+connections per worker/pool, with a four-second idle timeout below Gunicorn's
+five-second timeout. TCP keep-alive, sendfile and bounded connection reuse reduce
+connection churn without changing the application worker or database budgets.
+
+The shared cache accepts anonymous GET/HEAD requests only on a strict allowlist:
+frontend home/about/contact/course pages, frontend compiled assets, Django
+static assets and Django public bootstrap/course endpoints. The origin must
+explicitly return `Cache-Control: public`; its expiration, privacy and Vary
+headers remain authoritative. A response setting cookies, returning an error,
+using `Vary: *`, or declaring private/no-store is never stored. There is no
+stale-content serving or background refresh. Privacy changes and content edits
+must account for the upstream public TTL; do not put account-specific content
+behind a public response header. Fingerprinted asset TTLs remain origin-owned.
+
+Any Cookie, Authorization, query string (including signatures), write method,
+Range, upgrade, RSC/Next navigation/action header, client cache-control or pragma
+bypasses shared caching. Auth, student/tutor dashboards, BFF APIs, payments,
+forms and private/signed downloads are outside the allowlist. The internal
+uncached route retains streaming and byte-exact request bodies. Existing
+private-file/metrics/monitoring path denials remain unchanged.
+
+`X-Amaris-Cache` reports MISS/HIT/EXPIRED for eligible public requests and OFF
+for uncached routes. Cache locks coalesce simultaneous anonymous cold reads.
+The transient disk cache is capped at 128 MiB with a 4 MiB shared index and
+10-minute inactivity cleanup; container replacement drops it. Do not mount it
+as durable private storage. The cache can temporarily exceed its size target
+between manager cleanup runs, so retain host disk headroom.
+
+Gzip at level four is enabled for eligible static CSS/JavaScript/JSON/SVG/Wasm
+responses over 1 KiB, with Vary negotiation. Dynamic HTML and private responses
+keep gateway compression disabled; this avoids compressing reflected secrets
+or buffering interactive streams. Origins may retain their existing safe
+compression policies.
+
+The updated isolated acceptance harness measures eight origin/cache reads per
+pool with a deliberate 40 ms synthetic origin delay. Its timings demonstrate
+proxy overhead and cache behavior only, not real site latency or capacity.
+It also verifies expiry, simultaneous cold-read coalescing, cache poisoning
+protection, cookie/auth/query/RSC bypass, errors, Set-Cookie, Vary and gzip/plain
+negotiation. Existing routing, streaming, WebSocket, no-write-replay and replica
+replacement checks remain mandatory, followed by actual frontend/Django checks.
+
+This change prepares a Docker gateway; native Render services do not use this
+Compose configuration. Production speed, availability and traffic capacity
+remain unverified until hosting is restored, an authorized cutover is made and
+real staging/production measurements pass. No paid service or instance changes
+are made by preparing this configuration. Roll back by restoring the previous
+gateway configuration/image and recreating the gateway; no database rollback or
+file migration is involved.

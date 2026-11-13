@@ -43,7 +43,36 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(1)
             self.wfile.write(last)
             return
+        if "cache-" in self.path or self.path.startswith(("/_next/static/cache", "/static/cache")):
+            self.public_fixture()
+            return
         self.respond(b"")
+
+    def public_fixture(self):
+        time.sleep(0.04)  # Controlled origin delay; never production performance evidence.
+        payload = json.dumps(
+            {
+                "role": ROLE,
+                "nonce": time.monotonic_ns(),
+                "padding": "public asset " * 1500,
+            }
+        ).encode()
+        self.send_response(503 if "cache-error" in self.path else 200)
+        self.send_header(
+            "Content-Type",
+            "application/javascript" if "/static/" in self.path else "application/json",
+        )
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header(
+            "Cache-Control",
+            ("private, no-store" if "cache-private" in self.path else "public, max-age=2"),
+        )
+        if "cache-cookie" in self.path:
+            self.send_header("Set-Cookie", "synthetic=secret; Secure; HttpOnly")
+        if "cache-vary" in self.path:
+            self.send_header("Vary", "*")
+        self.end_headers()
+        self.wfile.write(payload)
 
     def do_POST(self):
         if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
