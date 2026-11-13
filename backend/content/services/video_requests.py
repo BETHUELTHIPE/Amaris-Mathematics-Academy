@@ -341,6 +341,7 @@ def process_video_request_notification(
             return NotificationResult(False, request.status, reason="provider_reference_replay")
         request.provider_reference = provider_reference
         request.gateway_verified_at = now
+        request.payment_mode = _payfast_mode()
         request.paid_at = now if gateway_status == "COMPLETE" else request.paid_at
         if gateway_status == "COMPLETE":
             if request.status != VideoRequest.Status.PENDING_PAYMENT or request.payment_expires_at <= now:
@@ -357,6 +358,7 @@ def process_video_request_notification(
             update_fields=(
                 "provider_reference",
                 "gateway_verified_at",
+                "payment_mode",
                 "paid_at",
                 "status",
                 "queue_entered_at",

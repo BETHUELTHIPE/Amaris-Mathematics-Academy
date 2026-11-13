@@ -9,6 +9,7 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 app.conf.task_default_queue = "default"
 app.conf.task_create_missing_queues = True
 app.conf.task_routes = {
+    "content.performance_tasks.process_performance_reports": {"queue": "notifications"},
     "content.tutor_personnel_tasks.deliver_tutor_personnel_forms": {"queue": "notifications"},
     "content.tutor_video_tasks.deliver_tutor_video_admin_alerts": {"queue": "notifications"},
     "content.tasks.deliver_tutor_application_acknowledgements": {"queue": "notifications"},

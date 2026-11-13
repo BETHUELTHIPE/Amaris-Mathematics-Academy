@@ -441,6 +441,7 @@ def process_payfast_notification(
             locked_payment.provider_reference = provider_reference
             locked_payment.status = target_status
             locked_payment.gateway_verified_at = timezone.now()
+            locked_payment.payment_mode = _payfast_mode()
             locked_payment.verification_source = "payfast_server_verification"
             locked_payment.raw_response = _sanitized_payload(payload)
             if target_status == Payment.Status.PAID:
@@ -450,6 +451,7 @@ def process_payfast_notification(
                     "provider_reference",
                     "status",
                     "gateway_verified_at",
+                    "payment_mode",
                     "verification_source",
                     "raw_response",
                     "paid_at",
