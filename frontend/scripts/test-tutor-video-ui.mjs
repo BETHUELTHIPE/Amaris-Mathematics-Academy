@@ -26,9 +26,10 @@ const server = createServer(async (request, response) => {
 });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 let browser;
+let page;
 try {
   browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const keys = [];
   await page.route("**/api/tutor/videos", async route => {
     const body = route.request().postDataBuffer().toString("utf8");
@@ -55,6 +56,10 @@ try {
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.screenshot({ path: path.join(root, "artifacts/tutor-video-ui-desktop.png"), fullPage: true });
   console.log("PASS actual React/Tailwind form: mobile/desktop, multipart, same-key interrupted retry, success/reset and no mobile overflow; synthetic backend responses only");
+} catch (error) {
+  await mkdir(path.join(root, "artifacts"), { recursive: true });
+  if (page) await page.screenshot({ path: path.join(root, "artifacts/tutor-video-ui-failed.png"), fullPage: true }).catch(() => {});
+  throw error;
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));
