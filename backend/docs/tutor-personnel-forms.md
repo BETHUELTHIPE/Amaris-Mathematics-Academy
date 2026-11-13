@@ -22,6 +22,8 @@ Staff need model permissions to review and cannot belong to Tutors unless superu
 
 The saved database row is a durable outbox. A request saves the PDF and row before returning success, without SMTP. Tutor-scoped idempotency keys return the original row/PDF after an interrupted retry; a changed payload with the same key returns 409. Failed registration attempts clean up the new PDF where possible; reconcile private orphan files if cleanup fails.
 
+An exact resignation retry still returns its original notice if the request crosses midnight after the proposed last teaching day. Only new notices are checked against today's SAST date, inside the same locked transaction after resolving a previous submission. New past-dated notices remain invalid.
+
 Beat runs `content.tutor_personnel_tasks.deliver_tutor_personnel_forms` every 30 seconds on the existing notifications queue, in batches of 25. A row lock and committed sending claim precede SMTP. The letterhead email includes all submitted details, the exact archived letterhead PDF and stable Message-ID. No storage key or bearer URL is emailed.
 
 Recipient: `TUTOR_PERSONNEL_ADMIN_EMAIL`, otherwise trusted `SiteSettings.email`, otherwise the academy default. The sender rechecks this address; changes hold the confidential form for review. Known SMTP rejection retries with exponential delay, at most five attempts. Unknown outcomes, stale sending claims older than an hour and corrupt PDFs require review. A crash/database acknowledgement failure after SMTP does not trigger a blind resend. Provider acceptance is not inbox receipt.

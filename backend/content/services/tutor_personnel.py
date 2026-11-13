@@ -25,6 +25,10 @@ from content.tutor_personnel_models import TutorPersonnelForm
 logger = logging.getLogger(__name__)
 
 
+class FormInputError(Exception):
+    """Safe tutor-facing validation message for a new submission."""
+
+
 def admin_recipient():
     site = SiteSettings.objects.first()
     recipient = settings.TUTOR_PERSONNEL_ADMIN_EMAIL or (site.email if site and site.email else DEFAULT_EMAIL)
@@ -46,6 +50,10 @@ def submit_form(*, tutor, key, values):
                 if prior.fingerprint != fingerprint:
                     raise UploadConflict("This submission key was already used for different form details.")
                 return prior, False
+            # Resolve an exact retry before applying a clock-dependent rule. A saved
+            # notice must remain retrievable when a network retry crosses midnight.
+            if values["kind"] == "resignation" and values["last_teaching_day"] < timezone.localdate():
+                raise FormInputError("The proposed last teaching day must be today or later.")
             payload = {name: str(value) for name, value in values.items()}
             payload.update(
                 tutor_name=tutor.get_full_name().strip() or tutor.get_username(),

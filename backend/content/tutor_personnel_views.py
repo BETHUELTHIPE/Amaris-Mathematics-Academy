@@ -4,14 +4,13 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import DatabaseError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
-from content.services.tutor_personnel import archived_pdf, submit_form
+from content.services.tutor_personnel import FormInputError, archived_pdf, submit_form
 from content.services.tutor_video_uploads import UploadConflict
 from content.tutor_personnel_models import TutorPersonnelForm
 from content.tutor_views import TutorOnlyAPIView
@@ -45,8 +44,6 @@ class PersonnelInput(serializers.Serializer):
         else:
             if not data.get("last_teaching_day"):
                 raise serializers.ValidationError("Choose your proposed last teaching day.")
-            if data["last_teaching_day"] < timezone.localdate():
-                raise serializers.ValidationError("The proposed last teaching day must be today or later.")
             if any(key in data for key in ("start_date", "end_date", "leave_type")):
                 raise serializers.ValidationError("A resignation form cannot contain leave dates or a leave type.")
         return data
@@ -117,6 +114,8 @@ class TutorPersonnelFormsView(PrivateTutorFormsAPIView):
             item, created = submit_form(tutor=request.user, key=key, values=values)
         except UploadConflict as exc:
             return Response({"detail": str(exc)}, status=409)
+        except FormInputError as exc:
+            return Response({"detail": str(exc)}, status=400)
         except DjangoValidationError:
             return Response(
                 {"detail": "Unable to validate the form. Check the details or contact the academy."}, status=400

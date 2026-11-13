@@ -137,6 +137,27 @@ class TutorPersonnelTests(PersonnelFixtures, TestCase):
         self.assertEqual(deliver_form(first.pk), 1)
         self.assertEqual(deliver_form(second.pk), 0)
 
+    def test_resignation_retry_after_midnight_returns_the_already_saved_notice(self):
+        values = {k: v for k, v in self.values.items() if k not in ("leave_type", "start_date", "end_date")}
+        values.update(kind="resignation", last_teaching_day=self.today, idempotency_key="midnight-resignation-key")
+        original = self.api.post(reverse("tutor-personnel-forms"), values, format="json")
+        self.assertEqual(original.status_code, 201)
+        with patch("django.utils.timezone.localdate", return_value=self.today + timedelta(days=1)):
+            retry = self.api.post(reverse("tutor-personnel-forms"), values, format="json")
+            changed = self.api.post(
+                reverse("tutor-personnel-forms"),
+                {**values, "reason": "Changed details on the same key."},
+                format="json",
+            )
+            new_past_notice = self.api.post(
+                reverse("tutor-personnel-forms"), {**values, "idempotency_key": "new-past-resignation"}, format="json"
+            )
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertEqual(retry.data["id"], original.data["id"])
+        self.assertEqual(changed.status_code, 409)
+        self.assertEqual(new_past_notice.status_code, 400)
+        self.assertEqual(TutorPersonnelForm.objects.count(), 1)
+
     def test_ownership_ignores_client_tutor_and_recipient_status_and_is_private(self):
         other = get_user_model().objects.create_user(username="other-tutor", email="other@example.test")
         other.groups.add(self.group)
