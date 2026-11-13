@@ -531,7 +531,9 @@ class LiveClassBookingTests(TestCase):
         self.assertIn("confirmed", message.subject.lower())
         self.assertIn(self.slot.zoom_join_url, message.body)
         self.assertIn(booking.invoice_number, message.body)
-        self.assertEqual(len(message.attachments), 1)
+        self.assertEqual(len(message.attachments), 2)
+        self.assertEqual(message.attachments[1].get("Content-ID"), "<amaris-letterhead-logo>")
+        self.assertEqual(message.attachments[1].get_content_disposition(), "inline")
         self.assertEqual(message.attachments[0][2], "application/pdf")
         self.assertTrue(message.attachments[0][1].startswith(b"%PDF"))
 

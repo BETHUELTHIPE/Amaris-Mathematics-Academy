@@ -6,7 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from django.conf import settings
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMultiAlternatives
 from django.db.models import Q
 from django.utils import timezone
 
@@ -20,6 +20,7 @@ from content.models import (
     PricingPlan,
     SiteSettings,
 )
+from content.services.branded_email import apply_letterhead
 
 from .live_classes import LIVE_CLASS_PRICE
 
@@ -360,13 +361,14 @@ def auto_reply_to_enquiry(enquiry: ContactEnquiry) -> AutoReplyResult:
         site = SiteSettings.objects.first()
         reply_to = [site.email] if site and site.email else None
         clean_subject = _clean(enquiry.subject, 120).title() or "Your enquiry"
-        message = EmailMessage(
+        message = EmailMultiAlternatives(
             subject=f"Re: {clean_subject} — Amaris Mathematics Academy",
             body=reply_text,
             from_email=None,
             to=[enquiry.email],
             reply_to=reply_to,
         )
+        apply_letterhead(message, "Your enquiry", reply_text.splitlines(), reference=str(enquiry.pk))
         sent = message.send(fail_silently=False)
         if sent != 1:
             raise RuntimeError("SMTP backend did not accept the auto-reply.")
