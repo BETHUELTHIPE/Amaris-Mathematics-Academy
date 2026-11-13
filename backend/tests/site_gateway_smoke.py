@@ -334,8 +334,12 @@ def main():
             assert request(path + "?token=synthetic")[1]["X-Amaris-Cache"] == "OFF"
             assert request(path, body=b"write=not-replayed")[1]["X-Amaris-Cache"] == "OFF"
             assert request(path)[2] == first, "Private requests must never replace public cache entries"
-            time.sleep(2.2)
-            assert request(path)[2] != first, "Expired content must be refreshed"
+            # Nginx expiry timestamps have whole-second precision. Poll within a
+            # bounded window instead of assuming a particular fractional phase.
+            expiry_deadline = time.monotonic() + 5
+            while request(path)[2] == first:
+                assert time.monotonic() < expiry_deadline, "Expired content must be refreshed"
+                time.sleep(0.2)
             for suffix in ("private", "cookie", "vary", "error"):
                 probe = path.replace("cache-public", "cache-" + suffix)
                 a, b = request(probe), request(probe)
