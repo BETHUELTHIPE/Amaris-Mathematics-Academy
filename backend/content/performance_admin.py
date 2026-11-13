@@ -97,6 +97,8 @@ class PerformanceDigestAdmin(PrivatePerformanceAdmin):
             except (PerformanceDigest.DoesNotExist, ValidationError) as exc:
                 raise Http404 from exc
             snapshot = item.snapshot if item else None
+            if item:
+                mode = item.payment_mode
         schedule = PerformanceSchedule.objects.filter(payment_mode=mode).first()
         response = TemplateResponse(
             request,

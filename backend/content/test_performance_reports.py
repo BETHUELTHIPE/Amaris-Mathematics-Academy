@@ -438,6 +438,13 @@ class PerformanceReportTests(PerformanceFixtures, TestCase):
         again, created = generate_due_report()
         self.assertFalse(created)
         self.assertEqual(again.snapshot, original)
+        with self.settings(ADMIN_PERFORMANCE_PAYMENT_MODE="sandbox", ADMIN_PERFORMANCE_START_DATE="2026-10-29"):
+            sandbox, _ = generate_due_report()
+        archived = self.client.get(
+            reverse("admin:content_performancedigest_dashboard"), {"report": str(sandbox.pk)}, secure=True
+        )
+        self.assertEqual(archived.context["mode"], "sandbox")
+        self.assertEqual(archived.context["first_due"], date(2026, 11, 12))
 
     def test_all_verified_payment_paths_capture_environment_and_replays_do_not_reclassify(self):
         from content.services.live_classes import process_live_class_notification
