@@ -7,6 +7,9 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
+from amaris_cms.storage import role_media_storage
+from content.media_paths import video_captions_path, video_source_path, video_thumbnail_path
+
 
 class TimeStampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -256,9 +259,9 @@ class VideoAsset(PublishableModel):
     provider = models.CharField(max_length=12, choices=Provider.choices, default=Provider.YOUTUBE)
     youtube_video_id = models.CharField(max_length=32, blank=True)
     youtube_url = models.URLField(blank=True)
-    source_file = models.FileField(upload_to="videos/%Y/%m/", blank=True)
-    thumbnail = models.ImageField(upload_to="videos/thumbnails/", blank=True)
-    captions_file = models.FileField(upload_to="videos/captions/", blank=True)
+    source_file = models.FileField(upload_to=video_source_path, storage=role_media_storage, blank=True)
+    thumbnail = models.ImageField(upload_to=video_thumbnail_path, storage=role_media_storage, blank=True)
+    captions_file = models.FileField(upload_to=video_captions_path, storage=role_media_storage, blank=True)
     duration_seconds = models.PositiveIntegerField(default=0)
     transcript = models.TextField(blank=True)
     allow_preview = models.BooleanField(default=False)

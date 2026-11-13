@@ -266,6 +266,7 @@ SUPABASE_S3_STUDENT_BUCKET = (
     or os.getenv("STUDENT_STORAGE_BUCKET_NAME")
     or ""
 ).strip()
+SUPABASE_S3_TUTOR_BUCKET = os.getenv("SUPABASE_S3_TUTOR_BUCKET", "").strip()
 # Fail closed for production uploads when S3 is absent; never use local media.
 STORAGES = build_storage_config(
     debug=DEBUG,
@@ -277,6 +278,7 @@ STORAGES = build_storage_config(
     secret_key=SUPABASE_S3_SECRET_ACCESS_KEY,
     admin_bucket=SUPABASE_S3_ADMIN_BUCKET,
     student_bucket=SUPABASE_S3_STUDENT_BUCKET,
+    tutor_bucket=SUPABASE_S3_TUTOR_BUCKET,
     region=os.getenv("SUPABASE_S3_REGION", "us-east-1"),
     legacy_cms_prefix=env_bool("SUPABASE_STORAGE_ENABLED", False),
 )

@@ -46,3 +46,36 @@ class LocalPrivateStorage(FileSystemStorage):
 
 def tutor_private_storage():
     return storages["tutor_private"]
+
+
+def admin_private_storage():
+    return storages["admin_private"]
+
+
+def role_media_storage():
+    return storages["role_media"]
+
+
+class RoleMediaStorage(Storage):
+    """Route server-generated tutor keys separately; retain legacy Admin keys."""
+
+    def backend(self, name):
+        return storages["tutor_private" if name.startswith("videos/tutor-uploads/") else "default"]
+
+    def save(self, name, content, max_length=None):
+        return self.backend(name).save(name, content, max_length=max_length)
+
+    def _open(self, name, mode="rb"):
+        return self.backend(name).open(name, mode)
+
+    def exists(self, name):
+        return self.backend(name).exists(name)
+
+    def delete(self, name):
+        return self.backend(name).delete(name)
+
+    def size(self, name):
+        return self.backend(name).size(name)
+
+    def url(self, name):
+        return self.backend(name).url(name)

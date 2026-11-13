@@ -8,8 +8,8 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import storages
 from django.test import override_settings
 
-from amaris_cms.storage import LocalPrivateStorage, SupabaseS3Storage, tutor_private_storage
-from amaris_cms.storage_config import ADMIN_BUCKET, STUDENT_BUCKET, build_storage_config
+from amaris_cms.storage import LocalPrivateStorage, SupabaseS3Storage, admin_private_storage, tutor_private_storage
+from amaris_cms.storage_config import ADMIN_BUCKET, STUDENT_BUCKET, TUTOR_BUCKET, build_storage_config
 
 
 class StorageRoutingTests(TestCase):
@@ -29,6 +29,7 @@ class StorageRoutingTests(TestCase):
             "secret_key": "synthetic-secret",
             "admin_bucket": ADMIN_BUCKET,
             "student_bucket": STUDENT_BUCKET,
+            "tutor_bucket": TUTOR_BUCKET,
             "region": "us-east-1",
             "legacy_cms_prefix": False,
         }
@@ -36,15 +37,17 @@ class StorageRoutingTests(TestCase):
         return build_storage_config(**values)
 
     def no_s3(self, **changes):
-        return self.config(endpoint="", access_key="", secret_key="", admin_bucket="", student_bucket="", **changes)
+        return self.config(
+            endpoint="", access_key="", secret_key="", admin_bucket="", student_bucket="", tutor_bucket="", **changes
+        )
 
-    def test_tutor_application_documents_forms_and_admin_uploads_use_cms_bucket(self):
+    def test_tutor_application_documents_forms_and_admin_uploads_use_designated_bucket(self):
         uploads = [
             ("tutor_qualifications", "tutor-applications/applicant/application/document.pdf"),
             ("tutor_private", "tutor-personnel/tutor/form/leave.pdf"),
             ("tutor_private", "tutor-personnel/tutor/form/resignation.pdf"),
-            ("tutor_private", "admin-performance/live/period/report.pdf"),
-            ("default", "videos/tutor-uploads/tutor/video.mp4"),
+            ("admin_private", "admin-performance/live/period/report.pdf"),
+            ("tutor_private", "videos/tutor-uploads/tutor/video.mp4"),
             ("default", "videos/thumbnails/photo.png"),
             ("default", "resources/tutor/lesson.pdf"),
         ]
@@ -52,19 +55,20 @@ class StorageRoutingTests(TestCase):
             for alias, key in uploads:
                 with self.subTest(alias=alias, key=key):
                     storage = self.s3(alias)
+                    expected_bucket = TUTOR_BUCKET if alias.startswith("tutor_") else ADMIN_BUCKET
                     client = storage.connection.meta.client
                     with Stubber(client) as stub:
                         stub.add_client_error(
                             "head_object",
                             service_error_code="404",
                             http_status_code=404,
-                            expected_params={"Bucket": ADMIN_BUCKET, "Key": key},
+                            expected_params={"Bucket": expected_bucket, "Key": key},
                         )
                         stub.add_response(
                             "put_object",
                             {},
                             {
-                                "Bucket": ADMIN_BUCKET,
+                                "Bucket": expected_bucket,
                                 "Key": key,
                                 "Body": ANY,
                                 "ContentType": ANY,
@@ -88,6 +92,9 @@ class StorageRoutingTests(TestCase):
             {"admin_bucket": STUDENT_BUCKET},
             {"student_bucket": ADMIN_BUCKET},
             {"admin_bucket": "amaris-csm-files"},
+            {"tutor_bucket": ADMIN_BUCKET},
+            {"tutor_bucket": STUDENT_BUCKET},
+            {"tutor_bucket": ""},
         ):
             with self.subTest(changes=changes), self.assertRaises(RuntimeError):
                 self.config(**changes)
@@ -128,13 +135,17 @@ class StorageRoutingTests(TestCase):
         from content.tutor_personnel_models import TutorPersonnelForm
 
         with override_settings(STORAGES=self.config()):
-            for model in (TutorPersonnelForm, PerformanceDigest):
+            for model, selector_expected, bucket in (
+                (TutorPersonnelForm, tutor_private_storage, TUTOR_BUCKET),
+                (PerformanceDigest, admin_private_storage, ADMIN_BUCKET),
+            ):
                 selector = model._meta.get_field("pdf").deconstruct()[3]["storage"]
-                self.assertIs(selector, tutor_private_storage)
-                self.assertEqual(selector().bucket_name, ADMIN_BUCKET)
+                self.assertIs(selector, selector_expected)
+                self.assertEqual(selector().bucket_name, bucket)
 
     def test_legacy_cms_prefix_is_preserved_for_existing_cloud_files(self):
         with override_settings(STORAGES=self.config(legacy_cms_prefix=True)):
-            for alias in ("default", "tutor_private", "tutor_qualifications"):
+            for alias in ("default", "admin_private"):
                 self.assertEqual(self.s3(alias).location, "cms")
             self.assertEqual(self.s3("student_private").location, "")
+            self.assertEqual(self.s3("tutor_private").location, "")

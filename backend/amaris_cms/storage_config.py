@@ -1,8 +1,9 @@
-"""Keep CMS/tutor and student files in their designated private Supabase buckets."""
+"""Keep Admin, tutor and student files in their designated private Supabase buckets."""
 
 from pathlib import Path
 
 ADMIN_BUCKET = "amaris-cms-files"
+TUTOR_BUCKET = "amaris-tutor-files"
 STUDENT_BUCKET = "Amaris Mathematics Academy"
 
 
@@ -17,17 +18,18 @@ def build_storage_config(
     secret_key: str,
     admin_bucket: str,
     student_bucket: str,
+    tutor_bucket: str,
     region: str,
     legacy_cms_prefix: bool,
 ) -> dict:
-    values = (endpoint, access_key, secret_key, admin_bucket, student_bucket)
+    values = (endpoint, access_key, secret_key, admin_bucket, student_bucket, tutor_bucket)
     if required or any(values):
         if not all(values) or not endpoint.startswith("https://"):
             raise RuntimeError(
-                "Both private Supabase S3 buckets, HTTPS endpoint, and server-side S3 keys are required."
+                "Three private Supabase S3 buckets, HTTPS endpoint, and server-side S3 keys are required."
             )
-        if admin_bucket != ADMIN_BUCKET or student_bucket != STUDENT_BUCKET:
-            raise RuntimeError(f"CMS/tutor files must use {ADMIN_BUCKET}; student files must use {STUDENT_BUCKET}.")
+        if admin_bucket != ADMIN_BUCKET or student_bucket != STUDENT_BUCKET or tutor_bucket != TUTOR_BUCKET:
+            raise RuntimeError(f"Admin: {ADMIN_BUCKET}; tutors: {TUTOR_BUCKET}; students: {STUDENT_BUCKET}.")
         options = {
             "endpoint_url": endpoint,
             "region_name": region,
@@ -53,7 +55,11 @@ def build_storage_config(
             "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
             "OPTIONS": {**options, "bucket_name": STUDENT_BUCKET, "file_overwrite": True},
         }
-        tutor = qualifications = admin
+        tutor = qualifications = {
+            "BACKEND": "amaris_cms.storage.SupabaseS3Storage",
+            "OPTIONS": {**options, "bucket_name": TUTOR_BUCKET, "file_overwrite": False},
+        }
+        admin_private = admin
     elif debug:
         admin = {"BACKEND": "django.core.files.storage.FileSystemStorage"}
         student = {
@@ -64,6 +70,10 @@ def build_storage_config(
             "BACKEND": "amaris_cms.storage.LocalPrivateStorage",
             "OPTIONS": {"location": base_dir / "private-tutor-files"},
         }
+        admin_private = {
+            "BACKEND": "amaris_cms.storage.LocalPrivateStorage",
+            "OPTIONS": {"location": base_dir / "private-admin-files"},
+        }
         qualifications = {
             "BACKEND": "amaris_cms.storage.LocalPrivateStorage",
             "OPTIONS": {"location": base_dir / "private-tutor-qualifications"},
@@ -71,9 +81,13 @@ def build_storage_config(
     else:
         # The rest of the site can start, but uploads cannot silently land on
         # ephemeral/public disk. REQUIRED=true also blocks startup above.
-        admin = student = tutor = qualifications = {"BACKEND": "amaris_cms.storage.UnconfiguredPrivateStorage"}
+        admin = admin_private = student = tutor = qualifications = {
+            "BACKEND": "amaris_cms.storage.UnconfiguredPrivateStorage"
+        }
     return {
         "default": admin,
+        "admin_private": admin_private,
+        "role_media": {"BACKEND": "amaris_cms.storage.RoleMediaStorage"},
         "tutor_private": tutor,
         "tutor_qualifications": qualifications,
         "student_private": student,
