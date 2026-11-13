@@ -187,6 +187,10 @@ frontend compiled assets, Django
 static assets and Django public bootstrap/course endpoints. Django explicitly opts anonymous course/bootstrap responses into public caching
 only after cache_page has added a positive expiry; authentication/cookies,
 response cookies, errors and existing privacy directives prevent that opt-in.
+Redis response age and the original Expires deadline bound the API proxy
+lifetime to at most 30 seconds, with a one-second boundary margin. Nginx retains
+the original API Date header so downstream browser caches also account for
+residence time; existing Age is retained. This avoids renewing expiring URLs.
 The origin must explicitly return `Cache-Control: public`; its expiration, privacy and Vary
 headers remain authoritative. A response setting cookies, returning an error,
 using `Vary: *`, or declaring private/no-store is never stored. There is no
