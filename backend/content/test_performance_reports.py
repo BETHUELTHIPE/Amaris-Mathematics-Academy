@@ -323,6 +323,7 @@ class PerformanceReportTests(PerformanceFixtures, TestCase):
         self.assertEqual(message.attachments[0].content, original)
         self.assertEqual(message.attachments[1].get("Content-ID"), "<amaris-letterhead-logo>")
         self.assertIn("Official academy communication", message.alternatives[0].content)
+        self.assertIn("WITHIN THE FORTNIGHT", message.body)
         self.assertNotIn(self.student.email, message.body)
         self.assertNotIn(first.pdf.name, message.body)
 

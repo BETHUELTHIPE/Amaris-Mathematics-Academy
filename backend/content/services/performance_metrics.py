@@ -318,6 +318,15 @@ def report_sections(snapshot):
             [f"{r['name']}: {r['count']} videos marked ready during the period" for r in s["delivery_leaders"]],
         ),
         (
+            "Within the fortnight",
+            [
+                f"Week starting {r['start']}: {r['bookings']} paid bookings; "
+                f"{r['video_requests']} paid video requests; {r['course_purchases']} course purchases; "
+                f"R{r['gross']} base gross"
+                for r in s["weekly"]
+            ],
+        ),
+        (
             "Follow-up and data quality",
             [
                 f"Active approved tutors with no new verified Zoom bookings: {s['unbooked_tutors']}. "
