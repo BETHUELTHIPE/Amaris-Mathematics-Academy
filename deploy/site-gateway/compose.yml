@@ -60,6 +60,8 @@ services:
     command: ["nginx", "-c", "/etc/nginx/amaris-site.conf", "-g", "daemon off;"]
     ports: ["127.0.0.1:${AMARIS_GATEWAY_PORT:-8080}:8080"]
     volumes:
+      - ./proxy-common.conf:/etc/nginx/site-proxy-common.conf:ro
+      - ./public-cache.conf:/etc/nginx/site-public-cache.conf:ro
       - ./nginx.conf:/etc/nginx/amaris-site.conf:ro
       - ./trusted-proxies.conf:/etc/nginx/site-trusted-proxies.conf:ro
     depends_on:
