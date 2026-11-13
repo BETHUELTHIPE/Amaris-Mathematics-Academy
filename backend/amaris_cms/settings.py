@@ -439,11 +439,20 @@ TUTOR_VIDEO_MAX_UPLOAD_BYTES = min(
     50 * 1024 * 1024, int(os.getenv("TUTOR_VIDEO_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
 )
 TUTOR_VIDEO_ADMIN_EMAIL = os.getenv("TUTOR_VIDEO_ADMIN_EMAIL", "").strip()
+TUTOR_PERSONNEL_FORMS_ENABLED = env_bool("TUTOR_PERSONNEL_FORMS_ENABLED", False)
+TUTOR_PERSONNEL_ADMIN_EMAIL = os.getenv("TUTOR_PERSONNEL_ADMIN_EMAIL", "").strip()
+if TUTOR_PERSONNEL_FORMS_ENABLED and not DEBUG and not SUPABASE_S3_ENDPOINT_URL:
+    raise RuntimeError("Tutor personnel forms require private Supabase CMS storage in production.")
 PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "").strip()
 if TUTOR_VIDEO_UPLOADS_ENABLED and not DEBUG and not SUPABASE_S3_ENDPOINT_URL:
     raise RuntimeError("Tutor video uploads require private Supabase CMS storage in production.")
 
 CELERY_BEAT_SCHEDULE = {
+    "tutor-personnel-admin-alerts": {
+        "task": "content.tutor_personnel_tasks.deliver_tutor_personnel_forms",
+        "schedule": 30.0,
+        "options": {"queue": "notifications"},
+    },
     "tutor-video-admin-alerts": {
         "task": "content.tutor_video_tasks.deliver_tutor_video_admin_alerts",
         "schedule": 30.0,

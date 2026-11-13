@@ -27,6 +27,7 @@ from .tutor_application_views import (
     TutorApplicationDocumentView,
     TutorApplicationView,
 )
+from .tutor_personnel_views import TutorPersonnelFormsView, TutorPersonnelPDFView
 from .tutor_video_views import TutorVideoView
 from .tutor_views import TutorDashboardView, TutorEarningsView, TutorSlotCreateView, TutorSlotUpdateView
 from .video_request_views import (
@@ -66,6 +67,8 @@ router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
     path("tutor/videos/", TutorVideoView.as_view(), name="tutor-videos"),
+    path("tutor/forms/", TutorPersonnelFormsView.as_view(), name="tutor-personnel-forms"),
+    path("tutor/forms/<uuid:form_id>/pdf/", TutorPersonnelPDFView.as_view(), name="tutor-personnel-pdf"),
     path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(

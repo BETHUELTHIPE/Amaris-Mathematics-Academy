@@ -291,6 +291,7 @@ class TutorDashboardView(TutorOnlyAPIView):
         return Response(
             {
                 "video_uploads_enabled": settings.TUTOR_VIDEO_UPLOADS_ENABLED,
+                "personnel_forms_enabled": settings.TUTOR_PERSONNEL_FORMS_ENABLED,
                 "max_video_upload_bytes": settings.TUTOR_VIDEO_MAX_UPLOAD_BYTES,
                 "tutor": {
                     "name": request.user.get_full_name().strip() or request.user.username,
