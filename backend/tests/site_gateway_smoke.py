@@ -317,6 +317,8 @@ def main():
                 {"Cookie": "session=synthetic"},
                 {"Authorization": "Bearer synthetic"},
                 {"RSC": "1"},
+                {"Accept": "text/event-stream"},
+                {"Accept": "text/x-component"},
                 {"Next-Router-State-Tree": "synthetic"},
                 {"Next-Action": "synthetic"},
                 {"Range": "bytes=0-50"},

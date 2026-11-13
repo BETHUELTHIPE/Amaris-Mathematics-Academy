@@ -192,7 +192,8 @@ must account for the upstream public TTL; do not put account-specific content
 behind a public response header. Fingerprinted asset TTLs remain origin-owned.
 
 Any Cookie, Authorization, query string (including signatures), write method,
-Range, upgrade, RSC/Next navigation/action header, client cache-control or pragma
+Range, upgrade, RSC/Next navigation/action header, stream/component Accept header,
+client cache-control or pragma
 bypasses shared caching. Auth, student/tutor dashboards, BFF APIs, payments,
 forms and private/signed downloads are outside the allowlist. The internal
 uncached route retains streaming and byte-exact request bodies. Existing
