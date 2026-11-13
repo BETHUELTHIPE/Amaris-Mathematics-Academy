@@ -39,6 +39,8 @@ jobs:
         env:
           TUTOR_UI_FIXTURE: ${{ runner.temp }}/tutor-video-ui
         run: node frontend/scripts/test-tutor-video-ui.mjs
+      - name: Check request limits and letterhead security variables
+        run: node --test frontend/tests/tutor-personnel-request.test.mjs frontend/tests/email-letterhead.test.mjs frontend/tests/tutor-video-upload.test.mjs
       - name: Exercise actual leave and resignation forms on the letterhead
         env:
           TUTOR_UI_FIXTURE: ${{ runner.temp }}/tutor-video-ui

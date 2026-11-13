@@ -22,6 +22,11 @@ esbuild.buildSync({ entryPoints: [path.join(fixture, "entry.tsx")], outfile: pat
 execFileSync(path.join(fixture,"node_modules/.bin/tailwindcss"), ["-i", path.join(fixture,"input.css"), "-o",path.join(fixture,"style.css")]);
 const html = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Personnel forms fixture</title><link href="/style.css" rel="stylesheet"></head><body><div id="root"></div><script type="module" src="/bundle.js"></script></body></html>';
 const server = createServer(async (request,response) => {
+  if (["/confirm-signup.html", "/magic-link-login.html", "/recovery.html"].includes(request.url)) {
+    const source = await readFile(path.join(frontend, "email-templates", request.url.slice(1)), "utf8");
+    const preview = source.replaceAll("{{ .Token }}", "123456").replaceAll("{{ .ConfirmationURL }}", "https://academy.example/confirmed").replaceAll("{{ .RedirectTo }}", "https://academy.example/reset-password").replaceAll("{{ .TokenHash }}", "synthetic-hash");
+    response.writeHead(200, { "Content-Type": "text/html" }); response.end(preview); return;
+  }
   const file = { "/": ["text/html",html], "/bundle.js": ["text/javascript",await readFile(path.join(fixture,"bundle.js"))], "/style.css": ["text/css",await readFile(path.join(fixture,"style.css"))] }[request.url];
   if (!file) { response.writeHead(404);response.end();return; }
   response.writeHead(200,{"Content-Type":file[0]});response.end(file[1]);
@@ -77,7 +82,15 @@ try {
   await page.screenshot({path:path.join(root,"artifacts/tutor-personnel-ui-resignation-mobile.png"),fullPage:true});
   await page.setViewportSize({width:1280,height:1000});
   await page.screenshot({path:path.join(root,"artifacts/tutor-personnel-ui-desktop.png"),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  for (const name of ["confirm-signup", "magic-link-login", "recovery"]) {
+    await page.goto(`http://127.0.0.1:${server.address().port}/${name}.html`);
+    await page.getByText("123456", { exact:true }).waitFor();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    await page.screenshot({path:path.join(root,`artifacts/tutor-personnel-ui-${name}-email.png`),fullPage:true});
+  }
   console.log("PASS actual personnel forms and letterhead: leave/resignation, mobile/desktop, retry key retention, saved history, PDF links and no mobile overflow; synthetic backend only");
+  console.log("PASS company letterhead account-email previews: signup, sign-in and recovery; synthetic tokens only, no hosted email sent");
 } catch(error){
   await mkdir(path.join(root,"artifacts"),{recursive:true});
   if(page)await page.screenshot({path:path.join(root,"artifacts/tutor-personnel-ui-failed.png"),fullPage:true}).catch(()=>{});
