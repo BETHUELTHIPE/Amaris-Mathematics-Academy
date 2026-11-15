@@ -15,6 +15,7 @@ type Offer = {
   available: boolean;
   detail: string;
   terms_version?: string;
+  revenue_scope?: string;
   statutory_hourly_floor?: string;
   pay_frequency?: string;
   service_terms: ServiceTerm[];
@@ -106,6 +107,7 @@ export function TutorEmploymentContract() {
       <div className="mt-7 rounded-2xl border border-[#dce4ef] bg-[#f8faff] p-5">
         <div className="flex items-center gap-2 font-semibold text-[#0b2a5b]"><ShieldCheck className="size-5" /> Revenue split: 60% Admin / 30% Tutor / 10% Platform</div>
         {data.offer.available ? <>
+          {data.offer.revenue_scope && <p className="mt-4 text-sm leading-6 text-[#263852]">{data.offer.revenue_scope}</p>}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {data.offer.service_terms.map(term => <div key={term.service} className="rounded-xl bg-white p-4 text-sm">
               <p className="font-semibold">{term.service_label}</p>
