@@ -11,6 +11,7 @@ class ContentConfig(AppConfig):
         super().import_models()
         from . import (
             payment_models,
+            tutor_contract_models,
             performance_models,
             tutor_finance_models,
             tutor_personnel_models,
@@ -23,6 +24,7 @@ class ContentConfig(AppConfig):
             performance_admin,
             schema,
             signals,
+            tutor_contract_admin,
             tutor_finance_admin,
             tutor_personnel_admin,
             tutor_video_admin,

@@ -5,6 +5,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from content.services.tutor_personnel import deliver_form
+from content.tutor_contract_tasks import deliver_tutor_employment_contracts
 from content.tutor_personnel_models import TutorPersonnelForm
 
 
@@ -33,4 +34,4 @@ def deliver_tutor_personnel_forms():
                 if item.attempts >= 5:
                     item.delivery_status = "review"
                 item.save(update_fields=["attempts", "error_code", "next_attempt_at", "delivery_status", "updated_at"])
-    return sent
+    return sent + deliver_tutor_employment_contracts()
