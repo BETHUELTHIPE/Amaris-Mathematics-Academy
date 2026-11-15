@@ -68,7 +68,9 @@ class TutorEmploymentContract(TimeStampedModel):
     def clean(self):
         if self.statutory_hourly_floor < Decimal("30.23"):
             raise ValidationError({"statutory_hourly_floor": "The 2026 statutory floor cannot be reduced."})
-        if self.status == self.Status.ACCEPTED and (not self.employer_signature_name.strip() or not self.effective_date):
+        if self.status == self.Status.ACCEPTED and (
+            not self.employer_signature_name.strip() or not self.effective_date
+        ):
             raise ValidationError("Employer signature and effective date are required before acceptance.")
         if self.status != self.Status.ACCEPTED and (self.employer_signature_name or self.effective_date):
             raise ValidationError("Employer signature details may be recorded only when accepting the contract.")

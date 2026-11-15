@@ -236,7 +236,9 @@ def deliver_contract(item_id):
             item.delivery_status, item.error_code = "review", "archive_integrity_review"
             item.save(update_fields=["delivery_status", "error_code", "updated_at"])
             return 0
-        lines = ["A tutor signed the attached employment contract. Super User review and countersignature are required."]
+        lines = [
+            "A tutor signed the attached employment contract. Super User review and countersignature are required."
+        ]
         lines += [f"{label}: {value}" for label, value in contract_summary_lines(item)]
         lines += [
             f"Contract reference: {item.pk}",

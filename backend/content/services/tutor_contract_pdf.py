@@ -50,89 +50,103 @@ def _clauses(item, executed):
         (
             "1. Parties and appointment",
             f"Amaris Mathematics Academy (the Employer) offers {p['tutor_name']} ({p['tutor_email']}) employment as a "
-            "part-time, variable-hours online tutor. The normal place of work is remote, using the Academy dashboard and "
+            "part-time, variable-hours online tutor. The normal place of work is remote, using the Academy "
+            "dashboard and "
             "approved Zoom links. The preferred commencement date is " + p["preferred_start_date"] + ".",
         ),
         (
             "2. Duties and booking workflow",
-            "The Tutor publishes accurate availability; accepts only Academy-assigned bookings; prepares and delivers the "
-            "advertised CAPS, IEB, TVET or university lesson; uses the protected student and Zoom details only for that "
-            "booking; records attendance and completion; provides reasonable learning feedback; and promptly reports any "
-            "absence, safeguarding concern, technical failure or required handover. Unverified or unpaid bookings do not "
-            "authorise disclosure of student contact details. A dashboard cancellation alone does not cancel a paid lesson.",
+            "The Tutor publishes accurate availability; accepts only Academy-assigned bookings; prepares and "
+            "delivers the advertised CAPS, IEB, TVET or university lesson; uses the protected student and Zoom "
+            "details only for that booking; records attendance and completion; provides reasonable learning "
+            "feedback; and promptly reports any absence, safeguarding concern, technical failure or required "
+            "handover. Unverified or unpaid bookings do not authorise disclosure of student contact details. "
+            "A dashboard cancellation alone does not cancel a paid lesson.",
         ),
         (
             "3. Hours and availability",
-            f"The Tutor's indicated ordinary days are {days}, with a maximum of {p['maximum_weekly_hours']} accepted hours "
-            "per week. Availability is not a guarantee of bookings or hours. The Tutor is not required to work outside an "
-            "accepted schedule. Ordinary hours will not exceed the Basic Conditions of Employment Act limits. Overtime, "
+            f"The Tutor's indicated ordinary days are {days}, with a maximum of "
+            f"{p['maximum_weekly_hours']} accepted hours per week. Availability is not a guarantee of bookings "
+            "or hours. The Tutor is not required to work outside an accepted schedule. Ordinary hours will not "
+            "exceed the Basic Conditions of Employment Act limits. Overtime, "
             "Sunday and public-holiday work requires prior written approval and will be treated as required by law.",
         ),
         (
             "4. Remuneration",
-            f"Current service-share terms captured at signature are: {service_terms}. These percentages are variable or "
-            f"incentive remuneration and do not replace the statutory wage floor. For every ordinary hour actually worked, "
-            f"the Employer will top up remuneration when necessary to at least R{item.statutory_hourly_floor:.2f} per hour "
-            "(the national minimum applying from 1 March 2026), or any later higher legal minimum. Remuneration is processed "
-            "monthly and paid no later than seven days after the end of the pay period. The system's seven-day payment and "
-            "service-completion hold applies to provisional service-share earnings only and may not unlawfully delay base "
+            f"Current service-share terms captured at signature are: {service_terms}. These percentages are "
+            "variable or incentive remuneration and do not replace the statutory wage floor. For every ordinary "
+            "hour actually worked, the Employer will top up remuneration when necessary to at least "
+            f"R{item.statutory_hourly_floor:.2f} per hour (the national minimum applying from 1 March 2026), or "
+            "any later higher legal minimum. Remuneration is processed monthly and paid no later than seven days "
+            "after the end of the pay period. The system's seven-day payment and service-completion hold applies "
+            "to provisional service-share earnings only and may not unlawfully delay base "
             "wages. The Employer will provide a payslip and make lawful PAYE, UIF and other authorised deductions.",
         ),
         (
             "5. Leave and absence",
-            "Annual, sick, family-responsibility, maternity, parental and other leave accrue and are administered at least "
-            "at the statutory minimum. The Tutor must use the dashboard leave form as early as reasonably possible and "
-            "identify affected lessons and a handover plan. A medical certificate may be requested when permitted by law.",
+            "Annual, sick, family-responsibility, maternity, parental and other leave accrue and are administered "
+            "at least at the statutory minimum. The Tutor must use the dashboard leave form as early as reasonably "
+            "possible and identify affected lessons and a handover plan. A medical certificate may be requested "
+            "when permitted by law.",
         ),
         (
             "6. Student protection, privacy and confidentiality",
-            "Student identities, contact information, recordings, learning records, payment data, credentials and internal "
-            "Academy information are confidential. The Tutor will comply with POPIA, use only authorised systems and assigned "
-            "booking data, avoid local copies where reasonably possible, never share credentials, and immediately report a "
-            "suspected data or safeguarding incident. Private student information must not be used for personal marketing.",
+            "Student identities, contact information, recordings, learning records, payment data, credentials and "
+            "internal Academy information are confidential. The Tutor will comply with POPIA, use only authorised "
+            "systems and assigned booking data, avoid local copies where reasonably possible, never share "
+            "credentials, and immediately report a suspected data or safeguarding incident. Private student "
+            "information must not be used for personal marketing.",
         ),
         (
             "7. Professional conduct and safeguarding",
-            "The Tutor will maintain appropriate adult-learner boundaries, communicate through approved channels, teach "
-            "without discrimination or harassment, avoid private financial arrangements with students, and comply with "
-            "Academy safeguarding, assessment, quality and complaints procedures. Lessons may be quality-reviewed on lawful "
+            "The Tutor will maintain appropriate adult-learner boundaries, communicate through approved channels, "
+            "teach without discrimination or harassment, avoid private financial arrangements with students, and "
+            "comply with Academy safeguarding, assessment, quality and complaints procedures. Lessons may be "
+            "quality-reviewed on lawful "
             "notice. Serious misconduct may lead to precautionary suspension and a fair process.",
         ),
         (
             "8. Materials and intellectual property",
-            "Each party retains pre-existing intellectual property. The Tutor grants the Employer a non-exclusive, worldwide, "
-            "royalty-free licence to store and use lesson plans, worksheets and feedback submitted for booked services for "
-            "teaching, moderation, compliance and learner support. A separate written commission is required before ownership "
+            "Each party retains pre-existing intellectual property. The Tutor grants the Employer a non-exclusive, "
+            "worldwide, royalty-free licence to store and use lesson plans, worksheets and feedback submitted for "
+            "booked services for teaching, moderation, compliance and learner support. A separate written commission "
+            "is required before ownership "
             "of substantial original course or video material transfers. Student work remains confidential.",
         ),
         (
             "9. Equipment and remote work",
-            "Unless separately agreed, the Tutor supplies a suitable computer, camera, microphone and reliable connectivity, "
-            "keeps software updated and works from a private, safe environment. Approved business expenses require prior "
-            "written authorisation. The Tutor must notify the Employer when equipment or connectivity prevents safe delivery.",
+            "Unless separately agreed, the Tutor supplies a suitable computer, camera, microphone and reliable "
+            "connectivity, keeps software updated and works from a private, safe environment. Approved business "
+            "expenses require prior written authorisation. The Tutor must notify the Employer when equipment or "
+            "connectivity prevents safe delivery.",
         ),
         (
             "10. Discipline, incapacity and termination",
-            "Performance, incapacity, misconduct, operational requirements and dismissal will be handled under the Labour "
-            "Relations Act and applicable Code of Practice. Either party may terminate on the written notice required by the "
-            "Basic Conditions of Employment Act or a longer mutually agreed lawful period. The dashboard resignation form "
-            "records notice but does not waive a fair process, accrued remuneration, handover or confidentiality obligations.",
+            "Performance, incapacity, misconduct, operational requirements and dismissal will be handled under the "
+            "Labour Relations Act and applicable Code of Practice. Either party may terminate on the written notice "
+            "required by the Basic Conditions of Employment Act or a longer mutually agreed lawful period. The "
+            "dashboard resignation form records notice but does not waive a fair process, accrued remuneration, "
+            "handover or confidentiality obligations.",
         ),
         (
             "11. General terms",
-            "This agreement, the captured service terms and lawful Academy policies form the employment record. A policy may "
-            "not reduce a statutory right. Changes to pay, duties or status require a written record accepted by both parties. "
-            "South African law applies. If a clause is invalid, the remaining clauses continue. Disputes should first be raised "
-            "internally without limiting access to the CCMA, Department of Employment and Labour or a competent court.",
+            "This agreement, the captured service terms and lawful Academy policies form the employment record. "
+            "A policy may not reduce a statutory right. Changes to pay, duties or status require a written record "
+            "accepted by both parties. South African law applies. If a clause is invalid, the remaining clauses "
+            "continue. Disputes should first be raised internally without limiting access to the CCMA, Department "
+            "of Employment and Labour or a competent court.",
         ),
         (
             "12. Electronic acceptance",
-            f"Tutor signature: {p['signature_name']} on {p['submitted_at']}. The Tutor confirmed the employment terms, POPIA "
+            f"Tutor signature: {p['signature_name']} on {p['submitted_at']}. The Tutor confirmed the employment "
+            "terms, POPIA "
             f"notice, safeguarding duties and use of an electronic signature. {signature}",
         ),
         (
             "Important review note",
-            "Terms version " + item.terms_version + ". The statutory rate and legal wording must be reviewed before 1 March "
+            "Terms version "
+            + item.terms_version
+            + ". The statutory rate and legal wording must be reviewed before 1 March "
             "2027 and whenever employment law or the booking/payment workflow changes.",
         ),
     ]

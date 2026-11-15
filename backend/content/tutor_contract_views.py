@@ -27,7 +27,12 @@ class ContractInput(serializers.Serializer):
     contact_phone = serializers.RegexField(r"^\+?[0-9 ()-]{7,25}$")
     preferred_start_date = serializers.DateField()
     ordinary_work_days = serializers.ListField(
-        child=serializers.ChoiceField(choices=[(day, day) for day in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")]),
+        child=serializers.ChoiceField(
+            choices=[
+                (day, day)
+                for day in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+            ]
+        ),
         min_length=1,
         max_length=7,
     )
@@ -121,7 +126,10 @@ class TutorEmploymentContractsView(PrivateContractAPIView):
         except ContractInputError as exc:
             return Response({"detail": str(exc)}, status=409)
         except DjangoValidationError:
-            return Response({"detail": "Unable to validate the contract. Check the details or contact the academy."}, status=400)
+            return Response(
+                {"detail": "Unable to validate the contract. Check the details or contact the academy."},
+                status=400,
+            )
         except (OSError, DatabaseError, BotoCoreError, ClientError):
             return Response({"detail": "Unable to save the contract now. Retry the same submission."}, status=503)
         return Response(summary(item), status=201 if created else 200)
@@ -134,4 +142,6 @@ class TutorEmploymentContractPDFView(PrivateContractAPIView):
         try:
             return pdf_response(item)
         except (DjangoValidationError, OSError, BotoCoreError, ClientError):
-            return Response({"detail": "The saved contract is temporarily unavailable. Contact the academy."}, status=503)
+            return Response(
+                {"detail": "The saved contract is temporarily unavailable. Contact the academy."}, status=503
+            )
