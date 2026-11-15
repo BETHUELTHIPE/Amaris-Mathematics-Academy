@@ -5,7 +5,7 @@
 Approved tutors complete a written South African employment agreement from the private tutor dashboard. The workflow is deliberately save-first:
 
 1. Django verifies the Supabase email and approved `Tutors` group membership.
-2. The server snapshots the active Admin-managed remuneration records, including the live-class percentage.
+2. The server snapshots all active Admin-managed remuneration records for the tutor's assigned services. A course-only or video-only tutor is not required to have an unrelated live-class agreement.
 3. The tutor completes written particulars and four explicit declarations.
 4. The server renders the tutor-signed PDF and saves it under `tutor-contracts/<tutor>/<contract>/` in the private `amaris-tutor-files` bucket.
 5. Only after the archive and database transaction succeed is the delivery record eligible for the notification worker.
@@ -27,7 +27,11 @@ No email is sent by the tutor's HTTP request. Retries use `(tutor, idempotency_k
 
 ## Employment safeguards
 
-Terms version `ZA-TUTOR-EMPLOYMENT-2026-03` uses **60% Admin (Academy) / 30% Tutor / 10% platform operating costs** of the gross service sale. For a R250 lesson this is R150 Admin, R75 Tutor and R25 platform operating costs, before lawful payroll deductions. The platform allocation is not an additional deduction from the tutor's 30% share. It treats the tutor as a part-time, variable-hours employee. The service-share schedule does not replace statutory wage protections.
+Terms version `ZA-TUTOR-EMPLOYMENT-2026-04` uses **60% Admin (Academy) / 30% Tutor / 10% platform operating costs** of the gross service sale for **all Academy services**, not only live classes. This covers course sales, live Zoom classes, topical/chapter/assignment/exam videos, subscriptions and future service offerings delivered under the agreement. Sponsor-funded purchases use the same split when redeemed for a service; unused sponsor credit is not itself another service sale. For multi-tutor bundles, 30% is one total Tutor pool divided under written assignments, never 30% per tutor.
+
+For a R250 service sale this is R150 Admin, R75 Tutor and R25 platform operating costs, before lawful payroll deductions. The platform allocation is not an additional deduction from the tutor's 30% share. The agreement treats the tutor as a part-time, variable-hours employee. The service-share schedule does not replace statutory wage protections.
+
+The server snapshots this all-services scope into the signed payload and displays it in the dashboard offer. Legacy signed payloads and PDFs are not silently given the expanded scope.
 
 The finance ledger's existing `academy_amount` is the combined business-retained 70% (60% Admin plus 10% platform), not an additional 70% on top of the platform allocation. Contract snapshots expose the two business allocations separately. This change does not introduce an expense-disbursement account, transfer money, change payment-provider fees, or rewrite historical earnings.
 
@@ -46,7 +50,7 @@ The agreement must be reviewed by a South African labour-law practitioner before
 ## Required rollout sequence
 
 1. Obtain legal approval and record the approved terms version.
-2. Verify every tutor has exactly one active, non-overlapping `live_class` remuneration record, and all services included in a new employment contract use `tutor_percent=30.00`. The API blocks signing when the record is missing, ambiguous or conflicts with the 60% Admin / 30% Tutor / 10% platform policy. Do not silently overwrite existing signed contracts, previously earned amounts or historic percentages; agree any change prospectively and create the appropriately dated finance terms through the existing Admin workflow.
+2. Verify every tutor has at least one assigned-service remuneration record and exactly one active, non-overlapping record per assigned service. All services included in a new employment contract must use `tutor_percent=30.00`. The API blocks signing when remuneration is missing, ambiguous or conflicts with the 60% Admin / 30% Tutor / 10% platform policy for any service. Do not silently overwrite existing signed contracts, previously earned amounts or historic percentages; agree any change prospectively and create appropriately dated finance terms through the existing Admin workflow.
 3. Deploy migration `0029_tutor_employment_contract` to staging.
 4. Confirm `TUTOR_PERSONNEL_FORMS_ENABLED=true`, `TUTOR_PERSONNEL_ADMIN_EMAIL` is the intended Super User mailbox, and the notification worker/Beat process is running.
 5. Confirm `SUPABASE_S3_TUTOR_BUCKET=amaris-tutor-files` and private S3 credentials on the web and worker services.
@@ -54,6 +58,12 @@ The agreement must be reviewed by a South African labour-law practitioner before
 7. Verify no duplicate email occurs after repeating the same submission and delivery task.
 8. Inspect logs and the Admin delivery status. Resolve any `review` record manually; never reset uncertain delivery to `queued` without checking the mailbox/provider.
 9. Promote through the normal release workflow only after evidence is attached to the pull request.
+
+## Payment integration boundary
+
+Course, live-class and existing video-request sales share the existing `_record` earnings function, which uses the effective signed finance record rather than overwriting historic percentages. This contract change does not forcefully rewrite that record or change recorded payouts.
+
+Subscriptions (#441/#442) and sponsor payments (#439) are separate unmerged work at the time of this update. The all-services contract establishes their commercial policy, but does not establish that their ledger integration is implemented or verified. Before releasing those services, verify responsible-tutor assignment, one-time allocation of a subscription or redeemed sponsor purchase, the 30% total tutor pool, 60% Admin and 10% operating-cost allocation, refunds, settlement and duplicate-notification behavior. Do not count unused sponsor credit or an already allocated subscription again.
 
 ## Rollback
 

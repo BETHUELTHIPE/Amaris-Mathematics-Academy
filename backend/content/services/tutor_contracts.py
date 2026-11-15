@@ -26,11 +26,18 @@ from content.tutor_contract_models import TutorEmploymentContract
 from content.tutor_finance_models import TutorContract
 
 logger = logging.getLogger(__name__)
-TERMS_VERSION = "ZA-TUTOR-EMPLOYMENT-2026-03"
+TERMS_VERSION = "ZA-TUTOR-EMPLOYMENT-2026-04"
 STATUTORY_HOURLY_FLOOR = Decimal("30.23")
 EMPLOYMENT_TUTOR_PERCENT = Decimal("30.00")
 EMPLOYMENT_ADMIN_PERCENT = Decimal("60.00")
 EMPLOYMENT_PLATFORM_PERCENT = Decimal("10.00")
+ALL_SERVICES_SCOPE = (
+    "The 60% Admin / 30% Tutor / 10% platform operating costs split applies to all Academy services "
+    "delivered under this agreement: online live classes, course sales, topical, chapter, assignment and exam "
+    "videos, subscriptions and future service offerings. Sponsor-funded purchases use the same split when "
+    "redeemed for a service; unused sponsor credit is not a second service sale. For multi-tutor bundles, "
+    "30% is the total Tutor pool to be divided under written assignments, not 30% for each tutor."
+)
 MAX_PDF_BYTES = 2 * 1024 * 1024
 
 
@@ -62,8 +69,8 @@ def current_service_terms(tutor):
                 "Existing agreements and earned amounts are not changed automatically."
             )
         by_service[row.service] = row
-    if TutorContract.Service.LIVE_CLASS not in by_service:
-        raise ContractInputError("The Academy must configure your online-class remuneration before signing.")
+    if not by_service:
+        raise ContractInputError("The Academy must configure remuneration for your assigned services before signing.")
     return [
         {
             "service": row.service,
@@ -88,6 +95,7 @@ def offer_summary(tutor):
         "available": True,
         "detail": "Review these employer-configured terms before signing.",
         "terms_version": TERMS_VERSION,
+        "revenue_scope": ALL_SERVICES_SCOPE,
         "statutory_hourly_floor": f"{STATUTORY_HOURLY_FLOOR:.2f}",
         "currency": "ZAR",
         "pay_frequency": "Monthly; no later than seven days after the pay period",
@@ -119,6 +127,7 @@ def submit_contract(*, tutor, key, values):
             payload.update(
                 tutor_name=tutor.get_full_name().strip() or tutor.get_username(),
                 tutor_email=tutor.email,
+                revenue_scope=ALL_SERVICES_SCOPE,
                 submitted_at=timezone.now()
                 .astimezone(ZoneInfo("Africa/Johannesburg"))
                 .strftime("%d %B %Y at %H:%M:%S SAST (UTC+2)"),

@@ -51,6 +51,8 @@ def _clauses(item, executed):
         if any("platform_percent" in term for term in item.service_terms)
         else ""
     )
+    # Read the scope that the tutor accepted; never add new terms to a legacy snapshot.
+    scope_note = (p["revenue_scope"] + " ") if p.get("revenue_scope") else ""
     signature = (
         f"For the employer: {item.employer_signature_name}; effective {item.effective_date}."
         if executed
@@ -83,7 +85,8 @@ def _clauses(item, executed):
         ),
         (
             "4. Remuneration",
-            "The agreed revenue split for each service is captured below, calculated on the gross service sale "
+            f"{scope_note}The agreed revenue split for each service is captured below, "
+            "calculated on the gross service sale "
             f"recorded by the booking system: {service_terms}. {platform_note}These shares are "
             "variable or incentive remuneration and do not replace the statutory wage floor. For every ordinary "
             "hour actually worked, the Employer will top up remuneration when necessary to at least "

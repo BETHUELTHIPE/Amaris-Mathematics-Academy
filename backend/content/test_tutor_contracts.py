@@ -17,6 +17,7 @@ from rest_framework.test import APIClient
 
 from content.models import SiteSettings
 from content.services.tutor_contracts import (
+    ALL_SERVICES_SCOPE,
     ContractInputError,
     archived_contract_pdf,
     current_service_terms,
@@ -72,7 +73,8 @@ class TutorEmploymentContractTests(TestCase):
         self.assertTrue(created)
         self.assertEqual(item.status, "submitted")
         self.assertEqual(str(item.statutory_hourly_floor), "30.23")
-        self.assertEqual(item.terms_version, "ZA-TUTOR-EMPLOYMENT-2026-03")
+        self.assertEqual(item.terms_version, "ZA-TUTOR-EMPLOYMENT-2026-04")
+        self.assertEqual(item.payload["revenue_scope"], ALL_SERVICES_SCOPE)
         self.assertEqual(item.service_terms[0]["tutor_percent"], "30.00")
         self.assertEqual(item.service_terms[0]["academy_percent"], "60.00")
         self.assertEqual(item.service_terms[0]["platform_percent"], "10.00")
@@ -160,7 +162,7 @@ class TutorEmploymentContractTests(TestCase):
             item.status = "declined"
             model_admin.save_model(request, item, None, True)
 
-    def test_no_live_class_remuneration_blocks_signing(self):
+    def test_no_assigned_service_remuneration_blocks_signing(self):
         TutorContract.objects.all().delete()
         response = self.api.get(reverse("tutor-employment-contracts"))
         self.assertFalse(response.data["offer"]["available"])
@@ -171,6 +173,33 @@ class TutorEmploymentContractTests(TestCase):
         )
         self.assertEqual(post.status_code, 409)
         self.assertEqual(TutorEmploymentContract.objects.count(), 0)
+
+    def test_same_split_for_every_finance_service_including_course_and_video_only_tutors(self):
+        for service, _label in TutorContract.Service.choices:
+            with self.subTest(service=service):
+                TutorContract.objects.filter(tutor=self.tutor).update(service=service)
+                terms = current_service_terms(self.tutor)
+                self.assertEqual(len(terms), 1)
+                self.assertEqual(terms[0]["service"], service)
+                self.assertEqual(terms[0]["academy_percent"], "60.00")
+                self.assertEqual(terms[0]["tutor_percent"], "30.00")
+                self.assertEqual(terms[0]["platform_percent"], "10.00")
+                offer = self.api.get(reverse("tutor-employment-contracts")).data["offer"]
+                self.assertTrue(offer["available"])
+                self.assertEqual(offer["revenue_scope"], ALL_SERVICES_SCOPE)
+
+    def test_wrong_course_or_video_percentage_cannot_hide_behind_valid_live_class_terms(self):
+        for service in (TutorContract.Service.COURSE, TutorContract.Service.VIDEO):
+            with self.subTest(service=service):
+                extra = TutorContract.objects.create(
+                    tutor=self.tutor,
+                    service=service,
+                    tutor_percent="40.00",
+                    contract_reference="INVALID-SERVICE-SPLIT",
+                )
+                with self.assertRaises(ContractInputError):
+                    current_service_terms(self.tutor)
+                extra.delete()
 
     def test_conflicting_share_blocks_new_signing_without_rewriting_existing_terms(self):
         TutorContract.objects.filter(tutor=self.tutor).update(tutor_percent="60.00")
