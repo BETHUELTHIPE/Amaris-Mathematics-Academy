@@ -103,16 +103,16 @@ export function TutorEmploymentContract() {
     {message && <div role={message.kind === "error" ? "alert" : "status"} className={`mt-6 rounded-xl border p-4 text-sm ${message.kind === "error" ? "border-[#f5c2bf] bg-[#fff3f3] text-[#9b2525]" : "border-[#a7ddcb] bg-[#ebfbf4] text-[#136950]"}`}>{message.text}</div>}
     {loading ? <p role="status" className="mt-6 text-sm text-[#60708a]">Loading your employment terms…</p> : data && <>
       <div className="mt-7 rounded-2xl border border-[#dce4ef] bg-[#f8faff] p-5">
-        <div className="flex items-center gap-2 font-semibold text-[#0b2a5b]"><ShieldCheck className="size-5" /> Employer-configured remuneration</div>
+        <div className="flex items-center gap-2 font-semibold text-[#0b2a5b]"><ShieldCheck className="size-5" /> Revenue split: 60% Admin / 40% Tutor</div>
         {data.offer.available ? <>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {data.offer.service_terms.map(term => <div key={term.service} className="rounded-xl bg-white p-4 text-sm">
               <p className="font-semibold">{term.service_label}</p>
-              <p className="mt-1 text-[#60708a]">Tutor {term.tutor_percent}% · Academy {term.academy_percent}%</p>
+              <p className="mt-1 text-[#60708a]">Admin (Academy) {term.academy_percent}% · Tutor {term.tutor_percent}%</p>
               <p className="mt-1 break-all text-xs text-[#60708a]">Reference {term.contract_reference}</p>
             </div>)}
           </div>
-          <p className="mt-4 text-sm leading-6 text-[#263852]">The service share is variable remuneration. The Academy must top up ordinary hours to at least <strong>R{data.offer.statutory_hourly_floor}/hour</strong>, or the later higher legal minimum. Pay frequency: {data.offer.pay_frequency}.</p>
+          <p className="mt-4 text-sm leading-6 text-[#263852]">For a R250 gross lesson payment, the split is R150 Admin / R100 Tutor, before any lawful payroll deductions. This revenue split does not remove employment-law protections. The Academy must meet at least <strong>R{data.offer.statutory_hourly_floor}/hour</strong>, or the later higher legal minimum. Pay frequency: {data.offer.pay_frequency}.</p>
         </> : <p role="alert" className="mt-3 text-sm text-[#9b2525]">{data.offer.detail}</p>}
       </div>
 
