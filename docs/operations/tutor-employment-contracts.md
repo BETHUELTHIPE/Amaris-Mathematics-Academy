@@ -27,7 +27,11 @@ No email is sent by the tutor's HTTP request. Retries use `(tutor, idempotency_k
 
 ## Employment safeguards
 
-Terms version `ZA-TUTOR-EMPLOYMENT-2026-02` uses **60% Admin (Academy) / 40% Tutor** of the gross service sale. For a R250 lesson this is R150 Admin and R100 Tutor, before lawful payroll deductions. It treats the tutor as a part-time, variable-hours employee. The service-share schedule does not replace statutory wage protections. The PDF records:
+Terms version `ZA-TUTOR-EMPLOYMENT-2026-03` uses **60% Admin (Academy) / 30% Tutor / 10% platform operating costs** of the gross service sale. For a R250 lesson this is R150 Admin, R75 Tutor and R25 platform operating costs, before lawful payroll deductions. The platform allocation is not an additional deduction from the tutor's 30% share. It treats the tutor as a part-time, variable-hours employee. The service-share schedule does not replace statutory wage protections.
+
+The finance ledger's existing `academy_amount` is the combined business-retained 70% (60% Admin plus 10% platform), not an additional 70% on top of the platform allocation. Contract snapshots expose the two business allocations separately. This change does not introduce an expense-disbursement account, transfer money, change payment-provider fees, or rewrite historical earnings.
+
+The PDF records:
 
 - R30.23 per ordinary hour as the national minimum applying from 1 March 2026, with an automatic obligation to use a later higher legal rate;
 - monthly pay no later than seven days after the pay period;
@@ -42,7 +46,7 @@ The agreement must be reviewed by a South African labour-law practitioner before
 ## Required rollout sequence
 
 1. Obtain legal approval and record the approved terms version.
-2. Verify every tutor has exactly one active, non-overlapping `live_class` remuneration record, and all services included in a new employment contract use `tutor_percent=40.00`. The API blocks signing when the record is missing, ambiguous or conflicts with the 60% Admin / 40% Tutor policy. Do not silently overwrite existing signed contracts, previously earned amounts or historic percentages; agree any change prospectively and create the appropriately dated finance terms through the existing Admin workflow.
+2. Verify every tutor has exactly one active, non-overlapping `live_class` remuneration record, and all services included in a new employment contract use `tutor_percent=30.00`. The API blocks signing when the record is missing, ambiguous or conflicts with the 60% Admin / 30% Tutor / 10% platform policy. Do not silently overwrite existing signed contracts, previously earned amounts or historic percentages; agree any change prospectively and create the appropriately dated finance terms through the existing Admin workflow.
 3. Deploy migration `0029_tutor_employment_contract` to staging.
 4. Confirm `TUTOR_PERSONNEL_FORMS_ENABLED=true`, `TUTOR_PERSONNEL_ADMIN_EMAIL` is the intended Super User mailbox, and the notification worker/Beat process is running.
 5. Confirm `SUPABASE_S3_TUTOR_BUCKET=amaris-tutor-files` and private S3 credentials on the web and worker services.

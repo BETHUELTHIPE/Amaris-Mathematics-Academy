@@ -26,9 +26,11 @@ from content.tutor_contract_models import TutorEmploymentContract
 from content.tutor_finance_models import TutorContract
 
 logger = logging.getLogger(__name__)
-TERMS_VERSION = "ZA-TUTOR-EMPLOYMENT-2026-02"
+TERMS_VERSION = "ZA-TUTOR-EMPLOYMENT-2026-03"
 STATUTORY_HOURLY_FLOOR = Decimal("30.23")
-EMPLOYMENT_TUTOR_PERCENT = Decimal("40.00")
+EMPLOYMENT_TUTOR_PERCENT = Decimal("30.00")
+EMPLOYMENT_ADMIN_PERCENT = Decimal("60.00")
+EMPLOYMENT_PLATFORM_PERCENT = Decimal("10.00")
 MAX_PDF_BYTES = 2 * 1024 * 1024
 
 
@@ -56,7 +58,7 @@ def current_service_terms(tutor):
             raise ContractInputError("The Academy must resolve overlapping remuneration terms before signing.")
         if row.tutor_percent != EMPLOYMENT_TUTOR_PERCENT:
             raise ContractInputError(
-                "The Academy must configure remuneration as 60% Admin / 40% Tutor before signing. "
+                "The Academy must configure 60% Admin / 30% Tutor / 10% platform operating costs before signing. "
                 "Existing agreements and earned amounts are not changed automatically."
             )
         by_service[row.service] = row
@@ -67,7 +69,8 @@ def current_service_terms(tutor):
             "service": row.service,
             "service_label": row.get_service_display(),
             "tutor_percent": f"{row.tutor_percent:.2f}",
-            "academy_percent": f"{Decimal('100.00') - row.tutor_percent:.2f}",
+            "academy_percent": f"{EMPLOYMENT_ADMIN_PERCENT:.2f}",
+            "platform_percent": f"{EMPLOYMENT_PLATFORM_PERCENT:.2f}",
             "contract_reference": row.contract_reference,
             "effective_from": row.effective_from.isoformat(),
             "effective_until": row.effective_until.isoformat() if row.effective_until else None,

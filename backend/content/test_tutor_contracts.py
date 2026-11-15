@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 from io import BytesIO
 from unittest.mock import patch
 
@@ -43,7 +44,7 @@ class TutorEmploymentContractTests(TestCase):
         TutorContract.objects.create(
             tutor=self.tutor,
             service="live_class",
-            tutor_percent="40.00",
+            tutor_percent="30.00",
             contract_reference="ADMIN-RATE-001",
         )
         self.storage = InMemoryStorage()
@@ -71,14 +72,21 @@ class TutorEmploymentContractTests(TestCase):
         self.assertTrue(created)
         self.assertEqual(item.status, "submitted")
         self.assertEqual(str(item.statutory_hourly_floor), "30.23")
-        self.assertEqual(item.terms_version, "ZA-TUTOR-EMPLOYMENT-2026-02")
-        self.assertEqual(item.service_terms[0]["tutor_percent"], "40.00")
+        self.assertEqual(item.terms_version, "ZA-TUTOR-EMPLOYMENT-2026-03")
+        self.assertEqual(item.service_terms[0]["tutor_percent"], "30.00")
         self.assertEqual(item.service_terms[0]["academy_percent"], "60.00")
+        self.assertEqual(item.service_terms[0]["platform_percent"], "10.00")
+        term = item.service_terms[0]
+        self.assertEqual(
+            sum(Decimal(term[key]) for key in ("academy_percent", "tutor_percent", "platform_percent")),
+            Decimal("100.00"),
+        )
         self.assertTrue(item.employee_pdf.name.startswith(f"tutor-contracts/{self.tutor.pk}/{item.pk}/"))
         document = archived_contract_pdf(item)
         text = "\n".join(page.extract_text() for page in PdfReader(BytesIO(document)).pages)
         for value in ["Tutor contract of employment", "R30.23", "PAYE", "UIF", "POPIA", "ADMIN-RATE-001"]:
             self.assertIn(value, text)
+        self.assertIn("Platform operating costs 10.00%", text)
         self.assertEqual(len(mail.outbox), 0)
         self.assertEqual(deliver_contract(item.pk), 1)
         self.assertEqual(deliver_contract(item.pk), 0)
@@ -105,6 +113,8 @@ class TutorEmploymentContractTests(TestCase):
                 **self.values,
                 "idempotency_key": "employment-contract-api",
                 "tutor_percent": "100.00",
+                "academy_percent": "0.00",
+                "platform_percent": "0.00",
                 "recipient": "attacker@example.test",
                 "status": "accepted",
             },
@@ -112,8 +122,9 @@ class TutorEmploymentContractTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         item = TutorEmploymentContract.objects.get()
-        self.assertEqual(item.service_terms[0]["tutor_percent"], "40.00")
+        self.assertEqual(item.service_terms[0]["tutor_percent"], "30.00")
         self.assertEqual(item.service_terms[0]["academy_percent"], "60.00")
+        self.assertEqual(item.service_terms[0]["platform_percent"], "10.00")
         self.assertEqual(item.recipient, "admin@example.test")
         self.assertEqual(item.status, "submitted")
         own = self.api.get(reverse("tutor-employment-contract-pdf", args=[item.pk]))
@@ -168,7 +179,7 @@ class TutorEmploymentContractTests(TestCase):
         self.assertEqual(str(TutorContract.objects.get(tutor=self.tutor).tutor_percent), "60.00")
         response = self.api.get(reverse("tutor-employment-contracts"))
         self.assertFalse(response.data["offer"]["available"])
-        self.assertIn("60% Admin / 40% Tutor", response.data["offer"]["detail"])
+        self.assertIn("60% Admin / 30% Tutor / 10% platform operating costs", response.data["offer"]["detail"])
 
     def test_private_storage_failure_never_creates_outbox_record(self):
         with patch.object(self.storage, "save", side_effect=OSError("synthetic unavailable")):
