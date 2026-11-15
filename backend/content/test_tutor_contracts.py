@@ -15,7 +15,13 @@ from pypdf import PdfReader
 from rest_framework.test import APIClient
 
 from content.models import SiteSettings
-from content.services.tutor_contracts import archived_contract_pdf, deliver_contract, submit_contract
+from content.services.tutor_contracts import (
+    ContractInputError,
+    archived_contract_pdf,
+    current_service_terms,
+    deliver_contract,
+    submit_contract,
+)
 from content.services.tutor_video_uploads import UploadConflict
 from content.tutor_contract_admin import TutorEmploymentContractAdmin
 from content.tutor_contract_models import TutorEmploymentContract
@@ -37,7 +43,7 @@ class TutorEmploymentContractTests(TestCase):
         TutorContract.objects.create(
             tutor=self.tutor,
             service="live_class",
-            tutor_percent="60.00",
+            tutor_percent="40.00",
             contract_reference="ADMIN-RATE-001",
         )
         self.storage = InMemoryStorage()
@@ -65,6 +71,9 @@ class TutorEmploymentContractTests(TestCase):
         self.assertTrue(created)
         self.assertEqual(item.status, "submitted")
         self.assertEqual(str(item.statutory_hourly_floor), "30.23")
+        self.assertEqual(item.terms_version, "ZA-TUTOR-EMPLOYMENT-2026-02")
+        self.assertEqual(item.service_terms[0]["tutor_percent"], "40.00")
+        self.assertEqual(item.service_terms[0]["academy_percent"], "60.00")
         self.assertTrue(item.employee_pdf.name.startswith(f"tutor-contracts/{self.tutor.pk}/{item.pk}/"))
         document = archived_contract_pdf(item)
         text = "\n".join(page.extract_text() for page in PdfReader(BytesIO(document)).pages)
@@ -103,7 +112,8 @@ class TutorEmploymentContractTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         item = TutorEmploymentContract.objects.get()
-        self.assertEqual(item.service_terms[0]["tutor_percent"], "60.00")
+        self.assertEqual(item.service_terms[0]["tutor_percent"], "40.00")
+        self.assertEqual(item.service_terms[0]["academy_percent"], "60.00")
         self.assertEqual(item.recipient, "admin@example.test")
         self.assertEqual(item.status, "submitted")
         own = self.api.get(reverse("tutor-employment-contract-pdf", args=[item.pk]))
@@ -150,6 +160,15 @@ class TutorEmploymentContractTests(TestCase):
         )
         self.assertEqual(post.status_code, 409)
         self.assertEqual(TutorEmploymentContract.objects.count(), 0)
+
+    def test_conflicting_share_blocks_new_signing_without_rewriting_existing_terms(self):
+        TutorContract.objects.filter(tutor=self.tutor).update(tutor_percent="60.00")
+        with self.assertRaises(ContractInputError):
+            current_service_terms(self.tutor)
+        self.assertEqual(str(TutorContract.objects.get(tutor=self.tutor).tutor_percent), "60.00")
+        response = self.api.get(reverse("tutor-employment-contracts"))
+        self.assertFalse(response.data["offer"]["available"])
+        self.assertIn("60% Admin / 40% Tutor", response.data["offer"]["detail"])
 
     def test_private_storage_failure_never_creates_outbox_record(self):
         with patch.object(self.storage, "save", side_effect=OSError("synthetic unavailable")):

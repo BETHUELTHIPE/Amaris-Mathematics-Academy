@@ -26,8 +26,9 @@ from content.tutor_contract_models import TutorEmploymentContract
 from content.tutor_finance_models import TutorContract
 
 logger = logging.getLogger(__name__)
-TERMS_VERSION = "ZA-TUTOR-EMPLOYMENT-2026-01"
+TERMS_VERSION = "ZA-TUTOR-EMPLOYMENT-2026-02"
 STATUTORY_HOURLY_FLOOR = Decimal("30.23")
+EMPLOYMENT_TUTOR_PERCENT = Decimal("40.00")
 MAX_PDF_BYTES = 2 * 1024 * 1024
 
 
@@ -53,6 +54,11 @@ def current_service_terms(tutor):
     for row in rows:
         if row.service in by_service:
             raise ContractInputError("The Academy must resolve overlapping remuneration terms before signing.")
+        if row.tutor_percent != EMPLOYMENT_TUTOR_PERCENT:
+            raise ContractInputError(
+                "The Academy must configure remuneration as 60% Admin / 40% Tutor before signing. "
+                "Existing agreements and earned amounts are not changed automatically."
+            )
         by_service[row.service] = row
     if TutorContract.Service.LIVE_CLASS not in by_service:
         raise ContractInputError("The Academy must configure your online-class remuneration before signing.")

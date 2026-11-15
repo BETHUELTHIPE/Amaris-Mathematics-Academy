@@ -37,7 +37,7 @@ def _clauses(item, executed):
     p = item.payload
     days = ", ".join(p["ordinary_work_days"])
     service_terms = "; ".join(
-        f"{term['service_label']}: tutor {term['tutor_percent']}% / academy {term['academy_percent']}% "
+        f"{term['service_label']}: Admin (Academy) {term['academy_percent']}% / Tutor {term['tutor_percent']}% "
         f"(reference {term['contract_reference']})"
         for term in item.service_terms
     )
@@ -73,7 +73,8 @@ def _clauses(item, executed):
         ),
         (
             "4. Remuneration",
-            f"Current service-share terms captured at signature are: {service_terms}. These percentages are "
+            "The agreed revenue split for each service is captured below, calculated on the gross service sale "
+            f"recorded by the booking system: {service_terms}. These shares are "
             "variable or incentive remuneration and do not replace the statutory wage floor. For every ordinary "
             "hour actually worked, the Employer will top up remuneration when necessary to at least "
             f"R{item.statutory_hourly_floor:.2f} per hour (the national minimum applying from 1 March 2026), or "
