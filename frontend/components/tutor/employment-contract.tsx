@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { BriefcaseBusiness, Download, FileSignature, ShieldCheck } from "lucide-react";
 
 type ServiceTerm = {
@@ -55,7 +55,7 @@ export function TutorEmploymentContract() {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
     setMessage(null);
@@ -122,7 +122,7 @@ export function TutorEmploymentContract() {
             <textarea name="residential_address" required minLength={10} maxLength={500} rows={3} autoComplete="street-address" className="rounded-xl border border-[#cbd6e5] px-4 py-3 font-normal" />
           </label>
           <label className="grid gap-2 text-sm font-semibold">Contact number
-            <input name="contact_phone" required pattern="\+?[0-9 ()-]{7,25}" autoComplete="tel" className="rounded-xl border border-[#cbd6e5] px-4 py-3 font-normal" />
+            <input name="contact_phone" required pattern="[+0-9 ()-]{7,25}" autoComplete="tel" className="rounded-xl border border-[#cbd6e5] px-4 py-3 font-normal" />
           </label>
           <label className="grid gap-2 text-sm font-semibold">Preferred commencement date
             <input name="preferred_start_date" type="date" required min={new Date().toISOString().slice(0, 10)} className="rounded-xl border border-[#cbd6e5] px-4 py-3 font-normal" />
