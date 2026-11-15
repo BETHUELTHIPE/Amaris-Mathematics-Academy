@@ -6,6 +6,7 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core import mail
+from django.core.exceptions import ValidationError
 from django.core.files.storage import InMemoryStorage
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
@@ -134,7 +135,7 @@ class TutorEmploymentContractTests(TestCase):
         text = "\n".join(page.extract_text() for page in PdfReader(BytesIO(executed)).pages)
         self.assertIn("EXECUTED COPY", text)
         self.assertIn("Authorised Super User", text)
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             item.status = "declined"
             model_admin.save_model(request, item, None, True)
 
