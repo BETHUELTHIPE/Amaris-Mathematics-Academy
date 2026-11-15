@@ -129,6 +129,10 @@ class TutorSummarySerializer(serializers.Serializer):
 
 
 class TutorDashboardResponseSerializer(serializers.Serializer):
+    employment_contracts_enabled = serializers.BooleanField()
+    personnel_forms_enabled = serializers.BooleanField()
+    video_uploads_enabled = serializers.BooleanField()
+    max_video_upload_bytes = serializers.IntegerField()
     tutor = TutorIdentitySerializer()
     rate_per_hour = serializers.CharField()
     max_hours = serializers.IntegerField()
@@ -290,6 +294,7 @@ class TutorDashboardView(TutorOnlyAPIView):
             )
         return Response(
             {
+                "employment_contracts_enabled": settings.TUTOR_PERSONNEL_FORMS_ENABLED,
                 "video_uploads_enabled": settings.TUTOR_VIDEO_UPLOADS_ENABLED,
                 "personnel_forms_enabled": settings.TUTOR_PERSONNEL_FORMS_ENABLED,
                 "max_video_upload_bytes": settings.TUTOR_VIDEO_MAX_UPLOAD_BYTES,

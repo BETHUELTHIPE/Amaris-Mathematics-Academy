@@ -27,6 +27,7 @@ from .tutor_application_views import (
     TutorApplicationDocumentView,
     TutorApplicationView,
 )
+from .tutor_contract_views import TutorEmploymentContractPDFView, TutorEmploymentContractsView
 from .tutor_personnel_views import TutorPersonnelFormsView, TutorPersonnelPDFView
 from .tutor_video_views import TutorVideoView
 from .tutor_views import TutorDashboardView, TutorEarningsView, TutorSlotCreateView, TutorSlotUpdateView
@@ -67,6 +68,8 @@ router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
     path("tutor/videos/", TutorVideoView.as_view(), name="tutor-videos"),
+    path("tutor/contracts/", TutorEmploymentContractsView.as_view(), name="tutor-employment-contracts"),
+    path("tutor/contracts/<uuid:contract_id>/pdf/", TutorEmploymentContractPDFView.as_view(), name="tutor-employment-contract-pdf"),
     path("tutor/forms/", TutorPersonnelFormsView.as_view(), name="tutor-personnel-forms"),
     path("tutor/forms/<uuid:form_id>/pdf/", TutorPersonnelPDFView.as_view(), name="tutor-personnel-pdf"),
     path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
