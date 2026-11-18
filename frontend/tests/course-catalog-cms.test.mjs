@@ -17,8 +17,8 @@ function cmsClient(fetch, configuredUrl = "https://cms.example") {
   const process = { env: configuredUrl === null ? {} : { CMS_API_URL: configuredUrl } };
   function load(filename) {
     if (modules.has(filename)) return modules.get(filename).exports;
-    const module = { exports: {} };
-    modules.set(filename, module);
+    const loadedModule = { exports: {} };
+    modules.set(filename, loadedModule);
     const code = ts.transpileModule(readFileSync(filename, "utf8"), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
     }).outputText;
@@ -27,8 +27,8 @@ function cmsClient(fetch, configuredUrl = "https://cms.example") {
       const target = path.join(frontend, id.slice(2));
       return load(path.extname(target) ? target : `${target}.ts`);
     };
-    runInNewContext(code, { module, exports: module.exports, require: localRequire, process, fetch, URL, URLSearchParams, AbortSignal, console }, { filename });
-    return module.exports;
+    runInNewContext(code, { module: loadedModule, exports: loadedModule.exports, require: localRequire, process, fetch, URL, URLSearchParams, AbortSignal, console }, { filename });
+    return loadedModule.exports;
   }
   return load(path.join(frontend, "lib/cms.ts"));
 }
