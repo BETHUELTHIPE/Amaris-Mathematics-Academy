@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- header uses intentional full-page anchors to avoid public-route Link hydration */
-import { Mail, MapPin, Phone } from "lucide-react";
+import { Mail, MapPin, Phone, Search } from "lucide-react";
 import { AuthControls } from "@/components/site/auth-controls";
 import { ShareWebsiteButton } from "@/components/site/share-website-button";
 import { getManagedBrand, getManagedNavigation } from "@/lib/cms";
@@ -18,6 +18,7 @@ export async function Header() {
             <a href={academyBrand.emailHref} className="flex min-w-0 items-center gap-2 transition hover:text-white"><Mail className="size-3.5 shrink-0 text-[#ffcc66]" /><span className="hidden truncate sm:inline">{academyBrand.email}</span><span className="sm:hidden">Email us</span></a>
           </div>
           <div className="flex shrink-0 items-center gap-3">
+            <a href="/courses#course-search" aria-label="Search all mathematics courses" className="flex items-center gap-1.5 rounded px-1 py-1 text-white/80 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ffcc66]"><Search aria-hidden="true" className="size-3.5 text-[#ffcc66]" /><span>Search</span></a>
             <a href={academyBrand.addressHref} target="_blank" rel="noreferrer" className="hidden items-center gap-2 transition hover:text-white lg:flex"><MapPin className="size-3.5 text-[#ffcc66]" />{academyBrand.addressShort}</a>
             <ShareWebsiteButton compact />
           </div>
@@ -33,3 +34,4 @@ export async function Header() {
     </header>
   );
 }
+
