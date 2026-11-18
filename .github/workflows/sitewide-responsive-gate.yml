@@ -8,6 +8,7 @@ on:
       - 'frontend/components/**'
       - 'frontend/e2e/sitewide_responsive.py'
       - 'frontend/e2e/private_synthetic_responsive.py'
+      - 'frontend/e2e/fixtures/student-course-cms.mjs'
       - '.github/workflows/sitewide-responsive-gate.yml'
   workflow_dispatch:
 
@@ -95,9 +96,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node e2e/fixtures/student-course-cms.mjs > /tmp/amaris-sitewide-cms.log 2>&1 &
+          cms=$!
+          trap 'kill "$cms" ${server:+"$server"} 2>/dev/null || true' EXIT
+          for n in $(seq 1 20); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:3001/health >/dev/null; then break; fi
+            if [ "$n" -eq 20 ]; then cat /tmp/amaris-sitewide-cms.log; exit 1; fi
+            sleep 1
+          done
           npm run dev:ci > /tmp/amaris-sitewide-synthetic.log 2>&1 &
           server=$!
-          trap 'kill "$server" 2>/dev/null || true' EXIT
           for n in $(seq 1 60); do
             if curl --fail --silent --max-time 4 http://127.0.0.1:3000/ >/dev/null; then break; fi
             if [ "$n" -eq 60 ]; then cat /tmp/amaris-sitewide-synthetic.log; exit 1; fi

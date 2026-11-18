@@ -22,11 +22,13 @@ const fixture = [
   { id: 1, title: "Keep your account details private", message: "For account or payment questions, contact the academy directly.", link_url: "javascript:alert(1)", link_label: "Unsafe fixture", priority: 0, expires_at: null },
   { id: 0, title: "EXPIRED NOTICE", message: "Must not appear", link_url: "", link_label: "", priority: 10, expires_at: "2020-01-01T00:00:00Z" },
 ];
+let fixtureMode = "normal";
 const cms = http.createServer((request, response) => {
   response.setHeader("Content-Type", "application/json");
-  if (request.url.includes("bootstrap")) return response.end(JSON.stringify({ settings: null, navigation: [] }));
-  if (request.url.startsWith("/outage/")) { response.statusCode = 503; return response.end("{}"); }
-  response.end(JSON.stringify(request.url.startsWith("/empty/") ? [] : fixture));
+  if (request.url === "/api/v1/bootstrap/") return response.end(JSON.stringify({ settings: null, navigation: [] }));
+  if (request.url !== "/api/v1/announcements/") { response.statusCode = 404; return response.end("{}"); }
+  if (fixtureMode === "outage") { response.statusCode = 503; return response.end("{}"); }
+  response.end(JSON.stringify(fixtureMode === "empty" ? [] : fixture));
 });
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
 
@@ -34,11 +36,12 @@ await new Promise((done) => cms.listen(4312, "127.0.0.1", done));
 let browser;
 try {
   for (const [index, mode] of ["normal", "empty", "outage"].entries()) {
+    fixtureMode = mode;
     const port = 4320 + index;
     const origin = `http://127.0.0.1:${port}`;
     const server = spawn(process.execPath, [".output/server/index.mjs"], {
       cwd: root,
-      env: { ...process.env, NODE_ENV: "production", HOST: "127.0.0.1", PORT: String(port), CMS_API_URL: `http://127.0.0.1:4312/${mode}` },
+      env: { ...process.env, NODE_ENV: "production", HOST: "127.0.0.1", PORT: String(port), CMS_API_URL: "http://127.0.0.1:4312/api/v1" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let logs = "";
