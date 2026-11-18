@@ -4,6 +4,7 @@ import re
 import unicodedata
 
 from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models.expressions import Expression
 from rest_framework.exceptions import ValidationError
 from rest_framework.filters import BaseFilterBackend, OrderingFilter
 
@@ -63,7 +64,7 @@ class CourseSearchFilter(BaseFilterBackend):
             queryset = queryset.filter(term_condition(term))
         # Search only compact public metadata. Never join paid lesson bodies,
         # private videos, tutor records or student data to a search result.
-        rank = Case(
+        rank: Expression = Case(
             When(title__iexact=query, then=Value(100)),
             When(title__istartswith=query, then=Value(70)),
             When(title__icontains=query, then=Value(50)),
