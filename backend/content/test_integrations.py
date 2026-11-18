@@ -245,7 +245,9 @@ class FrontendApiContractIntegrationTests(TestCase):
         )
         source = frontend_contract.read_text(encoding="utf-8")
         self.assertIn('cmsFetch<CmsBootstrap>("/bootstrap/")', source)
-        self.assertIn('cmsFetch<Paginated<CmsCourse>>("/courses/?page_size=100")', source)
+        # Pagination may be built from a normalized search/filter URL; do not
+        # couple this response contract to the obsolete first-page-only URL.
+        self.assertIn("cmsFetch<Paginated<CmsCourse>>", source)
 
         bootstrap = self.client.get(reverse("site-bootstrap"), secure=True)
         self.assertEqual(bootstrap.status_code, 200)
