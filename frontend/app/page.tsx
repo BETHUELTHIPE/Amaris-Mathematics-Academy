@@ -6,7 +6,7 @@ import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
 import { AmarisAssistantLauncher } from "@/components/site/amaris-assistant-launcher";
 import { formatRand } from "@/lib/courses";
-import { getManagedCourses } from "@/lib/cms";
+import { getManagedFeaturedCourses } from "@/lib/cms";
 
 function FeaturedCoursesPlaceholder() {
   return (
@@ -24,7 +24,7 @@ function FeaturedCoursesPlaceholder() {
 }
 
 async function FeaturedCourses() {
-  const courses = await getManagedCourses();
+  const courses = await getManagedFeaturedCourses();
   const featured = courses.filter((course) => course.featured);
   return (
         <div className="mt-10 grid gap-5 lg:grid-cols-3">{featured.map((course, index) => <article key={course.slug} className="group flex min-h-[360px] flex-col rounded-3xl border border-[#dce4ef] bg-white p-7 shadow-[0_20px_55px_rgba(7,21,45,.055)] transition hover:-translate-y-1 hover:shadow-[0_25px_70px_rgba(7,21,45,.1)]"><div className="flex items-center justify-between"><span className="rounded-full bg-[#edf3ff] px-3 py-1 text-xs font-bold text-[#1f5bbd]">{course.curriculum}</span><span className="text-sm font-semibold text-[#60708a]">0{index+1}</span></div><h3 className="mt-10 text-3xl font-semibold leading-tight tracking-[-0.035em]">{course.title}</h3><p className="mt-4 text-sm leading-7 text-[#60708a]">{course.description}</p><div className="mt-auto flex items-end justify-between pt-8"><div><p className="text-xs text-[#60708a]">{course.lessons} lessons · {course.hours} hours</p><p className="mt-1 text-2xl font-bold">{formatRand(course.price)}</p></div><a href={`/courses/${course.slug}`} className="grid size-12 place-items-center rounded-full bg-[#0b2a5b] text-white transition group-hover:bg-[#2767d8]" aria-label={`View ${course.title}`}><ArrowRight className="size-5" /></a></div></article>)}</div>
@@ -92,3 +92,4 @@ export default function Home() {
     </main>
   );
 }
+

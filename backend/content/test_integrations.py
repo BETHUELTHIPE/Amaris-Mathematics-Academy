@@ -53,7 +53,9 @@ def _redis_client(test_case, url: str) -> Redis:
     except (RedisError, OSError, ConnectionError) as exc:
         if _is_ci():
             test_case.fail(f"Required Redis integration is unavailable at {url}: {exc}")
-        test_case.skipTest(f"Redis integration service is not available at {url}: {exc}")
+        test_case.skipTest(
+            f"Redis integration service is not available at {url}: {exc}"
+        )
     _require_or_skip(test_case, connected, f"Redis did not acknowledge PING at {url}.")
     return client
 
@@ -78,7 +80,9 @@ class PostgreSQLIntegrationTests(TestCase):
         )
 
         with connection.cursor() as cursor:
-            cursor.execute("SELECT current_database(), current_setting('server_version_num')::integer")
+            cursor.execute(
+                "SELECT current_database(), current_setting('server_version_num')::integer"
+            )
             database_name, server_version = cursor.fetchone()
 
         self.assertTrue(database_name)
@@ -148,8 +152,12 @@ class StorageIntegrationTests(SimpleTestCase):
         self.assertIn("default", settings.STORAGES)
         self.assertIn("student_data", settings.STORAGES)
 
-    def test_django_storage_abstraction_round_trip_keeps_cms_and_student_data_separate(self):
-        with tempfile.TemporaryDirectory(prefix="amaris-storage-integration-") as media_root:
+    def test_django_storage_abstraction_round_trip_keeps_cms_and_student_data_separate(
+        self,
+    ):
+        with tempfile.TemporaryDirectory(
+            prefix="amaris-storage-integration-"
+        ) as media_root:
             cms_root = Path(media_root) / "cms"
             student_root = Path(media_root) / "student-data"
             storage_settings = {
@@ -161,7 +169,9 @@ class StorageIntegrationTests(SimpleTestCase):
                     "BACKEND": "django.core.files.storage.FileSystemStorage",
                     "OPTIONS": {"location": student_root},
                 },
-                "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+                "staticfiles": {
+                    "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+                },
             }
             with override_settings(MEDIA_ROOT=media_root, STORAGES=storage_settings):
                 payload = b"amaris-storage-integration"
@@ -224,17 +234,21 @@ class FrontendApiContractIntegrationTests(TestCase):
         )
         source = frontend_contract.read_text(encoding="utf-8")
         self.assertIn('cmsFetch<CmsBootstrap>("/bootstrap/")', source)
-        self.assertIn('cmsFetch<Paginated<CmsCourse>>("/courses/?page_size=100")', source)
+        self.assertIn("cmsFetch<Paginated<CmsCourse>>", source)
 
         bootstrap = self.client.get(reverse("site-bootstrap"), secure=True)
         self.assertEqual(bootstrap.status_code, 200)
         bootstrap_payload = bootstrap.json()
         self.assertIn("settings", bootstrap_payload)
         self.assertIn("navigation", bootstrap_payload)
-        self.assertEqual(bootstrap_payload["settings"]["site_name"], "Amaris Mathematics Academy")
+        self.assertEqual(
+            bootstrap_payload["settings"]["site_name"], "Amaris Mathematics Academy"
+        )
         self.assertEqual(bootstrap_payload["navigation"][0]["url"], "/courses")
 
-        courses = self.client.get(reverse("courses-list"), {"page_size": 100}, secure=True)
+        courses = self.client.get(
+            reverse("courses-list"), {"page_size": 100}, secure=True
+        )
         self.assertEqual(courses.status_code, 200)
         course_payload = courses.json()["results"][0]
         for field in (
@@ -265,7 +279,9 @@ class ExternalProviderIsolationTests(SimpleTestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["student@example.test"])
 
-    def test_external_paid_or_remote_providers_are_not_required_by_real_integration_suite(self):
+    def test_external_paid_or_remote_providers_are_not_required_by_real_integration_suite(
+        self,
+    ):
         # PayFast, WhatsApp, SMS, Zoom, OpenAI, Gemini and YouTube are intentionally
         # outside the real infrastructure integration boundary. Their tests must use
         # sandbox or mock adapters and must never require live credentials here.

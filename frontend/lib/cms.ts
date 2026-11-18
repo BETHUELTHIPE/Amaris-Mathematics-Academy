@@ -2,6 +2,8 @@ import { cache } from "react";
 import { academyBrand, type AcademyBrand } from "@/lib/brand";
 import { courses, type Course } from "@/lib/courses";
 import { prepareAnnouncements } from "@/lib/announcements";
+import { normalizeCmsApiBaseUrl } from "@/lib/cms-api-url";
+import { COURSE_PAGE_SIZE, catalogueApiPath, normalizeCatalogOptions } from "@/lib/course-catalog-search.mjs";
 
 type CmsNavigationItem = {
   label: string;
@@ -38,13 +40,19 @@ type CmsCourse = {
   modules?: Array<{ title: string }>;
 };
 
-type Paginated<T> = { results: T[] };
+type Paginated<T> = { count: number; next: string | null; previous: string | null; results: T[] };
 type CmsBootstrap = {
   settings: CmsSettings | null;
   navigation: CmsNavigationItem[];
 };
 
-const cmsBaseUrl = process.env.CMS_API_URL?.replace(/\/$/, "");
+const configuredCmsUrl = process.env.CMS_API_URL;
+let cmsBaseUrl: string | undefined;
+try {
+  cmsBaseUrl = configuredCmsUrl ? normalizeCmsApiBaseUrl(configuredCmsUrl) : undefined;
+} catch {
+  cmsBaseUrl = undefined;
+}
 
 async function cmsFetch<T>(path: string): Promise<T | null> {
   if (!cmsBaseUrl) return null;
@@ -177,9 +185,47 @@ function mapCourse(course: CmsCourse): Course {
   };
 }
 
+export type CourseCatalogOptions = {
+  query?: string;
+  programme?: string;
+  level?: string;
+  sort?: string;
+  page?: number;
+};
+
+export type CourseCatalog = {
+  courses: Course[];
+  count: number;
+  page: number;
+  pageSize: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+  available: boolean;
+  validationError: string;
+};
+
+export async function getManagedCourseCatalog(options: CourseCatalogOptions = {}): Promise<CourseCatalog> {
+  const safe = normalizeCatalogOptions(options);
+  const empty: CourseCatalog = {
+    courses: [], count: 0, page: safe.page, pageSize: COURSE_PAGE_SIZE,
+    hasNext: false, hasPrevious: false, available: false, validationError: safe.validationError,
+  };
+  if (safe.validationError || !cmsBaseUrl) return empty;
+  const response = await cmsFetch<Paginated<CmsCourse>>(catalogueApiPath(safe));
+  if (!response || !Array.isArray(response.results) || !Number.isSafeInteger(response.count) || response.count < 0) return empty;
+  return {
+    ...empty, courses: response.results.map(mapCourse), count: response.count,
+    hasNext: Boolean(response.next), hasPrevious: Boolean(response.previous), available: true,
+  };
+}
+
 export async function getManagedCourses(): Promise<Course[]> {
-  const response = await cmsFetch<Paginated<CmsCourse>>("/courses/?page_size=100");
-  return response?.results?.length ? response.results.map(mapCourse) : courses;
+  return (await getManagedCourseCatalog()).courses;
+}
+
+export async function getManagedFeaturedCourses(): Promise<Course[]> {
+  const response = await cmsFetch<CmsCourse[]>("/courses/featured/");
+  return Array.isArray(response) ? response.map(mapCourse) : [];
 }
 
 export async function getManagedAnnouncements() {
@@ -189,5 +235,6 @@ export async function getManagedAnnouncements() {
 
 export async function getManagedCourse(slug: string): Promise<Course | undefined> {
   const course = await cmsFetch<CmsCourse>(`/courses/${encodeURIComponent(slug)}/`);
-  return course ? mapCourse(course) : courses.find((item) => item.slug === slug);
+  return course ? mapCourse(course) : configuredCmsUrl ? undefined : courses.find((item) => item.slug === slug);
 }
+
