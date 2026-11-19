@@ -1,6 +1,6 @@
 ARG AMARIS_IMAGE_VARIANT=django-runtime
 
-FROM golang:1.27.3-bookworm AS restic-builder
+FROM golang:1.27.4-bookworm AS restic-builder
 
 ARG RESTIC_VERSION=0.19.1
 ARG RESTIC_SOURCE_SHA256=bb9b1a19040744d26d8a79be029d4e6b189c45ccc9d8831d7fe367d3c33df725
