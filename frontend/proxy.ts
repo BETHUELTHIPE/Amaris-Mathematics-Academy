@@ -10,6 +10,7 @@ export const config = {
     "/tutor/:path*",
     "/api/tutor-applications/:path*",
     "/dashboard/:path*",
+    "/api/chat/:path*",
     "/documents/:path*",
     "/checkout/:path*",
     "/book-online-live-class/:path*",
