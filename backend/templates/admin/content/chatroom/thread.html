@@ -1,0 +1,34 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> ›
+  <a href="{% url 'admin:content_chatroom_changelist' %}">Chat rooms</a> › {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<section aria-label="Conversation">
+  <p><a href="{{ thread_url }}">Refresh conversation</a>{% if older %} · <a href="{{ thread_url }}?before={{ older }}">Older messages</a>{% endif %}</p>
+  <ol>
+    {% for message in entries %}
+      <li>
+        <strong>{{ message.get_sender_display }}</strong>
+        <time datetime="{{ message.sent_at|date:'c' }}">{{ message.sent_at|date:'j M Y, H:i' }}</time>
+        <div style="white-space:pre-wrap;overflow-wrap:anywhere">{{ message.text }}</div>
+      </li>
+    {% empty %}
+      <li>No messages yet.</li>
+    {% endfor %}
+  </ol>
+  {% if can_reply %}
+    <form method="post" action="{{ thread_url }}">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit" class="button">Send reply</button>
+    </form>
+  {% else %}
+    <p>Replies are closed because the original booking assignment is inactive.</p>
+  {% endif %}
+</section>
+{% endblock %}
