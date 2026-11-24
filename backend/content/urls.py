@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .chat_views import BookingChatMessagesView, ChatMessagesView, ChatRoomsView
 from .live_class_views import (
     LiveClassBookingStatusView,
     LiveClassCheckoutView,
@@ -64,6 +65,9 @@ router.register("announcements", AnnouncementViewSet, basename="announcements")
 router.register("enquiries", ContactEnquiryViewSet, basename="enquiries")
 
 urlpatterns = [
+    path("chat/rooms/", ChatRoomsView.as_view(), name="chat-rooms"),
+    path("chat/rooms/support/messages/", ChatMessagesView.as_view(), name="chat-support-messages"),
+    path("chat/rooms/<uuid:booking_id>/messages/", BookingChatMessagesView.as_view(), name="chat-booking-messages"),
     path("rum/", collect_web_vitals, name="anonymous-web-vitals"),
     path("marketing-media/<int:pk>/", public_marketing_media, name="public-marketing-media"),
     path(

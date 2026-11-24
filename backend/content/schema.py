@@ -51,3 +51,11 @@ class ApplicantAuthenticationScheme(OpenApiAuthenticationExtension):
             "bearerFormat": "JWT",
             "description": "Verified Supabase applicant account; does not grant approved tutor permissions.",
         }
+
+
+class ChatAuthenticationScheme(OpenApiAuthenticationExtension):
+    target_class = "content.chat_views.ChatAuthentication"
+    name = "ChatBearerAuth"
+
+    def get_security_definition(self, auto_schema):
+        return {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}

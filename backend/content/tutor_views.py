@@ -33,6 +33,12 @@ RESERVED_STATUSES = (
 )
 
 
+def find_approved_tutors(email):
+    return list(
+        get_user_model().objects.filter(email__iexact=email, is_active=True, groups__name=TUTOR_GROUP).distinct()[:2]
+    )
+
+
 class SupabaseTutorAuthentication(BaseAuthentication):
     """Reuse authoritative Supabase Auth validation without creating student profiles."""
 
@@ -53,11 +59,7 @@ class SupabaseTutorAuthentication(BaseAuthentication):
         if not payload.get("id") or not email or not payload.get("email_confirmed_at"):
             raise AuthenticationFailed("A verified email address is required.")
 
-        users = list(
-            get_user_model()
-            .objects.filter(email__iexact=email, is_active=True, groups__name=TUTOR_GROUP)
-            .distinct()[:2]
-        )
+        users = find_approved_tutors(email)
         if len(users) != 1:
             raise AuthenticationFailed("Tutor access has not been approved for this account.")
         return users[0], {"provider": "supabase", "role": "tutor"}
