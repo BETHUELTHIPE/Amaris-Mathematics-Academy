@@ -102,6 +102,7 @@ export default async function TutorDashboardPage({
             <div>
               <h1 className="text-4xl font-semibold tracking-tight">Welcome, {dashboard.tutor.name}.</h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/70">Manage your Zoom class timetable, booking details and teaching hours from one secure dashboard.</p>
+              <Link href="/dashboard/messages" className="mt-4 inline-flex min-h-11 items-center rounded-full bg-white px-5 text-sm font-bold text-[#0b2a5b]">Messages</Link>
             </div>
             <form action={signOutAction}>
               <button type="submit" className="flex min-h-11 items-center gap-2 rounded-full border border-white/25 px-5 text-sm font-semibold hover:bg-white/10">
