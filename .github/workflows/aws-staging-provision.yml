@@ -58,7 +58,22 @@ jobs:
           read -r account principal <<< "$(aws sts get-caller-identity --query '[Account,Arn]' --output text)"
           test "$account" = "$AMARIS_ACCOUNT"
           [[ "$principal" != *:root ]]
+          eligible="$(aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true \
+            Name=instance-type,Values=t4g.small --query 'length(InstanceTypes)' --output text)"
+          test "$eligible" = 1
           aws cloudformation validate-template --template-body file://deploy/aws/staging-host.yml --query Description --output text
+      - name: Clear the empty record of the previous failed launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(aws cloudformation list-stacks --query             'StackSummaries[?StackName==`amaris-aws-staging` && StackStatus!=`DELETE_COMPLETE`].StackStatus | [0]' --output text)"
+          if [[ "$status" == ROLLBACK_COMPLETE ]]; then
+            remaining="$(aws cloudformation list-stack-resources --stack-name "$AMARIS_STACK" \
+              --query 'length(StackResourceSummaries[?ResourceStatus!=`DELETE_COMPLETE`])' --output text)"
+            test "$remaining" = 0
+            aws cloudformation delete-stack --stack-name "$AMARIS_STACK"
+            aws cloudformation wait stack-delete-complete --stack-name "$AMARIS_STACK"
+          fi
       - name: Apply the dedicated staging stack
         run: |
           aws cloudformation deploy --stack-name "$AMARIS_STACK" --template-file deploy/aws/staging-host.yml \
@@ -85,6 +100,6 @@ jobs:
       - name: Show CloudFormation failure reasons
         if: failure()
         run: |
-          aws cloudformation describe-stack-events --stack-name "$AMARIS_STACK" --max-items 20 \
+          aws cloudformation describe-stack-events --stack-name "$AMARIS_STACK" \
             --query 'StackEvents[?contains(ResourceStatus, `FAILED`)].[LogicalResourceId,ResourceStatusReason]' \
             --output table || true

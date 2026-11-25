@@ -94,16 +94,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in {1..18}; do
+          for attempt in {1..48}; do
             stack="$(aws cloudformation describe-stacks --stack-name "$AMARIS_STACK" \
-              --query 'Stacks[0].{status:StackStatus,outputs:Outputs}' --output json)"
+              --query 'Stacks[0].{status:StackStatus,outputs:Outputs}' --output json 2>/dev/null || true)"
             status="$(jq -r .status <<< "$stack")"
             case "$status" in
               CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE) break ;;
-              CREATE_IN_PROGRESS|UPDATE_IN_PROGRESS|REVIEW_IN_PROGRESS) sleep 10 ;;
+              ''|CREATE_IN_PROGRESS|UPDATE_IN_PROGRESS|REVIEW_IN_PROGRESS|ROLLBACK_COMPLETE|DELETE_IN_PROGRESS) sleep 10 ;;
               *) echo "::error::The dedicated staging stack reports $status."; exit 1 ;;
             esac
           done
+          case "$status" in
+            CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE) ;;
+            *) echo '::error::Timed out waiting for a ready Stockholm staging stack.'; exit 1 ;;
+          esac
           address="$(jq -r '.outputs[] | select(.OutputKey=="PublicIPv4").OutputValue' <<< "$stack")"
           instance="$(jq -r '.outputs[] | select(.OutputKey=="InstanceId").OutputValue' <<< "$stack")"
           image_repo="$(jq -r '.outputs[] | select(.OutputKey=="FrontendRepositoryUri").OutputValue' <<< "$stack")"

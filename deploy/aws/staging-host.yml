@@ -106,7 +106,7 @@ Resources:
     DependsOn: SubnetRouteAssociation
     Properties:
       ImageId: !Ref AmazonLinuxArmImage
-      InstanceType: t4g.medium
+      InstanceType: t4g.small
       IamInstanceProfile: !Ref StagingInstanceProfile
       SubnetId: !Ref PublicSubnet
       SecurityGroupIds: [!Ref WebSecurityGroup]
@@ -133,6 +133,13 @@ Resources:
           #!/bin/bash
           set -euo pipefail
           systemctl enable --now amazon-ssm-agent
+          if [[ ! -f /swapfile ]]; then
+            fallocate -l 1G /swapfile
+            chmod 600 /swapfile
+            mkswap /swapfile
+            printf '/swapfile none swap sw 0 0\n' >> /etc/fstab
+            swapon /swapfile
+          fi
           for attempt in {1..12}; do
             dnf install -y docker && break
             sleep 10
