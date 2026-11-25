@@ -1,5 +1,10 @@
 name: Verify ECS blue-green CloudWatch rollback gates
 on:
+  push:
+    branches: [ops/aws-cloudwatch-sns-20261126]
+    paths:
+      - deploy/aws/blue-green/**
+      - .github/workflows/aws-rollback-alarm-verification.yml
   pull_request:
     branches: [ops/aws-cloudwatch-sns-20261126]
     types: [opened, synchronize, reopened]
@@ -13,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
-    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ops/aws-alarm-rollback-20261126' && github.base_ref == 'ops/aws-cloudwatch-sns-20261126'
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && ((github.event_name == 'push' && github.ref == 'refs/heads/ops/aws-cloudwatch-sns-20261126') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ops/aws-alarm-rollback-20261126' && github.base_ref == 'ops/aws-cloudwatch-sns-20261126'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: staging
