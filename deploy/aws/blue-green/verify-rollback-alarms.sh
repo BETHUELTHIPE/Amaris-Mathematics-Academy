@@ -34,7 +34,6 @@ echo "Verified monitoring stack exports and rollback alarm definitions."
 jq '{serviceName,desiredCount,runningCount,pendingCount,controller:.deploymentController.type,strategy:(.deploymentConfiguration.strategy // "ROLLING"),currentRollbackAlarms:.deploymentConfiguration.alarms,advancedRouting:([.loadBalancers[]?|select(.advancedConfiguration != null)]|length)}' <<< "$svc"
 jq '{architecture:.runtimePlatform.cpuArchitecture,localValkey:any(.containerDefinitions[]; .name=="valkey"),hostMountCount:([.volumes[]?|select((.host.sourcePath//"")!="")]|length),requestedCpu:([.containerDefinitions[]|.cpu//0]|add),requestedMemoryMiB:([.containerDefinitions[]|.memoryReservation//.memory//0]|add)}' <<< "$definition"
 jq '{volumes:[.volumes[]?|{name,hostPathConfigured:(.host.sourcePath != null),efsConfigured:(.efsVolumeConfiguration != null)}],containers:[.containerDefinitions[]|{name,cpu,memory,memoryReservation,essential,ports:[.portMappings[]?|{containerPort,hostPort,protocol}],mounts:[.mountPoints[]?|{sourceVolume,containerPath,readOnly}],dependencies:[.dependsOn[]?|{containerName,condition}],imageRepository:(.image|split("@")[0]|split(":")[0])}]}' <<< "$definition"
-jq '{registeredResources:[.registeredResources[]?|{name,stringSetValue,integerValue}],remainingResources:[.remainingResources[]?|{name,integerValue}]}' <<< "$instance_details"
 instances="$(aws ecs list-container-instances --cluster "$cluster" --status ACTIVE --query containerInstanceArns --output text)"
 instance_details="{}"
 if [[ -n "$instances" && "$instances" != None ]]; then
