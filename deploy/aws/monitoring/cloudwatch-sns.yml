@@ -15,9 +15,6 @@ Parameters:
   LoadBalancerFullName:
     Type: String
     AllowedPattern: 'app/[^/]+/[a-f0-9]+'
-  ActiveTargetGroupFullName:
-    Type: String
-    AllowedPattern: 'targetgroup/[^/]+/[a-f0-9]+'
 Resources:
   AlarmTopic:
     Type: AWS::SNS::Topic
