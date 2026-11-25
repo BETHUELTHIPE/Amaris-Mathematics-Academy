@@ -75,7 +75,8 @@ jobs:
               git diff --name-only --diff-filter=U > "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
               git status --short >> "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
               if [[ "$COMPONENT:$ref:$sha" == "backend:feat/curriculum-subscriptions-backend-20261112:167eca64b7cf0b8b7d6a43ea763561ceaec53312" || \
-                    "$COMPONENT:$ref:$sha" == "frontend:feat/sponsor-dashboard-20261111:d9244009c9c99aa7ff985d1eaaf42dd1c693a3e9" ]]; then
+                    "$COMPONENT:$ref:$sha" == "frontend:feat/sponsor-dashboard-20261111:d9244009c9c99aa7ff985d1eaaf42dd1c693a3e9" || \
+                    "$COMPONENT:$ref:$sha" == "frontend:feat/course-search-ui-20261118:8d390c9cb569a2e96e069137e520ec07e5c75589" ]]; then
                 python3 "$GITHUB_WORKSPACE/deploy/aws/resolve-reviewed-integration.py" "$COMPONENT" "$ref" "$sha"
               else
                 echo "::error::Feature delta conflict in $COMPONENT at $ref; manual resolution required."
@@ -136,7 +137,8 @@ jobs:
           ruff check .
           mypy
           python manage.py check --deploy --fail-level ERROR
-          python manage.py makemigrations --check --dry-run
+          python manage.py showmigrations --plan 2>&1 | tee "$RUNNER_TEMP/release-evidence/migration-plan.log"
+          python manage.py makemigrations --check --dry-run 2>&1 | tee "$RUNNER_TEMP/release-evidence/migration-check.log"
           python manage.py migrate --noinput
           python manage.py test 2>&1 | tee "$RUNNER_TEMP/release-evidence/backend-tests.log"
       - uses: actions/setup-node@v4
