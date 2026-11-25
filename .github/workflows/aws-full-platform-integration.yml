@@ -1,0 +1,75 @@
+name: AWS full-platform integration candidate
+on:
+  push:
+    branches: [release/aws-full-platform-20261125]
+    paths:
+      - .github/workflows/aws-full-platform-integration.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aws-full-platform-integration
+  cancel-in-progress: false
+jobs:
+  integrate:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/release/aws-full-platform-20261125'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: backend
+            base: production-release-20260923
+            refs: feature/paystack-payfast-choice-20261110 feat/student-two-week-motivation-20261111 feat/sponsor-dashboard-20261111 feat/curriculum-subscriptions-backend-20261112 feat/tutor-video-admin-alerts-20261113 feat/admin-fortnightly-performance-20261113 fix/tutor-admin-private-storage-20261113 feat/tutor-employment-contract-backend-20261115 feat/course-search-api-20261118 feat/private-chat-backend-20261124 feat/trusted-advisor-20261125
+          - component: frontend
+            base: render-live-current-20260918
+            refs: feat/curriculum-subscriptions-frontend-20261112 feat/course-subscription-pages-20261112 feat/tutor-video-submission-ui-20261113 feat/tutor-employment-contract-ui-20261115 feat/course-search-ui-20261118 feat/private-chat-ui-20261124
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve feature revisions and attempt integration without changing original branches
+        shell: bash
+        env:
+          COMPONENT: ${{ matrix.component }}
+          BASE: ${{ matrix.base }}
+          REFS: ${{ matrix.refs }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-evidence"
+          manifest="$RUNNER_TEMP/release-evidence/$COMPONENT-refs.txt"
+          git config user.name 'Amaris release integration'
+          git config user.email 'release-integration@users.noreply.github.com'
+          git worktree add --detach "$RUNNER_TEMP/candidate" "refs/remotes/origin/$BASE"
+          cd "$RUNNER_TEMP/candidate"
+          printf 'base %s %s\n' "$BASE" "$(git rev-parse HEAD)" > "$manifest"
+          for ref in $REFS; do
+            sha="$(git rev-parse --verify "refs/remotes/origin/$ref^{commit}")"
+            printf '%s %s\n' "$ref" "$sha" >> "$manifest"
+          done
+          while read -r ref sha; do
+            if [[ "$ref" == base ]]; then continue; fi
+            if ! git merge --no-ff --no-edit "$sha"; then
+              git diff --name-only --diff-filter=U > "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
+              git merge --abort
+              echo "::error::Integration conflict in $COMPONENT at $ref; no deployment performed."
+              exit 1
+            fi
+          done < "$manifest"
+          git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/$COMPONENT-candidate.txt"
+          git diff --check "refs/remotes/origin/$BASE" HEAD
+      - name: Build candidate container without AWS credentials
+        env:
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          set -euo pipefail
+          docker build --file "deploy/aws/$COMPONENT.Dockerfile" --tag "amaris-$COMPONENT:candidate" "$RUNNER_TEMP/candidate/$COMPONENT"
+      - name: Upload integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-integration-${{ matrix.component }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-evidence/
+          if-no-files-found: warn
