@@ -1,0 +1,123 @@
+"""Resolve only reviewed sponsor/subscription integration conflicts.
+
+Run from the candidate worktree after git apply --3way reports conflicts.
+Unexpected paths or source changes fail closed.
+"""
+import subprocess
+import sys
+from pathlib import Path
+
+
+def git(*args):
+    return subprocess.check_output(["git", *args], text=True)
+
+
+def once(text, before, after):
+    if text.count(before) != 1:
+        raise SystemExit(f"Expected exactly one anchor: {before!r}")
+    return text.replace(before, after, 1)
+
+
+def insert(text, anchor, addition):
+    return once(text, anchor, addition + anchor)
+
+
+def resolve_backend(path, text):
+    if path == "backend/.env.example":
+        return text.rstrip() + "\n\n# Enable only after isolated end-of-term PDF/storage/SMTP acceptance.\nSUBSCRIPTION_REPORTS_EMAIL_ENABLED=false\n"
+    if path == "backend/amaris_cms/celery.py":
+        return insert(text, '    "content.tasks.queue_student_motivation_emails":', '    "content.subscription_report_tasks.deliver_ended_subscription_reports": {"queue": "notifications"},\n')
+    if path == "backend/amaris_cms/settings.py":
+        text = once(text, 'TUTOR_REQUIRE_SIX_DOCUMENTS = env_bool("TUTOR_REQUIRE_SIX_DOCUMENTS", False)\n', 'TUTOR_REQUIRE_SIX_DOCUMENTS = env_bool("TUTOR_REQUIRE_SIX_DOCUMENTS", False)\nCOURSE_SUBSCRIPTIONS_ENABLED = env_bool("COURSE_SUBSCRIPTIONS_ENABLED", False)\n')
+        text = insert(text, "CELERY_BEAT_SCHEDULE = {", 'SUBSCRIPTION_REPORTS_EMAIL_ENABLED = env_bool("SUBSCRIPTION_REPORTS_EMAIL_ENABLED", False)\nif SUBSCRIPTION_REPORTS_EMAIL_ENABLED and not DEBUG and not SUPABASE_S3_ENDPOINT_URL:\n    raise RuntimeError("Subscription reports require private Supabase student storage in production.")\n\n')
+        return once(text, 'CELERY_BEAT_SCHEDULE = {\n', 'CELERY_BEAT_SCHEDULE = {\n    "deliver-ended-subscription-reports": {\n        "task": "content.subscription_report_tasks.deliver_ended_subscription_reports",\n        "schedule": 600.0,\n        "options": {"queue": "notifications"},\n    },\n')
+    if path == "backend/content/apps.py":
+        text = once(text, "from . import payment_models, sponsor_models, tutor_finance_models  # noqa: F401", "from . import payment_models, sponsor_models, subscription_models, subscription_report_models, tutor_finance_models")
+        text = once(text, "from . import payment_admin, schema, signals, sponsor_admin, tutor_finance_admin  # noqa: F401", "from . import payment_admin, schema, signals, sponsor_admin, subscription_admin, subscription_report_admin, tutor_finance_admin")
+        return "# ruff: noqa: F401\n" + text
+    if path == "backend/content/payfast_views.py":
+        return once(text, '        if local_reference.startswith("SC-"):', '        if local_reference.startswith("SUB-"):\n            from .services.subscriptions import process_subscription_notification\n\n            result = process_subscription_notification(payload, gateway=gateway)\n        elif local_reference.startswith("SC-"):')
+    if path == "backend/content/test_booking_migration.py":
+        # Sponsor already restores every migration leaf and adds notification tests.
+        if "MigrationExecutor(connection).migrate(latest)" not in text or "queue_student_motivation_emails" not in text:
+            raise SystemExit("Migration test no longer matches reviewed sponsor version")
+        return text
+    if path == "backend/content/urls.py":
+        text = insert(text, "from .tutor_application_views import (", """from .subscription_report_views import (
+    SubscriptionReportDownloadView,
+    TutorSubscriptionSessionListView,
+    TutorSubscriptionSessionView,
+)
+from .subscription_views import (
+    SubscriptionCheckoutView,
+    SubscriptionInvoiceView,
+    SubscriptionListView,
+    SubscriptionStatusView,
+)
+""")
+        return once(text, "urlpatterns = [\n", """urlpatterns = [
+    path(
+        "student/subscriptions/<str:reference>/report/",
+        SubscriptionReportDownloadView.as_view(),
+        name="subscription-report",
+    ),
+    path(
+        "tutor/subscription-sessions/<int:session_id>/attendance/",
+        TutorSubscriptionSessionView.as_view(),
+        name="subscription-attendance",
+    ),
+    path(
+        "tutor/subscription-sessions/", TutorSubscriptionSessionListView.as_view(), name="subscription-tutor-sessions"
+    ),
+    path("student/subscriptions/", SubscriptionListView.as_view(), name="student-subscriptions"),
+    path("student/subscriptions/checkout/", SubscriptionCheckoutView.as_view(), name="subscription-checkout"),
+    path("student/subscriptions/<str:reference>/", SubscriptionStatusView.as_view(), name="subscription-status"),
+    path(
+        "student/subscriptions/<str:reference>/invoice/", SubscriptionInvoiceView.as_view(), name="subscription-invoice"
+    ),
+""")
+    raise SystemExit(f"Unreviewed backend conflict: {path}")
+
+
+BACKEND = {
+    "backend/.env.example", "backend/amaris_cms/celery.py",
+    "backend/amaris_cms/settings.py", "backend/content/apps.py",
+    "backend/content/payfast_views.py", "backend/content/test_booking_migration.py",
+    "backend/content/urls.py",
+}
+FRONTEND = {"frontend/lib/supabase/proxy.ts", "frontend/worker/index.ts"}
+
+
+def main():
+    component, ref, sha = sys.argv[1:]
+    if (component, ref) == ("backend", "feat/curriculum-subscriptions-backend-20261112"):
+        expected = BACKEND
+    elif (component, ref) == ("frontend", "feat/sponsor-dashboard-20261111"):
+        expected = FRONTEND
+    else:
+        raise SystemExit("No reviewed resolution for this feature")
+    paths = set(git("diff", "--name-only", "--diff-filter=U").splitlines())
+    if paths != expected:
+        raise SystemExit(f"Unexpected conflict set: {sorted(paths)}")
+    # Reject changed source revisions: compare exact staged incoming blobs with
+    # the source tree; the explicit anchors also guard the existing candidate.
+    for path in sorted(paths):
+        ours = git("show", f":2:{path}")
+        theirs = git("show", f":3:{path}")
+        source = git("show", f"{sha}:{path}")
+        if theirs != source:
+            raise SystemExit(f"Incoming blob differs from reviewed source: {path}")
+        if component == "backend":
+            resolved = resolve_backend(path, ours)
+        else:
+            if '"/sponsor"' not in theirs or '"/subscriptions/status"' not in ours:
+                raise SystemExit(f"Private-route anchors missing: {path}")
+            resolved = once(ours, '"/dashboard",', '"/dashboard", "/sponsor",')
+        Path(path).write_text(resolved)
+        subprocess.run(["git", "add", "--", path], check=True)
+    if git("diff", "--name-only", "--diff-filter=U").strip():
+        raise SystemExit("Unmerged paths remain")
+
+
+if __name__ == "__main__":
+    main()
