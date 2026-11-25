@@ -14,7 +14,7 @@ export AWS_PAGER=''
 
 [[ "$address" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
 for image in "$frontend" "$backend"; do
-  [[ "$image" == "$registry/amaris-staging-frontend:"* ]]
+  [[ "$image" == "$registry/amaris-staging-frontend@sha256:"* ]]
 done
 for attempt in {1..30}; do
   docker info >/dev/null 2>&1 && break

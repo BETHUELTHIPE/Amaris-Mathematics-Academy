@@ -14,9 +14,9 @@ concurrency:
 
 jobs:
   release:
-    name: Build and deploy the last Render staging releases to AWS
+    name: Deploy the verified Amaris staging images to AWS
     if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: staging
     permissions:
@@ -31,54 +31,12 @@ jobs:
       AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
       FRONTEND_SHA: 5a00cc1b3f0b08700bb6eb9b655ab36e2b055d1a
       BACKEND_SHA: 44e800ccc4ad4c0f88f5c6f7dde72907b06da19c
+      FRONTEND_DIGEST: sha256:e7c552b73296ca721e15da94d1ff2e8fbd6a41244666b4f310960b4b304fb6a3
+      BACKEND_DIGEST: sha256:7e39cc9ca036ea4e37fa07be0c912901570ddf602e0b5edcac4dfa96d3665217
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ env.FRONTEND_SHA }}
-          path: frontend-release
-          persist-credentials: false
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ env.BACKEND_SHA }}
-          path: backend-release
-          persist-credentials: false
-      - uses: actions/checkout@v5
-        with:
-          ref: fb81ed871e8d26434f59ae3d32fd4896e2bad856
-          path: backend-image-source
-          persist-credentials: false
-      - name: Build and verify the previous staging release images
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git -C frontend-release rev-parse HEAD)" = "$FRONTEND_SHA"
-          test "$(git -C backend-release rev-parse HEAD)" = "$BACKEND_SHA"
-          cmp backend-release/backend/requirements.txt backend-image-source/backend/requirements.txt
-          printf '%s\n' '.env' '.env.*' 'node_modules' '.output' 'dist' > frontend-release/frontend/.dockerignore
-          printf '%s\n' '.env' '.env.*' '*.sqlite3' '*.env' '.venv' 'media' 'staticfiles' '__pycache__' > backend-release/backend/.dockerignore
-          docker build --file deploy/aws/frontend.Dockerfile \
-            --label "org.opencontainers.image.revision=$FRONTEND_SHA" \
-            --tag "amaris-frontend:$FRONTEND_SHA" frontend-release/frontend
-          docker build --file deploy/aws/backend.Dockerfile \
-            --label "org.opencontainers.image.revision=$BACKEND_SHA" \
-            --tag "amaris-backend:$BACKEND_SHA" backend-release/backend
-          for image in "amaris-frontend:$FRONTEND_SHA" "amaris-backend:$BACKEND_SHA"; do
-            test "$(docker image inspect --format '{{.Architecture}}' "$image")" = arm64
-          done
-          docker run --detach --rm --name amaris-frontend-smoke -p 127.0.0.1:3000:3000 \
-            -e SITE_URL=http://127.0.0.1:3000 "amaris-frontend:$FRONTEND_SHA"
-          for attempt in {1..20}; do
-            if curl -fSs --max-time 5 http://127.0.0.1:3000/health/ready > "$RUNNER_TEMP/amaris-frontend-health.json"; then
-              break
-            fi
-            sleep 2
-          done
-          jq -e '.status=="ok"' "$RUNNER_TEMP/amaris-frontend-health.json"
-          curl -fSs --max-time 15 http://127.0.0.1:3000/ > "$RUNNER_TEMP/amaris-home.html"
-          grep -Fqi 'Amaris Mathematics Academy' "$RUNNER_TEMP/amaris-home.html"
       - name: Authenticate to AWS using the staging role
         if: env.AMARIS_AWS_ROLE != ''
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
@@ -128,19 +86,23 @@ jobs:
             printf 'STAGING_IMAGE_REPO=%s\n' "$image_repo"
           } >> "$GITHUB_ENV"
           printf 'address=%s\n' "$address" >> "$GITHUB_OUTPUT"
-      - name: Publish immutable staging images to ECR
+      - name: Verify the published staging image digests
         shell: bash
         run: |
           set -euo pipefail
-          registry="${STAGING_IMAGE_REPO%%/*}"
-          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry" >/dev/null 2>&1
-          trap 'docker logout "$registry" >/dev/null 2>&1' EXIT
           for service in frontend backend; do
-            if [[ "$service" == frontend ]]; then sha="$FRONTEND_SHA"; else sha="$BACKEND_SHA"; fi
-            tag="$service-$sha"
-            if ! aws ecr describe-images --repository-name amaris-staging-frontend --image-ids "imageTag=$tag" >/dev/null 2>&1; then
-              docker tag "amaris-$service:$sha" "$STAGING_IMAGE_REPO:$tag"
-              docker push "$STAGING_IMAGE_REPO:$tag"
+            if [[ "$service" == frontend ]]; then
+              sha="$FRONTEND_SHA"
+              expected="$FRONTEND_DIGEST"
+            else
+              sha="$BACKEND_SHA"
+              expected="$BACKEND_DIGEST"
+            fi
+            digest="$(aws ecr describe-images --repository-name amaris-staging-frontend \
+              --image-ids "imageTag=$service-$sha" --query 'imageDetails[0].imageDigest' --output text)"
+            if [[ "$digest" != "$expected" ]]; then
+              echo "::error::The $service staging image digest did not match the previously verified build."
+              exit 1
             fi
           done
       - name: Store isolated runtime settings as encrypted parameters
@@ -186,7 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           script="$(base64 -w0 deploy/aws/start-staging.sh)"
-          command="printf '%s' '$script' | base64 -d | bash -s -- '$STAGING_ADDRESS' '$STAGING_IMAGE_REPO:frontend-$FRONTEND_SHA' '$STAGING_IMAGE_REPO:backend-$BACKEND_SHA'"
+          command="printf '%s' '$script' | base64 -d | bash -s -- '$STAGING_ADDRESS' '$STAGING_IMAGE_REPO@$FRONTEND_DIGEST' '$STAGING_IMAGE_REPO@$BACKEND_DIGEST'"
           parameters="$(jq -cn --arg command "$command" '{commands:[$command],executionTimeout:["720"]}')"
           invocation="$(aws ssm send-command --instance-ids "$STAGING_INSTANCE" \
             --document-name AWS-RunShellScript --timeout-seconds 90 --parameters "$parameters" \
