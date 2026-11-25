@@ -69,7 +69,8 @@ jobs:
       - name: Authenticate using existing staging OIDC with ECR-only session policy
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
         with:
-          role-to-assume: ${{ vars.AWS_STAGING_ECR_PUBLISH_ROLE || vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: arn:aws:iam::110156539003:role/AmarisGitHubECRPublisher
+          role-session-name: AmarisEcrPublisher-${{ github.run_id }}
           inline-session-policy: >-
             {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ecr:GetAuthorizationToken","Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":"eu-north-1"}}},{"Effect":"Allow","Action":["ecr:BatchCheckLayerAvailability","ecr:InitiateLayerUpload","ecr:UploadLayerPart","ecr:CompleteLayerUpload","ecr:PutImage","ecr:DescribeImages"],"Resource":"arn:aws:ecr:eu-north-1:110156539003:repository/amaris-staging-frontend"}]}
           aws-region: eu-north-1
