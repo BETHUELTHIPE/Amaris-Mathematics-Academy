@@ -4,6 +4,7 @@ on:
     branches: [release/aws-full-platform-20261125]
     paths:
       - .github/workflows/aws-full-platform-integration.yml
+      - deploy/aws/resolve-reviewed-integration.py
   pull_request:
     branches: [ops/aws-alb-staging-20261125]
     types: [opened, synchronize, reopened, ready_for_review]
@@ -73,8 +74,13 @@ jobs:
             if ! git apply --3way --index "$patch"; then
               git diff --name-only --diff-filter=U > "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
               git status --short >> "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
-              echo "::error::Feature delta conflict in $COMPONENT at $ref; manual resolution required."
-              exit 1
+              if [[ "$COMPONENT:$ref:$sha" == "backend:feat/curriculum-subscriptions-backend-20261112:167eca64b7cf0b8b7d6a43ea763561ceaec53312" || \
+                    "$COMPONENT:$ref:$sha" == "frontend:feat/sponsor-dashboard-20261111:d9244009c9c99aa7ff985d1eaaf42dd1c693a3e9" ]]; then
+                python3 "$GITHUB_WORKSPACE/deploy/aws/resolve-reviewed-integration.py" "$COMPONENT" "$ref" "$sha"
+              else
+                echo "::error::Feature delta conflict in $COMPONENT at $ref; manual resolution required."
+                exit 1
+              fi
             fi
             git diff --cached --check
             git commit -m "Integrate $ref ($sha)"
