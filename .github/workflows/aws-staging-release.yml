@@ -4,7 +4,8 @@ on:
   push:
     branches: [ops/aws-staging-preflight-20261125]
     paths:
-      - deploy/aws/**
+      - deploy/aws/start-staging.sh
+      - deploy/aws/staging-config.py
       - .github/workflows/aws-staging-release.yml
 
 permissions: {}

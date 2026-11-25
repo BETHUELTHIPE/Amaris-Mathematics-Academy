@@ -1,0 +1,36 @@
+name: Verify Amaris Stockholm staging sign-in
+
+on:
+  push:
+    branches: [ops/aws-staging-preflight-20261125]
+    paths:
+      - deploy/aws/verify-staging-auth.py
+      - .github/workflows/aws-staging-auth-verification.yml
+
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-auth-verification
+  cancel-in-progress: false
+
+jobs:
+  auth:
+    name: Check email verification settings and the staging student dashboard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Configure and verify the isolated staging sign-in
+        env:
+          STAGING_ADDRESS: '16.171.164.5'
+          SUPABASE_AUTH_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+          STAGING_TEST_STUDENT_EMAIL: ${{ secrets.STAGING_TEST_STUDENT_EMAIL }}
+          STAGING_TEST_STUDENT_PASSWORD: ${{ secrets.STAGING_TEST_STUDENT_PASSWORD }}
+          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+        run: python3 deploy/aws/verify-staging-auth.py
