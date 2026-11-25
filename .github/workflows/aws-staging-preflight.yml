@@ -3,6 +3,9 @@ name: AWS staging deployment preflight
 on:
   push:
     branches: [ops/aws-staging-preflight-20261125]
+    paths:
+      - .github/workflows/aws-staging-preflight.yml
+      - deploy/aws/frontend.Dockerfile
 
 permissions: {}
 
@@ -86,6 +89,13 @@ jobs:
           inventory "ECS cluster" ecs list-clusters --query 'length(clusterArns)'
           inventory "ECR repository" ecr describe-repositories --query 'length(repositories)'
           inventory "Application or Network Load Balancer" elbv2 describe-load-balancers --query 'length(LoadBalancers)'
+
+          echo 'Stockholm staging stack status and failures:'
+          aws cloudformation describe-stacks --stack-name amaris-aws-staging \
+            --query 'Stacks[0].[StackStatus,StackStatusReason]' --output text || true
+          aws cloudformation describe-stack-events --stack-name amaris-aws-staging \
+            --query 'StackEvents[?contains(ResourceStatus, `FAILED`)].[LogicalResourceId,ResourceStatusReason]' \
+            --output text || true
 
       - name: Check staging application configuration
         shell: bash
