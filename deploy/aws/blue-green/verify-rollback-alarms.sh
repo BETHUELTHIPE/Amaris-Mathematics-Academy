@@ -81,7 +81,7 @@ if [[ -n "$instances" && "$instances" != None ]]; then
   aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance_id" --query 'InstanceInformationList[].{pingStatus:PingStatus,platformType:PlatformType,agentVersion:AgentVersion}' --output json
   alb_dns="$(jq -er '.LoadBalancers[0].DNSName' <<< "$alb_details")"
   commands="$(jq -nc --arg host "$alb_dns" '{commands:["set -eu","getent ahostsv4 " + $host + " || true","curl -4 --max-time 8 -sS -o /dev/null -w \"http_status=%{http_code}\\n\" -A \"ELB-HealthChecker/2.0\" http://" + $host + "/__alb/ready"]}')"
-  command_id="$(aws ssm send-command --instance-ids "$instance_id" --document-name AWS-RunShellScript --parameters "$commands" --timeout-seconds 20 --query 'Command.CommandId' --output text)"
+  command_id="$(aws ssm send-command --instance-ids "$instance_id" --document-name AWS-RunShellScript --parameters "$commands" --timeout-seconds 30 --query 'Command.CommandId' --output text)"
   invocation_status=""
   for _ in $(seq 1 20); do
     invocation_status="$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" --query Status --output text 2>/dev/null || true)"
