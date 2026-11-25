@@ -20,6 +20,10 @@ def main():
             })
         else:
             container.pop("portMappings", None)
+        if container["name"] in {"backend", "frontend"}:
+            container["healthCheck"]["startPeriod"] = 110
+            container["healthCheck"]["timeout"] = 10
+            container["healthCheck"]["retries"] = 5
     json.dump(task, sys.stdout, indent=2)
     print()
 

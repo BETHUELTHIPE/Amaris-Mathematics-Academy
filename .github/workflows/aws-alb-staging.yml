@@ -101,6 +101,8 @@ jobs:
             printf 'STAGING_ALB_ID=%s\n' "$(output LoadBalancerFullName)"
             printf 'STAGING_TARGET_ARN=%s\n' "$(output TargetGroupArn)"
           } >> "$GITHUB_ENV"
+      - name: Refresh the previous gateway address if ECS replaced the task
+        run: bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/alb/gateway.sh "$STAGING_ADDRESS" repair-previous
       - name: Prepare the ECS proxy and deploy the load-balanced service
         shell: bash
         run: |

@@ -17,8 +17,25 @@ restore() {
     docker exec amaris-gateway nginx -s reload >/dev/null
   fi
   rm -f "$nginx/amaris-alb-nodes.conf"
+  private_refresh=/opt/amaris-staging/vpc/refresh-gateway.sh
+  if [[ -f "$private_refresh" ]]; then
+    python3 - "$private_refresh" <<'PY_RESTORE'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+path.write_text(text.replace("NR==1 {split($4, addr,", "$4 ~ /^10[.]86[.]0[.]/ {split($4, addr,"))
+PY_RESTORE
+  fi
   systemctl start amaris-private-task-gateway.timer
+  systemctl start amaris-private-task-gateway.service || true
 }
+
+if [[ "$mode" == repair-previous ]]; then
+  if grep -Fq 'X-Amaris-Network private-vpc' "$nginx/default.conf"; then
+    restore
+  fi
+  exit 0
+fi
 
 if [[ "$mode" == rollback ]]; then
   restore
