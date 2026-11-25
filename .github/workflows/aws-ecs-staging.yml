@@ -1,0 +1,102 @@
+name: Deploy Amaris to Amazon ECS staging
+
+on:
+  push:
+    branches: [ops/aws-ecs-staging-20261125]
+    paths:
+      - deploy/aws/ecs/**
+      - .github/workflows/aws-ecs-staging.yml
+
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Configure Amazon ECS on the Stockholm staging host
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+      AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      HOST_STACK: amaris-aws-staging
+      ECS_STACK: amaris-ecs-staging
+      ECS_CLUSTER: amaris-ecs-staging
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate to AWS using the staging role
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate to AWS using the configured staging keys
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify the existing staging host
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AWS_REGION" == eu-north-1 ]]
+          read -r account principal <<< "$(aws sts get-caller-identity --query '[Account,Arn]' --output text)"
+          [[ "$account" == 110156539003 && "$principal" != *:root ]]
+          instance="$(aws cloudformation describe-stack-resource --stack-name "$HOST_STACK" \
+            --logical-resource-id StagingHost --query StackResourceDetail.PhysicalResourceId --output text)"
+          role="$(aws cloudformation describe-stack-resource --stack-name "$HOST_STACK" \
+            --logical-resource-id StagingInstanceRole --query StackResourceDetail.PhysicalResourceId --output text)"
+          address="$(aws cloudformation describe-stacks --stack-name "$HOST_STACK" \
+            --query 'Stacks[0].Outputs[?OutputKey==`PublicIPv4`].OutputValue | [0]' --output text)"
+          [[ "$instance" =~ ^i-[a-z0-9]+$ && "$role" =~ ^[A-Za-z0-9+=,.@_-]+$ && "$address" == 16.171.164.5 ]]
+          supported="$(aws ec2 describe-instances --instance-ids "$instance" \
+            --query 'Reservations[0].Instances[0].[InstanceType,State.Name,Architecture]' --output text)"
+          read -r type state architecture <<< "$supported"
+          [[ "$type" == t4g.small && "$state" == running && "$architecture" == arm64 ]]
+          curl -fSs --retry 3 --max-time 10 "https://$address/health/ready/" | jq -e '.status=="ready"'
+          {
+            printf 'STAGING_INSTANCE=%s\n' "$instance"
+            printf 'STAGING_ROLE=%s\n' "$role"
+            printf 'STAGING_ADDRESS=%s\n' "$address"
+          } >> "$GITHUB_ENV"
+      - name: Create the dedicated ECS cluster and execution permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template --template-body file://deploy/aws/ecs/cluster.yml --query Description --output text
+          aws cloudformation deploy --stack-name "$ECS_STACK" --template-file deploy/aws/ecs/cluster.yml \
+            --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset \
+            --parameter-overrides "HostRoleName=$STAGING_ROLE" --tags Project=Amaris Environment=staging
+      - name: Register the existing Free Tier host with ECS
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/ecs/register-host.sh
+          for attempt in {1..30}; do
+            instances="$(aws ecs list-container-instances --cluster "$ECS_CLUSTER" --status ACTIVE \
+              --query containerInstanceArns --output text)"
+            if [[ -n "$instances" && "$instances" != None ]]; then
+              aws ecs describe-container-instances --cluster "$ECS_CLUSTER" --container-instances $instances \
+                --output json | jq -e --arg id "$STAGING_INSTANCE" \
+                  '.containerInstances | any(.agentConnected and .ec2InstanceId==$id)' && exit 0
+            fi
+            sleep 8
+          done
+          echo '::error::The Stockholm ECS cluster did not register the staging host.'
+          exit 1

@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS orchestration for the existing Amaris Stockholm staging host.
+Parameters:
+  HostRoleName:
+    Type: String
+    AllowedPattern: '[A-Za-z0-9+=,.@_-]{1,64}'
+Resources:
+  StagingCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: amaris-ecs-staging
+      ClusterSettings:
+        - Name: containerInsights
+          Value: disabled
+  HostEcsAgentPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: AmarisStagingEcsAgent
+      Roles: [!Ref HostRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - ecs:DeregisterContainerInstance
+              - ecs:DiscoverPollEndpoint
+              - ecs:Poll
+              - ecs:RegisterContainerInstance
+              - ecs:StartTelemetrySession
+              - ecs:Submit*
+              - ecs:UpdateContainerInstancesState
+              - ecs:ListTagsForResource
+            Resource: '*'
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PullAmarisImagesAndReadStagingSettings
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/amaris-staging-frontend
+              - Effect: Allow
+                Action: ssm:GetParameters
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/backend
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/frontend
+Outputs:
+  ClusterName:
+    Value: !Ref StagingCluster
+  TaskExecutionRoleArn:
+    Value: !GetAtt TaskExecutionRole.Arn
