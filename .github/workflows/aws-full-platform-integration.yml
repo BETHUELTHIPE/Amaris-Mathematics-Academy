@@ -177,6 +177,13 @@ jobs:
           export DJANGO_SECRET_KEY="$(openssl rand -hex 64)"
           echo "::add-mask::$DJANGO_SECRET_KEY"
           python -m pip install -r requirements-dev.txt
+          black content/apps.py content/services/tutor_contract_pdf.py content/services/tutor_contracts.py content/tasks.py content/tutor_contract_tasks.py content/tutor_contract_models.py content/tutor_contract_views.py content/urls.py
+          git diff --check
+          git add -- content/apps.py content/services/tutor_contract_pdf.py content/services/tutor_contracts.py content/tasks.py content/tutor_contract_tasks.py content/tutor_contract_models.py content/tutor_contract_views.py content/urls.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Format reviewed integrated Python files"
+          fi
+          git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/backend-candidate.txt"
           black --check .
           ruff check .
           mypy
