@@ -86,3 +86,30 @@ jobs:
           inventory "ECS cluster" ecs list-clusters --query 'length(clusterArns)'
           inventory "ECR repository" ecr describe-repositories --query 'length(repositories)'
           inventory "Application or Network Load Balancer" elbv2 describe-load-balancers --query 'length(LoadBalancers)'
+
+      - name: Check staging application configuration
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_DATABASE_SCHEMA: ${{ vars.STAGING_DATABASE_SCHEMA || secrets.STAGING_DATABASE_SCHEMA }}
+          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+          STAGING_SUPABASE_S3_ACCESS_KEY_ID: ${{ secrets.STAGING_SUPABASE_S3_ACCESS_KEY_ID }}
+          STAGING_SUPABASE_S3_SECRET_ACCESS_KEY: ${{ secrets.STAGING_SUPABASE_S3_SECRET_ACCESS_KEY }}
+          STAGING_SMTP_USER: ${{ secrets.AMARIS_NOTIFY_SMTP_USER }}
+          STAGING_SMTP_PASSWORD: ${{ secrets.AMARIS_NOTIFY_SMTP_APP_PASSWORD }}
+          PAYFAST_SANDBOX_MERCHANT_ID: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_ID }}
+          PAYFAST_SANDBOX_MERCHANT_KEY: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_KEY }}
+          PAYFAST_SANDBOX_PASSPHRASE: ${{ secrets.PAYFAST_SANDBOX_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          for name in \
+            STAGING_DATABASE_URL STAGING_DATABASE_SCHEMA STAGING_SUPABASE_PUBLISHABLE_KEY \
+            STAGING_SUPABASE_S3_ACCESS_KEY_ID STAGING_SUPABASE_S3_SECRET_ACCESS_KEY \
+            STAGING_SMTP_USER STAGING_SMTP_PASSWORD \
+            PAYFAST_SANDBOX_MERCHANT_ID PAYFAST_SANDBOX_MERCHANT_KEY PAYFAST_SANDBOX_PASSPHRASE; do
+            if [[ -n "${!name}" ]]; then
+              printf 'Staging setting %s is available.\n' "$name"
+            else
+              printf 'Staging setting %s is missing.\n' "$name"
+            fi
+          done
