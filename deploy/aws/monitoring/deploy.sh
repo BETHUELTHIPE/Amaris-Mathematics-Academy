@@ -2,7 +2,9 @@
 # Deploy only monitoring resources; no ECS, ALB or application changes.
 set -euo pipefail
 export AWS_REGION=eu-north-1 AWS_DEFAULT_REGION=eu-north-1 AWS_PAGER=""
-export AWS_PROFILE="${AWS_PROFILE:-amaris}"
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
+  export AWS_PROFILE="${AWS_PROFILE:-amaris}"
+fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 account="$(aws sts get-caller-identity --query Account --output text)"
 [[ "$account" == "110156539003" ]] || { echo "Unexpected AWS account" >&2; exit 1; }
