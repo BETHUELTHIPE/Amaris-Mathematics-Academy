@@ -1,0 +1,58 @@
+name: Check the Amaris private ECS service
+
+on:
+  push:
+    branches: [ops/aws-vpc-staging-20261125]
+    paths:
+      - .github/workflows/aws-vpc-staging-observe.yml
+
+permissions: {}
+
+jobs:
+  describe:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+      AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      ECS_CLUSTER: amaris-ecs-staging
+    steps:
+      - name: Authenticate to AWS using the staging role
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate to AWS using the configured staging keys
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Read service and task status
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services amaris-web-staging-private \
+            --query 'services[0].{running:runningCount,pending:pendingCount,events:events[:8].message,deployments:deployments[].{state:rolloutState,reason:rolloutStateReason}}' --output json
+          for state in RUNNING STOPPED; do
+            tasks="$(aws ecs list-tasks --cluster "$ECS_CLUSTER" --service-name amaris-web-staging-private \
+              --desired-status "$state" --max-items 4 --query taskArns --output text)"
+            if [[ "$tasks" == arn:aws:ecs:* ]]; then
+              aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks $tasks \
+                --query 'tasks[].{task:taskArn,status:lastStatus,health:healthStatus,reason:stoppedReason,eni:attachments[?type==`ElasticNetworkInterface`].details[?name==`subnetId` || name==`privateIPv4Address`][],containers:containers[].{name:name,status:lastStatus,health:healthStatus,reason:reason,exit:exitCode}}' --output json
+            fi
+          done
