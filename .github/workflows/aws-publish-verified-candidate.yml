@@ -1,15 +1,8 @@
 name: Publish verified Amaris staging candidate images
 on:
-  workflow_dispatch:
-    inputs:
-      integration_run_id:
-        description: Successful AWS full-platform integration candidate run ID
-        required: true
-        type: string
-      integration_head_sha:
-        description: Exact reviewed integration run head SHA
-        required: true
-        type: string
+  pull_request:
+    branches: [release/aws-full-platform-20261125]
+    types: [opened, synchronize, reopened]
 permissions:
   contents: read
   actions: read
@@ -18,14 +11,14 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
-    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/release/aws-full-platform-20261125'
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ops/aws-verified-release-20261126' && github.base_ref == 'release/aws-full-platform-20261125'
     runs-on: ubuntu-24.04
     steps:
       - name: Verify successful run and both candidate artifacts
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.integration_run_id }}
-          EXPECTED_SHA: ${{ inputs.integration_head_sha }}
+          RUN_ID: '45713482726'
+          EXPECTED_SHA: 3953c1d804153245da2d503d195178399aa031da
         run: |
           set -euo pipefail
           [[ "$RUN_ID" =~ ^[0-9]+$ && "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -34,9 +27,8 @@ jobs:
           jobs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?filter=latest&per_page=100")"
           jq -e '.total_count==2 and all(.jobs[]; .conclusion=="success" and any(.steps[]; .name=="Scan candidate container for fixable high and critical vulnerabilities" and .conclusion=="success") and any(.steps[]; .name=="Archive tested and scanned immutable candidate image" and .conclusion=="success"))' <<< "$jobs"
           artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100")"
-          for component in backend frontend; do
-            jq -e --arg name "aws-integration-$component-$RUN_ID" '[.artifacts[]|select(.name==$name and .expired==false)]|length==1' <<< "$artifacts"
-          done
+          jq -e '[.artifacts[]|select(.name=="aws-integration-backend-45713482726" and .expired==false and .id==15068198618 and .digest=="sha256:9bc41a2ef63c8b139f59dd8ce7999b3e14cc7d62958c896028bcf0c303c824b5")]|length==1' <<< "$artifacts"
+          jq -e '[.artifacts[]|select(.name=="aws-integration-frontend-45713482726" and .expired==false and .id==15068173129 and .digest=="sha256:8f7721ead1db5ff5b81f6b32450df21c2d336adf9e559136967b3702253d82bb")]|length==1' <<< "$artifacts"
   publish:
     needs: verify
     runs-on: ubuntu-24.04-arm
@@ -52,15 +44,15 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: aws-integration-backend-${{ inputs.integration_run_id }}
+          name: aws-integration-backend-45713482726
           path: evidence/backend
-          run-id: ${{ inputs.integration_run_id }}
+          run-id: '45713482726'
           github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
         with:
-          name: aws-integration-frontend-${{ inputs.integration_run_id }}
+          name: aws-integration-frontend-45713482726
           path: evidence/frontend
-          run-id: ${{ inputs.integration_run_id }}
+          run-id: 45713482726
           github-token: ${{ github.token }}
       - name: Verify image checksums, architecture and image IDs
         run: |
@@ -74,17 +66,20 @@ jobs:
               test "$(docker image inspect --format '{{.Id}}' "amaris-$component:candidate")" = "$(cat "$component-image-id.txt")"
             )
           done
-      - name: Authenticate using dedicated staging ECR publication role
+      - name: Authenticate using existing staging OIDC with ECR-only session policy
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
         with:
-          role-to-assume: ${{ vars.AWS_STAGING_ECR_PUBLISH_ROLE }}
+          role-to-assume: arn:aws:iam::110156539003:role/AmarisGitHubECRPublisher
+          role-session-name: AmarisEcrPublisher-${{ github.run_id }}
+          inline-session-policy: >-
+            {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ecr:GetAuthorizationToken","Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":"eu-north-1"}}},{"Effect":"Allow","Action":["ecr:BatchCheckLayerAvailability","ecr:InitiateLayerUpload","ecr:UploadLayerPart","ecr:CompleteLayerUpload","ecr:PutImage","ecr:DescribeImages"],"Resource":"arn:aws:ecr:eu-north-1:110156539003:repository/amaris-staging-frontend"}]}
           aws-region: eu-north-1
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
       - name: Publish verified images and record registry digests
         env:
-          INTEGRATION_RUN: ${{ inputs.integration_run_id }}
-          INTEGRATION_SHA: ${{ inputs.integration_head_sha }}
+          INTEGRATION_RUN: '45713482726'
+          INTEGRATION_SHA: 3953c1d804153245da2d503d195178399aa031da
         run: |
           set -euo pipefail
           aws ecr get-login-password | docker login --username AWS --password-stdin "${ECR_REPO%%/*}"
