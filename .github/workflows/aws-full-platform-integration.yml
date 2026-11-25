@@ -215,13 +215,36 @@ jobs:
             git commit -m "Format reviewed integrated Python files"
           fi
           git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/backend-candidate.txt"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("content/test_tutor_contracts.py")
+          source = p.read_text()
+          # Exercise the actual HTTPS endpoint without disabling SSL enforcement.
+          replacements = {
+              'format="json",': 'format="json",\n            secure=True,',
+              'self.api.get(reverse("tutor-employment-contracts"))': 'self.api.get(reverse("tutor-employment-contracts"), secure=True)',
+              'self.api.get(reverse("tutor-employment-contract-pdf", args=[item.pk]))': 'self.api.get(reverse("tutor-employment-contract-pdf", args=[item.pk]), secure=True)',
+              'self.assertIn("Platform operating costs 10.00%", text)': 'self.assertIn("Platform operating costs 10.00%", " ".join(text.split()))',
+          }
+          for before, after in replacements.items():
+              if before not in source:
+                  raise SystemExit("Unexpected tutor test source: " + before)
+              source = source.replace(before, after)
+          p.write_text(source)
+          PY
+          black content/test_tutor_contracts.py
+          git add -- content/test_tutor_contracts.py
+          git diff --cached --check
+          git commit -m "Test HTTPS tutor contract endpoints and normalize PDF whitespace"
+          git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/backend-candidate.txt"
           black --check .
           ruff check .
           mypy
           python manage.py check --deploy --fail-level ERROR
           python manage.py showmigrations --plan 2>&1 | tee "$RUNNER_TEMP/release-evidence/migration-plan.log"
           python manage.py makemigrations --check --dry-run 2>&1 | tee "$RUNNER_TEMP/release-evidence/migration-check.log"
-          python manage.py migrate --noinput
+          python manage.py migrate --noinput 2>&1 | tee "$RUNNER_TEMP/release-evidence/migration-execution.log"
+          python manage.py collectstatic --noinput
           python manage.py test 2>&1 | tee "$RUNNER_TEMP/release-evidence/backend-tests.log"
       - uses: actions/setup-node@v4
         if: matrix.component == 'frontend'
