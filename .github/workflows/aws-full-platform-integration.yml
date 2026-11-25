@@ -80,7 +80,9 @@ jobs:
                     "$COMPONENT:$ref:$sha" == "frontend:feat/course-search-ui-20261118:8d390c9cb569a2e96e069137e520ec07e5c75589" || \
                     "$COMPONENT:$ref:$sha" == "backend:feat/tutor-video-admin-alerts-20261113:f28c243173ea01a232ef4d09735ee91caffea78e" || \
                     "$COMPONENT:$ref:$sha" == "backend:feat/admin-fortnightly-performance-20261113:dc2c51a5f7efef6ae1a6526430fbc2bbafacfeec" || \
-                    "$COMPONENT:$ref:$sha" == "frontend:feat/private-chat-ui-20261124:2b46f28dd12d67e291671805d8a44e8944bdf81d" ]]; then
+                    "$COMPONENT:$ref:$sha" == "frontend:feat/private-chat-ui-20261124:2b46f28dd12d67e291671805d8a44e8944bdf81d" || \
+                    "$COMPONENT:$ref:$sha" == "backend:feat/tutor-employment-contract-backend-20261115:449db62ea39322a250a1db1d217aeb1a6cd6b314" || \
+                    "$COMPONENT:$ref:$sha" == "frontend:feature/paystack-payfast-choice-20261110:287dad8950f695e46818a355c00fc11ea820df63" ]]; then
                 python3 "$GITHUB_WORKSPACE/deploy/aws/resolve-reviewed-integration.py" "$COMPONENT" "$ref" "$sha"
               else
                 echo "::error::Feature delta conflict in $COMPONENT at $ref; manual resolution required."
