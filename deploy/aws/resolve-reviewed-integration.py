@@ -117,6 +117,49 @@ def resolve_tutor(path, ours, theirs):
     raise SystemExit(f"Unreviewed tutor conflict: {path}")
 
 
+
+def resolve_payment_frontend(path, ours):
+    if path.endswith("/student-api.ts"):
+        pairs = [
+            ("checkoutKey(courseSlug: string)", 'checkoutKey(courseSlug: string, provider: "payfast" | "paystack")'),
+            ('encode(\x60${student.id}:${courseSlug}\x60)', 'encode(\x60${student.id}:${courseSlug}${provider === "payfast" ? "" : ":paystack"}\x60)'),
+            ("createStudentCheckout(courseSlug: string)", 'createStudentCheckout(courseSlug: string, provider: "payfast" | "paystack" = "payfast")'),
+            ("idempotency_key: await checkoutKey(courseSlug),", "idempotency_key: await checkoutKey(courseSlug, provider),\n      provider,"),
+            ("liveClassCheckoutKey(slotId: string, topic: string, attempt: string)", 'liveClassCheckoutKey(slotId: string, topic: string, attempt: string, provider: "payfast" | "paystack")'),
+            ('encode(\x60${student.id}:${slotId}:${normalizedTopic}:${attempt}\x60)', 'encode(\x60${student.id}:${slotId}:${normalizedTopic}:${attempt}${provider === "payfast" ? "" : ":paystack"}\x60)'),
+            ("  attempt: string,\n): Promise<LiveClassCheckoutSession>", '  attempt: string,\n  provider: "payfast" | "paystack" = "payfast",\n): Promise<LiveClassCheckoutSession>'),
+            ("idempotency_key: await liveClassCheckoutKey(slotId, topic, attempt),", "idempotency_key: await liveClassCheckoutKey(slotId, topic, attempt, provider),\n      provider,"),
+        ]
+        for before, after in pairs:
+            ours = once(ours, before, after)
+        return ours
+    live = "/book-online-live-class/" in path
+    if live:
+        anchor = "  await requireVerifiedStudent(returnTo);\n"
+        selection = '  const selected = process.env.PAYSTACK_ENABLED === "true" ? value(params.provider) : "payfast";\n'
+        base = "returnTo"
+        ours = once(ours, "createStudentLiveClassCheckout(slotId, topic, attempt)", "createStudentLiveClassCheckout(slotId, topic, attempt, selected)")
+        ours = once(ours, "Your Zoom link is released only after the server verifies the PayFast notification.", "Your Zoom link is released only after the server verifies payment with the selected provider.")
+        button = "Pay R{booking.amount} with Paystack"
+        separator = "&"
+    else:
+        ours = once(ours, "CheckoutPage({ params }: { params: Promise<{ slug: string }> })", "CheckoutPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ provider?: string }> })")
+        anchor = "  const { slug } = await params;\n"
+        selection = '  const selected = process.env.PAYSTACK_ENABLED === "true" ? (await searchParams).provider : "payfast";\n'
+        base = '\x60/checkout/${encodeURIComponent(slug)}\x60'
+        ours = once(ours, "createStudentCheckout(slug)", "createStudentCheckout(slug, selected)")
+        ours = once(ours, "Access is activated only after the server verifies the PayFast notification.", "Access is activated only after the server verifies payment with the selected provider.")
+        button = "Continue to Paystack"
+        separator = "?"
+    selection += '  if (selected !== "payfast" && selected !== "paystack") {\n'
+    selection += "    const base = " + base + ";\n"
+    selection += ('    return <main className="min-h-screen bg-[#f5f7fb]"><Header /><section className="mx-auto max-w-xl px-5 py-16"><h1 className="text-3xl font-semibold">Choose your payment method</h1><p className="my-5">Confirmation follows verified payment.</p><div className="grid gap-4"><Link href={base + "' + separator + 'provider=payfast"} className="rounded-xl bg-[#0b2a5b] p-5 text-center font-bold text-white">Pay with PayFast</Link><Link href={base + "' + separator + 'provider=paystack"} className="rounded-xl border border-[#0b2a5b] p-5 text-center font-bold text-[#0b2a5b]">Pay with Paystack</Link></div></section><Footer /></main>;\n  }\n')
+    ours = once(ours, anchor, anchor + selection)
+    ours = once(ours, '<form method="post" action={checkout.gateway_url} className="mt-7">', '{selected === "paystack" ? <a href={checkout.gateway_url} className="mt-7 flex min-h-12 items-center justify-center rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white">' + button + '</a> : <form method="post" action={checkout.gateway_url} className="mt-7">')
+    return once(ours, "</form>", "</form>}")
+
+
+
 BACKEND = {
     "backend/.env.example", "backend/amaris_cms/celery.py",
     "backend/amaris_cms/settings.py", "backend/content/apps.py",
@@ -132,6 +175,10 @@ def main():
         expected = BACKEND
     elif (component, ref) == ("backend", "feat/tutor-video-admin-alerts-20261113"):
         expected = (BACKEND - {"backend/content/payfast_views.py"}) | {"backend/content/tasks.py"}
+    elif (component, ref) == ("backend", "feat/tutor-employment-contract-backend-20261115"):
+        expected = {"backend/content/apps.py"}
+    elif (component, ref) == ("frontend", "feature/paystack-payfast-choice-20261110"):
+        expected = {"frontend/app/book-online-live-class/checkout/page.tsx", "frontend/app/checkout/[slug]/page.tsx", "frontend/lib/student-api.ts"}
     elif (component, ref) == ("backend", "feat/admin-fortnightly-performance-20261113"):
         expected = {"backend/content/apps.py", "backend/content/tasks.py"}
     elif (component, ref) == ("frontend", "feat/private-chat-ui-20261124"):
@@ -153,7 +200,12 @@ def main():
         source = git("show", f"{sha}:{path}")
         if theirs != source:
             raise SystemExit(f"Incoming blob differs from reviewed source: {path}")
-        if ref == "feat/admin-fortnightly-performance-20261113":
+        if ref == "feat/tutor-employment-contract-backend-20261115":
+            resolved = once(ours, "from . import payment_models,", "from . import payment_models, tutor_contract_models,")
+            resolved = once(resolved, "from . import payment_admin,", "from . import payment_admin, tutor_contract_admin,")
+        elif ref == "feature/paystack-payfast-choice-20261110" and component == "frontend":
+            resolved = resolve_payment_frontend(path, ours)
+        elif ref == "feat/admin-fortnightly-performance-20261113":
             if path.endswith("/apps.py"):
                 resolved = once(ours, "from . import payment_models,", "from . import payment_models, performance_models,")
                 resolved = once(resolved, "from . import payment_admin,", "from . import payment_admin, performance_admin,")
