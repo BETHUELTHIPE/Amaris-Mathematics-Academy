@@ -100,3 +100,117 @@ jobs:
           done
           echo '::error::The Stockholm ECS cluster did not register the staging host.'
           exit 1
+      - name: Prepare the private task configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          sidecars="$(bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/ecs/prepare-task-host.sh "$STAGING_ADDRESS")"
+          mapfile -t images <<< "$sidecars"
+          [[ "${#images[@]}" == 2 ]]
+          role="$(aws cloudformation describe-stacks --stack-name "$ECS_STACK" \
+            --query 'Stacks[0].Outputs[?OutputKey==`TaskExecutionRoleArn`].OutputValue | [0]' --output text)"
+          python3 deploy/aws/ecs/render-task.py "$STAGING_ADDRESS" "$role" "${images[0]}" "${images[1]}" \
+            > "$RUNNER_TEMP/amaris-ecs-task.json"
+      - name: Deploy the ECS staging service
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_file="$RUNNER_TEMP/amaris-ecs-task.json"
+          revision_key="$(jq -cS . "$task_file" | sha256sum | cut -d' ' -f1)"
+          service="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services amaris-web-staging \
+            --query 'services[?status==`ACTIVE`] | [0]' --output json)"
+          task="$(jq -r '.taskDefinition // empty' <<< "$service")"
+          current=''
+          if [[ -n "$task" ]]; then
+            current="$(aws ecs describe-task-definition --task-definition "$task" --include TAGS \
+              --query 'tags[?key==`ConfigurationSha256`].value | [0]' --output text)"
+          fi
+          if [[ "$current" != "$revision_key" ]]; then
+            task="$(aws ecs register-task-definition --cli-input-json "file://$task_file" \
+              --tags "key=ConfigurationSha256,value=$revision_key" --query taskDefinition.taskDefinitionArn --output text)"
+          fi
+          [[ "$task" == arn:aws:ecs:eu-north-1:110156539003:task-definition/amaris-ecs-staging-web:* ]]
+          if [[ "$(jq -r '.status // empty' <<< "$service")" != ACTIVE ]]; then
+            aws ecs create-service --cluster "$ECS_CLUSTER" --service-name amaris-web-staging \
+              --task-definition "$task" --desired-count 1 --launch-type EC2 \
+              --deployment-configuration 'minimumHealthyPercent=0,maximumPercent=100,deploymentCircuitBreaker={enable=true,rollback=true}' \
+              --query service.serviceName --output text
+          elif [[ "$task" != "$(jq -r .taskDefinition <<< "$service")" || "$(jq -r .desiredCount <<< "$service")" != 1 ]]; then
+            aws ecs update-service --cluster "$ECS_CLUSTER" --service amaris-web-staging \
+              --task-definition "$task" --desired-count 1 --query service.serviceName --output text
+          fi
+          printf 'STAGING_TASK_DEFINITION=%s\n' "$task" >> "$GITHUB_ENV"
+      - name: Check the running ECS task and its image digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..38}; do
+            service="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services amaris-web-staging \
+              --query 'services[0]' --output json)"
+            if jq -e '.deployments | any(.rolloutState=="FAILED")' <<< "$service" >/dev/null; then
+              echo '::error::The ECS staging deployment circuit breaker reported a failure.'
+              exit 1
+            fi
+            if jq -e --arg revision "$STAGING_TASK_DEFINITION" \
+              '.taskDefinition==$revision and .runningCount==1 and .pendingCount==0 and (.deployments | length)==1' \
+              <<< "$service" >/dev/null; then
+              tasks="$(aws ecs list-tasks --cluster "$ECS_CLUSTER" --service-name amaris-web-staging \
+                --desired-status RUNNING --query taskArns --output text)"
+              if [[ "$tasks" == arn:aws:ecs:* ]]; then
+                detail="$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$tasks" --output json)"
+                if jq -e --arg revision "$STAGING_TASK_DEFINITION" \
+                  '.tasks | length==1 and all(.healthStatus=="HEALTHY" and .taskDefinitionArn==$revision and .lastStatus=="RUNNING" and (.containers | length)==4 and (.containers | all(.lastStatus=="RUNNING")))' \
+                  <<< "$detail" >/dev/null; then
+                  jq -e --slurpfile expected "$RUNNER_TEMP/amaris-ecs-task.json" '
+                    .tasks[0].containers as $running | $expected[0].containerDefinitions |
+                    all(. as $want | $running | any(.name==$want.name and .image==$want.image and
+                      (if .name=="frontend" or .name=="backend" then .imageDigest==($want.image | split("@")[1]) else true end)))
+                  ' <<< "$detail"
+                  jq -r '.tasks[0] | {taskArn,healthStatus,lastStatus,containers:[.containers[]|{name,lastStatus,healthStatus}]}' <<< "$detail"
+                  exit 0
+                fi
+              fi
+            fi
+            sleep 8
+          done
+          echo '::error::The ECS staging task did not become healthy.'
+          exit 1
+      - name: Point the existing staging HTTPS gateway at ECS
+        id: switch
+        shell: bash
+        run: bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/ecs/set-public-upstream.sh "$STAGING_ADDRESS" switch
+      - name: Verify the public Amaris website on ECS
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://$STAGING_ADDRESS"
+          curl -fSs --retry 3 --max-time 12 -D "$RUNNER_TEMP/amaris-headers" "$base/" -o "$RUNNER_TEMP/amaris-home.html"
+          grep -Eiq '^X-Amaris-Compute: ecs' "$RUNNER_TEMP/amaris-headers"
+          grep -Fqi 'Amaris Mathematics Academy' "$RUNNER_TEMP/amaris-home.html"
+          curl -fSs --max-time 12 "$base/health/ready" | jq -e '.status=="ok"'
+          curl -fSs --max-time 12 "$base/health/dependencies/" | jq -e '.dependencies|.postgresql and .redis'
+          curl -fSs --max-time 12 "$base/health/version/" | jq -e '.git_sha=="44e800ccc4ad4c0f88f5c6f7dde72907b06da19c"'
+          curl -fSs --max-time 12 "$base/api/v1/bootstrap/" | jq -e 'has("settings")'
+          curl -fSs --max-time 12 "$base/login" -o /dev/null
+          curl -fSs --max-time 12 "$base/admin/login/" -o /dev/null
+          curl -fSs --max-time 12 "$base/api/auth-state" | jq -e '.authenticated==false and .emailVerified==false'
+          unauthorized="$(curl -sS --max-time 12 -o /dev/null -w '%{http_code}' "$base/api/v1/student/courses/")"
+          [[ "$unauthorized" == 401 || "$unauthorized" == 403 ]]
+          printf 'Amaris staging is live on Amazon ECS at %s\n' "$base" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Stop the previous application containers after the checks pass
+        run: bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/ecs/set-public-upstream.sh "$STAGING_ADDRESS" retire-legacy
+      - name: Restore the previous application if the cutover fails
+        if: failure() && steps.switch.outcome == 'success'
+        run: bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/ecs/set-public-upstream.sh "$STAGING_ADDRESS" rollback
+      - name: Report ECS deployment diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services amaris-web-staging \
+            --query 'services[0].events[:8].message' --output text || true
+          tasks="$(aws ecs list-tasks --cluster "$ECS_CLUSTER" --service-name amaris-web-staging \
+            --desired-status STOPPED --max-items 3 --query taskArns --output text 2>/dev/null || true)"
+          if [[ "$tasks" == arn:aws:ecs:* ]]; then
+            aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks $tasks \
+              --query 'tasks[].{reason:stoppedReason,containers:containers[].{name:name,reason:reason,exit:exitCode}}' --output json || true
+          fi
