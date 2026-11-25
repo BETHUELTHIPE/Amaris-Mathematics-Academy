@@ -14,7 +14,9 @@ if [[ -z "${OPERATOR_EMAIL:-}" ]]; then
 fi
 [[ "$OPERATOR_EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || { echo "Invalid email address" >&2; exit 1; }
 # Resolve current ECS service and live ALB target group, not a guessed resource ID.
-target_arn="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[?status==`ACTIVE`].loadBalancers[?containerName==`cms` && containerPort==`8080`].targetGroupArn[][] | [0]' --output text)"
+status="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0].status' --output text)"
+[[ "$status" == ACTIVE ]] || { echo "Expected an active staging ECS service" >&2; exit 1; }
+target_arn="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0].loadBalancers[?containerName==`cms` && containerPort==`8080`].targetGroupArn | [0]' --output text)"
 [[ "$target_arn" == arn:aws:elasticloadbalancing:eu-north-1:110156539003:targetgroup/* ]] || { echo "Could not resolve the expected staging target group" >&2; exit 1; }
 alb_arn="$(aws elbv2 describe-target-groups --target-group-arns "$target_arn" --query 'TargetGroups[0].LoadBalancerArns[0]' --output text)"
 [[ "$alb_arn" == arn:aws:elasticloadbalancing:eu-north-1:110156539003:loadbalancer/app/* ]] || { echo "Could not resolve the expected staging ALB" >&2; exit 1; }
