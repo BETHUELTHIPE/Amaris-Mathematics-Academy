@@ -49,7 +49,7 @@ jq '[.LoadBalancers[]|{scheme: .Scheme,ipAddressType:.IpAddressType,state:.State
 vpc_id="$(jq -er '.LoadBalancers[0].VpcId' <<< "$alb_details")"
 aws ec2 describe-vpcs --vpc-ids "$vpc_id" --output json | jq '[.Vpcs[]|{ipv4CidrCount:1,ipv6CidrCount:([.Ipv6CidrBlockAssociationSet[]?|select(.Ipv6CidrBlockState.State=="associated")]|length)}]'
 aws ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc_id" --output json | jq '[.Subnets[]|{availabilityZone:.AvailabilityZone,isPublic:(.MapPublicIpOnLaunch==true),availableIpv4:.AvailableIpAddressCount,hasIpv6:([.Ipv6CidrBlockAssociationSet[]?|select(.Ipv6CidrBlockState.State=="associated")]|length>0)}]'
-aws ec2 describe-security-groups --group-ids $(jq -r '.LoadBalancers[0].SecurityGroups[]' <<< "$alb_details") --output json | jq '[.SecurityGroups[]|{ingress:[.IpPermissions[]|{protocol:.IpProtocol,fromPort:.FromPort,toPort:.ToPort,ipv4Sources:(.IpRanges|length),ipv6Sources:(.Ipv6Ranges|length),openToWorldIpv4:any(.IpRanges[]?; .CidrIp=="0.0.0.0/0"),openToWorldIpv6:any(.Ipv6Ranges[]?; .CidrIpv6=="::/0")}]}]'
+aws ec2 describe-security-groups --group-ids $(jq -r '.LoadBalancers[0].SecurityGroups[]' <<< "$alb_details") --output json | jq '[.SecurityGroups[]|{ingress:[.IpPermissions[]|{protocol:.IpProtocol,fromPort:.FromPort,toPort:.ToPort,ipv4Sources:(.IpRanges|length),ipv6Sources:(.Ipv6Ranges|length),sourceSecurityGroupCount:(.UserIdGroupPairs|length),openToWorldIpv4:any(.IpRanges[]?; .CidrIp=="0.0.0.0/0"),openToWorldIpv6:any(.Ipv6Ranges[]?; .CidrIpv6=="::/0")}]}]'
 
 listeners="$(aws elbv2 describe-listeners --load-balancer-arn "$alb" --output json)"
 jq '[.Listeners[]|{port:.Port,protocol:.Protocol,defaultForwardActions:([.DefaultActions[]?|select(.Type=="forward")]|length)}]' <<< "$listeners"
@@ -72,7 +72,10 @@ if [[ -n "$instances" && "$instances" != None ]]; then
   instance_details="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "${arns[@]}" --output json | jq '.containerInstances[0]')"
   jq '{status,agentConnected,ec2InstanceId,registeredResources:[.registeredResources[]?|{name,integerValue}],remainingResources:[.remainingResources[]?|{name,integerValue}]}' <<< "$instance_details"
   instance_id="$(jq -er .ec2InstanceId <<< "$instance_details")"
-  aws ec2 describe-instances --instance-ids "$instance_id" --output json | jq '[.Reservations[].Instances[]|{instanceType:.InstanceType,state:.State.Name,availabilityZone:.Placement.AvailabilityZone,networkInterfaceCount:(.NetworkInterfaces|length)}]'
+  instance_info="$(aws ec2 describe-instances --instance-ids "$instance_id" --output json)"
+  jq '[.Reservations[].Instances[]|{instanceType:.InstanceType,state:.State.Name,availabilityZone:.Placement.AvailabilityZone,networkInterfaceCount:(.NetworkInterfaces|length),hasIpv6:(any(.NetworkInterfaces[]?; (.Ipv6Addresses|length)>0)),securityGroupCount:(.SecurityGroups|length)}]' <<< "$instance_info"
+  aws iam list-open-id-connect-providers --output json | jq '[.OpenIDConnectProviderList[].Arn|select(contains("token.actions.githubusercontent.com"))] | {githubOidcProviderPresent:(length>0)}'
+  aws iam list-roles --path-prefix / --output json | jq '[.Roles[]|select(.RoleName|test("Amaris.*(GitHub|ECR)|GitHub.*Amaris";"i"))|{roleName:.RoleName,arn:.Arn}]'
   instance_type="$(aws ec2 describe-instances --instance-ids "$instance_id" --query 'Reservations[0].Instances[0].InstanceType' --output text)"
   aws ec2 describe-instance-types --instance-types "$instance_type" --query 'InstanceTypes[0].{maximumNetworkInterfaces:NetworkInfo.MaximumNetworkInterfaces,ipv4AddressesPerInterface:NetworkInfo.Ipv4AddressesPerInterface}' --output json
   aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance_id" --query 'InstanceInformationList[].{pingStatus:PingStatus,platformType:PlatformType,agentVersion:AgentVersion}' --output json
