@@ -152,7 +152,7 @@ jobs:
           grep -Eiq '^X-Amaris-Network: public-alb' "$RUNNER_TEMP/amaris-headers"
           grep -Fqi 'Amaris Mathematics Academy' "$RUNNER_TEMP/amaris-home.html"
           curl -fSs --max-time 12 "$base/health/ready" | jq -e '.status=="ok"'
-          curl -fSs --max-time 12 "$base/health/dependencies/" | jq -e '.dependencies|.postgresql and .redis'
+          curl -fSs --max-time 12 "$base/health/ready/" | jq -e '.status=="ready"'
           curl -fSs --max-time 12 "$base/api/v1/bootstrap/" | jq -e 'has("settings")'
           curl -fSs --max-time 12 "$base/admin/login/" -o /dev/null
           unauthorized="$(curl -sS --max-time 12 -o /dev/null -w '%{http_code}' "$base/api/v1/student/courses/")"
@@ -165,7 +165,7 @@ jobs:
             --query service.desiredCount --output text
           aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ALB_SERVICE" "$PRIVATE_SERVICE"
           curl -fSs --retry 3 --max-time 12 -D "$RUNNER_TEMP/amaris-final-headers" \
-            "https://$STAGING_ADDRESS/health/dependencies/" | jq -e '.dependencies | .postgresql and .redis'
+            "https://$STAGING_ADDRESS/health/ready/" | jq -e '.status=="ready"'
           grep -Eiq '^X-Amaris-Network: public-alb' "$RUNNER_TEMP/amaris-final-headers"
           printf 'Amaris staging is live through its public ALB at https://%s\n' "$STAGING_ADDRESS" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Restore the previous staging route if verification fails

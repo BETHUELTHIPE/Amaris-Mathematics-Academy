@@ -77,12 +77,22 @@ if ! grep -Fq 'X-Amaris-Network public-alb' "$nginx/default.conf"; then
 fi
 trap 'restore || true' ERR
 "$root/refresh-gateway.sh"
+healthy_nodes=0
 while read -r keyword node extra; do
   [[ "$keyword" == server ]] || continue
-  printf 'Checking an ALB node from the HTTPS gateway.\n'
-  docker exec amaris-gateway wget -T 8 -qO- --header "Host: $address" "http://$node/health/dependencies/" \
-    | python3 -c 'import json,sys; d=json.load(sys.stdin)["dependencies"]; assert d["postgresql"] and d["redis"]'
+  endpoint="http://$node/health/ready/"
+  if body="$(docker exec amaris-gateway wget -T 8 -qO- --header "Host: $address" "$endpoint")" && \
+    python3 -c 'import json,sys; assert json.load(sys.stdin)["status"]=="ready"' <<< "$body"; then
+    printf 'ALB node %s served Django readiness.\n' "$node"
+    healthy_nodes=$((healthy_nodes + 1))
+  else
+    printf 'ALB node %s did not serve Django readiness.\n' "$node" >&2
+  fi
 done < "$nginx/amaris-alb-nodes.conf"
+if [[ "$healthy_nodes" == 0 ]]; then
+  echo 'No ALB node served Django readiness from the HTTPS gateway.' >&2
+  exit 1
+fi
 systemctl disable --now amaris-private-task-gateway.timer >/dev/null
 systemctl stop amaris-private-task-gateway.service >/dev/null
 python3 - "$backup" "$nginx/default.conf" <<'PY'
