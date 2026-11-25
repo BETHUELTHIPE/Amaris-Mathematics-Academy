@@ -76,12 +76,17 @@ jobs:
               git status --short >> "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
               if [[ "$COMPONENT:$ref:$sha" == "backend:feat/curriculum-subscriptions-backend-20261112:167eca64b7cf0b8b7d6a43ea763561ceaec53312" || \
                     "$COMPONENT:$ref:$sha" == "frontend:feat/sponsor-dashboard-20261111:d9244009c9c99aa7ff985d1eaaf42dd1c693a3e9" || \
-                    "$COMPONENT:$ref:$sha" == "frontend:feat/course-search-ui-20261118:8d390c9cb569a2e96e069137e520ec07e5c75589" ]]; then
+                    "$COMPONENT:$ref:$sha" == "frontend:feat/course-search-ui-20261118:8d390c9cb569a2e96e069137e520ec07e5c75589" || \
+                    "$COMPONENT:$ref:$sha" == "backend:feat/tutor-video-admin-alerts-20261113:f28c243173ea01a232ef4d09735ee91caffea78e" ]]; then
                 python3 "$GITHUB_WORKSPACE/deploy/aws/resolve-reviewed-integration.py" "$COMPONENT" "$ref" "$sha"
               else
                 echo "::error::Feature delta conflict in $COMPONENT at $ref; manual resolution required."
                 exit 1
               fi
+            fi
+            if [[ "$COMPONENT:$ref:$sha" == "frontend:feat/course-search-ui-20261118:8d390c9cb569a2e96e069137e520ec07e5c75589" ]]; then
+              python3 -c 'from pathlib import Path; paths = ["frontend/app/courses/page.tsx", "frontend/components/site/header.tsx", "frontend/lib/cms.ts"]; [(p.write_bytes(p.read_bytes().rstrip(b"\n") + b"\n")) for p in map(Path, paths)]'
+              git add -- frontend/app/courses/page.tsx frontend/components/site/header.tsx frontend/lib/cms.ts
             fi
             git diff --cached --check
             git commit -m "Integrate $ref ($sha)"
