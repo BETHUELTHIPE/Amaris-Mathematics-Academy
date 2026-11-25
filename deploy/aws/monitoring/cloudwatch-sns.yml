@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Amaris ECS staging CloudWatch alarms and SNS email notifications
+Description: Amaris ECS staging CloudWatch alarms and SNS email notifications; target health metrics aggregate across blue and green target groups
 Parameters:
   OperatorEmail:
     Type: String
@@ -117,7 +117,7 @@ Resources:
     DependsOn: AlarmTopicPolicy
     Properties:
       AlarmName: amaris-staging-no-healthy-targets
-      AlarmDescription: No healthy targets in the monitored active target group; missing data is treated as an outage
+      AlarmDescription: No healthy targets across the load balancer; color-agnostic during blue-green deployment
       ActionsEnabled: true
       AlarmActions: [!Ref AlarmTopic]
       OKActions: [!Ref AlarmTopic]
@@ -133,14 +133,12 @@ Resources:
       Dimensions:
         - Name: LoadBalancer
           Value: !Ref LoadBalancerFullName
-        - Name: TargetGroup
-          Value: !Ref ActiveTargetGroupFullName
   UnhealthyTargets:
     Type: AWS::CloudWatch::Alarm
     DependsOn: AlarmTopicPolicy
     Properties:
       AlarmName: amaris-staging-unhealthy-targets
-      AlarmDescription: At least one unhealthy target in the monitored target group
+      AlarmDescription: At least one unhealthy target across the load balancer; color-agnostic during blue-green deployment
       ActionsEnabled: true
       AlarmActions: [!Ref AlarmTopic]
       OKActions: [!Ref AlarmTopic]
@@ -156,8 +154,6 @@ Resources:
       Dimensions:
         - Name: LoadBalancer
           Value: !Ref LoadBalancerFullName
-        - Name: TargetGroup
-          Value: !Ref ActiveTargetGroupFullName
   AlbErrors:
     Type: AWS::CloudWatch::Alarm
     DependsOn: AlarmTopicPolicy
