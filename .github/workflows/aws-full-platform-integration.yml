@@ -205,8 +205,32 @@ jobs:
           COMPONENT: ${{ matrix.component }}
         run: |
           set -euo pipefail
-          docker build --file "deploy/aws/$COMPONENT.Dockerfile" --tag "amaris-$COMPONENT:candidate" "$RUNNER_TEMP/candidate/$COMPONENT"
+          dockerfile="deploy/aws/$COMPONENT.Dockerfile"
+          if [[ "$COMPONENT" == backend ]]; then
+            dockerfile="$RUNNER_TEMP/candidate/backend/Dockerfile"
+          fi
+          docker build --file "$dockerfile" --tag "amaris-$COMPONENT:candidate" "$RUNNER_TEMP/candidate/$COMPONENT"
           test "$(docker image inspect --format '{{.Architecture}}' "amaris-$COMPONENT:candidate")" = arm64
+      - name: Scan candidate container for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: amaris-${{ matrix.component }}:candidate
+          format: json
+          output: ${{ runner.temp }}/release-evidence/${{ matrix.component }}-trivy.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          scanners: vuln
+      - name: Archive tested and scanned immutable candidate image
+        env:
+          COMPONENT: ${{ matrix.component }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/release-evidence"
+          docker image inspect --format '{{.Id}}' "amaris-$COMPONENT:candidate" > "$COMPONENT-image-id.txt"
+          docker save "amaris-$COMPONENT:candidate" | gzip -1 > "$COMPONENT-image.tar.gz"
+          sha256sum "$COMPONENT-image.tar.gz" > "$COMPONENT-image.sha256"
       - name: Stop isolated test services
         if: always() && matrix.component == 'backend'
         shell: bash
