@@ -1,0 +1,103 @@
+name: Deploy the public Amaris staging ALB
+
+on:
+  push:
+    branches: [ops/aws-alb-staging-20261125]
+    paths:
+      - deploy/aws/alb/**
+      - .github/workflows/aws-alb-staging.yml
+
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    name: Deploy the public ALB and route to private ECS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+      AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      HOST_STACK: amaris-aws-staging
+      NET_STACK: amaris-staging-vpc
+      ECS_CLUSTER: amaris-ecs-staging
+      PRIVATE_SERVICE: amaris-web-staging-private
+      ALB_SERVICE: amaris-web-staging-alb
+      ALB_STACK: amaris-staging-alb
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate to AWS using the staging role
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate to AWS using the configured staging keys
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Resolve the existing VPC and two Availability Zones
+        shell: bash
+        run: bash deploy/aws/vpc/resolve-network.sh
+      - name: Resolve the existing public and private subnets
+        shell: bash
+        run: |
+          set -euo pipefail
+          outputs="$(aws cloudformation describe-stacks --stack-name "$NET_STACK" --query 'Stacks[0].Outputs' --output json)"
+          output() { jq -er --arg key "$1" '.[] | select(.OutputKey==$key).OutputValue' <<< "$outputs"; }
+          host() { aws cloudformation describe-stack-resource --stack-name "$HOST_STACK" --logical-resource-id "$1" \
+            --query StackResourceDetail.PhysicalResourceId --output text; }
+          {
+            printf 'STAGING_PUBLIC_SECONDARY=%s\n' "$(output SecondPublicSubnet)"
+            printf 'STAGING_PRIVATE_PRIMARY=%s\n' "$(output PrimaryPrivateSubnet)"
+            printf 'STAGING_PRIVATE_SECONDARY=%s\n' "$(output SecondaryPrivateSubnet)"
+            printf 'STAGING_PRIVATE_SG=%s\n' "$(output PrivateTaskSecurityGroup)"
+            printf 'STAGING_IGW=%s\n' "$(host InternetGateway)"
+            printf 'STAGING_EDGE_ROLE=%s\n' "$(host StagingInstanceRole)"
+          } >> "$GITHUB_ENV"
+      - name: Enable IPv6 on the two public subnets
+        run: bash deploy/aws/alb/ipv6.sh
+      - name: Create the public ALB and private IP target group
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template --template-body file://deploy/aws/alb/load-balancer.yml --query Description --output text
+          if ! aws cloudformation deploy --stack-name "$ALB_STACK" --template-file deploy/aws/alb/load-balancer.yml \
+            --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM --parameter-overrides \
+            "VpcId=$STAGING_VPC" "PublicSubnetA=$STAGING_PUBLIC_SUBNET" "PublicSubnetB=$STAGING_PUBLIC_SECONDARY" \
+            "PublicRouteTableId=$STAGING_PUBLIC_ROUTES" "InternetGatewayId=$STAGING_IGW" \
+            "GatewaySecurityGroup=$STAGING_EDGE_SG" "TaskSecurityGroup=$STAGING_PRIVATE_SG" "GatewayRoleName=$STAGING_EDGE_ROLE" \
+            --tags Project=Amaris Environment=staging; then
+            aws cloudformation describe-stack-events --stack-name "$ALB_STACK" \
+              --query 'StackEvents[?contains(ResourceStatus, `FAILED`)].[LogicalResourceId,ResourceStatusReason]' --output text
+            exit 1
+          fi
+          outputs="$(aws cloudformation describe-stacks --stack-name "$ALB_STACK" --query 'Stacks[0].Outputs' --output json)"
+          output() { jq -er --arg key "$1" '.[] | select(.OutputKey==$key).OutputValue' <<< "$outputs"; }
+          arn="$(output LoadBalancerArn)"
+          aws elbv2 describe-load-balancers --load-balancer-arns "$arn" --query 'LoadBalancers[0]' --output json \
+            | jq -e --arg a "$STAGING_PUBLIC_SUBNET" --arg b "$STAGING_PUBLIC_SECONDARY" \
+              '.Scheme=="internet-facing" and .IpAddressType=="dualstack-without-public-ipv4" and ([.AvailabilityZones[].SubnetId]|sort)==([$a,$b]|sort)'
+          {
+            printf 'STAGING_ALB_ARN=%s\n' "$arn"
+            printf 'STAGING_ALB_ID=%s\n' "$(output LoadBalancerFullName)"
+            printf 'STAGING_TARGET_ARN=%s\n' "$(output TargetGroupArn)"
+          } >> "$GITHUB_ENV"

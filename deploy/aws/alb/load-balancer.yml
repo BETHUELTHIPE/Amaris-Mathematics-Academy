@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Internet-facing Amaris staging ALB in both Stockholm public subnets.
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet::Id
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet::Id
+  PublicRouteTableId:
+    Type: String
+  InternetGatewayId:
+    Type: String
+  GatewaySecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  GatewayRoleName:
+    Type: String
+Resources:
+  PublicIpv6Route:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTableId
+      DestinationIpv6CidrBlock: '::/0'
+      GatewayId: !Ref InternetGatewayId
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Receive traffic from the HTTPS gateway and forward it to ECS.
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref GatewaySecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          DestinationSecurityGroupId: !Ref TaskSecurityGroup
+  TaskIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref TaskSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: PublicIpv6Route
+    Properties:
+      Name: amaris-staging-alb
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: dualstack-without-public-ipv4
+      Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      SecurityGroups: [!Ref LoadBalancerSecurityGroup]
+      LoadBalancerAttributes:
+        - Key: routing.http.drop_invalid_header_fields.enabled
+          Value: 'true'
+  ApplicationTargets:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: amaris-staging-web
+      VpcId: !Ref VpcId
+      TargetType: ip
+      IpAddressType: ipv4
+      Port: 8080
+      Protocol: HTTP
+      HealthCheckPath: /__alb/ready
+      HealthCheckIntervalSeconds: 15
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ApplicationTargets
+  GatewayDiscovery:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: AmarisStagingDiscoverAlbAddresses
+      Roles: [!Ref GatewayRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: ec2:DescribeNetworkInterfaces
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: eu-north-1
+Outputs:
+  LoadBalancerArn:
+    Value: !Ref ApplicationLoadBalancer
+  LoadBalancerFullName:
+    Value: !GetAtt ApplicationLoadBalancer.LoadBalancerFullName
+  TargetGroupArn:
+    Value: !Ref ApplicationTargets
