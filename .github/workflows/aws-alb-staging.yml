@@ -112,18 +112,28 @@ jobs:
         run: |
           set -euo pipefail
           address=''
-          for attempt in {1..42}; do
+          ready=false
+          for attempt in {1..48}; do
             targets="$(aws elbv2 describe-target-health --target-group-arn "$STAGING_TARGET_ARN" --query TargetHealthDescriptions --output json)"
             address="$(jq -r '.[] | select(.TargetHealth.State=="healthy" and .Target.Port==8080).Target.Id' <<< "$targets")"
-            if [[ "$address" =~ ^10\.86\.0\.[0-9]+$ ]]; then break; fi
+            if [[ "$address" =~ ^10\.86\.0\.[0-9]+$ ]]; then
+              tasks="$(aws ecs list-tasks --cluster "$ECS_CLUSTER" --service-name "$ALB_SERVICE" --desired-status RUNNING --query taskArns --output text)"
+              if [[ "$tasks" == arn:aws:ecs:* ]]; then
+                detail="$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$tasks" --query 'tasks[0]' --output json)"
+                if jq -e '.lastStatus=="RUNNING" and .healthStatus=="HEALTHY"' <<< "$detail" >/dev/null; then
+                  ready=true
+                  break
+                fi
+              fi
+            fi
             sleep 8
           done
-          [[ "$address" =~ ^10\.86\.0\.[0-9]+$ ]]
+          if [[ "$ready" != true ]]; then
+            echo '::error::The ECS task and the ALB target did not both report healthy.'
+            exit 1
+          fi
           service="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ALB_SERVICE" --query 'services[0]' --output json)"
           jq -e --arg group "$STAGING_TARGET_ARN" '.runningCount==1 and any(.loadBalancers[];.targetGroupArn==$group and .containerName=="cms" and .containerPort==8080)' <<< "$service"
-          tasks="$(aws ecs list-tasks --cluster "$ECS_CLUSTER" --service-name "$ALB_SERVICE" --desired-status RUNNING --query taskArns --output text)"
-          detail="$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$tasks" --query 'tasks[0]' --output json)"
-          jq -e '.lastStatus=="RUNNING" and .healthStatus=="HEALTHY"' <<< "$detail"
           interface="$(jq -er '.attachments[] | select(.type=="ElasticNetworkInterface" and .status=="ATTACHED") | .details[] | select(.name=="networkInterfaceId").value' <<< "$detail")"
           aws ec2 describe-network-interfaces --network-interface-ids "$interface" --query 'NetworkInterfaces[0]' --output json \
             | jq -e --arg a "$STAGING_PRIVATE_PRIMARY" --arg b "$STAGING_PRIVATE_SECONDARY" --arg ip "$address" \
