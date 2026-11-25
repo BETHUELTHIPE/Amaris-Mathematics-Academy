@@ -5,6 +5,7 @@ on:
     branches: [ops/aws-alb-staging-20261125]
     paths:
       - .github/workflows/aws-alb-staging-observe.yml
+      - deploy/aws/diagnostics/observe-alb-host.sh
 
 permissions: {}
 

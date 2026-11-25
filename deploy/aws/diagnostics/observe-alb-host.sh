@@ -5,6 +5,16 @@ free -m
 uptime
 printf 'Containers persistently running:\n'
 docker ps --format '{{.Names}} {{.Status}}'
+printf 'ECS application-container health status codes:\n'
+for family in amaris-ecs-staging-private-web amaris-ecs-staging-alb-web; do
+  for component in frontend backend valkey; do
+    id="$(docker ps -q --filter "label=com.amazonaws.ecs.task-definition-family=$family" --filter "label=com.amazonaws.ecs.container-name=$component")"
+    if [[ "$id" =~ ^[a-f0-9]{12,64}$ ]]; then
+      printf '%s %s ' "$family" "$component"
+      docker inspect --format '{{.State.Health.Status}} retries={{.State.Health.FailingStreak}} exits={{range .State.Health.Log}}{{.ExitCode}} {{end}}' "$id"
+    fi
+  done
+done
 printf 'ECS task ports and readiness status:\n'
 for family in amaris-ecs-staging-private-web amaris-ecs-staging-alb-web; do
   container="$(docker ps -q --filter "label=com.amazonaws.ecs.task-definition-family=$family" --filter label=com.amazonaws.ecs.container-name=backend)"
