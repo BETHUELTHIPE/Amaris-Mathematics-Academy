@@ -79,6 +79,44 @@ from .subscription_views import (
     raise SystemExit(f"Unreviewed backend conflict: {path}")
 
 
+
+def resolve_tutor(path, ours, theirs):
+    if path == "backend/.env.example":
+        return ours.rstrip() + "\n\n# Tutor portal video submissions remain off until private upload/SMTP acceptance.\nTUTOR_VIDEO_UPLOADS_ENABLED=false\nTUTOR_VIDEO_MAX_UPLOAD_BYTES=52428800\n# Empty uses the academy email in Django Site Settings. Never take this from a request.\nTUTOR_VIDEO_ADMIN_EMAIL=\nTUTOR_PERSONNEL_FORMS_ENABLED=false\nTUTOR_PERSONNEL_ADMIN_EMAIL=\n"
+    if path == "backend/amaris_cms/celery.py":
+        return insert(ours, '    "content.subscription_report_tasks.deliver_ended_subscription_reports":', '    "content.tutor_personnel_tasks.deliver_tutor_personnel_forms": {"queue": "notifications"},\n    "content.tutor_video_tasks.deliver_tutor_video_admin_alerts": {"queue": "notifications"},\n')
+    if path == "backend/amaris_cms/settings.py":
+        start = theirs.index("TUTOR_VIDEO_UPLOADS_ENABLED =")
+        end = theirs.index("\nCELERY_BEAT_SCHEDULE = {", start)
+        settings = theirs[start:end].replace('PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "").strip()\n', "")
+        ours = once(ours, "\nCELERY_BEAT_SCHEDULE = {\n", "\n" + settings + "\nCELERY_BEAT_SCHEDULE = {\n")
+        start = theirs.index('    "tutor-personnel-admin-alerts": {')
+        end = theirs.index('    "reconcile-tutor-earnings": {', start)
+        return insert(ours, '    "deliver-ended-subscription-reports": {', theirs[start:end])
+    if path == "backend/content/apps.py":
+        ours = once(ours, "subscription_report_models, tutor_finance_models", "subscription_report_models, tutor_finance_models, tutor_personnel_models, tutor_video_models")
+        return once(ours, "subscription_report_admin, tutor_finance_admin", "subscription_report_admin, tutor_finance_admin, tutor_personnel_admin, tutor_video_admin")
+    if path == "backend/content/tasks.py":
+        anchor = '@shared_task(ignore_result=True, queue="notifications")\ndef queue_student_motivation_emails():'
+        if ours.count(anchor) != 1:
+            raise SystemExit("Motivation task anchor changed")
+        extra = ours[ours.index(anchor):]
+        theirs = once(theirs, "from . import tutor_finance_tasks, tutor_personnel_tasks, tutor_video_tasks", "from . import subscription_report_tasks, tutor_finance_tasks, tutor_personnel_tasks, tutor_video_tasks")
+        return theirs.rstrip() + "\n\n\n" + extra
+    if path == "backend/content/test_booking_migration.py":
+        if "MigrationExecutor(connection).migrate(latest)" not in ours:
+            raise SystemExit("Full schema restoration missing")
+        return ours
+    if path == "backend/content/urls.py":
+        ours = insert(ours, "from .tutor_views import", "from .tutor_personnel_views import TutorPersonnelFormsView, TutorPersonnelPDFView\nfrom .tutor_video_views import TutorVideoView\n")
+        return once(ours, "urlpatterns = [\n", """urlpatterns = [
+    path("tutor/videos/", TutorVideoView.as_view(), name="tutor-videos"),
+    path("tutor/forms/", TutorPersonnelFormsView.as_view(), name="tutor-personnel-forms"),
+    path("tutor/forms/<uuid:form_id>/pdf/", TutorPersonnelPDFView.as_view(), name="tutor-personnel-pdf"),
+""")
+    raise SystemExit(f"Unreviewed tutor conflict: {path}")
+
+
 BACKEND = {
     "backend/.env.example", "backend/amaris_cms/celery.py",
     "backend/amaris_cms/settings.py", "backend/content/apps.py",
@@ -92,6 +130,8 @@ def main():
     component, ref, sha = sys.argv[1:]
     if (component, ref) == ("backend", "feat/curriculum-subscriptions-backend-20261112"):
         expected = BACKEND
+    elif (component, ref) == ("backend", "feat/tutor-video-admin-alerts-20261113"):
+        expected = (BACKEND - {"backend/content/payfast_views.py"}) | {"backend/content/tasks.py"}
     elif (component, ref) == ("frontend", "feat/sponsor-dashboard-20261111"):
         expected = FRONTEND
     elif (component, ref) == ("frontend", "feat/course-search-ui-20261118"):
@@ -109,7 +149,9 @@ def main():
         source = git("show", f"{sha}:{path}")
         if theirs != source:
             raise SystemExit(f"Incoming blob differs from reviewed source: {path}")
-        if component == "backend":
+        if ref == "feat/tutor-video-admin-alerts-20261113":
+            resolved = resolve_tutor(path, ours, theirs)
+        elif component == "backend":
             resolved = resolve_backend(path, ours)
         elif ref == "feat/course-search-ui-20261118":
             if "getManagedFeaturedCourses" not in theirs or "<CourseSubscriptions />" not in ours:
