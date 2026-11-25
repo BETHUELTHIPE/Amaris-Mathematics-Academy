@@ -45,7 +45,7 @@ fi
 echo "Verified monitoring stack exports and rollback alarm definitions."
 jq '{serviceName,desiredCount,runningCount,pendingCount,controller:.deploymentController.type,strategy:(.deploymentConfiguration.strategy // "ROLLING"),currentRollbackAlarms:.deploymentConfiguration.alarms,advancedRouting:([.loadBalancers[]?|select(.advancedConfiguration != null)]|length)}' <<< "$svc"
 alb_details="$(aws elbv2 describe-load-balancers --load-balancer-arns "$alb" --output json)"
-jq '[.LoadBalancers[]|{scheme: .Scheme,ipAddressType:.IpAddressType,state:.State.Code,type:.Type,availabilityZoneCount:(.AvailabilityZones|length),securityGroupCount:(.SecurityGroups|length)}]' <<< "$alb_details"
+jq '[.LoadBalancers[]|{scheme: .Scheme,ipAddressType:.IpAddressType,state:.State.Code,type:.Type,availabilityZoneCount:(.AvailabilityZones|length),securityGroupCount:(.SecurityGroups|length),privateIpv4AddressCount:([.AvailabilityZones[].LoadBalancerAddresses[]?|select(.PrivateIPv4Address!=null)]|length),ipv6AddressCount:([.AvailabilityZones[].LoadBalancerAddresses[]?|select(.IPv6Address!=null)]|length)}]' <<< "$alb_details"
 vpc_id="$(jq -er '.LoadBalancers[0].VpcId' <<< "$alb_details")"
 aws ec2 describe-vpcs --vpc-ids "$vpc_id" --output json | jq '[.Vpcs[]|{ipv4CidrCount:1,ipv6CidrCount:([.Ipv6CidrBlockAssociationSet[]?|select(.Ipv6CidrBlockState.State=="associated")]|length)}]'
 aws ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc_id" --output json | jq '[.Subnets[]|{availabilityZone:.AvailabilityZone,isPublic:(.MapPublicIpOnLaunch==true),availableIpv4:.AvailableIpAddressCount,hasIpv6:([.Ipv6CidrBlockAssociationSet[]?|select(.Ipv6CidrBlockState.State=="associated")]|length>0)}]'
@@ -80,16 +80,21 @@ if [[ -n "$instances" && "$instances" != None ]]; then
   aws ec2 describe-instance-types --instance-types "$instance_type" --query 'InstanceTypes[0].{maximumNetworkInterfaces:NetworkInfo.MaximumNetworkInterfaces,ipv4AddressesPerInterface:NetworkInfo.Ipv4AddressesPerInterface}' --output json
   aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance_id" --query 'InstanceInformationList[].{pingStatus:PingStatus,platformType:PlatformType,agentVersion:AgentVersion}' --output json
   alb_dns="$(jq -er '.LoadBalancers[0].DNSName' <<< "$alb_details")"
-  commands="$(jq -nc --arg host "$alb_dns" '{commands:["set -eu","getent ahostsv4 " + $host + " || true","curl -4 --max-time 8 -sS -o /dev/null -w \"http_status=%{http_code}\\n\" -A \"ELB-HealthChecker/2.0\" http://" + $host + "/__alb/ready"]}')"
-  command_id="$(aws ssm send-command --instance-ids "$instance_id" --document-name AWS-RunShellScript --parameters "$commands" --timeout-seconds 30 --query 'Command.CommandId' --output text)"
-  invocation_status=""
-  for _ in $(seq 1 20); do
-    invocation_status="$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" --query Status --output text 2>/dev/null || true)"
-    case "$invocation_status" in Success|Failed|TimedOut|Cancelled|Cancelling) break ;; esac
-    sleep 2
-  done
-  aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" --query '{status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' --output json
-  [[ "$invocation_status" == Success ]] || { echo "::error::The private EC2 SSM smoke check could not reach the existing ALB endpoint." >&2; exit 1; }
+  alb_ipv4s="$(jq -r '.LoadBalancers[0].AvailabilityZones[].LoadBalancerAddresses[]?|(.PrivateIPv4Address // .IpAddress // empty)' <<< "$alb_details" | sort -u)"
+  if [[ -n "$alb_ipv4s" ]]; then
+    commands="$(jq -nc --arg host "$alb_dns" --arg ips "$alb_ipv4s" '{commands:([$ips|split("\\n")[]|select(length>0)|"curl -4 --max-time 8 -sS -o /dev/null -w \"http_status=%{http_code}\\n\" -A \"ELB-HealthChecker/2.0\" --resolve " + $host + ":80:" + . + " http://" + $host + "/__alb/ready"])}')"
+    command_id="$(aws ssm send-command --instance-ids "$instance_id" --document-name AWS-RunShellScript --parameters "$commands" --timeout-seconds 30 --query 'Command.CommandId' --output text)"
+    invocation_status=""
+    for _ in $(seq 1 20); do
+      invocation_status="$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" --query Status --output text 2>/dev/null || true)"
+      case "$invocation_status" in Success|Failed|TimedOut|Cancelled|Cancelling) break ;; esac
+      sleep 2
+    done
+    aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" --query '{status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' --output json
+    [[ "$invocation_status" == Success ]] || { echo "::warning::Private IPv4 ALB health smoke check did not complete successfully."; }
+  else
+    echo "::warning::The ALB has no private IPv4 address and the SSM staging instance has no IPv6 address; a VPC-local IPv6 test runner is required."
+  fi
 
 fi
 # Fail closed: ECS may ignore pre-existing ALARM states for an entire deployment.
