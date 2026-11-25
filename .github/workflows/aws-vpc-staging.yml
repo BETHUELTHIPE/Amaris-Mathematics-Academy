@@ -56,6 +56,84 @@ jobs:
       - name: Resolve the existing VPC and two Availability Zones
         shell: bash
         run: bash deploy/aws/vpc/resolve-network.sh
-      - name: Apply the four-subnet layout
+      - name: Prepare private routing on the existing host
         shell: bash
-        run: bash deploy/aws/vpc/apply-network.sh
+        run: |
+          set -euo pipefail
+          bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/vpc/prepare-private-host.sh "$STAGING_ADDRESS"
+          aws ec2 modify-instance-attribute --instance-id "$STAGING_INSTANCE" --no-source-dest-check
+          for attempt in {1..24}; do
+            instances="$(aws ecs list-container-instances --cluster "$ECS_CLUSTER" --status ACTIVE \
+              --query containerInstanceArns --output text)"
+            if [[ -n "$instances" && "$instances" != None ]]; then
+              aws ecs describe-container-instances --cluster "$ECS_CLUSTER" --container-instances $instances \
+                --output json | jq -e --arg id "$STAGING_INSTANCE" \
+                  '.containerInstances | any(.agentConnected and .ec2InstanceId==$id and (.attributes|any(.name=="ecs.capability.task-eni")))' && exit 0
+            fi
+            sleep 6
+          done
+          echo '::error::The staging ECS host did not register ENI support.'
+          exit 1
+      - name: Apply the four-subnet layout and verify routing
+        shell: bash
+        run: bash deploy/aws/vpc/apply-network.sh true
+      - name: Check both public and both private subnets
+        shell: bash
+        run: bash deploy/aws/vpc/verify-topology.sh
+      - name: Deploy the private ECS service alongside the current service
+        shell: bash
+        run: bash deploy/aws/vpc/deploy-private-task.sh
+      - name: Verify the ECS task runs with a private ENI and no public IP
+        shell: bash
+        run: bash deploy/aws/vpc/verify-private-task.sh
+      - name: Move the public HTTPS gateway to the private ECS task
+        id: switch
+        shell: bash
+        run: bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/vpc/set-private-gateway.sh "$STAGING_ADDRESS" switch "$STAGING_PRIVATE_IP"
+      - name: Verify the public website through the private ECS task
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://$STAGING_ADDRESS"
+          curl -fSs --retry 3 --max-time 12 -D "$RUNNER_TEMP/amaris-headers" "$base/" -o "$RUNNER_TEMP/amaris-home.html"
+          grep -Eiq '^X-Amaris-Network: private-vpc' "$RUNNER_TEMP/amaris-headers"
+          grep -Fqi 'Amaris Mathematics Academy' "$RUNNER_TEMP/amaris-home.html"
+          curl -fSs --max-time 12 "$base/health/ready" | jq -e '.status=="ok"'
+          curl -fSs --max-time 12 "$base/health/dependencies/" | jq -e '.dependencies|.postgresql and .redis'
+          curl -fSs --max-time 12 "$base/api/v1/bootstrap/" | jq -e 'has("settings")'
+          curl -fSs --max-time 12 "$base/admin/login/" -o /dev/null
+          unauthorized="$(curl -sS --max-time 12 -o /dev/null -w '%{http_code}' "$base/api/v1/student/courses/")"
+          [[ "$unauthorized" == 401 || "$unauthorized" == 403 ]]
+      - name: Scale down the previous service and verify the live website
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$LEGACY_SERVICE" --desired-count 0 \
+            --query service.desiredCount --output text
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$LEGACY_SERVICE" "$PRIVATE_SERVICE"
+          curl -fSs --retry 3 --max-time 12 -D "$RUNNER_TEMP/amaris-final-headers" \
+            "https://$STAGING_ADDRESS/health/dependencies/" | jq -e '.dependencies | .postgresql and .redis'
+          grep -Eiq '^X-Amaris-Network: private-vpc' "$RUNNER_TEMP/amaris-final-headers"
+          printf 'Amaris staging is live through its private ECS task at https://%s\n' "$STAGING_ADDRESS" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Restore the previous service if public verification fails
+        if: failure() && steps.switch.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$LEGACY_SERVICE" --desired-count 1 --query service.desiredCount --output text
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$LEGACY_SERVICE"
+          bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/vpc/set-private-gateway.sh "$STAGING_ADDRESS" rollback
+      - name: Report private deployment diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          aws cloudformation describe-stack-events --stack-name "$NET_STACK" \
+            --query 'StackEvents[?contains(ResourceStatus, `FAILED`)].[LogicalResourceId,ResourceStatusReason]' --output text || true
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$PRIVATE_SERVICE" \
+            --query 'services[0].events[:6].message' --output text || true
+          tasks="$(aws ecs list-tasks --cluster "$ECS_CLUSTER" --service-name "$PRIVATE_SERVICE" \
+            --desired-status STOPPED --max-items 3 --query taskArns --output text 2>/dev/null || true)"
+          if [[ "$tasks" == arn:aws:ecs:* ]]; then
+            aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks $tasks \
+              --query 'tasks[].{reason:stoppedReason,containers:containers[].{name:name,reason:reason,exit:exitCode}}' --output json || true
+          fi
