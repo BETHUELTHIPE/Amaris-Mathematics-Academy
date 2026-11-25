@@ -90,6 +90,11 @@ jobs:
           inventory "ECR repository" ecr describe-repositories --query 'length(repositories)'
           inventory "Application or Network Load Balancer" elbv2 describe-load-balancers --query 'length(LoadBalancers)'
 
+          echo 'Account-specific Free Tier EC2 instance types in Stockholm:'
+          aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true \
+            --query 'sort_by(InstanceTypes,&InstanceType)[].[InstanceType,MemoryInfo.SizeInMiB,ProcessorInfo.SupportedArchitectures[0]]' \
+            --output text
+
           echo 'Stockholm staging stack status and failures:'
           aws cloudformation describe-stacks --stack-name amaris-aws-staging \
             --query 'Stacks[0].[StackStatus,StackStatusReason]' --output text || true
