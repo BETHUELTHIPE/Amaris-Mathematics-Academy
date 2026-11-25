@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Amaris Stockholm staging host with Systems Manager access and no SSH.
+Parameters:
+  AmazonLinuxArmImage:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+Resources:
+  FrontendRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: amaris-staging-frontend
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: >-
+          {"rules":[{"rulePriority":1,"description":"Keep five staging images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}
+  StagingVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.86.0.0/24
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref StagingVpc
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.86.0.0/26
+      VpcId: !Ref StagingVpc
+      MapPublicIpOnLaunch: false
+  Routes:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref StagingVpc
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref Routes
+  SubnetRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref Routes
+      SubnetId: !Ref PublicSubnet
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow public staging HTTP and HTTPS only.
+      VpcId: !Ref StagingVpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP redirect and certificate challenge
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS staging traffic
+  StagingInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: ReadAmarisStagingRuntime
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/backend
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/frontend
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/amaris-staging-frontend
+  StagingInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref StagingInstanceRole]
+  StagingHost:
+    Type: AWS::EC2::Instance
+    DependsOn: SubnetRouteAssociation
+    Properties:
+      ImageId: !Ref AmazonLinuxArmImage
+      InstanceType: t4g.medium
+      IamInstanceProfile: !Ref StagingInstanceProfile
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds: [!Ref WebSecurityGroup]
+      CreditSpecification:
+        CPUCredits: standard
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: true
+            VolumeSize: 20
+            VolumeType: gp3
+      Tags:
+        - Key: Name
+          Value: amaris-aws-staging
+        - Key: Environment
+          Value: staging
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -euo pipefail
+          systemctl enable --now amazon-ssm-agent
+          for attempt in {1..12}; do
+            dnf install -y docker && break
+            sleep 10
+          done
+          systemctl enable --now docker
+  PublicAddress:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachment
+    Properties:
+      Domain: vpc
+  PublicAddressAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt PublicAddress.AllocationId
+      InstanceId: !Ref StagingHost
+Outputs:
+  FrontendRepositoryUri:
+    Value: !GetAtt FrontendRepository.RepositoryUri
+  InstanceId:
+    Value: !Ref StagingHost
+  PublicIPv4:
+    Value: !Ref PublicAddress

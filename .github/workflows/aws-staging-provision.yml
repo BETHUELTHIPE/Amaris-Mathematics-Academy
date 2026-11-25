@@ -1,0 +1,90 @@
+name: Provision Amaris Stockholm staging
+
+on:
+  push:
+    branches: [ops/aws-staging-preflight-20261125]
+    paths:
+      - deploy/aws/staging-host.yml
+      - .github/workflows/aws-staging-provision.yml
+
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-infrastructure
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    name: Deploy the Stockholm staging infrastructure
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+      AMARIS_STACK: amaris-aws-staging
+      AMARIS_ACCOUNT: '110156539003'
+      AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate to AWS using the staging role
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate to AWS using the configured staging keys
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify account and validate the staging template
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$AWS_REGION" = eu-north-1
+          read -r account principal <<< "$(aws sts get-caller-identity --query '[Account,Arn]' --output text)"
+          test "$account" = "$AMARIS_ACCOUNT"
+          [[ "$principal" != *:root ]]
+          aws cloudformation validate-template --template-body file://deploy/aws/staging-host.yml --query Description --output text
+      - name: Apply the dedicated staging stack
+        run: |
+          aws cloudformation deploy --stack-name "$AMARIS_STACK" --template-file deploy/aws/staging-host.yml \
+            --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset \
+            --tags Project=Amaris Environment=staging
+      - name: Check that the host is registered with Systems Manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          instance="$(aws cloudformation describe-stacks --stack-name "$AMARIS_STACK" \
+            --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue | [0]' --output text)"
+          [[ "$instance" =~ ^i-[a-f0-9]+$ ]]
+          for attempt in {1..36}; do
+            status="$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance" \
+              --query 'InstanceInformationList[0].PingStatus' --output text)"
+            if [[ "$status" == Online ]]; then
+              echo 'The staging host is online in Systems Manager.'
+              exit 0
+            fi
+            sleep 10
+          done
+          echo '::error::The staging host did not register in Systems Manager.'
+          exit 1
+      - name: Show CloudFormation failure reasons
+        if: failure()
+        run: |
+          aws cloudformation describe-stack-events --stack-name "$AMARIS_STACK" --max-items 20 \
+            --query 'StackEvents[?contains(ResourceStatus, `FAILED`)].[LogicalResourceId,ResourceStatusReason]' \
+            --output table || true
