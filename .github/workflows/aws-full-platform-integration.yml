@@ -82,7 +82,8 @@ jobs:
                     "$COMPONENT:$ref:$sha" == "backend:feat/admin-fortnightly-performance-20261113:dc2c51a5f7efef6ae1a6526430fbc2bbafacfeec" || \
                     "$COMPONENT:$ref:$sha" == "frontend:feat/private-chat-ui-20261124:2b46f28dd12d67e291671805d8a44e8944bdf81d" || \
                     "$COMPONENT:$ref:$sha" == "backend:feat/tutor-employment-contract-backend-20261115:449db62ea39322a250a1db1d217aeb1a6cd6b314" || \
-                    "$COMPONENT:$ref:$sha" == "frontend:feature/paystack-payfast-choice-20261110:287dad8950f695e46818a355c00fc11ea820df63" ]]; then
+                    "$COMPONENT:$ref:$sha" == "frontend:feature/paystack-payfast-choice-20261110:287dad8950f695e46818a355c00fc11ea820df63" || \
+                    "$COMPONENT:$ref:$sha" == "backend:feat/private-chat-backend-20261124:a3b8d65e217b5ef1438f0b8190a46e383880024a" ]]; then
                 python3 "$GITHUB_WORKSPACE/deploy/aws/resolve-reviewed-integration.py" "$COMPONENT" "$ref" "$sha"
               else
                 echo "::error::Feature delta conflict in $COMPONENT at $ref; manual resolution required."
@@ -96,6 +97,21 @@ jobs:
             git diff --cached --check
             git commit -m "Integrate $ref ($sha)"
           done < "$manifest"
+          if [[ "$COMPONENT" == frontend ]]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          p = Path("frontend/components/tutor/employment-contract.tsx")
+          source = p.read_text()
+          old = "useEffect(() => { void load(); }, [load]);"
+          new = "useEffect(() => {\n    const timer = window.setTimeout(() => { void load(); }, 0);\n    return () => window.clearTimeout(timer);\n  }, [load]);"
+          if source.count(old) != 1 or source.count("Tutor's 30% share") != 1:
+              raise SystemExit("Unexpected tutor contract source; manual review required")
+          p.write_text(source.replace(old, new).replace("Tutor's 30% share", "Tutor&apos;s 30% share"))
+          PY
+            git add -- frontend/components/tutor/employment-contract.tsx
+            git diff --cached --check
+            git commit -m "Fix confirmed contract React lint errors"
+          fi
           if [[ "$COMPONENT" == backend ]]; then
             python3 "$GITHUB_WORKSPACE/deploy/aws/reconcile-candidate-migrations.py"
             git add -- backend/content/migrations/
