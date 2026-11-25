@@ -1,0 +1,210 @@
+name: Release Amaris to Stockholm staging
+
+on:
+  push:
+    branches: [ops/aws-staging-preflight-20261125]
+    paths:
+      - deploy/aws/**
+      - .github/workflows/aws-staging-release.yml
+
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and deploy the last Render staging releases to AWS
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+      AMARIS_STACK: amaris-aws-staging
+      AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      FRONTEND_SHA: 5a00cc1b3f0b08700bb6eb9b655ab36e2b055d1a
+      BACKEND_SHA: 44e800ccc4ad4c0f88f5c6f7dde72907b06da19c
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.FRONTEND_SHA }}
+          path: frontend-release
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BACKEND_SHA }}
+          path: backend-release
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          ref: fb81ed871e8d26434f59ae3d32fd4896e2bad856
+          path: backend-image-source
+          persist-credentials: false
+      - name: Build and verify the previous staging release images
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C frontend-release rev-parse HEAD)" = "$FRONTEND_SHA"
+          test "$(git -C backend-release rev-parse HEAD)" = "$BACKEND_SHA"
+          cmp backend-release/backend/requirements.txt backend-image-source/backend/requirements.txt
+          printf '%s\n' '.env' '.env.*' 'node_modules' '.output' 'dist' > frontend-release/frontend/.dockerignore
+          printf '%s\n' '.env' '.env.*' '*.sqlite3' '*.env' '.venv' 'media' 'staticfiles' '__pycache__' > backend-release/backend/.dockerignore
+          docker build --file deploy/aws/frontend.Dockerfile \
+            --label "org.opencontainers.image.revision=$FRONTEND_SHA" \
+            --tag "amaris-frontend:$FRONTEND_SHA" frontend-release/frontend
+          docker build --file deploy/aws/backend.Dockerfile \
+            --label "org.opencontainers.image.revision=$BACKEND_SHA" \
+            --tag "amaris-backend:$BACKEND_SHA" backend-release/backend
+          for image in "amaris-frontend:$FRONTEND_SHA" "amaris-backend:$BACKEND_SHA"; do
+            test "$(docker image inspect --format '{{.Architecture}}' "$image")" = arm64
+          done
+          docker run --detach --rm --name amaris-frontend-smoke -p 127.0.0.1:3000:3000 \
+            -e SITE_URL=http://127.0.0.1:3000 "amaris-frontend:$FRONTEND_SHA"
+          curl -fSs --retry 15 --retry-connrefused --retry-delay 2 --retry-max-time 45 \
+            http://127.0.0.1:3000/health/ready | python3 -c 'import json,sys; assert json.load(sys.stdin)["status"] == "ok"'
+          curl -fSs --max-time 15 http://127.0.0.1:3000/ > "$RUNNER_TEMP/amaris-home.html"
+          grep -Fqi 'Amaris Mathematics Academy' "$RUNNER_TEMP/amaris-home.html"
+      - name: Authenticate to AWS using the staging role
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate to AWS using the configured staging keys
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Resolve the budgeted Stockholm host
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..18}; do
+            stack="$(aws cloudformation describe-stacks --stack-name "$AMARIS_STACK" \
+              --query 'Stacks[0].{status:StackStatus,outputs:Outputs}' --output json)"
+            status="$(jq -r .status <<< "$stack")"
+            case "$status" in
+              CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE) break ;;
+              CREATE_IN_PROGRESS|UPDATE_IN_PROGRESS|REVIEW_IN_PROGRESS) sleep 10 ;;
+              *) echo "::error::The dedicated staging stack reports $status."; exit 1 ;;
+            esac
+          done
+          address="$(jq -r '.outputs[] | select(.OutputKey=="PublicIPv4").OutputValue' <<< "$stack")"
+          instance="$(jq -r '.outputs[] | select(.OutputKey=="InstanceId").OutputValue' <<< "$stack")"
+          image_repo="$(jq -r '.outputs[] | select(.OutputKey=="FrontendRepositoryUri").OutputValue' <<< "$stack")"
+          [[ "$address" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$instance" =~ ^i-[a-f0-9]+$ ]]
+          test "$image_repo" = '110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend'
+          {
+            printf 'STAGING_ADDRESS=%s\n' "$address"
+            printf 'STAGING_INSTANCE=%s\n' "$instance"
+            printf 'STAGING_IMAGE_REPO=%s\n' "$image_repo"
+          } >> "$GITHUB_ENV"
+      - name: Publish immutable staging images to ECR
+        shell: bash
+        run: |
+          set -euo pipefail
+          registry="${STAGING_IMAGE_REPO%%/*}"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry" >/dev/null 2>&1
+          trap 'docker logout "$registry" >/dev/null 2>&1' EXIT
+          for service in frontend backend; do
+            if [[ "$service" == frontend ]]; then sha="$FRONTEND_SHA"; else sha="$BACKEND_SHA"; fi
+            tag="$service-$sha"
+            if ! aws ecr describe-images --repository-name amaris-staging-frontend --image-ids "imageTag=$tag" >/dev/null 2>&1; then
+              docker tag "amaris-$service:$sha" "$STAGING_IMAGE_REPO:$tag"
+              docker push "$STAGING_IMAGE_REPO:$tag"
+            fi
+          done
+      - name: Store isolated runtime settings as encrypted parameters
+        shell: bash
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+          PAYFAST_SANDBOX_MERCHANT_ID: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_ID }}
+          PAYFAST_SANDBOX_MERCHANT_KEY: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_KEY }}
+          PAYFAST_SANDBOX_PASSPHRASE: ${{ secrets.PAYFAST_SANDBOX_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          private="$(mktemp -d "$RUNNER_TEMP/amaris-config.XXXXXX")"
+          trap 'rm -rf -- "$private"' EXIT
+          if ! aws ssm get-parameter --with-decryption --name /amaris/aws-staging/backend \
+             --query Parameter.Value --output json > "$private/previous.json" 2> "$private/ssm-error.log"; then
+            if ! grep -Fq ParameterNotFound "$private/ssm-error.log"; then
+              echo '::error::Could not check the existing AWS staging runtime parameter.'
+              exit 1
+            fi
+          else
+            python3 - "$private" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          directory = Path(sys.argv[1])
+          for line in json.loads((directory / 'previous.json').read_text()).splitlines():
+              key, _, value = line.partition('=')
+              if key == 'DJANGO_SECRET_KEY':
+                  (directory / 'django-key').write_text(value)
+                  break
+          PY
+          fi
+          python3 deploy/aws/staging-config.py "$STAGING_ADDRESS" "$private"
+          for service in frontend backend; do
+            aws ssm put-parameter --name "/amaris/aws-staging/$service" --type SecureString --overwrite \
+              --value "file://$private/$service.env" --query Version --output text >/dev/null
+          done
+      - name: Start staging applications on the managed host
+        shell: bash
+        run: |
+          set -euo pipefail
+          script="$(base64 -w0 deploy/aws/start-staging.sh)"
+          command="printf '%s' '$script' | base64 -d | bash -s -- '$STAGING_ADDRESS' '$STAGING_IMAGE_REPO:frontend-$FRONTEND_SHA' '$STAGING_IMAGE_REPO:backend-$BACKEND_SHA'"
+          parameters="$(jq -cn --arg command "$command" '{commands:[$command],executionTimeout:["720"]}')"
+          invocation="$(aws ssm send-command --instance-ids "$STAGING_INSTANCE" \
+            --document-name AWS-RunShellScript --timeout-seconds 90 --parameters "$parameters" \
+            --comment 'Start Amaris Stockholm staging' --query Command.CommandId --output text)"
+          for attempt in {1..75}; do
+            result="$(aws ssm get-command-invocation --command-id "$invocation" --instance-id "$STAGING_INSTANCE" --output json 2>/dev/null || true)"
+            status="$(jq -r .Status <<< "$result")"
+            case "$status" in
+              Success) echo 'Systems Manager reports a healthy staging gateway.'; exit 0 ;;
+              ''|Pending|InProgress|Delayed) sleep 10 ;;
+              *)
+                echo "::error::The staging host command reports $status."
+                jq -r '.StandardErrorContent | split("\n") | map(select(test("migration check|certificate request|gateway did not|manifest unknown|no matching manifest|AccessDeniedException"))) | .[-5:][]' <<< "$result"
+                exit 1
+                ;;
+            esac
+          done
+          echo '::error::Timed out waiting for the staging host.'
+          exit 1
+      - name: Verify HTTPS and application routes from outside AWS
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://$STAGING_ADDRESS"
+          curl -fSs --max-time 15 "$base/health/ready" | jq -e '.status=="ok"'
+          curl -fSs --max-time 15 "$base/health/ready/" | jq -e '.status=="ready"'
+          curl -fSs --max-time 15 "$base/health/version/" | jq -e --arg sha "$BACKEND_SHA" '.git_sha==$sha'
+          curl -fSs --max-time 15 "$base/api/v1/bootstrap/" | jq -e 'has("settings")'
+          curl -fSs --max-time 15 "$base/" -o "$RUNNER_TEMP/amaris-aws-home.html"
+          grep -Fqi 'Amaris Mathematics Academy' "$RUNNER_TEMP/amaris-aws-home.html"
+          curl -fSs --max-time 15 "$base/login" -o /dev/null
+          curl -fSs --max-time 15 "$base/admin/login/" -o /dev/null
+          printf 'Amaris AWS staging verified at %s\n' "$base"
+          printf 'Amaris AWS staging is available at %s\n' "$base" >> "$GITHUB_STEP_SUMMARY"
