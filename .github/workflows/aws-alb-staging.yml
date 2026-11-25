@@ -56,7 +56,7 @@ jobs:
           mask-aws-account-id: true
       - name: Resolve the existing VPC and two Availability Zones
         shell: bash
-        run: bash deploy/aws/vpc/resolve-network.sh
+        run: bash deploy/aws/alb/resolve-network.sh
       - name: Resolve the existing public and private subnets
         shell: bash
         run: |
