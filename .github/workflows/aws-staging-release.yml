@@ -195,11 +195,17 @@ jobs:
             result="$(aws ssm get-command-invocation --command-id "$invocation" --instance-id "$STAGING_INSTANCE" --output json 2>/dev/null || true)"
             status="$(jq -r .Status <<< "$result")"
             case "$status" in
-              Success) echo 'Systems Manager reports a healthy staging gateway.'; exit 0 ;;
+              Success)
+                echo 'Systems Manager reports a healthy staging gateway.'
+                if jq -er '.StandardOutputContent | contains("Both private staging buckets passed an upload and signed download.")' <<< "$result" >/dev/null; then
+                  echo 'The private admin and student buckets passed an upload and signed download.'
+                fi
+                exit 0
+                ;;
               ''|Pending|InProgress|Delayed) sleep 10 ;;
               *)
                 echo "::error::The staging host command reports $status."
-                jq -r '.StandardErrorContent | split("\n") | map(select(test("migration check|certificate request|gateway did not|manifest unknown|no matching manifest|AccessDeniedException"))) | .[-5:][]' <<< "$result"
+                jq -r '.StandardErrorContent | split("\n") | map(select(test("migration check|certificate request|gateway did not|manifest unknown|no matching manifest|private staging storage|AccessDenied|NoSuchBucket|InvalidAccessKeyId|SignatureDoesNotMatch|EndpointConnectionError|AuthorizationHeaderMalformed"))) | .[-5:][]' <<< "$result"
                 exit 1
                 ;;
             esac

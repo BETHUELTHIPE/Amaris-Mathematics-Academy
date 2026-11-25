@@ -119,17 +119,20 @@ def main():
     }
     for suffix in ("MERCHANT_ID", "MERCHANT_KEY", "PASSPHRASE"):
         backend[f"PAYFAST_{suffix}"] = os.environ[f"PAYFAST_SANDBOX_{suffix}"]
-    storage = {key: render.get(key, "") for key in (
-        "SUPABASE_S3_ENDPOINT_URL", "SUPABASE_S3_ACCESS_KEY_ID", "SUPABASE_S3_SECRET_ACCESS_KEY",
-        "SUPABASE_S3_ADMIN_BUCKET", "SUPABASE_S3_STUDENT_BUCKET", "SUPABASE_S3_REGION",
-    )}
-    endpoint = urllib.parse.urlsplit(storage["SUPABASE_S3_ENDPOINT_URL"])
-    if (
-        endpoint.scheme == "https"
-        and endpoint.hostname in {f"{PROJECT}.supabase.co", f"{PROJECT}.storage.supabase.co"}
-        and all(storage.values())
-    ):
-        backend.update(storage, SUPABASE_S3_REQUIRED="true")
+    storage = {
+        "SUPABASE_S3_ENDPOINT_URL": f"https://{PROJECT}.storage.supabase.co/storage/v1/s3",
+        "SUPABASE_S3_ACCESS_KEY_ID": render.get("SUPABASE_S3_ACCESS_KEY_ID", ""),
+        "SUPABASE_S3_SECRET_ACCESS_KEY": render.get("SUPABASE_S3_SECRET_ACCESS_KEY", ""),
+        "SUPABASE_S3_ADMIN_BUCKET": "amaris-staging-admin",
+        "SUPABASE_S3_STUDENT_BUCKET": "amaris-staging-students",
+        "SUPABASE_S3_REGION": "eu-west-1",
+    }
+    if not all(storage.values()):
+        raise SystemExit("The staging Supabase S3 credentials are missing.")
+    backend.update(storage, SUPABASE_S3_REQUIRED="true")
+    for key in ("SUPABASE_STORAGE_ENABLED", "TUTOR_BANK_FERNET_KEY"):
+        if render.get(key):
+            backend[key] = render[key]
     mail_fields = ("EMAIL_HOST", "EMAIL_PORT", "EMAIL_HOST_USER", "EMAIL_HOST_PASSWORD",
                    "EMAIL_USE_TLS", "EMAIL_USE_SSL", "DEFAULT_FROM_EMAIL")
     mail = {key: render[key] for key in mail_fields if render.get(key)}
@@ -139,7 +142,7 @@ def main():
     store_settings(args.directory / "frontend.env", frontend)
     print("Isolated staging runtime settings generated.")
     print(f"Staging SMTP {'configured' if '.smtp.' in backend['EMAIL_BACKEND'] else 'needs verification'}.")
-    print(f"Private staging storage {'configured' if 'SUPABASE_S3_REQUIRED' in backend else 'needs verification'}.")
+    print("The runtime targets the private staging Supabase buckets.")
 
 
 if __name__ == "__main__":

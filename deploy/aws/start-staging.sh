@@ -7,7 +7,7 @@ frontend="$2"
 backend="$3"
 region=eu-north-1
 registry=110156539003.dkr.ecr.eu-north-1.amazonaws.com
-certbot=certbot/certbot:arm64v8-v5.10.0
+certbot=certbot/certbot:v5.10.0
 nginx=nginx:stable-alpine
 root=/opt/amaris-staging
 export AWS_PAGER=''
@@ -50,6 +50,46 @@ if ! docker run --rm --network amaris-staging --env-file "$root/backend.env" -e 
   echo 'The existing staging database did not pass the Django migration check.' >&2
   exit 1
 fi
+
+if ! docker run --rm -i --network amaris-staging --env-file "$root/backend.env" -e SERVICE_ROLE=check \
+  "$backend" python - > "$root/storage-check.log" 2>&1 <<'PY'
+import os
+from urllib.request import urlopen
+from uuid import uuid4
+
+import boto3
+from botocore.config import Config
+
+client = boto3.client(
+    "s3", endpoint_url=os.environ["SUPABASE_S3_ENDPOINT_URL"],
+    aws_access_key_id=os.environ["SUPABASE_S3_ACCESS_KEY_ID"],
+    aws_secret_access_key=os.environ["SUPABASE_S3_SECRET_ACCESS_KEY"],
+    region_name=os.environ["SUPABASE_S3_REGION"],
+    config=Config(
+        signature_version="s3v4", s3={"addressing_style": "path"}, connect_timeout=5, read_timeout=8,
+        request_checksum_calculation="when_required", response_checksum_validation="when_required",
+    ),
+)
+for setting in ("SUPABASE_S3_ADMIN_BUCKET", "SUPABASE_S3_STUDENT_BUCKET"):
+    bucket = os.environ[setting]
+    key = f"aws-staging-smoke/{uuid4().hex}.txt"
+    body = b"Amaris AWS staging storage smoke test."
+    client.put_object(Bucket=bucket, Key=key, Body=body, ContentType="text/plain")
+    try:
+        signed_url = client.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=60)
+        with urlopen(signed_url, timeout=10) as response:
+            if response.read(len(body) + 1) != body:
+                raise RuntimeError("Staging signed download did not match the uploaded smoke object.")
+    finally:
+        client.delete_object(Bucket=bucket, Key=key)
+PY
+then
+  echo 'The private staging storage smoke test failed.' >&2
+  grep -Eo 'AccessDenied|NoSuchBucket|InvalidAccessKeyId|SignatureDoesNotMatch|EndpointConnectionError|AuthorizationHeaderMalformed' \
+    "$root/storage-check.log" | sort -u >&2 || true
+  exit 1
+fi
+echo 'Both private staging buckets passed an upload and signed download.'
 
 docker rm -f amaris-frontend amaris-backend >/dev/null 2>&1 || true
 docker run "${common[@]}" --name amaris-backend --env-file "$root/backend.env" "$backend" >/dev/null
