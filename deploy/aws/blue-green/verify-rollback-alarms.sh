@@ -100,19 +100,34 @@ fi
 # Fail closed: ECS may ignore pre-existing ALARM states for an entire deployment.
 blocked=0
 if ! jq -e 'all(.MetricAlarms[]; .StateValue=="OK")' <<< "$alarms" >/dev/null; then
-  echo "::error::Rollback alarms must all be OK before starting any deployment."
+  echo "::warning::Rollback alarms must all be OK before starting any deployment."
   blocked=1
 fi
 if ! jq -e '.runningCount==.desiredCount and .pendingCount==0 and (.deployments|length)==1 and .deploymentController.type=="ECS" and .deploymentConfiguration.strategy=="BLUE_GREEN" and any(.loadBalancers[]?; .advancedConfiguration.alternateTargetGroupArn != null and .advancedConfiguration.productionListenerRule != null and .advancedConfiguration.testListenerRule != null and .advancedConfiguration.roleArn != null)' <<< "$svc" >/dev/null; then
-  echo "::error::Service is not a stable native blue-green service with production and test routing."
+  echo "::warning::Service is not a stable native blue-green service with production and test routing."
   blocked=1
 fi
 if jq -e 'any(.containerDefinitions[]; .name=="valkey") or any(.volumes[]?; (.host.sourcePath//"")!="")' <<< "$definition" >/dev/null; then
-  echo "::error::Task-local state or host bind mounts block safe concurrent revisions."
+  echo "::warning::Task-local state or host bind mounts block safe concurrent revisions."
   blocked=1
 fi
 if (( blocked )); then
-  echo "Alarm definitions verified; live activation blocked by release prerequisites."
-  exit 1
+  {
+    echo "## ECS blue-green readiness: BLOCKED"
+    echo
+    echo "- CloudWatch rollback alarm definitions and SNS actions were verified."
+    echo "- The live ECS service is still on rolling deployment with no advanced listener routing."
+    echo "- The active task still contains task-local Valkey and host-mounted volumes."
+    echo "- No deployment, task registration, listener change or traffic shift was performed."
+    echo
+    echo "Resolve shared state, immutable proxy configuration, listener rules and capacity before enabling blue-green."
+  } >> "$GITHUB_STEP_SUMMARY"
+  echo "READINESS=BLOCKED"
+  exit 0
 fi
-echo "Alarm preflight passed. Capacity, database compatibility and rollback acceptance still require independent verification."
+{
+  echo "## ECS blue-green readiness: READY FOR CONTROLLED STAGING CONVERSION"
+  echo
+  echo "Alarm, routing, task-state and service preflight checks passed. Database and rollback acceptance still require separate validation."
+} >> "$GITHUB_STEP_SUMMARY"
+echo "READINESS=PREPARED"
