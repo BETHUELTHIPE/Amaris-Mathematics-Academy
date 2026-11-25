@@ -1,0 +1,88 @@
+name: AWS staging deployment preflight
+
+on:
+  push:
+    branches: [ops/aws-staging-preflight-20261125]
+
+permissions: {}
+
+jobs:
+  verify:
+    name: Verify the Stockholm staging account and existing infrastructure
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+      AWS_MAX_ATTEMPTS: "2"
+      AWS_PREFLIGHT_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+
+    steps:
+      - name: Assume the staging role
+        if: env.AWS_PREFLIGHT_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AWS_PREFLIGHT_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: "110156539003"
+          mask-aws-account-id: true
+          retry-max-attempts: 2
+
+      - name: Read AWS identity and regional inventory
+        shell: bash
+        env:
+          STAGING_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          STAGING_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          STAGING_AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$AWS_PREFLIGHT_ROLE" ]]; then
+            if [[ -z "$STAGING_AWS_ACCESS_KEY_ID" || -z "$STAGING_AWS_SECRET_ACCESS_KEY" ]]; then
+              echo "::error::No staging AWS authentication is configured. Set AWS_ROLE_TO_ASSUME or add both staging AWS key secrets."
+              exit 1
+            fi
+            export AWS_ACCESS_KEY_ID="$STAGING_AWS_ACCESS_KEY_ID"
+            export AWS_SECRET_ACCESS_KEY="$STAGING_AWS_SECRET_ACCESS_KEY"
+            if [[ -n "$STAGING_AWS_SESSION_TOKEN" ]]; then
+              export AWS_SESSION_TOKEN="$STAGING_AWS_SESSION_TOKEN"
+            fi
+          fi
+          unset STAGING_AWS_ACCESS_KEY_ID STAGING_AWS_SECRET_ACCESS_KEY STAGING_AWS_SESSION_TOKEN
+
+          if ! identity="$(aws sts get-caller-identity --query '[Account,Arn]' --output text 2>/dev/null)"; then
+            echo "::error::AWS STS could not authenticate the configured staging identity."
+            exit 1
+          fi
+          read -r account principal <<< "$identity"
+          if [[ "$account" != '110156539003' ]]; then
+            echo "::error::The configured staging identity belongs to a different AWS account."
+            exit 1
+          fi
+          if [[ "$principal" == *:root ]]; then
+            echo "::error::Use a dedicated staging identity before deploying."
+            exit 1
+          fi
+          echo "AWS account verified for Stockholm (eu-north-1)."
+
+          inventory() {
+            local label="$1"
+            local count
+            shift
+            if count="$(aws "$@" --output text 2>/dev/null)" && [[ "$count" =~ ^[0-9]+$ ]]; then
+              printf '%s count in Stockholm is %s.\n' "$label" "$count"
+            else
+              printf '%s inventory is unavailable to this identity.\n' "$label"
+            fi
+          }
+
+          inventory "Running EC2 instance" ec2 describe-instances \
+            --filters Name=instance-state-name,Values=running --query 'length(Reservations[].Instances[])'
+          inventory "ECS cluster" ecs list-clusters --query 'length(clusterArns)'
+          inventory "ECR repository" ecr describe-repositories --query 'length(repositories)'
+          inventory "Application or Network Load Balancer" elbv2 describe-load-balancers --query 'length(LoadBalancers)'
