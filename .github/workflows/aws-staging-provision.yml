@@ -59,8 +59,11 @@ jobs:
           test "$account" = "$AMARIS_ACCOUNT"
           [[ "$principal" != *:root ]]
           eligible="$(aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true \
-            Name=instance-type,Values=t4g.small --query 'length(InstanceTypes)' --output text)"
-          test "$eligible" = 1
+            --query 'sort_by(InstanceTypes,&InstanceType)[].[InstanceType]' --output text)"
+          if ! grep -Fxq t4g.small <<< "$eligible"; then
+            echo '::error::Stockholm does not report t4g.small as Free Tier eligible for this account.'
+            exit 1
+          fi
           aws cloudformation validate-template --template-body file://deploy/aws/staging-host.yml --query Description --output text
       - name: Clear the empty record of the previous failed launch
         shell: bash
@@ -70,7 +73,10 @@ jobs:
           if [[ "$status" == ROLLBACK_COMPLETE ]]; then
             remaining="$(aws cloudformation list-stack-resources --stack-name "$AMARIS_STACK" \
               --query 'length(StackResourceSummaries[?ResourceStatus!=`DELETE_COMPLETE`])' --output text)"
-            test "$remaining" = 0
+            if [[ "$remaining" != 0 ]]; then
+              echo "::error::The previous failed launch still reports $remaining resources without a completed deletion."
+              exit 1
+            fi
             aws cloudformation delete-stack --stack-name "$AMARIS_STACK"
             aws cloudformation wait stack-delete-complete --stack-name "$AMARIS_STACK"
           fi
