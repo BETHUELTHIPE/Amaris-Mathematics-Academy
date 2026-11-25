@@ -1,0 +1,63 @@
+{% extends "admin/base_site.html" %}
+{% load tz %}
+
+{% block content %}
+<section aria-labelledby="advisor-title">
+  <div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+    <div class="mr-3">
+      <h1 id="advisor-title">Amaris Trusted Advisor</h1>
+      <p>Review platform findings and the evidence behind them.</p>
+    </div>
+    <a href="{% url 'admin:amaris_trusted_advisor' %}" class="btn btn-outline-primary">Refresh findings</a>
+  </div>
+  <dl class="row mb-3">
+    <div class="col-12 col-sm-4">
+      <div class="card p-3">
+        <dt>Action required</dt>
+        <dd class="h3 mb-0">{{ report.counts.action }}</dd>
+      </div>
+    </div>
+    <div class="col-12 col-sm-4">
+      <div class="card p-3">
+        <dt>Needs verification</dt>
+        <dd class="h3 mb-0">{{ report.counts.verify }}</dd>
+      </div>
+    </div>
+    <div class="col-12 col-sm-4">
+      <div class="card p-3">
+        <dt>Passed</dt>
+        <dd class="h3 mb-0">{{ report.counts.passed }}</dd>
+      </div>
+    </div>
+  </dl>
+  <p>Checked <time datetime="{{ report.checked_at|date:'c' }}">{{ report.checked_at|localtime|date:'j M Y, H:i' }}</time> SAST. GitHub evidence can be up to five minutes old.</p>
+  <div class="table-responsive" tabindex="0" role="region" aria-label="Platform findings">
+    <table class="table table-bordered">
+      <caption class="sr-only">Amaris platform checks, evidence and next steps</caption>
+      <thead>
+        <tr>
+          <th scope="col">Area</th>
+          <th scope="col">Check</th>
+          <th scope="col">Result</th>
+          <th scope="col">Evidence and next step</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for finding in report.findings %}
+          <tr>
+            <td>{{ finding.category }}</td>
+            <th scope="row">{{ finding.title }}</th>
+            <td><strong>{{ finding.status }}</strong></td>
+            <td>
+              <p class="mb-1">{{ finding.evidence }}</p>
+              {% if finding.next_step %}<p class="mb-1">{{ finding.next_step }}</p>{% endif %}
+              {% if finding.url %}<a href="{{ finding.url }}">{{ finding.link_label }}</a>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <a href="{% url 'admin:index' %}">Return to Django Admin</a>
+</section>
+{% endblock %}

@@ -228,7 +228,7 @@ class HealthAndMetricsTests(TestCase):
         self.assertNotContains(live, "postgres", status_code=200)
         self.assertNotContains(ready, "redis", status_code=200)
 
-    @patch("amaris_cms.urls.Redis.from_url", side_effect=ConnectionError)
+    @patch("amaris_cms.health.Redis.from_url", side_effect=ConnectionError)
     def test_redis_failure_degrades_dependencies_but_not_readiness(self, _redis):
         ready = self.client.get(reverse("health-ready"), secure=True)
         dependencies = self.client.get(reverse("health-dependencies"), secure=True)
