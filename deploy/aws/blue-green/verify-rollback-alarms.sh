@@ -79,6 +79,18 @@ if [[ -n "$instances" && "$instances" != None ]]; then
   instance_type="$(aws ec2 describe-instances --instance-ids "$instance_id" --query 'Reservations[0].Instances[0].InstanceType' --output text)"
   aws ec2 describe-instance-types --instance-types "$instance_type" --query 'InstanceTypes[0].{maximumNetworkInterfaces:NetworkInfo.MaximumNetworkInterfaces,ipv4AddressesPerInterface:NetworkInfo.Ipv4AddressesPerInterface}' --output json
   aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance_id" --query 'InstanceInformationList[].{pingStatus:PingStatus,platformType:PlatformType,agentVersion:AgentVersion}' --output json
+  alb_dns="$(jq -er '.LoadBalancers[0].DNSName' <<< "$alb_details")"
+  commands="$(jq -nc --arg host "$alb_dns" '{commands:["set -eu","getent ahostsv4 " + $host + " || true","curl -4 --max-time 8 -sS -o /dev/null -w \"http_status=%{http_code}\\n\" -A \"ELB-HealthChecker/2.0\" http://" + $host + "/__alb/ready"]}')"
+  command_id="$(aws ssm send-command --instance-ids "$instance_id" --document-name AWS-RunShellScript --parameters "$commands" --timeout-seconds 20 --query 'Command.CommandId' --output text)"
+  invocation_status=""
+  for _ in $(seq 1 20); do
+    invocation_status="$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" --query Status --output text 2>/dev/null || true)"
+    case "$invocation_status" in Success|Failed|TimedOut|Cancelled|Cancelling) break ;; esac
+    sleep 2
+  done
+  aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" --query '{status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' --output json
+  [[ "$invocation_status" == Success ]] || { echo "::error::The private EC2 SSM smoke check could not reach the existing ALB endpoint." >&2; exit 1; }
+
 fi
 # Fail closed: ECS may ignore pre-existing ALARM states for an entire deployment.
 blocked=0
