@@ -1,0 +1,44 @@
+name: AWS blue-green staging readiness
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ops/aws-alb-staging-20261125]
+    paths:
+      - deploy/aws/blue-green/**
+      - .github/workflows/aws-blue-green-readiness.yml
+permissions:
+  contents: read
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: bash -n deploy/aws/blue-green/preflight.sh
+      - run: |
+          python3 -m pip install cfn-lint
+          cfn-lint -r eu-north-1 -t deploy/aws/blue-green/prerequisites.yml
+  inspect:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release/aws-full-platform-20261125' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    needs: static
+    runs-on: ubuntu-24.04
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate using a dedicated read-only OIDC role
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ vars.AWS_BLUE_GREEN_READONLY_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - run: bash deploy/aws/blue-green/preflight.sh
