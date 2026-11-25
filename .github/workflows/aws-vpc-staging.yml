@@ -1,0 +1,61 @@
+name: Deploy the Amaris two-AZ staging VPC layout
+
+on:
+  push:
+    branches: [ops/aws-vpc-staging-20261125]
+    paths:
+      - deploy/aws/vpc/**
+      - .github/workflows/aws-vpc-staging.yml
+
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    name: Deploy and verify the Stockholm staging VPC
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+      AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      HOST_STACK: amaris-aws-staging
+      NET_STACK: amaris-staging-vpc
+      ECS_CLUSTER: amaris-ecs-staging
+      LEGACY_SERVICE: amaris-web-staging
+      PRIVATE_SERVICE: amaris-web-staging-private
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate to AWS using the staging role
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate to AWS using the configured staging keys
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Resolve the existing VPC and two Availability Zones
+        shell: bash
+        run: bash deploy/aws/vpc/resolve-network.sh
+      - name: Apply the four-subnet layout
+        shell: bash
+        run: bash deploy/aws/vpc/apply-network.sh

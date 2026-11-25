@@ -1,0 +1,152 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Two-AZ public and private subnet layout for the existing Amaris staging VPC.
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PublicRouteTableId:
+    Type: String
+    AllowedPattern: 'rtb-[a-f0-9]+'
+  EdgeSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  EdgeInstanceId:
+    Type: AWS::EC2::Instance::Id
+  PrimaryZone:
+    Type: String
+    AllowedPattern: 'eu-north-1[a-z]'
+  SecondaryZone:
+    Type: String
+    AllowedPattern: 'eu-north-1[a-z]'
+  EnablePrivateEgress:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+Conditions:
+  UseEdgeNat: !Equals [!Ref EnablePrivateEgress, 'true']
+Resources:
+  PublicSubnetSecondary:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref SecondaryZone
+      CidrBlock: 10.86.0.64/26
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: amaris-staging-public-secondary
+        - Key: Tier
+          Value: public
+  PublicRouteAssociationSecondary:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTableId
+      SubnetId: !Ref PublicSubnetSecondary
+  PrivateSubnetPrimary:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref PrimaryZone
+      CidrBlock: 10.86.0.128/26
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: amaris-staging-private-primary
+        - Key: Tier
+          Value: private
+  PrivateSubnetSecondary:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref SecondaryZone
+      CidrBlock: 10.86.0.192/26
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: amaris-staging-private-secondary
+        - Key: Tier
+          Value: private
+  PrivateRoutes:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: amaris-staging-private
+  PrivateRouteAssociationPrimary:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRoutes
+      SubnetId: !Ref PrivateSubnetPrimary
+  PrivateRouteAssociationSecondary:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRoutes
+      SubnetId: !Ref PrivateSubnetSecondary
+  PrivateInternetEgress:
+    Type: AWS::EC2::Route
+    Condition: UseEdgeNat
+    Properties:
+      RouteTableId: !Ref PrivateRoutes
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: !Ref EdgeInstanceId
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Accept Amaris application traffic from the staging HTTPS gateway only.
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref EdgeSecurityGroupId
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref EdgeSecurityGroupId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 465
+          ToPort: 465
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 587
+          ToPort: 587
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 6543
+          ToPort: 6543
+          CidrIp: 0.0.0.0/0
+  NatSmtpsIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: UseEdgeNat
+    Properties: {GroupId: !Ref EdgeSecurityGroupId, IpProtocol: tcp, FromPort: 465, ToPort: 465, CidrIp: 10.86.0.128/25}
+  NatSmtpSubmissionIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: UseEdgeNat
+    Properties: {GroupId: !Ref EdgeSecurityGroupId, IpProtocol: tcp, FromPort: 587, ToPort: 587, CidrIp: 10.86.0.128/25}
+  NatPostgresIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: UseEdgeNat
+    Properties: {GroupId: !Ref EdgeSecurityGroupId, IpProtocol: tcp, FromPort: 5432, ToPort: 5432, CidrIp: 10.86.0.128/25}
+  NatSupavisorIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: UseEdgeNat
+    Properties: {GroupId: !Ref EdgeSecurityGroupId, IpProtocol: tcp, FromPort: 6543, ToPort: 6543, CidrIp: 10.86.0.128/25}
+Outputs:
+  SecondPublicSubnet:
+    Value: !Ref PublicSubnetSecondary
+  PrimaryPrivateSubnet:
+    Value: !Ref PrivateSubnetPrimary
+  SecondaryPrivateSubnet:
+    Value: !Ref PrivateSubnetSecondary
+  PrivateRouteTable:
+    Value: !Ref PrivateRoutes
+  PrivateTaskSecurityGroup:
+    Value: !Ref TaskSecurityGroup
