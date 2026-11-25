@@ -175,6 +175,8 @@ def main():
         expected = BACKEND
     elif (component, ref) == ("backend", "feat/tutor-video-admin-alerts-20261113"):
         expected = (BACKEND - {"backend/content/payfast_views.py"}) | {"backend/content/tasks.py"}
+    elif (component, ref) == ("backend", "feat/private-chat-backend-20261124"):
+        expected = {"backend/content/apps.py", "backend/content/schema.py", "backend/content/urls.py"}
     elif (component, ref) == ("backend", "feat/tutor-employment-contract-backend-20261115"):
         expected = {"backend/content/apps.py"}
     elif (component, ref) == ("frontend", "feature/paystack-payfast-choice-20261110"):
@@ -200,7 +202,23 @@ def main():
         source = git("show", f"{sha}:{path}")
         if theirs != source:
             raise SystemExit(f"Incoming blob differs from reviewed source: {path}")
-        if ref == "feat/tutor-employment-contract-backend-20261115":
+        if ref == "feat/private-chat-backend-20261124":
+            if path.endswith("/apps.py"):
+                resolved = once(ours, "from . import payment_models,", "from . import chat_models, payment_models,")
+                resolved = once(resolved, "from . import payment_admin,", "from . import chat_admin, payment_admin,")
+            elif path.endswith("/schema.py"):
+                anchor = "class ChatAuthenticationScheme(OpenApiAuthenticationExtension):"
+                if anchor in ours or theirs.count(anchor) != 1:
+                    raise SystemExit("Chat schema anchor changed")
+                resolved = ours.rstrip() + "\n\n\n" + theirs[theirs.index(anchor):]
+            else:
+                resolved = insert(ours, "from .live_class_views import (", "from .chat_views import BookingChatMessagesView, ChatMessagesView, ChatRoomsView\n")
+                resolved = once(resolved, "urlpatterns = [\n", """urlpatterns = [
+    path("chat/rooms/", ChatRoomsView.as_view(), name="chat-rooms"),
+    path("chat/rooms/support/messages/", ChatMessagesView.as_view(), name="chat-support-messages"),
+    path("chat/rooms/<uuid:booking_id>/messages/", BookingChatMessagesView.as_view(), name="chat-booking-messages"),
+""")
+        elif ref == "feat/tutor-employment-contract-backend-20261115":
             resolved = once(ours, "from . import payment_models,", "from . import payment_models, tutor_contract_models,")
             resolved = once(resolved, "from . import payment_admin,", "from . import payment_admin, tutor_contract_admin,")
         elif ref == "feature/paystack-payfast-choice-20261110" and component == "frontend":
