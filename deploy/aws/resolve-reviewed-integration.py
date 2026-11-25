@@ -29,8 +29,8 @@ def resolve_backend(path, text):
         return insert(text, '    "content.tasks.queue_student_motivation_emails":', '    "content.subscription_report_tasks.deliver_ended_subscription_reports": {"queue": "notifications"},\n')
     if path == "backend/amaris_cms/settings.py":
         text = once(text, 'TUTOR_REQUIRE_SIX_DOCUMENTS = env_bool("TUTOR_REQUIRE_SIX_DOCUMENTS", False)\n', 'TUTOR_REQUIRE_SIX_DOCUMENTS = env_bool("TUTOR_REQUIRE_SIX_DOCUMENTS", False)\nCOURSE_SUBSCRIPTIONS_ENABLED = env_bool("COURSE_SUBSCRIPTIONS_ENABLED", False)\n')
-        text = insert(text, "CELERY_BEAT_SCHEDULE = {", 'SUBSCRIPTION_REPORTS_EMAIL_ENABLED = env_bool("SUBSCRIPTION_REPORTS_EMAIL_ENABLED", False)\nif SUBSCRIPTION_REPORTS_EMAIL_ENABLED and not DEBUG and not SUPABASE_S3_ENDPOINT_URL:\n    raise RuntimeError("Subscription reports require private Supabase student storage in production.")\n\n')
-        return once(text, 'CELERY_BEAT_SCHEDULE = {\n', 'CELERY_BEAT_SCHEDULE = {\n    "deliver-ended-subscription-reports": {\n        "task": "content.subscription_report_tasks.deliver_ended_subscription_reports",\n        "schedule": 600.0,\n        "options": {"queue": "notifications"},\n    },\n')
+        text = once(text, "\nCELERY_BEAT_SCHEDULE = {", '\nSUBSCRIPTION_REPORTS_EMAIL_ENABLED = env_bool("SUBSCRIPTION_REPORTS_EMAIL_ENABLED", False)\nif SUBSCRIPTION_REPORTS_EMAIL_ENABLED and not DEBUG and not SUPABASE_S3_ENDPOINT_URL:\n    raise RuntimeError("Subscription reports require private Supabase student storage in production.")\n\nCELERY_BEAT_SCHEDULE = {')
+        return once(text, '\nCELERY_BEAT_SCHEDULE = {\n', '\nCELERY_BEAT_SCHEDULE = {\n    "deliver-ended-subscription-reports": {\n        "task": "content.subscription_report_tasks.deliver_ended_subscription_reports",\n        "schedule": 600.0,\n        "options": {"queue": "notifications"},\n    },\n')
     if path == "backend/content/apps.py":
         text = once(text, "from . import payment_models, sponsor_models, tutor_finance_models  # noqa: F401", "from . import payment_models, sponsor_models, subscription_models, subscription_report_models, tutor_finance_models")
         text = once(text, "from . import payment_admin, schema, signals, sponsor_admin, tutor_finance_admin  # noqa: F401", "from . import payment_admin, schema, signals, sponsor_admin, subscription_admin, subscription_report_admin, tutor_finance_admin")
@@ -94,6 +94,8 @@ def main():
         expected = BACKEND
     elif (component, ref) == ("frontend", "feat/sponsor-dashboard-20261111"):
         expected = FRONTEND
+    elif (component, ref) == ("frontend", "feat/course-search-ui-20261118"):
+        expected = {"frontend/app/page.tsx"}
     else:
         raise SystemExit("No reviewed resolution for this feature")
     paths = set(git("diff", "--name-only", "--diff-filter=U").splitlines())
@@ -109,6 +111,11 @@ def main():
             raise SystemExit(f"Incoming blob differs from reviewed source: {path}")
         if component == "backend":
             resolved = resolve_backend(path, ours)
+        elif ref == "feat/course-search-ui-20261118":
+            if "getManagedFeaturedCourses" not in theirs or "<CourseSubscriptions />" not in ours:
+                raise SystemExit("Homepage feature anchors missing")
+            resolved = once(ours, 'import { getManagedCourses } from "@/lib/cms";', 'import { getManagedFeaturedCourses } from "@/lib/cms";')
+            resolved = once(resolved, "await getManagedCourses()", "await getManagedFeaturedCourses()")
         else:
             if '"/sponsor"' not in theirs or '"/subscriptions/status"' not in ours:
                 raise SystemExit(f"Private-route anchors missing: {path}")
