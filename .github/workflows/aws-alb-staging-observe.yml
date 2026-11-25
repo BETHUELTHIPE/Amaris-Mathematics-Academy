@@ -1,0 +1,60 @@
+name: Check public ALB stack events
+
+on:
+  push:
+    branches: [ops/aws-alb-staging-20261125]
+    paths:
+      - .github/workflows/aws-alb-staging-observe.yml
+
+permissions: {}
+
+jobs:
+  describe:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+      AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      ECS_CLUSTER: amaris-ecs-staging
+    steps:
+      - name: Authenticate to AWS using the staging role
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate to AWS using the configured staging keys
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Observe the public ALB and service
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation describe-stack-events --stack-name amaris-staging-alb \
+            --query 'StackEvents[:16].[LogicalResourceId,ResourceStatus,ResourceStatusReason]' --output text || true
+          load_balancer="$(aws elbv2 describe-load-balancers --names amaris-staging-alb \
+            --query 'LoadBalancers[0].[LoadBalancerArn,State.Code]' --output text 2>/dev/null || true)"
+          printf 'ALB state %s\n' "$load_balancer"
+          arn="$(aws elbv2 describe-target-groups --names amaris-staging-web \
+            --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || true)"
+          if [[ "$arn" == arn:aws:elasticloadbalancing:* ]]; then
+            aws elbv2 describe-target-health --target-group-arn "$arn" --output json
+          fi
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services amaris-web-staging-alb \
+            --query 'services[0].{running:runningCount,pending:pendingCount,events:events[:6].message}' --output json || true
