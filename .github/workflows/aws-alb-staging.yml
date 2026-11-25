@@ -101,3 +101,78 @@ jobs:
             printf 'STAGING_ALB_ID=%s\n' "$(output LoadBalancerFullName)"
             printf 'STAGING_TARGET_ARN=%s\n' "$(output TargetGroupArn)"
           } >> "$GITHUB_ENV"
+      - name: Prepare the ECS proxy and deploy the load-balanced service
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/alb/prepare-task.sh "$STAGING_ADDRESS"
+          bash deploy/aws/alb/deploy-task.sh
+      - name: Verify ECS target registration and private placement
+        shell: bash
+        run: |
+          set -euo pipefail
+          address=''
+          for attempt in {1..42}; do
+            targets="$(aws elbv2 describe-target-health --target-group-arn "$STAGING_TARGET_ARN" --query TargetHealthDescriptions --output json)"
+            address="$(jq -r '.[] | select(.TargetHealth.State=="healthy" and .Target.Port==8080).Target.Id' <<< "$targets")"
+            if [[ "$address" =~ ^10\.86\.0\.[0-9]+$ ]]; then break; fi
+            sleep 8
+          done
+          [[ "$address" =~ ^10\.86\.0\.[0-9]+$ ]]
+          service="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ALB_SERVICE" --query 'services[0]' --output json)"
+          jq -e --arg group "$STAGING_TARGET_ARN" '.runningCount==1 and any(.loadBalancers[];.targetGroupArn==$group and .containerName=="cms" and .containerPort==8080)' <<< "$service"
+          tasks="$(aws ecs list-tasks --cluster "$ECS_CLUSTER" --service-name "$ALB_SERVICE" --desired-status RUNNING --query taskArns --output text)"
+          detail="$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$tasks" --query 'tasks[0]' --output json)"
+          jq -e '.lastStatus=="RUNNING" and .healthStatus=="HEALTHY"' <<< "$detail"
+          interface="$(jq -er '.attachments[] | select(.type=="ElasticNetworkInterface" and .status=="ATTACHED") | .details[] | select(.name=="networkInterfaceId").value' <<< "$detail")"
+          aws ec2 describe-network-interfaces --network-interface-ids "$interface" --query 'NetworkInterfaces[0]' --output json \
+            | jq -e --arg a "$STAGING_PRIVATE_PRIMARY" --arg b "$STAGING_PRIVATE_SECONDARY" --arg ip "$address" \
+              '(.SubnetId==$a or .SubnetId==$b) and .PrivateIpAddress==$ip and (.Association.PublicIp|not)'
+          echo "The ALB target at $address:8080 is healthy inside a private subnet."
+      - name: Route the staging HTTPS endpoint through the public ALB
+        id: switch
+        shell: bash
+        run: bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/alb/gateway.sh "$STAGING_ADDRESS" switch "$STAGING_ALB_ID"
+      - name: Verify website traffic through the ALB
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://$STAGING_ADDRESS"
+          curl -fSs --retry 3 --max-time 12 -D "$RUNNER_TEMP/amaris-headers" "$base/" -o "$RUNNER_TEMP/amaris-home.html"
+          grep -Eiq '^X-Amaris-Network: public-alb' "$RUNNER_TEMP/amaris-headers"
+          grep -Fqi 'Amaris Mathematics Academy' "$RUNNER_TEMP/amaris-home.html"
+          curl -fSs --max-time 12 "$base/health/ready" | jq -e '.status=="ok"'
+          curl -fSs --max-time 12 "$base/health/dependencies/" | jq -e '.dependencies|.postgresql and .redis'
+          curl -fSs --max-time 12 "$base/api/v1/bootstrap/" | jq -e 'has("settings")'
+          curl -fSs --max-time 12 "$base/admin/login/" -o /dev/null
+          unauthorized="$(curl -sS --max-time 12 -o /dev/null -w '%{http_code}' "$base/api/v1/student/courses/")"
+          [[ "$unauthorized" == 401 || "$unauthorized" == 403 ]]
+      - name: Scale down the previous private ECS service
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$PRIVATE_SERVICE" --desired-count 0 \
+            --query service.desiredCount --output text
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ALB_SERVICE" "$PRIVATE_SERVICE"
+          curl -fSs --retry 3 --max-time 12 -D "$RUNNER_TEMP/amaris-final-headers" \
+            "https://$STAGING_ADDRESS/health/dependencies/" | jq -e '.dependencies | .postgresql and .redis'
+          grep -Eiq '^X-Amaris-Network: public-alb' "$RUNNER_TEMP/amaris-final-headers"
+          printf 'Amaris staging is live through its public ALB at https://%s\n' "$STAGING_ADDRESS" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Restore the previous staging route if verification fails
+        if: failure() && steps.switch.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$PRIVATE_SERVICE" --desired-count 1 \
+            --query service.desiredCount --output text
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$PRIVATE_SERVICE"
+          bash deploy/aws/ecs/run-on-host.sh "$STAGING_INSTANCE" deploy/aws/alb/gateway.sh "$STAGING_ADDRESS" rollback
+      - name: Report ECS and target group diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ALB_SERVICE" \
+            --query 'services[0].events[:8].message' --output text || true
+          if [[ -n "${STAGING_TARGET_ARN:-}" ]]; then
+            aws elbv2 describe-target-health --target-group-arn "$STAGING_TARGET_ARN" --output json || true
+          fi
