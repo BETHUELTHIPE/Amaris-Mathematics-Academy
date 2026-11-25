@@ -132,6 +132,10 @@ def main():
         expected = BACKEND
     elif (component, ref) == ("backend", "feat/tutor-video-admin-alerts-20261113"):
         expected = (BACKEND - {"backend/content/payfast_views.py"}) | {"backend/content/tasks.py"}
+    elif (component, ref) == ("backend", "feat/admin-fortnightly-performance-20261113"):
+        expected = {"backend/content/apps.py", "backend/content/tasks.py"}
+    elif (component, ref) == ("frontend", "feat/private-chat-ui-20261124"):
+        expected = {"frontend/components/site/dashboard-navigation.tsx", "frontend/proxy.ts", "frontend/worker/index.ts"}
     elif (component, ref) == ("frontend", "feat/sponsor-dashboard-20261111"):
         expected = FRONTEND
     elif (component, ref) == ("frontend", "feat/course-search-ui-20261118"):
@@ -149,7 +153,22 @@ def main():
         source = git("show", f"{sha}:{path}")
         if theirs != source:
             raise SystemExit(f"Incoming blob differs from reviewed source: {path}")
-        if ref == "feat/tutor-video-admin-alerts-20261113":
+        if ref == "feat/admin-fortnightly-performance-20261113":
+            if path.endswith("/apps.py"):
+                resolved = once(ours, "from . import payment_models,", "from . import payment_models, performance_models,")
+                resolved = once(resolved, "from . import payment_admin,", "from . import payment_admin, performance_admin,")
+            else:
+                resolved = once(ours, "from . import subscription_report_tasks,", "from . import performance_tasks, subscription_report_tasks,")
+        elif ref == "feat/private-chat-ui-20261124":
+            if path.endswith("dashboard-navigation.tsx"):
+                resolved = once(ours, "  LayoutDashboard,\n", "  LayoutDashboard,\n  MessageSquare,\n")
+                resolved = once(resolved, ' | "subscriptions";', ' | "subscriptions" | "messages";')
+                resolved = insert(resolved, '  { key: "notifications",', '  { key: "messages", label: "Messages", href: "/dashboard/messages", icon: MessageSquare },\n')
+            elif path == "frontend/proxy.ts":
+                resolved = once(ours, '    "/dashboard/:path*",\n', '    "/dashboard/:path*",\n    "/api/chat/:path*",\n')
+            else:
+                resolved = once(ours, '"/dashboard",', '"/dashboard", "/api/chat",')
+        elif ref == "feat/tutor-video-admin-alerts-20261113":
             resolved = resolve_tutor(path, ours, theirs)
         elif component == "backend":
             resolved = resolve_backend(path, ours)
