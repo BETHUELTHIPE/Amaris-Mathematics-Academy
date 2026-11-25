@@ -70,3 +70,30 @@ jobs:
           aws cloudwatch describe-alarms --alarm-name-prefix amaris-staging- --query 'MetricAlarms[].{Name:AlarmName,State:StateValue,ActionsEnabled:ActionsEnabled}' --output table
           topic="$(aws cloudformation describe-stacks --stack-name amaris-staging-monitoring --query 'Stacks[0].Outputs[?OutputKey==`AlarmTopicArn`].OutputValue | [0]' --output text)"
           aws sns list-subscriptions-by-topic --topic-arn "$topic" --query 'Subscriptions[].{Protocol:Protocol,SubscriptionArn:SubscriptionArn}' --output table
+      - name: Verify confirmed recipient and all seven alarm actions
+        run: |
+          set -euo pipefail
+          topic="$(aws cloudformation describe-stacks --stack-name amaris-staging-monitoring --query 'Stacks[0].Outputs[?OutputKey==`AlarmTopicArn`].OutputValue | [0]' --output text)"
+          [[ "$topic" == arn:aws:sns:eu-north-1:110156539003:amaris-staging-cloudwatch-alarms ]]
+          subscriptions="$(aws sns list-subscriptions-by-topic --topic-arn "$topic" --output json)"
+          jq -e --arg recipient "$OPERATOR_EMAIL" --arg topic "$topic" '
+            (.Subscriptions | length) == 1 and
+            all(.Subscriptions[]; .Protocol == "email" and .Endpoint == $recipient and (.SubscriptionArn | startswith($topic + ":")))
+          ' <<< "$subscriptions" >/dev/null
+          echo "Requested SNS email subscription is confirmed; no other subscribers are present."
+          alarms="$(aws cloudwatch describe-alarms --alarm-name-prefix amaris-staging- --output json)"
+          jq -e --arg topic "$topic" '
+            ["amaris-staging-alb-5xx","amaris-staging-ecs-cpu-high","amaris-staging-ecs-memory-high","amaris-staging-no-healthy-targets","amaris-staging-slow-responses","amaris-staging-target-5xx","amaris-staging-unhealthy-targets"] as $expected |
+            [.MetricAlarms[] | select(.AlarmName as $name | $expected | index($name))] as $matched |
+            ($matched | length) == 7 and
+            all($matched[]; .ActionsEnabled and (.AlarmActions | index($topic)) != null and (.OKActions | index($topic)) != null)
+          ' <<< "$alarms" >/dev/null
+          echo "All seven expected CloudWatch alarms have enabled alarm and recovery actions pointing to the confirmed SNS topic."
+      - name: Send one explicitly labelled SNS delivery test
+        if: github.event.action == 'synchronize' && github.event.before == 'daa24e7bb2f59431153bd725bacd41404f862513' && github.run_attempt == 1
+        run: |
+          set -euo pipefail
+          topic="arn:aws:sns:eu-north-1:110156539003:amaris-staging-cloudwatch-alarms"
+          message_id="$(aws sns publish --topic-arn "$topic" --subject 'Amaris AWS monitoring - TEST notification' --message 'TEST ONLY: Amaris Mathematics Academy staging monitoring. Your confirmed SNS subscription is being tested. This is not an outage or a real CloudWatch alarm. No website or alarm state was changed.' --query MessageId --output text)"
+          [[ "$message_id" =~ ^[0-9a-fA-F-]{36}$ ]]
+          echo "SNS accepted the test notification. MessageId: $message_id"
