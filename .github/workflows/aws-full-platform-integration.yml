@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/aws-full-platform-integration.yml
       - deploy/aws/resolve-reviewed-integration.py
+      - deploy/aws/reconcile-candidate-migrations.py
   pull_request:
     branches: [ops/aws-alb-staging-20261125]
     types: [opened, synchronize, reopened, ready_for_review]
@@ -93,6 +94,12 @@ jobs:
             git diff --cached --check
             git commit -m "Integrate $ref ($sha)"
           done < "$manifest"
+          if [[ "$COMPONENT" == backend ]]; then
+            python3 "$GITHUB_WORKSPACE/deploy/aws/reconcile-candidate-migrations.py"
+            git add -- backend/content/migrations/
+            git diff --cached --check
+            git commit -m "Reconcile reviewed unpublished feature migration branches"
+          fi
           git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/$COMPONENT-candidate.txt"
           git diff --check "refs/remotes/origin/$BASE" HEAD
       - name: Start isolated PostgreSQL and Redis for backend tests
