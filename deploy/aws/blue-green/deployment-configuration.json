@@ -24,5 +24,14 @@
         "action": "ROLLBACK"
       }
     }
-  ]
+  ],
+  "alarms": {
+    "alarmNames": [
+      "amaris-staging-alb-5xx",
+      "amaris-staging-target-5xx",
+      "amaris-staging-slow-responses"
+    ],
+    "enable": true,
+    "rollback": true
+  }
 }

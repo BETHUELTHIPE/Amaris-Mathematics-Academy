@@ -1,0 +1,61 @@
+name: Verify ECS blue-green CloudWatch rollback gates
+on:
+  push:
+    branches: [ops/aws-cloudwatch-sns-20261126]
+    paths:
+      - deploy/aws/blue-green/**
+      - .github/workflows/aws-rollback-alarm-verification.yml
+  pull_request:
+    branches: [ops/aws-cloudwatch-sns-20261126]
+    types: [opened, synchronize, reopened]
+    paths:
+      - deploy/aws/blue-green/**
+      - .github/workflows/aws-rollback-alarm-verification.yml
+permissions:
+  contents: read
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && ((github.event_name == 'push' && github.ref == 'refs/heads/ops/aws-cloudwatch-sns-20261126') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ops/aws-alarm-rollback-20261126' && github.base_ref == 'ops/aws-cloudwatch-sns-20261126'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+      AMARIS_AWS_ROLE: ${{ vars.AWS_BLUE_GREEN_READONLY_ROLE || vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate rollback configuration
+        run: |
+          bash -n deploy/aws/blue-green/verify-rollback-alarms.sh
+          jq -e '.strategy=="BLUE_GREEN" and .alarms.enable and .alarms.rollback and .minimumHealthyPercent==100 and .maximumPercent==200 and .bakeTimeInMinutes>=15 and all(.lifecycleHooks[]; .timeoutConfiguration.action=="ROLLBACK") and (.alarms.alarmNames|length)==3' deploy/aws/blue-green/deployment-configuration.json
+      - name: Authenticate with staging OIDC if configured
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          inline-session-policy: >-
+            {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ecs:DescribeServices","ecs:DescribeTaskDefinition","ecs:ListContainerInstances","ecs:DescribeContainerInstances","cloudwatch:DescribeAlarms","cloudformation:DescribeStacks"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":"eu-north-1"}}}]}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with previously verified staging credentials
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Inspect live CloudWatch rollback alarms and ECS readiness (read only)
+        run: bash deploy/aws/blue-green/verify-rollback-alarms.sh
