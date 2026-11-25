@@ -19,6 +19,9 @@ jobs:
         with:
           persist-credentials: false
       - run: bash -n deploy/aws/blue-green/preflight.sh
+      - name: Validate native strategy and fail-safe pause hooks
+        run: |
+          jq -e '.strategy=="BLUE_GREEN" and .minimumHealthyPercent==100 and .maximumPercent==200 and .bakeTimeInMinutes>=15 and ([.lifecycleHooks[].lifecycleStages[]]|sort)==["POST_PRODUCTION_TRAFFIC_SHIFT","POST_TEST_TRAFFIC_SHIFT"] and all(.lifecycleHooks[]; .targetType=="PAUSE" and .timeoutConfiguration.action=="ROLLBACK")' deploy/aws/blue-green/deployment-configuration.json
       - run: |
           python3 -m pip install cfn-lint
           cfn-lint -r eu-north-1 -t deploy/aws/blue-green/prerequisites.yml
