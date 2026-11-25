@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Amaris ECS staging CloudWatch alarms and SNS email notifications
+Parameters:
+  OperatorEmail:
+    Type: String
+    NoEcho: true
+    AllowedPattern: '[^@ ]+@[^@ ]+[.][^@ ]+'
+    Description: SNS email recipient; confirm the subscription in your inbox
+  ClusterName:
+    Type: String
+    Default: amaris-ecs-staging
+  ServiceName:
+    Type: String
+    Default: amaris-web-staging-alb
+  LoadBalancerFullName:
+    Type: String
+    AllowedPattern: 'app/[^/]+/[a-f0-9]+'
+  ActiveTargetGroupFullName:
+    Type: String
+    AllowedPattern: 'targetgroup/[^/]+/[a-f0-9]+'
+Resources:
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: amaris-staging-cloudwatch-alarms
+      DisplayName: AmarisOps
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+  AlarmTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref AlarmTopic]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AccountOwnerManagement
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action:
+              - sns:GetTopicAttributes
+              - sns:SetTopicAttributes
+              - sns:ListSubscriptionsByTopic
+              - sns:Subscribe
+              - sns:Publish
+              - sns:DeleteTopic
+            Resource: !Ref AlarmTopic
+          - Sid: AllowCloudWatchFromThisAccount
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref AlarmTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:amaris-staging-*'
+  AlarmEmailSubscription:
+    Type: AWS::SNS::Subscription
+    DependsOn: AlarmTopicPolicy
+    Properties:
+      TopicArn: !Ref AlarmTopic
+      Protocol: email
+      Endpoint: !Ref OperatorEmail
+  EcsCpuHigh:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AlarmTopicPolicy
+    Properties:
+      AlarmName: amaris-staging-ecs-cpu-high
+      AlarmDescription: Sustained high ECS CPU utilization
+      ActionsEnabled: true
+      AlarmActions: [!Ref AlarmTopic]
+      OKActions: [!Ref AlarmTopic]
+      Namespace: AWS/ECS
+      MetricName: CPUUtilization
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: 80
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ClusterName
+        - Name: ServiceName
+          Value: !Ref ServiceName
+  EcsMemoryHigh:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AlarmTopicPolicy
+    Properties:
+      AlarmName: amaris-staging-ecs-memory-high
+      AlarmDescription: Sustained high ECS memory utilization
+      ActionsEnabled: true
+      AlarmActions: [!Ref AlarmTopic]
+      OKActions: [!Ref AlarmTopic]
+      Namespace: AWS/ECS
+      MetricName: MemoryUtilization
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: 80
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ClusterName
+        - Name: ServiceName
+          Value: !Ref ServiceName
+  NoHealthyTargets:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AlarmTopicPolicy
+    Properties:
+      AlarmName: amaris-staging-no-healthy-targets
+      AlarmDescription: No healthy targets in the monitored active target group; missing data is treated as an outage
+      ActionsEnabled: true
+      AlarmActions: [!Ref AlarmTopic]
+      OKActions: [!Ref AlarmTopic]
+      Namespace: AWS/ApplicationELB
+      MetricName: HealthyHostCount
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Ref LoadBalancerFullName
+        - Name: TargetGroup
+          Value: !Ref ActiveTargetGroupFullName
+  UnhealthyTargets:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AlarmTopicPolicy
+    Properties:
+      AlarmName: amaris-staging-unhealthy-targets
+      AlarmDescription: At least one unhealthy target in the monitored target group
+      ActionsEnabled: true
+      AlarmActions: [!Ref AlarmTopic]
+      OKActions: [!Ref AlarmTopic]
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Ref LoadBalancerFullName
+        - Name: TargetGroup
+          Value: !Ref ActiveTargetGroupFullName
+  AlbErrors:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AlarmTopicPolicy
+    Properties:
+      AlarmName: amaris-staging-alb-5xx
+      AlarmDescription: Load balancer generated 5xx errors
+      ActionsEnabled: true
+      AlarmActions: [!Ref AlarmTopic]
+      OKActions: [!Ref AlarmTopic]
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_ELB_5XX_Count
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Ref LoadBalancerFullName
+  TargetErrors:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AlarmTopicPolicy
+    Properties:
+      AlarmName: amaris-staging-target-5xx
+      AlarmDescription: Application generated 5xx errors across target groups
+      ActionsEnabled: true
+      AlarmActions: [!Ref AlarmTopic]
+      OKActions: [!Ref AlarmTopic]
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Ref LoadBalancerFullName
+  SlowResponses:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AlarmTopicPolicy
+    Properties:
+      AlarmName: amaris-staging-slow-responses
+      AlarmDescription: Slow target responses at the 95th percentile
+      ActionsEnabled: true
+      AlarmActions: [!Ref AlarmTopic]
+      OKActions: [!Ref AlarmTopic]
+      Namespace: AWS/ApplicationELB
+      MetricName: TargetResponseTime
+      ExtendedStatistic: p95
+      EvaluateLowSampleCountPercentile: ignore
+      Period: 60
+      EvaluationPeriods: 5
+      DatapointsToAlarm: 3
+      Threshold: 2
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Ref LoadBalancerFullName
+Outputs:
+  AlarmTopicArn:
+    Value: !Ref AlarmTopic
+  DeploymentRollbackAlarmNames:
+    Description: Stable ALB-wide alarms suitable for ECS deployment rollback after baseline review
+    Value: !Join [',', [!Ref AlbErrors, !Ref TargetErrors, !Ref SlowResponses]]
+  ActiveTargetHealthAlarmName:
+    Value: !Ref NoHealthyTargets
