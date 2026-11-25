@@ -17,6 +17,7 @@ jobs:
       name: staging
       deployment: false
     permissions:
+      contents: read
       id-token: write
     env:
       AWS_REGION: eu-north-1
@@ -24,6 +25,9 @@ jobs:
       AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
       ECS_CLUSTER: amaris-ecs-staging
     steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - name: Authenticate to AWS using the staging role
         if: env.AMARIS_AWS_ROLE != ''
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
@@ -58,3 +62,10 @@ jobs:
           fi
           aws ecs describe-services --cluster "$ECS_CLUSTER" --services amaris-web-staging-alb \
             --query 'services[0].{running:runningCount,pending:pendingCount,events:events[:6].message}' --output json || true
+      - name: Check the host and both ALB nodes
+        shell: bash
+        run: |
+          set -euo pipefail
+          instance="$(aws cloudformation describe-stack-resource --stack-name amaris-aws-staging --logical-resource-id StagingHost \
+            --query StackResourceDetail.PhysicalResourceId --output text)"
+          bash deploy/aws/ecs/run-on-host.sh "$instance" deploy/aws/diagnostics/observe-alb-host.sh
