@@ -12,13 +12,22 @@ Parameters:
   CacheNodeType:
     Type: String
     Default: cache.t4g.micro
-  AuthToken:
-    Type: String
-    NoEcho: true
-    MinLength: 32
-    MaxLength: 128
-    AllowedPattern: '[A-Za-z0-9]{32,128}'
 Resources:
+  CacheAuthSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Amaris staging Valkey authentication token
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+        IncludeSpace: false
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
   CacheSubnets:
     Type: AWS::ElastiCache::SubnetGroup
     Properties:
@@ -59,7 +68,7 @@ Resources:
       TransitEncryptionEnabled: true
       TransitEncryptionMode: required
       AtRestEncryptionEnabled: true
-      AuthToken: !Ref AuthToken
+      AuthToken: !Sub '{{resolve:secretsmanager:${CacheAuthSecret}:SecretString}}'
       SnapshotRetentionLimit: 1
       Tags:
         - Key: Project
@@ -67,6 +76,8 @@ Resources:
         - Key: Environment
           Value: staging
 Outputs:
+  CacheAuthSecretArn:
+    Value: !Ref CacheAuthSecret
   PrimaryEndpoint:
     Value: !GetAtt SharedValkey.PrimaryEndPoint.Address
   Port:
