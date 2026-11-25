@@ -226,8 +226,11 @@ jobs:
           grep -Fqi 'Amaris Mathematics Academy' "$RUNNER_TEMP/amaris-aws-home.html"
           curl -fSs --max-time 15 "$base/login" -o /dev/null
           curl -fSs --max-time 15 "$base/api/auth-state" | jq -e '.authenticated==false and .emailVerified==false'
-          unauthorized="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$base/api/v1/student/dashboard/")"
-          [[ "$unauthorized" == 401 || "$unauthorized" == 403 ]]
+          unauthorized="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$base/api/v1/student/courses/")"
+          if [[ "$unauthorized" != 401 && "$unauthorized" != 403 ]]; then
+            echo "::error::The signed-out student course request returned HTTP $unauthorized."
+            exit 1
+          fi
           curl -fSs --max-time 15 "$base/admin/login/" -o /dev/null
           printf 'Amaris AWS staging verified at %s\n' "$base"
           printf 'Amaris AWS staging is available at %s\n' "$base" >> "$GITHUB_STEP_SUMMARY"

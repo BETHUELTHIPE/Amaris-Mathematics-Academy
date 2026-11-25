@@ -67,12 +67,12 @@ def verify_student(origin, email, password, publishable_key):
     if str(user.get("email", "")).lower() != email or not user.get("email_confirmed_at") or not session.get("access_token"):
         raise RuntimeError("Staging did not authenticate the verified test student.")
     payload, headers = json_request(
-        f"{origin}/api/v1/student/dashboard/", headers={"Authorization": f"Bearer {session['access_token']}"},
+        f"{origin}/api/v1/student/courses/", headers={"Authorization": f"Bearer {session['access_token']}"},
     )
     cache = headers.get("Cache-Control", "").lower()
-    if not isinstance(payload, dict) or "public" in cache:
+    if not isinstance(payload, list) or "public" in cache:
         raise RuntimeError("The AWS staging dashboard did not return private student data correctly.")
-    print("The approved staging test student authenticated and accessed the private AWS dashboard.")
+    print("The approved staging test student authenticated and accessed private course data from the AWS dashboard API.")
 
 
 def main():
