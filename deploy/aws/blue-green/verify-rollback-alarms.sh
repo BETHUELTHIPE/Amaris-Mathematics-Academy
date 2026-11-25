@@ -33,10 +33,14 @@ jq '[.MetricAlarms[]|{AlarmName,StateValue,MetricName,Threshold}]' <<< "$alarms"
 echo "Verified monitoring stack exports and rollback alarm definitions."
 jq '{serviceName,desiredCount,runningCount,pendingCount,controller:.deploymentController.type,strategy:(.deploymentConfiguration.strategy // "ROLLING"),currentRollbackAlarms:.deploymentConfiguration.alarms,advancedRouting:([.loadBalancers[]?|select(.advancedConfiguration != null)]|length)}' <<< "$svc"
 jq '{architecture:.runtimePlatform.cpuArchitecture,localValkey:any(.containerDefinitions[]; .name=="valkey"),hostMountCount:([.volumes[]?|select((.host.sourcePath//"")!="")]|length),requestedCpu:([.containerDefinitions[]|.cpu//0]|add),requestedMemoryMiB:([.containerDefinitions[]|.memoryReservation//.memory//0]|add)}' <<< "$definition"
+jq '{volumes:[.volumes[]?|{name,hostPathConfigured:(.host.sourcePath != null),efsConfigured:(.efsVolumeConfiguration != null)}],containers:[.containerDefinitions[]|{name,cpu,memory,memoryReservation,essential,ports:[.portMappings[]?|{containerPort,hostPort,protocol}],mounts:[.mountPoints[]?|{sourceVolume,containerPath,readOnly}],dependencies:[.dependsOn[]?|{containerName,condition}],imageRepository:(.image|split("@")[0]|split(":")[0])}]}' <<< "$definition"
+jq '{registeredResources:[.registeredResources[]?|{name,stringSetValue,integerValue}],remainingResources:[.remainingResources[]?|{name,integerValue}]}' <<< "$instance_details"
 instances="$(aws ecs list-container-instances --cluster "$cluster" --status ACTIVE --query containerInstanceArns --output text)"
+instance_details="{}"
 if [[ -n "$instances" && "$instances" != None ]]; then
   read -r -a arns <<< "$instances"
-  aws ecs describe-container-instances --cluster "$cluster" --container-instances "${arns[@]}" --query 'containerInstances[].{status:status,agentConnected:agentConnected,remainingResources:remainingResources[?name==`CPU` || name==`MEMORY` || name==`ENI`]}' --output json | jq '[.[]|{status,agentConnected,resources:[.remainingResources[]|{name,integerValue}]}]'
+  instance_details="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "${arns[@]}" --output json | jq '.containerInstances[0]')"
+  jq '{status,agentConnected,ec2InstanceId,registeredResources:[.registeredResources[]?|{name,integerValue}],remainingResources:[.remainingResources[]?|{name,integerValue}]}' <<< "$instance_details"
 fi
 # Fail closed: ECS may ignore pre-existing ALARM states for an entire deployment.
 blocked=0
