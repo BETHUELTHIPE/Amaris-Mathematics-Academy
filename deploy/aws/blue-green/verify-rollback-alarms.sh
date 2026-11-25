@@ -32,6 +32,20 @@ jq -e --arg topic "$topic" --arg alb "$alb_name" --slurpfile cfg "$config" '
 jq '[.MetricAlarms[]|{AlarmName,StateValue,MetricName,Threshold}]' <<< "$alarms"
 echo "Verified monitoring stack exports and rollback alarm definitions."
 jq '{serviceName,desiredCount,runningCount,pendingCount,controller:.deploymentController.type,strategy:(.deploymentConfiguration.strategy // "ROLLING"),currentRollbackAlarms:.deploymentConfiguration.alarms,advancedRouting:([.loadBalancers[]?|select(.advancedConfiguration != null)]|length)}' <<< "$svc"
+alb_details="$(aws elbv2 describe-load-balancers --load-balancer-arns "$alb" --output json)"
+jq '[.LoadBalancers[]|{scheme: .Scheme,ipAddressType:.IpAddressType,state:.State.Code,type:.Type,availabilityZoneCount:(.AvailabilityZones|length),securityGroupCount:(.SecurityGroups|length)}]' <<< "$alb_details"
+listeners="$(aws elbv2 describe-listeners --load-balancer-arn "$alb" --output json)"
+jq '[.Listeners[]|{port:.Port,protocol:.Protocol,defaultForwardActions:([.DefaultActions[]?|select(.Type=="forward")]|length)}]' <<< "$listeners"
+while IFS= read -r listener_arn; do
+  rules="$(aws elbv2 describe-rules --listener-arn "$listener_arn" --output json)"
+  jq '[.Rules[]|{priority:.Priority,isDefault:.IsDefault,conditionFields:([.Conditions[].Field]|unique),hasSourceIpCondition:(any(.Conditions[]; .Field=="source-ip")),hasHostCondition:(any(.Conditions[]; .Field=="host-header")),hasPathCondition:(any(.Conditions[]; .Field=="path-pattern"))}]' <<< "$rules"
+done < <(jq -r '.Listeners[].ListenerArn' <<< "$listeners")
+target_arns="$(jq -r '.loadBalancers[]?.targetGroupArn' <<< "$svc")"
+while IFS= read -r target_arn; do
+  [[ -n "$target_arn" ]] || continue
+  aws elbv2 describe-target-groups --target-group-arns "$target_arn" --output json | jq '[.TargetGroups[]|{name:.TargetGroupName,port:.Port,protocol:.Protocol,targetType:.TargetType,healthCheckPath:.HealthCheckPath,healthCheckPort:.HealthCheckPort}]'
+done <<< "$target_arns"
+
 jq '{architecture:.runtimePlatform.cpuArchitecture,localValkey:any(.containerDefinitions[]; .name=="valkey"),hostMountCount:([.volumes[]?|select((.host.sourcePath//"")!="")]|length),requestedCpu:([.containerDefinitions[]|.cpu//0]|add),requestedMemoryMiB:([.containerDefinitions[]|.memoryReservation//.memory//0]|add)}' <<< "$definition"
 jq '{volumes:[.volumes[]?|{name,hostPathConfigured:(.host.sourcePath != null),efsConfigured:(.efsVolumeConfiguration != null)}],containers:[.containerDefinitions[]|{name,cpu,memory,memoryReservation,essential,ports:[.portMappings[]?|{containerPort,hostPort,protocol}],mounts:[.mountPoints[]?|{sourceVolume,containerPath,readOnly}],dependencies:[.dependsOn[]?|{containerName,condition}],imageRepository:(.image|split("@")[0]|split(":")[0])}]}' <<< "$definition"
 instances="$(aws ecs list-container-instances --cluster "$cluster" --status ACTIVE --query containerInstanceArns --output text)"
@@ -40,6 +54,10 @@ if [[ -n "$instances" && "$instances" != None ]]; then
   read -r -a arns <<< "$instances"
   instance_details="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "${arns[@]}" --output json | jq '.containerInstances[0]')"
   jq '{status,agentConnected,ec2InstanceId,registeredResources:[.registeredResources[]?|{name,integerValue}],remainingResources:[.remainingResources[]?|{name,integerValue}]}' <<< "$instance_details"
+  instance_id="$(jq -er .ec2InstanceId <<< "$instance_details")"
+  aws ec2 describe-instances --instance-ids "$instance_id" --output json | jq '[.Reservations[].Instances[]|{instanceType:.InstanceType,state:.State.Name,availabilityZone:.Placement.AvailabilityZone,networkInterfaceCount:(.NetworkInterfaces|length)}]'
+  instance_type="$(aws ec2 describe-instances --instance-ids "$instance_id" --query 'Reservations[0].Instances[0].InstanceType' --output text)"
+  aws ec2 describe-instance-types --instance-types "$instance_type" --query 'InstanceTypes[0].{maximumNetworkInterfaces:NetworkInfo.MaximumNetworkInterfaces,ipv4AddressesPerInterface:NetworkInfo.Ipv4AddressesPerInterface}' --output json
 fi
 # Fail closed: ECS may ignore pre-existing ALARM states for an entire deployment.
 blocked=0
