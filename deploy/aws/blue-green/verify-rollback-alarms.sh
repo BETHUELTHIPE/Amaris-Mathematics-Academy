@@ -30,10 +30,27 @@ jq -e --arg topic "$topic" --arg alb "$alb_name" --slurpfile cfg "$config" '
      (.AlarmName=="amaris-staging-slow-responses" and .MetricName=="TargetResponseTime" and .Threshold==2 and .ExtendedStatistic=="p95")))
 ' <<< "$alarms" >/dev/null
 jq '[.MetricAlarms[]|{AlarmName,StateValue,MetricName,Threshold}]' <<< "$alarms"
+
+service_arns="$(aws ecs list-services --cluster "$cluster" --query 'serviceArns' --output text)"
+if [[ -n "$service_arns" && "$service_arns" != None ]]; then
+  read -r -a service_array <<< "$service_arns"
+  services="$(aws ecs describe-services --cluster "$cluster" --services "${service_array[@]}" --output json)"
+  jq '[.services[]|{serviceName,desiredCount,runningCount,pendingCount,taskDefinitionFamily:(.taskDefinition|split("/")[1]|split(":")[0]),strategy:(.deploymentConfiguration.strategy//"ROLLING"),deploymentAlarms:.deploymentConfiguration.alarms}]' <<< "$services"
+  while IFS= read -r task_arn; do
+    [[ -n "$task_arn" ]] || continue
+    task_json="$(aws ecs describe-task-definition --task-definition "$task_arn" --query taskDefinition --output json)"
+    jq '{family,architecture:.runtimePlatform.cpuArchitecture,volumes:[.volumes[]?|{name,hostPathConfigured:(.host.sourcePath!=null)}],containers:[.containerDefinitions[]|{name,cpu,memory,memoryReservation,ports:[.portMappings[]?|{containerPort,hostPort}],mounts:[.mountPoints[]?|{sourceVolume,containerPath}],dependencies:[.dependsOn[]?|{containerName,condition}]}]}' <<< "$task_json"
+  done < <(jq -r '[.services[].taskDefinition]|unique[]' <<< "$services")
+fi
 echo "Verified monitoring stack exports and rollback alarm definitions."
 jq '{serviceName,desiredCount,runningCount,pendingCount,controller:.deploymentController.type,strategy:(.deploymentConfiguration.strategy // "ROLLING"),currentRollbackAlarms:.deploymentConfiguration.alarms,advancedRouting:([.loadBalancers[]?|select(.advancedConfiguration != null)]|length)}' <<< "$svc"
 alb_details="$(aws elbv2 describe-load-balancers --load-balancer-arns "$alb" --output json)"
 jq '[.LoadBalancers[]|{scheme: .Scheme,ipAddressType:.IpAddressType,state:.State.Code,type:.Type,availabilityZoneCount:(.AvailabilityZones|length),securityGroupCount:(.SecurityGroups|length)}]' <<< "$alb_details"
+vpc_id="$(jq -er '.LoadBalancers[0].VpcId' <<< "$alb_details")"
+aws ec2 describe-vpcs --vpc-ids "$vpc_id" --output json | jq '[.Vpcs[]|{ipv4CidrCount:1,ipv6CidrCount:([.Ipv6CidrBlockAssociationSet[]?|select(.Ipv6CidrBlockState.State=="associated")]|length)}]'
+aws ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc_id" --output json | jq '[.Subnets[]|{availabilityZone:.AvailabilityZone,isPublic:(.MapPublicIpOnLaunch==true),availableIpv4:.AvailableIpAddressCount,hasIpv6:([.Ipv6CidrBlockAssociationSet[]?|select(.Ipv6CidrBlockState.State=="associated")]|length>0)}]'
+aws ec2 describe-security-groups --group-ids $(jq -r '.LoadBalancers[0].SecurityGroups[]' <<< "$alb_details") --output json | jq '[.SecurityGroups[]|{ingress:[.IpPermissions[]|{protocol:.IpProtocol,fromPort:.FromPort,toPort:.ToPort,ipv4Sources:(.IpRanges|length),ipv6Sources:(.Ipv6Ranges|length),openToWorldIpv4:any(.IpRanges[]?; .CidrIp=="0.0.0.0/0"),openToWorldIpv6:any(.Ipv6Ranges[]?; .CidrIpv6=="::/0")}]}]'
+
 listeners="$(aws elbv2 describe-listeners --load-balancer-arn "$alb" --output json)"
 jq '[.Listeners[]|{port:.Port,protocol:.Protocol,defaultForwardActions:([.DefaultActions[]?|select(.Type=="forward")]|length)}]' <<< "$listeners"
 while IFS= read -r listener_arn; do
@@ -58,6 +75,7 @@ if [[ -n "$instances" && "$instances" != None ]]; then
   aws ec2 describe-instances --instance-ids "$instance_id" --output json | jq '[.Reservations[].Instances[]|{instanceType:.InstanceType,state:.State.Name,availabilityZone:.Placement.AvailabilityZone,networkInterfaceCount:(.NetworkInterfaces|length)}]'
   instance_type="$(aws ec2 describe-instances --instance-ids "$instance_id" --query 'Reservations[0].Instances[0].InstanceType' --output text)"
   aws ec2 describe-instance-types --instance-types "$instance_type" --query 'InstanceTypes[0].{maximumNetworkInterfaces:NetworkInfo.MaximumNetworkInterfaces,ipv4AddressesPerInterface:NetworkInfo.Ipv4AddressesPerInterface}' --output json
+  aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance_id" --query 'InstanceInformationList[].{pingStatus:PingStatus,platformType:PlatformType,agentVersion:AgentVersion}' --output json
 fi
 # Fail closed: ECS may ignore pre-existing ALARM states for an entire deployment.
 blocked=0
