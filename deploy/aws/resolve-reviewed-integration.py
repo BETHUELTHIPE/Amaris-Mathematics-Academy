@@ -179,6 +179,8 @@ def main():
         expected = {"backend/content/apps.py", "backend/content/schema.py", "backend/content/urls.py"}
     elif (component, ref) == ("backend", "feat/tutor-employment-contract-backend-20261115"):
         expected = {"backend/content/apps.py"}
+    elif (component, ref) == ("backend", "feature/paystack-payfast-choice-20261110"):
+        expected = {"backend/content/services/payments.py", "backend/content/urls.py"}
     elif (component, ref) == ("frontend", "feature/paystack-payfast-choice-20261110"):
         expected = {"frontend/app/book-online-live-class/checkout/page.tsx", "frontend/app/checkout/[slug]/page.tsx", "frontend/lib/student-api.ts"}
     elif (component, ref) == ("backend", "feat/admin-fortnightly-performance-20261113"):
@@ -221,6 +223,22 @@ def main():
         elif ref == "feat/tutor-employment-contract-backend-20261115":
             resolved = once(ours, "from . import payment_models,", "from . import payment_models, tutor_contract_models,")
             resolved = once(resolved, "from . import payment_admin,", "from . import payment_admin, tutor_contract_admin,")
+        elif ref == "feature/paystack-payfast-choice-20261110" and component == "backend":
+            if path.endswith("/payments.py"):
+                start = "def create_checkout("
+                end = "\n\nclass HttpPayFastVerificationGateway:"
+                left = ours.index(start)
+                right = ours.index(end, left)
+                new = theirs[theirs.index(start):theirs.index(end, theirs.index(start))]
+                # Keep the existing release's environment/notification URL handling.
+                old = ours[left:right]
+                url_start = "    site_url = "
+                url_end = "\n\n    fields = {"
+                new = new[:new.index(url_start)] + old[old.index(url_start):old.index(url_end)] + new[new.index(url_end):]
+                resolved = ours[:left] + new + ours[right:]
+            else:
+                resolved = once(ours, "from .payfast_views import PayFastITNView\n", "from .payfast_views import PayFastITNView\nfrom .paystack_views import paystack_webhook\n")
+                resolved = once(resolved, '    path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),\n', '    path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),\n    path("paystack/webhook/", paystack_webhook, name="paystack-webhook"),\n')
         elif ref == "feature/paystack-payfast-choice-20261110" and component == "frontend":
             resolved = resolve_payment_frontend(path, ours)
         elif ref == "feat/admin-fortnightly-performance-20261113":
