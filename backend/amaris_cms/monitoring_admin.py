@@ -14,6 +14,7 @@ from django.urls import path, reverse
 from django.views.decorators.csrf import csrf_exempt
 
 from .monitoring_status import is_private_monitoring_url, monitor_statuses
+from .trusted_advisor import collect_advisor_report
 
 PROXY_PREFIX = "/admin/monitoring/"
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -62,6 +63,7 @@ class AmarisAdminSite(AdminSite):
 
     def get_urls(self):
         extra = [
+            path("trusted-advisor/", self.admin_view(self.trusted_advisor), name="amaris_trusted_advisor"),
             path(
                 "monitoring/grafana/api/ds/query",
                 self.admin_view(self.monitoring_query),
@@ -89,7 +91,17 @@ class AmarisAdminSite(AdminSite):
     def _require_superuser(request):
         user = request.user
         if not (user.is_authenticated and user.is_active and user.is_staff and user.is_superuser):
-            raise PermissionDenied("Monitoring is reserved for Django superusers.")
+            raise PermissionDenied("This page is reserved for Django superusers.")
+
+    def trusted_advisor(self, request):
+        self._require_superuser(request)
+        if request.method not in ("GET", "HEAD"):
+            return HttpResponseNotAllowed(["GET", "HEAD"])
+        return TemplateResponse(
+            request,
+            "admin/amaris_trusted_advisor.html",
+            {**self.each_context(request), "title": "Trusted Advisor", "report": collect_advisor_report()},
+        )
 
     def monitoring_home(self, request):
         self._require_superuser(request)
