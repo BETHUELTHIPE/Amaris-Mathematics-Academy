@@ -1,6 +1,7 @@
 """Write private runtime settings for the dedicated Amaris AWS staging project."""
 
 import argparse
+import hmac
 import ipaddress
 import json
 import os
@@ -83,6 +84,9 @@ def main():
         "SUPABASE_URL": SUPABASE_URL,
         "SUPABASE_PUBLISHABLE_KEY": publishable_key,
         "CMS_API_URL": "http://amaris-gateway:8080/api/v1",
+        "PASSWORD_RECOVERY_SIGNING_SECRET": hmac.digest(
+            django_secret.encode(), b"amaris/aws-staging/password-recovery", "sha256"
+        ).hex(),
     }
     backend = {
         "DJANGO_DEBUG": "false",
@@ -126,9 +130,15 @@ def main():
         and all(storage.values())
     ):
         backend.update(storage, SUPABASE_S3_REQUIRED="true")
+    mail_fields = ("EMAIL_HOST", "EMAIL_PORT", "EMAIL_HOST_USER", "EMAIL_HOST_PASSWORD",
+                   "EMAIL_USE_TLS", "EMAIL_USE_SSL", "DEFAULT_FROM_EMAIL")
+    mail = {key: render[key] for key in mail_fields if render.get(key)}
+    if {"EMAIL_HOST", "EMAIL_HOST_USER", "EMAIL_HOST_PASSWORD"} <= mail.keys():
+        backend.update(mail, EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend")
     store_settings(args.directory / "backend.env", backend)
     store_settings(args.directory / "frontend.env", frontend)
     print("Isolated staging runtime settings generated.")
+    print(f"Staging SMTP {'configured' if '.smtp.' in backend['EMAIL_BACKEND'] else 'needs verification'}.")
     print(f"Private staging storage {'configured' if 'SUPABASE_S3_REQUIRED' in backend else 'needs verification'}.")
 
 

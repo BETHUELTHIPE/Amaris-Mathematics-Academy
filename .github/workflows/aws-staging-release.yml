@@ -22,6 +22,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      address: ${{ steps.host.outputs.address }}
     env:
       AWS_REGION: eu-north-1
       AWS_PAGER: ""
@@ -96,6 +98,7 @@ jobs:
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
       - name: Resolve the budgeted Stockholm host
+        id: host
         shell: bash
         run: |
           set -euo pipefail
@@ -124,6 +127,7 @@ jobs:
             printf 'STAGING_INSTANCE=%s\n' "$instance"
             printf 'STAGING_IMAGE_REPO=%s\n' "$image_repo"
           } >> "$GITHUB_ENV"
+          printf 'address=%s\n' "$address" >> "$GITHUB_OUTPUT"
       - name: Publish immutable staging images to ECR
         shell: bash
         run: |
@@ -209,11 +213,38 @@ jobs:
           base="https://$STAGING_ADDRESS"
           curl -fSs --max-time 15 "$base/health/ready" | jq -e '.status=="ok"'
           curl -fSs --max-time 15 "$base/health/ready/" | jq -e '.status=="ready"'
+          curl -fSs --max-time 15 "$base/health/dependencies/" | jq -e '.dependencies|.postgresql and .redis'
           curl -fSs --max-time 15 "$base/health/version/" | jq -e --arg sha "$BACKEND_SHA" '.git_sha==$sha'
           curl -fSs --max-time 15 "$base/api/v1/bootstrap/" | jq -e 'has("settings")'
           curl -fSs --max-time 15 "$base/" -o "$RUNNER_TEMP/amaris-aws-home.html"
           grep -Fqi 'Amaris Mathematics Academy' "$RUNNER_TEMP/amaris-aws-home.html"
           curl -fSs --max-time 15 "$base/login" -o /dev/null
+          curl -fSs --max-time 15 "$base/api/auth-state" | jq -e '.authenticated==false and .emailVerified==false'
+          unauthorized="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$base/api/v1/student/dashboard/")"
+          [[ "$unauthorized" == 401 || "$unauthorized" == 403 ]]
           curl -fSs --max-time 15 "$base/admin/login/" -o /dev/null
           printf 'Amaris AWS staging verified at %s\n' "$base"
           printf 'Amaris AWS staging is available at %s\n' "$base" >> "$GITHUB_STEP_SUMMARY"
+
+  auth:
+    name: Check email verification settings and the staging student dashboard
+    needs: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Configure and verify the isolated staging sign-in
+        env:
+          STAGING_ADDRESS: ${{ needs.release.outputs.address }}
+          SUPABASE_AUTH_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+          STAGING_TEST_STUDENT_EMAIL: ${{ secrets.STAGING_TEST_STUDENT_EMAIL }}
+          STAGING_TEST_STUDENT_PASSWORD: ${{ secrets.STAGING_TEST_STUDENT_PASSWORD }}
+          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+        run: python3 deploy/aws/verify-staging-auth.py
