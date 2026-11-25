@@ -1,15 +1,15 @@
 name: Inspect live Amaris staging blue-green readiness
 on:
-  push:
-    branches: [ops/aws-verified-release-20261126]
-    paths: [.github/workflows/aws-blue-green-live-inspection.yml]
+  pull_request:
+    branches: [release/aws-full-platform-20261125]
+    types: [opened, synchronize, reopened]
 permissions: {}
 concurrency:
   group: amaris-stockholm-readonly-inspection
   cancel-in-progress: false
 jobs:
   inspect:
-    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-verified-release-20261126'
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ops/aws-verified-release-20261126' && github.base_ref == 'release/aws-full-platform-20261125'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: staging
