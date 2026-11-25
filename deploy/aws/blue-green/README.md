@@ -44,3 +44,7 @@ The current application release and runtime architecture are not yet verified. T
 - Before moving queues, stop producers/schedulers using a controlled maintenance procedure, drain workers or preserve queued work with a verified migration, validate pending outbox records and reconcile. A cache flush is not an acceptable broker migration. Do not switch blue to a second broker while green uses a different broker.
 - Combined application CI now builds the frontend before its render tests; the backend uses the integrated application Dockerfile. It scans both ARM64 images and archives successful candidates with SHA256 checksums. A release must use both images from the same fully successful run.
 - No AWS execution or resource provisioning has been verified. The new workflow must be made available for dispatch under GitHub's default-branch workflow rules or its read-only preflight run locally using the authorized AWS CLI profile.
+
+
+## CloudWatch rollback alarm preflight
+The read-only verification workflow is installed on the staging operations base branch. It checks the three ALB-wide deployment alarms, SNS actions, alarm baseline state, ECS deployment strategy, advanced target-group/listener routing, and task-local state before any rollout. A failed preflight is an intentional deployment block, not a reason to bypass the gate.
