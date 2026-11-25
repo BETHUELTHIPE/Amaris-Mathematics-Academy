@@ -34,3 +34,13 @@ https://docs.aws.amazon.com/AmazonECS/latest/developerguide/alb-resources-for-bl
 https://docs.aws.amazon.com/AmazonECS/latest/developerguide/pause-lifecycle-hooks.html
 
 The current application release and runtime architecture are not yet verified. This runbook and the supplied configuration do not authorize live conversion or traffic changes.
+
+
+## Implemented candidate preparation
+- shared-valkey.yml defines an optional encrypted, private, single-node staging replication group with no eviction, AUTH, snapshots and restricted ingress. It is not a high-availability production configuration. Check Stockholm availability and total cost before provisioning.
+- proxy/ packages the existing staging gateway routing as an immutable container. Build with a reviewed ARM64 nginx digest; publish to staging ECR only after scanning.
+- render-stateless-task.py accepts the current ALB task definition and three immutable ECR digests. It removes task-local Valkey and all proxy bind mounts, and references four separate SecureString URL parameters. Run its unit tests before registering a task.
+- Use rediss:// authenticated URLs with certificate verification (Celery broker/result URLs must explicitly require certificate validation), and separate logical databases 0,1,2,3 for private cache, public cache, broker and results. Provision parameters under /amaris/aws-staging/shared-valkey/{cache,public-cache,broker,result}. Update the ECS execution role to read only these parameters and the required KMS key. Do not print URLs or credentials.
+- Before moving queues, stop producers/schedulers using a controlled maintenance procedure, drain workers or preserve queued work with a verified migration, validate pending outbox records and reconcile. A cache flush is not an acceptable broker migration. Do not switch blue to a second broker while green uses a different broker.
+- Combined application CI now builds the frontend before its render tests; the backend uses the integrated application Dockerfile. It scans both ARM64 images and archives successful candidates with SHA256 checksums. A release must use both images from the same fully successful run.
+- No AWS execution or resource provisioning has been verified. The new workflow must be made available for dispatch under GitHub's default-branch workflow rules or its read-only preflight run locally using the authorized AWS CLI profile.
