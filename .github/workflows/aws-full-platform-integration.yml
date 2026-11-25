@@ -28,10 +28,10 @@ jobs:
         include:
           - component: backend
             base: production-release-20260923
-            refs: feature/paystack-payfast-choice-20261110 feat/student-two-week-motivation-20261111 feat/sponsor-dashboard-20261111 feat/curriculum-subscriptions-backend-20261112 feat/tutor-video-admin-alerts-20261113 feat/admin-fortnightly-performance-20261113 fix/tutor-admin-private-storage-20261113 feat/tutor-employment-contract-backend-20261115 feat/course-search-api-20261118 feat/private-chat-backend-20261124 feat/trusted-advisor-20261125
+            refs: production-release-20260923:feat/sponsor-dashboard-20261111 production-release-20260923:feat/curriculum-subscriptions-backend-20261112 production-release-20260923:feat/tutor-video-admin-alerts-20261113 feat/tutor-video-admin-alerts-20261113:feat/admin-fortnightly-performance-20261113 feat/admin-fortnightly-performance-20261113:fix/tutor-admin-private-storage-20261113 fix/tutor-admin-private-storage-20261113:feat/tutor-employment-contract-backend-20261115 production-release-20260923:feat/course-search-api-20261118 production-release-20260923:feat/private-chat-backend-20261124 production-release-20260923:feat/trusted-advisor-20261125 main:feature/paystack-payfast-choice-20261110
           - component: frontend
             base: render-live-current-20260918
-            refs: feat/curriculum-subscriptions-frontend-20261112 feat/course-subscription-pages-20261112 feat/tutor-video-submission-ui-20261113 feat/tutor-employment-contract-ui-20261115 feat/course-search-ui-20261118 feat/private-chat-ui-20261124
+            refs: render-live-current-20260918:feat/curriculum-subscriptions-frontend-20261112 production-release-20260923:feat/sponsor-dashboard-20261111 render-live-current-20260918:feat/tutor-video-submission-ui-20261113 feat/tutor-video-submission-ui-20261113:feat/tutor-employment-contract-ui-20261115 render-live-current-20260918:feat/course-search-ui-20261118 render-live-current-20260918:feat/private-chat-ui-20261124 main:feature/paystack-payfast-choice-20261110
     steps:
       - uses: actions/checkout@v5
         with:
@@ -52,18 +52,32 @@ jobs:
           git worktree add --detach "$RUNNER_TEMP/candidate" "refs/remotes/origin/$BASE"
           cd "$RUNNER_TEMP/candidate"
           printf 'base %s %s\n' "$BASE" "$(git rev-parse HEAD)" > "$manifest"
-          for ref in $REFS; do
+          for pair in $REFS; do
+            source_base="${pair%%:*}"
+            ref="${pair#*:}"
+            base_sha="$(git rev-parse --verify "refs/remotes/origin/$source_base^{commit}")"
             sha="$(git rev-parse --verify "refs/remotes/origin/$ref^{commit}")"
-            printf '%s %s\n' "$ref" "$sha" >> "$manifest"
+            fork="$(git merge-base "$base_sha" "$sha")"
+            printf '%s %s %s %s\n' "$ref" "$sha" "$source_base" "$fork" >> "$manifest"
           done
-          while read -r ref sha; do
+          # Use the actual feature delta, not the unrelated history of another deployment branch.
+          # PR 439 includes PR 438. PR 440 supersedes the enquiry-only subscription UI in PR 442.
+          patch="$RUNNER_TEMP/$COMPONENT-feature.patch"
+          while read -r ref sha source_base fork; do
             if [[ "$ref" == base ]]; then continue; fi
-            if ! git merge --no-ff --no-edit "$sha"; then
-              git diff --name-only --diff-filter=U > "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
-              git merge --abort
-              echo "::error::Integration conflict in $COMPONENT at $ref; no deployment performed."
+            git diff --binary --full-index "$fork" "$sha" -- "$COMPONENT/" > "$patch"
+            if [[ ! -s "$patch" ]]; then
+              echo "::error::No component changes for $ref; review the manifest."
               exit 1
             fi
+            if ! git apply --3way --index "$patch"; then
+              git diff --name-only --diff-filter=U > "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
+              git status --short >> "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
+              echo "::error::Feature delta conflict in $COMPONENT at $ref; manual resolution required."
+              exit 1
+            fi
+            git diff --cached --check
+            git commit -m "Integrate $ref ($sha)"
           done < "$manifest"
           git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/$COMPONENT-candidate.txt"
           git diff --check "refs/remotes/origin/$BASE" HEAD
