@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Amaris staging blue-green prerequisites; no changes to existing ALB listeners or ECS services.
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+Resources:
+  AlternateTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: amaris-staging-web-green
+      VpcId: !Ref VpcId
+      TargetType: ip
+      IpAddressType: ipv4
+      Protocol: HTTP
+      Port: 8080
+      HealthCheckPath: /__alb/ready
+      HealthCheckIntervalSeconds: 15
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+  EcsLoadBalancerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonECSInfrastructureRolePolicyForLoadBalancers
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+Outputs:
+  AlternateTargetGroupArn:
+    Value: !Ref AlternateTargetGroup
+  InfrastructureRoleArn:
+    Value: !GetAtt EcsLoadBalancerRole.Arn

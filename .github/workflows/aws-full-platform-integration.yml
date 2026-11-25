@@ -1,0 +1,320 @@
+name: AWS full-platform integration candidate
+on:
+  push:
+    branches: [release/aws-full-platform-20261125]
+    paths:
+      - .github/workflows/aws-full-platform-integration.yml
+      - deploy/aws/resolve-reviewed-integration.py
+      - deploy/aws/reconcile-candidate-migrations.py
+  pull_request:
+    branches: [ops/aws-alb-staging-20261125]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aws-full-platform-integration
+  cancel-in-progress: false
+jobs:
+  integrate:
+    if: >-
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
+      (github.ref == 'refs/heads/release/aws-full-platform-20261125' ||
+       (github.event_name == 'pull_request' && github.head_ref == 'release/aws-full-platform-20261125' &&
+        github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: backend
+            base: production-release-20260923
+            refs: production-release-20260923:feat/sponsor-dashboard-20261111 production-release-20260923:feat/curriculum-subscriptions-backend-20261112 production-release-20260923:feat/tutor-video-admin-alerts-20261113 feat/tutor-video-admin-alerts-20261113:feat/admin-fortnightly-performance-20261113 feat/admin-fortnightly-performance-20261113:fix/tutor-admin-private-storage-20261113 fix/tutor-admin-private-storage-20261113:feat/tutor-employment-contract-backend-20261115 production-release-20260923:feat/course-search-api-20261118 production-release-20260923:feat/private-chat-backend-20261124 production-release-20260923:feat/trusted-advisor-20261125 main:feature/paystack-payfast-choice-20261110
+          - component: frontend
+            base: render-live-current-20260918
+            refs: render-live-current-20260918:feat/curriculum-subscriptions-frontend-20261112 production-release-20260923:feat/sponsor-dashboard-20261111 render-live-current-20260918:feat/tutor-video-submission-ui-20261113 feat/tutor-video-submission-ui-20261113:feat/tutor-employment-contract-ui-20261115 render-live-current-20260918:feat/course-search-ui-20261118 render-live-current-20260918:feat/private-chat-ui-20261124 main:feature/paystack-payfast-choice-20261110
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve feature revisions and attempt integration without changing original branches
+        shell: bash
+        env:
+          COMPONENT: ${{ matrix.component }}
+          BASE: ${{ matrix.base }}
+          REFS: ${{ matrix.refs }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-evidence"
+          manifest="$RUNNER_TEMP/release-evidence/$COMPONENT-refs.txt"
+          git config user.name 'Amaris release integration'
+          git config user.email 'release-integration@users.noreply.github.com'
+          git worktree add --detach "$RUNNER_TEMP/candidate" "refs/remotes/origin/$BASE"
+          cd "$RUNNER_TEMP/candidate"
+          printf 'base %s %s\n' "$BASE" "$(git rev-parse HEAD)" > "$manifest"
+          for pair in $REFS; do
+            source_base="${pair%%:*}"
+            ref="${pair#*:}"
+            base_sha="$(git rev-parse --verify "refs/remotes/origin/$source_base^{commit}")"
+            sha="$(git rev-parse --verify "refs/remotes/origin/$ref^{commit}")"
+            fork="$(git merge-base "$base_sha" "$sha")"
+            printf '%s %s %s %s\n' "$ref" "$sha" "$source_base" "$fork" >> "$manifest"
+          done
+          # Use the actual feature delta, not the unrelated history of another deployment branch.
+          # PR 439 includes PR 438. PR 440 supersedes the enquiry-only subscription UI in PR 442.
+          patch="$RUNNER_TEMP/$COMPONENT-feature.patch"
+          while read -r ref sha source_base fork; do
+            if [[ "$ref" == base ]]; then continue; fi
+            git diff --binary --full-index "$fork" "$sha" -- "$COMPONENT/" > "$patch"
+            if [[ ! -s "$patch" ]]; then
+              echo "::error::No component changes for $ref; review the manifest."
+              exit 1
+            fi
+            if ! git apply --3way --index "$patch"; then
+              git diff --name-only --diff-filter=U > "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
+              git status --short >> "$RUNNER_TEMP/release-evidence/$COMPONENT-conflicts.txt"
+              if [[ "$COMPONENT:$ref:$sha" == "backend:feat/curriculum-subscriptions-backend-20261112:167eca64b7cf0b8b7d6a43ea763561ceaec53312" || \
+                    "$COMPONENT:$ref:$sha" == "frontend:feat/sponsor-dashboard-20261111:d9244009c9c99aa7ff985d1eaaf42dd1c693a3e9" || \
+                    "$COMPONENT:$ref:$sha" == "frontend:feat/course-search-ui-20261118:8d390c9cb569a2e96e069137e520ec07e5c75589" || \
+                    "$COMPONENT:$ref:$sha" == "backend:feat/tutor-video-admin-alerts-20261113:f28c243173ea01a232ef4d09735ee91caffea78e" || \
+                    "$COMPONENT:$ref:$sha" == "backend:feat/admin-fortnightly-performance-20261113:dc2c51a5f7efef6ae1a6526430fbc2bbafacfeec" || \
+                    "$COMPONENT:$ref:$sha" == "frontend:feat/private-chat-ui-20261124:2b46f28dd12d67e291671805d8a44e8944bdf81d" || \
+                    "$COMPONENT:$ref:$sha" == "backend:feat/tutor-employment-contract-backend-20261115:449db62ea39322a250a1db1d217aeb1a6cd6b314" || \
+                    "$COMPONENT:$ref:$sha" == "frontend:feature/paystack-payfast-choice-20261110:287dad8950f695e46818a355c00fc11ea820df63" || \
+                    "$COMPONENT:$ref:$sha" == "backend:feat/private-chat-backend-20261124:a3b8d65e217b5ef1438f0b8190a46e383880024a" || \
+                    "$COMPONENT:$ref:$sha" == "backend:feature/paystack-payfast-choice-20261110:287dad8950f695e46818a355c00fc11ea820df63" ]]; then
+                python3 "$GITHUB_WORKSPACE/deploy/aws/resolve-reviewed-integration.py" "$COMPONENT" "$ref" "$sha"
+              else
+                echo "::error::Feature delta conflict in $COMPONENT at $ref; manual resolution required."
+                exit 1
+              fi
+            fi
+            if [[ "$COMPONENT:$ref:$sha" == "frontend:feat/course-search-ui-20261118:8d390c9cb569a2e96e069137e520ec07e5c75589" ]]; then
+              python3 -c 'from pathlib import Path; paths = ["frontend/app/courses/page.tsx", "frontend/components/site/header.tsx", "frontend/lib/cms.ts"]; [(p.write_bytes(p.read_bytes().rstrip(b"\n") + b"\n")) for p in map(Path, paths)]'
+              git add -- frontend/app/courses/page.tsx frontend/components/site/header.tsx frontend/lib/cms.ts
+            fi
+            git diff --cached --check
+            git commit -m "Integrate $ref ($sha)"
+          done < "$manifest"
+          if [[ "$COMPONENT" == frontend ]]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          p = Path("frontend/components/tutor/employment-contract.tsx")
+          source = p.read_text()
+          old = "useEffect(() => { void load(); }, [load]);"
+          new = "useEffect(() => {\n    const timer = window.setTimeout(() => { void load(); }, 0);\n    return () => window.clearTimeout(timer);\n  }, [load]);"
+          if source.count(old) != 1 or source.count("Tutor's 30% share") != 1:
+              raise SystemExit("Unexpected tutor contract source; manual review required")
+          p.write_text(source.replace(old, new).replace("Tutor's 30% share", "Tutor&apos;s 30% share"))
+          t = Path("frontend/tests/student-responsive-contract.test.mjs")
+          test = t.read_text()
+          old = r'/await createStudentCheckout\(slug\)/'
+          new = r'/await createStudentCheckout\(slug, selected\)/'
+          if test.count(old) != 1:
+              raise SystemExit("Checkout contract test changed; manual review required")
+          test = test.replace(old, new)
+          anchor = '  assert.match(page, /break-all font-mono/);'
+          if test.count(anchor) != 1:
+              raise SystemExit("Checkout safety assertions changed")
+          t.write_text(test.replace(anchor, '  assert.match(page, /PAYSTACK_ENABLED === "true"/);\n  assert.match(page, /selected === "paystack"/);\n  assert.match(page, /Continue to Paystack/);\n' + anchor))
+          PY
+            git add -- frontend/components/tutor/employment-contract.tsx frontend/tests/student-responsive-contract.test.mjs
+            git diff --cached --check
+            git commit -m "Fix confirmed contract React lint errors"
+          fi
+          if [[ "$COMPONENT" == backend ]]; then
+            python3 "$GITHUB_WORKSPACE/deploy/aws/reconcile-candidate-migrations.py"
+            git add -- backend/content/migrations/
+            git diff --cached --check
+            git commit -m "Reconcile reviewed unpublished feature migration branches"
+          fi
+          git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/$COMPONENT-candidate.txt"
+          git diff --check "refs/remotes/origin/$BASE" HEAD
+      - name: Start isolated PostgreSQL and Redis for backend tests
+        if: matrix.component == 'backend'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name amaris-ci-postgres \
+            -p 127.0.0.1:5432:5432 \
+            -e POSTGRES_DB=amaris_ci -e POSTGRES_USER=amaris_ci \
+            -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17-alpine
+          docker run -d --name amaris-ci-redis \
+            -p 127.0.0.1:6379:6379 redis:8-alpine
+          for attempt in {1..60}; do
+            if docker exec amaris-ci-postgres pg_isready -h 127.0.0.1 -U amaris_ci -d amaris_ci && \
+               docker exec amaris-ci-redis redis-cli ping | grep -qx PONG; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs --tail 30 amaris-ci-postgres
+          docker logs --tail 30 amaris-ci-redis
+          exit 1
+      - uses: actions/setup-python@v5
+        if: matrix.component == 'backend'
+        with:
+          python-version: '3.13.15'
+      - name: Full backend quality, migrations and regression tests
+        if: matrix.component == 'backend'
+        shell: bash
+        env:
+          DJANGO_DEBUG: 'false'
+          DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+          DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_ci
+          DATABASE_SSL_REQUIRED: 'false'
+          SUPABASE_DATABASE_REQUIRED: 'false'
+          DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: '0'
+          CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+          CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+          DJANGO_CACHE_URL: redis://127.0.0.1:6379/2
+          DJANGO_PUBLIC_CACHE_URL: redis://127.0.0.1:6379/3
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/candidate/backend"
+          export DJANGO_SECRET_KEY="$(openssl rand -hex 64)"
+          echo "::add-mask::$DJANGO_SECRET_KEY"
+          python -m pip install -r requirements-dev.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("content/tasks.py")
+          source = p.read_text()
+          # These imports register tasks with Celery; they must not be removed.
+          names = ("performance_tasks", "subscription_report_tasks", "tutor_finance_tasks", "tutor_personnel_tasks", "tutor_video_tasks")
+          import re
+          for name in names:
+              source, count = re.subn(r"(?m)^(\s*)" + name + r",?$", r"\1" + name + " as " + name + ",", source)
+              if count != 1:
+                  # Black may not have formatted the import yet; handle that below.
+                  if count != 0:
+                      raise SystemExit("Unexpected registration import: " + name)
+          p.write_text(source)
+          PY
+          black content/apps.py content/tasks.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("content/tasks.py")
+          source = p.read_text()
+          for name in ("performance_tasks", "subscription_report_tasks", "tutor_finance_tasks", "tutor_personnel_tasks", "tutor_video_tasks"):
+              line = "    " + name + ","
+              alias = "    " + name + " as " + name + ","
+              if source.count(alias) == 1:
+                  continue
+              if source.count(line) != 1:
+                  raise SystemExit("Unexpected Celery import: " + name)
+              source = source.replace(line, alias)
+          p.write_text(source)
+          PY
+          ruff check --select I001 --fix content/apps.py content/tasks.py
+          black content/apps.py content/services/tutor_contract_pdf.py content/services/tutor_contracts.py content/tasks.py content/tutor_contract_tasks.py content/tutor_contract_models.py content/tutor_contract_views.py content/urls.py
+          git diff --check
+          git add -- content/apps.py content/services/tutor_contract_pdf.py content/services/tutor_contracts.py content/tasks.py content/tutor_contract_tasks.py content/tutor_contract_models.py content/tutor_contract_views.py content/urls.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Format reviewed integrated Python files"
+          fi
+          git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/backend-candidate.txt"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("content/test_tutor_contracts.py")
+          source = p.read_text()
+          # Exercise the actual HTTPS endpoint without disabling SSL enforcement.
+          replacements = {
+              'format="json",': 'format="json",\n            secure=True,',
+              'self.api.get(reverse("tutor-employment-contracts"))': 'self.api.get(reverse("tutor-employment-contracts"), secure=True)',
+              'self.api.get(reverse("tutor-employment-contract-pdf", args=[item.pk]))': 'self.api.get(reverse("tutor-employment-contract-pdf", args=[item.pk]), secure=True)',
+              'self.assertIn("Platform operating costs 10.00%", text)': 'self.assertIn("Platform operating costs 10.00%", " ".join(text.split()))',
+          }
+          for before, after in replacements.items():
+              if before not in source:
+                  raise SystemExit("Unexpected tutor test source: " + before)
+              source = source.replace(before, after)
+          p.write_text(source)
+          PY
+          black content/test_tutor_contracts.py
+          git add -- content/test_tutor_contracts.py
+          git diff --cached --check
+          git commit -m "Test HTTPS tutor contract endpoints and normalize PDF whitespace"
+          git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/backend-candidate.txt"
+          black --check .
+          ruff check .
+          mypy
+          python manage.py check --deploy --fail-level ERROR
+          python manage.py showmigrations --plan 2>&1 | tee "$RUNNER_TEMP/release-evidence/migration-plan.log"
+          python manage.py makemigrations --check --dry-run 2>&1 | tee "$RUNNER_TEMP/release-evidence/migration-check.log"
+          python manage.py migrate --noinput 2>&1 | tee "$RUNNER_TEMP/release-evidence/migration-execution.log"
+          python manage.py collectstatic --noinput
+          python manage.py test 2>&1 | tee "$RUNNER_TEMP/release-evidence/backend-tests.log"
+      - uses: actions/setup-node@v4
+        if: matrix.component == 'frontend'
+        with:
+          node-version: '24'
+      - name: Full frontend lint, type checks and regression tests
+        if: matrix.component == 'frontend'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/candidate/frontend"
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm run build
+          npm run test:unit 2>&1 | tee "$RUNNER_TEMP/release-evidence/frontend-tests.log"
+      - name: Build candidate container without AWS credentials
+        env:
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          set -euo pipefail
+          dockerfile="deploy/aws/$COMPONENT.Dockerfile"
+          if [[ "$COMPONENT" == backend ]]; then
+            dockerfile="$RUNNER_TEMP/candidate/backend/Dockerfile"
+          fi
+          docker build --file "$dockerfile" --tag "amaris-$COMPONENT:candidate" "$RUNNER_TEMP/candidate/$COMPONENT"
+          test "$(docker image inspect --format '{{.Architecture}}' "amaris-$COMPONENT:candidate")" = arm64
+      - name: Scan candidate container for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: amaris-${{ matrix.component }}:candidate
+          format: json
+          output: ${{ runner.temp }}/release-evidence/${{ matrix.component }}-trivy.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          scanners: vuln
+      - name: Report actionable container findings
+        if: always()
+        env:
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path(os.environ["RUNNER_TEMP"]) / "release-evidence" / (os.environ["COMPONENT"] + "-trivy.json")
+          if report.exists():
+              for result in json.loads(report.read_text()).get("Results", []):
+                  for item in result.get("Vulnerabilities") or []:
+                      print(result.get("Target"), item.get("VulnerabilityID"), item.get("PkgName"), item.get("InstalledVersion"), "fixed:", item.get("FixedVersion"), item.get("Severity"))
+          PY
+      - name: Archive tested and scanned immutable candidate image
+        env:
+          COMPONENT: ${{ matrix.component }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/release-evidence"
+          docker image inspect --format '{{.Id}}' "amaris-$COMPONENT:candidate" > "$COMPONENT-image-id.txt"
+          docker save "amaris-$COMPONENT:candidate" | gzip -1 > "$COMPONENT-image.tar.gz"
+          sha256sum "$COMPONENT-image.tar.gz" > "$COMPONENT-image.sha256"
+      - name: Stop isolated test services
+        if: always() && matrix.component == 'backend'
+        shell: bash
+        run: |
+          docker rm -f amaris-ci-postgres amaris-ci-redis 2>/dev/null || true
+      - name: Upload integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-integration-${{ matrix.component }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-evidence/
+          if-no-files-found: warn

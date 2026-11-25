@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Optional shared private Valkey for Amaris staging; deploy only after cost and queue migration approval.
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet::Id
+  ApplicationSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  CacheNodeType:
+    Type: String
+    Default: cache.t4g.micro
+Resources:
+  CacheAuthSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Amaris staging Valkey authentication token
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+        IncludeSpace: false
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+  CacheSubnets:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Amaris staging private subnets
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: TLS Valkey from Amaris private application tasks only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref ApplicationSecurityGroup
+  CacheParameters:
+    Type: AWS::ElastiCache::ParameterGroup
+    Properties:
+      CacheParameterGroupFamily: valkey8
+      Description: Prevent silent eviction of pending Celery work
+      Properties:
+        maxmemory-policy: noeviction
+  SharedValkey:
+    Type: AWS::ElastiCache::ReplicationGroup
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      ReplicationGroupDescription: Amaris staging shared cache and broker
+      Engine: valkey
+      EngineVersion: '8.0'
+      CacheNodeType: !Ref CacheNodeType
+      NumCacheClusters: 1
+      AutomaticFailoverEnabled: false
+      MultiAZEnabled: false
+      CacheParameterGroupName: !Ref CacheParameters
+      CacheSubnetGroupName: !Ref CacheSubnets
+      SecurityGroupIds: [!Ref CacheSecurityGroup]
+      TransitEncryptionEnabled: true
+      TransitEncryptionMode: required
+      AtRestEncryptionEnabled: true
+      AuthToken: !Sub '{{resolve:secretsmanager:${CacheAuthSecret}:SecretString}}'
+      SnapshotRetentionLimit: 1
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+Outputs:
+  CacheAuthSecretArn:
+    Value: !Ref CacheAuthSecret
+  PrimaryEndpoint:
+    Value: !GetAtt SharedValkey.PrimaryEndPoint.Address
+  Port:
+    Value: !GetAtt SharedValkey.PrimaryEndPoint.Port
+  CacheSecurityGroupId:
+    Value: !Ref CacheSecurityGroup

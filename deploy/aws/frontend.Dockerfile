@@ -12,6 +12,11 @@ RUN NODE_ENV=production NITRO_PRESET=node npm exec -- vite build --config vite.n
 FROM node:24-bookworm-slim AS runtime
 
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
+# The runtime starts Node directly; npm, npx and their bundled libraries are unnecessary.
+# Remove them from the final filesystem, including vulnerable npm-only dependencies.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+    && test ! -e /usr/local/lib/node_modules/npm \
+    && node --version
 WORKDIR /app
 COPY --from=build --chown=node:node /app/.output ./.output
 USER node

@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Amaris staging least-privilege GitHub OIDC roles. Requires existing GitHub OIDC provider and protected staging environment.
+Parameters:
+  GitHubOidcProviderArn:
+    Type: String
+    AllowedPattern: 'arn:aws:iam::110156539003:oidc-provider/token.actions.githubusercontent.com'
+Resources:
+  ReadinessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: repo:BETHUELTHIPE/Amaris-Mathematics-Academy:environment:staging
+      Policies:
+        - PolicyName: InspectStagingReadiness
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:ListContainerInstances
+                  - ecs:DescribeContainerInstances
+                  - elasticloadbalancing:DescribeListeners
+                  - elasticloadbalancing:DescribeTargetHealth
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: eu-north-1
+              - Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:eu-north-1:${AWS::AccountId}:stack/amaris-staging-alb/*'
+  PublicationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: repo:BETHUELTHIPE/Amaris-Mathematics-Academy:environment:staging
+      Policies:
+        - PolicyName: PublishStagingImagesOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: eu-north-1
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                  - ecr:DescribeImages
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:eu-north-1:${AWS::AccountId}:repository/amaris-staging-frontend'
+Outputs:
+  ReadinessRoleArn:
+    Value: !GetAtt ReadinessRole.Arn
+  PublicationRoleArn:
+    Value: !GetAtt PublicationRole.Arn
