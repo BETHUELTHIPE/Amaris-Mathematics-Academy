@@ -1,0 +1,58 @@
+name: Inspect live Amaris staging blue-green readiness
+on:
+  push:
+    branches: [ops/aws-verified-release-20261126]
+    paths: [.github/workflows/aws-blue-green-live-inspection.yml]
+permissions: {}
+concurrency:
+  group: amaris-stockholm-readonly-inspection
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-verified-release-20261126'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+    steps:
+      - name: Authenticate with a restricted read-only OIDC session
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ vars.AWS_BLUE_GREEN_READONLY_ROLE || vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+          inline-session-policy: >-
+            {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ecs:DescribeServices","ecs:DescribeTaskDefinition","ecs:ListContainerInstances","ecs:DescribeContainerInstances","elasticloadbalancing:DescribeListeners","elasticloadbalancing:DescribeTargetHealth"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":"eu-north-1"}}}]}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify AWS service health, state isolation and spare EC2 resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          cluster=amaris-ecs-staging
+          service=amaris-web-staging-alb
+          svc="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0]' --output json)"
+          jq -e '.status=="ACTIVE" and .desiredCount>0 and .runningCount==.desiredCount and .pendingCount==0' <<< "$svc" >/dev/null
+          task="$(jq -er .taskDefinition <<< "$svc")"
+          definition="$(aws ecs describe-task-definition --task-definition "$task" --query taskDefinition --output json)"
+          group="$(jq -er '.loadBalancers[]|select(.containerName=="cms" and .containerPort==8080).targetGroupArn' <<< "$svc")"
+          targets="$(aws elbv2 describe-target-health --target-group-arn "$group" --query 'TargetHealthDescriptions[].TargetHealth.State' --output json)"
+          count="$(jq '[.[]|select(.=="healthy")]|length' <<< "$targets")"
+          jq '{status,desiredCount,runningCount,pendingCount,strategy:(.deploymentConfiguration.strategy // "ROLLING"),deploymentController:.deploymentController.type}' <<< "$svc"
+          echo "Healthy ALB targets: $count"
+          jq '{architecture:.runtimePlatform.cpuArchitecture,networkMode,localValkey:(any(.containerDefinitions[]; .name=="valkey")),hostMountCount:([.volumes[]?|select((.host.sourcePath // "")!="")]|length),requestedCpu:([.containerDefinitions[]|.cpu//0]|add),requestedMemoryMiB:([.containerDefinitions[]|.memoryReservation//.memory//0]|add)}' <<< "$definition"
+          instances="$(aws ecs list-container-instances --cluster "$cluster" --status ACTIVE --query containerInstanceArns --output text)"
+          [[ -n "$instances" && "$instances" != None ]]
+          read -r -a instance_arns <<< "$instances"
+          aws ecs describe-container-instances --cluster "$cluster" --container-instances "${instance_arns[@]}" --query 'containerInstances[].{status:status,agentConnected:agentConnected,remainingResources:remainingResources[?name==`CPU` || name==`MEMORY` || name==`ENI`]}' --output json | jq '[.[]|{status,agentConnected,resources:[.remainingResources[]|{name,integerValue}]}]'
+          [[ "$count" -ge "$(jq -er .desiredCount <<< "$svc")" ]]
+          if jq -e 'any(.containerDefinitions[]; .name=="valkey") or any(.volumes[]?; (.host.sourcePath // "")!="")' <<< "$definition" >/dev/null; then
+            echo "::error::Existing task-local state blocks concurrent blue-green revisions; migrate cache/broker and remove host bind mounts first."
+            exit 1
+          fi
+          echo "Read-only inspection complete. Explicit capacity and migration compatibility sign-off still required before deployment."
