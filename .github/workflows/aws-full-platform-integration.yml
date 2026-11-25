@@ -4,6 +4,9 @@ on:
     branches: [release/aws-full-platform-20261125]
     paths:
       - .github/workflows/aws-full-platform-integration.yml
+  pull_request:
+    branches: [ops/aws-alb-staging-20261125]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,9 +15,30 @@ concurrency:
   cancel-in-progress: false
 jobs:
   integrate:
-    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/release/aws-full-platform-20261125'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    if: >-
+      github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
+      (github.ref == 'refs/heads/release/aws-full-platform-20261125' ||
+       (github.event_name == 'pull_request' && github.head_ref == 'release/aws-full-platform-20261125' &&
+        github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_ci
+          POSTGRES_USER: amaris_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd 'pg_isready -U amaris_ci -d amaris_ci'
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:8-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd 'redis-cli ping'
+          --health-interval 10s --health-timeout 5s --health-retries 5
     strategy:
       fail-fast: false
       matrix:
@@ -60,12 +84,58 @@ jobs:
           done < "$manifest"
           git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/$COMPONENT-candidate.txt"
           git diff --check "refs/remotes/origin/$BASE" HEAD
+      - uses: actions/setup-python@v5
+        if: matrix.component == 'backend'
+        with:
+          python-version: '3.13.15'
+      - name: Full backend quality, migrations and regression tests
+        if: matrix.component == 'backend'
+        shell: bash
+        env:
+          DJANGO_DEBUG: 'false'
+          DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+          DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_ci
+          DATABASE_SSL_REQUIRED: 'false'
+          SUPABASE_DATABASE_REQUIRED: 'false'
+          DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: '0'
+          CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+          CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/1
+          DJANGO_CACHE_URL: redis://127.0.0.1:6379/2
+          DJANGO_PUBLIC_CACHE_URL: redis://127.0.0.1:6379/3
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/candidate/backend"
+          export DJANGO_SECRET_KEY="$(openssl rand -hex 64)"
+          echo "::add-mask::$DJANGO_SECRET_KEY"
+          python -m pip install -r requirements-dev.txt
+          black --check .
+          ruff check .
+          mypy
+          python manage.py check --deploy --fail-level ERROR
+          python manage.py makemigrations --check --dry-run
+          python manage.py migrate --noinput
+          python manage.py test 2>&1 | tee "$RUNNER_TEMP/release-evidence/backend-tests.log"
+      - uses: actions/setup-node@v4
+        if: matrix.component == 'frontend'
+        with:
+          node-version: '24'
+      - name: Full frontend lint, type checks and regression tests
+        if: matrix.component == 'frontend'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/candidate/frontend"
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm run test:unit 2>&1 | tee "$RUNNER_TEMP/release-evidence/frontend-tests.log"
       - name: Build candidate container without AWS credentials
         env:
           COMPONENT: ${{ matrix.component }}
         run: |
           set -euo pipefail
           docker build --file "deploy/aws/$COMPONENT.Dockerfile" --tag "amaris-$COMPONENT:candidate" "$RUNNER_TEMP/candidate/$COMPONENT"
+          test "$(docker image inspect --format '{{.Architecture}}' "amaris-$COMPONENT:candidate")" = arm64
       - name: Upload integration evidence
         if: always()
         uses: actions/upload-artifact@v4
