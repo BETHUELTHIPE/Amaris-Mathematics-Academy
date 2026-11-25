@@ -25,6 +25,24 @@ for family in amaris-ecs-staging-private-web amaris-ecs-staging-alb-web; do
   for path in /health/live/ /health/ready/ /health/dependencies/; do
     docker exec "$container" python -c "$probe" "$path" || true
   done
+  docker exec "$container" python -c '
+import os, socket, time, urllib.parse
+import psycopg
+url=urllib.parse.urlsplit(os.environ["AMARIS_RUNTIME_ENV"].split("DATABASE_URL=", 1)[1].splitlines()[0])
+print("Postgres endpoint type", "pooler" if (url.hostname or "").endswith(".pooler.supabase.com") else "direct", "port",url.port)
+for host in sorted({entry[4][0] for entry in socket.getaddrinfo(url.hostname,url.port,socket.AF_INET,socket.SOCK_STREAM)}):
+ print("Pooler IPv4",host)
+ for attempt in range(4):
+  try:
+   with psycopg.connect(host=url.hostname,hostaddr=host,port=url.port,dbname=url.path.lstrip("/"),user=urllib.parse.unquote(url.username),password=urllib.parse.unquote(url.password),connect_timeout=4,sslmode="require") as conn:
+    conn.execute("SELECT 1")
+   print("Read-only connection succeeded.")
+  except (psycopg.Error,OSError) as error:
+   description=str(error).lower()
+   reasons=[word for word in ("too many","timed out","timeout","no route","refused","closed the connection","authentication failed","max client","could not translate","remaining connection slots","session mode") if word in description]
+   print("Read-only connection failed",type(error).__name__,getattr(error,"sqlstate",None),"/".join(reasons))
+  time.sleep(.3)
+' || true
   nsenter --target "$pid" --net ip -4 -o addr show scope global | awk 'NR==1 {print $4}'
 done
 ips="$(aws ec2 describe-network-interfaces --region eu-north-1 --filters 'Name=description,Values=ELB app/amaris-staging-alb/c14bdf486b43a0fb' --query 'NetworkInterfaces[?Status==`in-use`].PrivateIpAddress' --output text)"
