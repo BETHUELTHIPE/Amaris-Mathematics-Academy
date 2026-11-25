@@ -26,7 +26,7 @@ jobs:
           jq -e '.strategy=="BLUE_GREEN" and .minimumHealthyPercent==100 and .maximumPercent==200 and .bakeTimeInMinutes>=15 and ([.lifecycleHooks[].lifecycleStages[]]|sort)==["POST_PRODUCTION_TRAFFIC_SHIFT","POST_TEST_TRAFFIC_SHIFT"] and all(.lifecycleHooks[]; .targetType=="PAUSE" and .timeoutConfiguration.action=="ROLLBACK")' deploy/aws/blue-green/deployment-configuration.json
       - run: |
           python3 -m pip install cfn-lint
-          cfn-lint -r eu-north-1 -t deploy/aws/blue-green/prerequisites.yml deploy/aws/blue-green/shared-valkey.yml
+          cfn-lint -r eu-north-1 -t deploy/aws/blue-green/prerequisites.yml deploy/aws/blue-green/shared-valkey.yml deploy/aws/blue-green/github-oidc-roles.yml
   inspect:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release/aws-full-platform-20261125' && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
     needs: static
