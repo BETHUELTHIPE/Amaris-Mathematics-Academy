@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -32,6 +33,9 @@ TEST_STORAGES = {
 
 @override_settings(STORAGES=TEST_STORAGES)
 class AdvisorAdminTests(TestCase):
+    staff: User
+    superuser: User
+
     @classmethod
     def setUpTestData(cls):
         cls.staff = get_user_model().objects.create_user(username="advisor-staff", is_staff=True)
