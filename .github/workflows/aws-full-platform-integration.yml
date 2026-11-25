@@ -22,23 +22,6 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: amaris_ci
-          POSTGRES_USER: amaris_ci
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd 'pg_isready -U amaris_ci -d amaris_ci'
-          --health-interval 10s --health-timeout 5s --health-retries 5
-      redis:
-        image: redis:8-alpine
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd 'redis-cli ping'
-          --health-interval 10s --health-timeout 5s --health-retries 5
     strategy:
       fail-fast: false
       matrix:
@@ -84,6 +67,27 @@ jobs:
           done < "$manifest"
           git rev-parse HEAD > "$RUNNER_TEMP/release-evidence/$COMPONENT-candidate.txt"
           git diff --check "refs/remotes/origin/$BASE" HEAD
+      - name: Start isolated PostgreSQL and Redis for backend tests
+        if: matrix.component == 'backend'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name amaris-ci-postgres \
+            -p 127.0.0.1:5432:5432 \
+            -e POSTGRES_DB=amaris_ci -e POSTGRES_USER=amaris_ci \
+            -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17-alpine
+          docker run -d --name amaris-ci-redis \
+            -p 127.0.0.1:6379:6379 redis:8-alpine
+          for attempt in {1..60}; do
+            if docker exec amaris-ci-postgres pg_isready -h 127.0.0.1 -U amaris_ci -d amaris_ci && \
+               docker exec amaris-ci-redis redis-cli ping | grep -qx PONG; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs --tail 30 amaris-ci-postgres
+          docker logs --tail 30 amaris-ci-redis
+          exit 1
       - uses: actions/setup-python@v5
         if: matrix.component == 'backend'
         with:
@@ -136,6 +140,11 @@ jobs:
           set -euo pipefail
           docker build --file "deploy/aws/$COMPONENT.Dockerfile" --tag "amaris-$COMPONENT:candidate" "$RUNNER_TEMP/candidate/$COMPONENT"
           test "$(docker image inspect --format '{{.Architecture}}' "amaris-$COMPONENT:candidate")" = arm64
+      - name: Stop isolated test services
+        if: always() && matrix.component == 'backend'
+        shell: bash
+        run: |
+          docker rm -f amaris-ci-postgres amaris-ci-redis 2>/dev/null || true
       - name: Upload integration evidence
         if: always()
         uses: actions/upload-artifact@v4
