@@ -177,6 +177,37 @@ jobs:
           export DJANGO_SECRET_KEY="$(openssl rand -hex 64)"
           echo "::add-mask::$DJANGO_SECRET_KEY"
           python -m pip install -r requirements-dev.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("content/tasks.py")
+          source = p.read_text()
+          # These imports register tasks with Celery; they must not be removed.
+          names = ("performance_tasks", "subscription_report_tasks", "tutor_finance_tasks", "tutor_personnel_tasks", "tutor_video_tasks")
+          import re
+          for name in names:
+              source, count = re.subn(r"(?m)^(\s*)" + name + r",?$", r"\1" + name + " as " + name + ",", source)
+              if count != 1:
+                  # Black may not have formatted the import yet; handle that below.
+                  if count != 0:
+                      raise SystemExit("Unexpected registration import: " + name)
+          p.write_text(source)
+          PY
+          black content/apps.py content/tasks.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("content/tasks.py")
+          source = p.read_text()
+          for name in ("performance_tasks", "subscription_report_tasks", "tutor_finance_tasks", "tutor_personnel_tasks", "tutor_video_tasks"):
+              line = "    " + name + ","
+              alias = "    " + name + " as " + name + ","
+              if source.count(alias) == 1:
+                  continue
+              if source.count(line) != 1:
+                  raise SystemExit("Unexpected Celery import: " + name)
+              source = source.replace(line, alias)
+          p.write_text(source)
+          PY
+          ruff check --select I001 --fix content/apps.py content/tasks.py
           black content/apps.py content/services/tutor_contract_pdf.py content/services/tutor_contracts.py content/tasks.py content/tutor_contract_tasks.py content/tutor_contract_models.py content/tutor_contract_views.py content/urls.py
           git diff --check
           git add -- content/apps.py content/services/tutor_contract_pdf.py content/services/tutor_contracts.py content/tasks.py content/tutor_contract_tasks.py content/tutor_contract_models.py content/tutor_contract_views.py content/urls.py
@@ -228,6 +259,20 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           scanners: vuln
+      - name: Report actionable container findings
+        if: always()
+        env:
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path(os.environ["RUNNER_TEMP"]) / "release-evidence" / (os.environ["COMPONENT"] + "-trivy.json")
+          if report.exists():
+              for result in json.loads(report.read_text()).get("Results", []):
+                  for item in result.get("Vulnerabilities") or []:
+                      print(result.get("Target"), item.get("VulnerabilityID"), item.get("PkgName"), item.get("InstalledVersion"), "fixed:", item.get("FixedVersion"), item.get("Severity"))
+          PY
       - name: Archive tested and scanned immutable candidate image
         env:
           COMPONENT: ${{ matrix.component }}
