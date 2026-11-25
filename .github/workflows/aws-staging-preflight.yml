@@ -101,6 +101,14 @@ jobs:
           aws cloudformation describe-stack-events --stack-name amaris-aws-staging \
             --query 'StackEvents[?contains(ResourceStatus, `FAILED`)].[LogicalResourceId,ResourceStatusReason]' \
             --output text || true
+          instance="$(aws cloudformation describe-stacks --stack-name amaris-aws-staging \
+            --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue | [0]' --output text 2>/dev/null || true)"
+          if [[ "$instance" =~ ^i-[a-f0-9]+$ ]]; then
+            echo 'Latest Amaris host startup command status:'
+            aws ssm list-command-invocations --instance-id "$instance" \
+              --query 'CommandInvocations[?Comment==`Start Amaris Stockholm staging`].[Status,StatusDetails,RequestedDateTime]' \
+              --max-items 10 --output text || true
+          fi
 
       - name: Check staging application configuration
         shell: bash
