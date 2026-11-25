@@ -77,7 +77,9 @@ jobs:
               if [[ "$COMPONENT:$ref:$sha" == "backend:feat/curriculum-subscriptions-backend-20261112:167eca64b7cf0b8b7d6a43ea763561ceaec53312" || \
                     "$COMPONENT:$ref:$sha" == "frontend:feat/sponsor-dashboard-20261111:d9244009c9c99aa7ff985d1eaaf42dd1c693a3e9" || \
                     "$COMPONENT:$ref:$sha" == "frontend:feat/course-search-ui-20261118:8d390c9cb569a2e96e069137e520ec07e5c75589" || \
-                    "$COMPONENT:$ref:$sha" == "backend:feat/tutor-video-admin-alerts-20261113:f28c243173ea01a232ef4d09735ee91caffea78e" ]]; then
+                    "$COMPONENT:$ref:$sha" == "backend:feat/tutor-video-admin-alerts-20261113:f28c243173ea01a232ef4d09735ee91caffea78e" || \
+                    "$COMPONENT:$ref:$sha" == "backend:feat/admin-fortnightly-performance-20261113:dc2c51a5f7efef6ae1a6526430fbc2bbafacfeec" || \
+                    "$COMPONENT:$ref:$sha" == "frontend:feat/private-chat-ui-20261124:2b46f28dd12d67e291671805d8a44e8944bdf81d" ]]; then
                 python3 "$GITHUB_WORKSPACE/deploy/aws/resolve-reviewed-integration.py" "$COMPONENT" "$ref" "$sha"
               else
                 echo "::error::Feature delta conflict in $COMPONENT at $ref; manual resolution required."
