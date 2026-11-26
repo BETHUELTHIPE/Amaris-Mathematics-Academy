@@ -45,7 +45,11 @@ rollback() {
   trap - EXIT
   if [[ "$rc" != 0 && "$maintenance" == 1 ]]; then
     if [[ "$phase" == before || "$phase" == copied ]]; then
-      echo 'Before consumer activation: restoring original source service and gateway.' >&2
+      if [[ "$phase" == copied ]]; then
+        echo 'Queue copied: retain shared state and maintenance; recover forward only after reconciling old and new broker.' >&2
+        rm -rf "$tmp"; exit "$rc"
+      fi
+      echo 'Before queue transfer: restoring original source service and gateway.' >&2
       bash "$runner" "$first" "$root/unpause-old-broker.sh" "$oldid" || true
       current="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0].taskDefinition' --output text || true)"
       if [[ "$current" != "$old" ]]; then
@@ -87,7 +91,7 @@ else
   aws ecs create-service --cluster "$cluster" --service-name "$jobs" --task-definition "$jobsrev" --desired-count 0 --launch-type EC2 --network-configuration "$network" --placement-constraints "$pin" --deployment-configuration maximumPercent=100,minimumHealthyPercent=0 --query service.serviceName --output text
 fi
 resource="service/$cluster/$service"
-aws application-autoscaling register-scalable-target --service-namespace ecs --scalable-dimension ecs:service:DesiredCount --resource-id "$resource" --min-capacity 1 --max-capacity 2 --suspended-state DynamicScalingInSuspended=true,DynamicScalingOutSuspended=true,ScheduledScalingSuspended=true >/dev/null
+aws application-autoscaling register-scalable-target --service-namespace ecs --scalable-dimension ecs:service:DesiredCount --resource-id "$resource" --min-capacity 0 --max-capacity 2 --suspended-state DynamicScalingInSuspended=true,DynamicScalingOutSuspended=true,ScheduledScalingSuspended=true >/dev/null
 maintenance=1
 bash "$runner" "$first" "$root/cutover-gateway.sh" on
 sleep 8
@@ -98,7 +102,13 @@ aws ecs update-service --cluster "$cluster" --service "$service" --desired-count
 aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task"
 aws ecs wait services-stable --cluster "$cluster" --services "$service"
 # Preserve old disk and never start another local-broker task after enabling shared consumers.
-aws ecs update-service --cluster "$cluster" --service "$service" --task-definition "$webrev" --desired-count 2 --placement-constraints '[{"type":"distinctInstance"}]' --deployment-configuration '{"maximumPercent":150,"minimumHealthyPercent":100,"deploymentCircuitBreaker":{"enable":true,"rollback":false}}' --query service.serviceName --output text
+# Install the new revision at zero desired tasks. ECS must retire the old deployment
+# before either host is eligible for web placement. Never scale both revisions together.
+aws ecs update-service --cluster "$cluster" --service "$service" --task-definition "$webrev" --desired-count 0 --placement-constraints '[{"type":"distinctInstance"}]' --deployment-configuration '{"maximumPercent":100,"minimumHealthyPercent":0,"deploymentCircuitBreaker":{"enable":true,"rollback":false}}' --query service.serviceName --output text
+aws ecs wait services-stable --cluster "$cluster" --services "$service"
+zero="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0]' --output json)"
+jq -e --arg rev "$webrev" '.taskDefinition==$rev and .desiredCount==0 and .runningCount==0 and .pendingCount==0 and (.deployments|length)==1 and .deployments[0].taskDefinition==$rev' <<< "$zero" >/dev/null
+aws ecs update-service --cluster "$cluster" --service "$service" --desired-count 2 --health-check-grace-period-seconds 180 --query service.serviceName --output text
 aws ecs wait services-stable --cluster "$cluster" --services "$service"
 target_ok 2
 mapfile -t webtasks < <(aws ecs list-tasks --cluster "$cluster" --service-name "$service" --desired-status RUNNING --query taskArns --output json | jq -r '.[]')
@@ -125,6 +135,7 @@ bash "$runner" "$first" "$root/verify-shared-celery-jobs.sh" "$(basename "$jobta
 target_ok 2
 bash "$runner" "$first" "$root/cutover-gateway.sh" off
 maintenance=0
+aws application-autoscaling register-scalable-target --service-namespace ecs --scalable-dimension ecs:service:DesiredCount --resource-id "$resource" --min-capacity 2 --max-capacity 2 --suspended-state DynamicScalingInSuspended=true,DynamicScalingOutSuspended=true,ScheduledScalingSuspended=true >/dev/null
 curl -fSs --max-time 15 https://16.171.164.5/health/ready/ | jq -e '.status=="ready"' >/dev/null
 curl -fSs --max-time 15 https://16.171.164.5/api/v1/bootstrap/ | jq -e 'has("settings")' >/dev/null
-echo 'CUTOVER PASS: two stateless web tasks, one shared-broker Celery worker/Beat task, public staging healthy. Scaling remains paused at 1–2 until capacity verified.'
+echo 'CUTOVER PASS: two stateless web tasks, one shared-broker Celery worker/Beat task, public staging healthy. Scaling remains fixed at two until capacity verified.'
