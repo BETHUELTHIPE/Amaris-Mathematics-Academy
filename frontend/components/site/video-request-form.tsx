@@ -70,12 +70,12 @@ export function VideoRequestForm({ packages }: { packages: VideoRequestPackage[]
   }
 
   return (
-    <form onSubmit={submit} className="rounded-[2rem] border border-[#dce4ef] bg-white p-7 shadow-[0_25px_75px_rgba(7,21,45,.08)] sm:p-9">
-      <div className="grid gap-5 sm:grid-cols-2">
+    <form onSubmit={submit} className="min-w-0 rounded-[2rem] border border-[#dce4ef] bg-white p-7 shadow-[0_25px_75px_rgba(7,21,45,.08)] sm:p-9">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <CurriculumFields />
         <label className="grid gap-2 text-sm font-semibold">
           Video package
-          <select name="request_type" required defaultValue="" className="min-h-12 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal">
+          <select name="request_type" required defaultValue="" className="min-h-12 w-full min-w-0 rounded-xl border border-[#c9d5e5] bg-white px-4 font-normal">
             <option value="">Choose package</option>
             {packages.map((item) => <option key={item.value} value={item.value}>{item.label} — R{item.amount}</option>)}
           </select>

@@ -115,7 +115,7 @@ export default async function LiveClassCheckoutPage({
           <p className="eyebrow mt-7">Zoom live class</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-[-.045em]">Confirm your tutor slot</h1>
 
-          <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm">
+          <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm [overflow-wrap:anywhere]">
             <div>
               <dt className="font-semibold text-[#263852]">Registered student</dt>
               <dd className="mt-1 break-words text-[#60708a]">{registeredName.fullName}</dd>
@@ -128,7 +128,7 @@ export default async function LiveClassCheckoutPage({
             <div><dt className="font-semibold text-[#263852]">Price</dt><dd className="mt-1 text-lg font-bold text-[#0b2a5b]">R{booking.amount} total (R250/hour)</dd></div>
           </dl>
 
-          <p className="mt-5 text-sm leading-7 text-[#60708a]">
+          <p className="mt-5 text-sm leading-7 text-[#60708a] [overflow-wrap:anywhere]">
             Booking reference <span className="font-mono font-semibold text-[#263852]">{checkout.booking_reference}</span>.
             Your Zoom link is released only after the server verifies your payment.
           </p>

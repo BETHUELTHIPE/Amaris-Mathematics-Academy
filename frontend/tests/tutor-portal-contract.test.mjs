@@ -42,6 +42,10 @@ test("self-service form supports multi-hour tutor sessions and private Zoom link
   assert.match(page, /Africa\/Johannesburg/);
 });
 
+test("long booking topics and student emails can wrap inside tutor dashboard cards", () => {
+  assert.match(page, /<article key=\{booking\.reference\} className="min-w-0 [^"]*\[overflow-wrap:anywhere\]/);
+});
+
 test("all tutor modifications run in server actions, without browser-owned price or owner", () => {
   assert.match(actions, /^"use server"/);
   assert.match(actions, /cleanStart/);

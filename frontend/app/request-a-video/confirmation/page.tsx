@@ -53,7 +53,7 @@ export default async function VideoRequestConfirmationPage({
             <p className="mt-5 text-sm leading-7 text-[#60708a]">We could not retrieve this request yet. If you have just returned from PayFast, wait a moment and refresh. A browser redirect alone never places a request in the paid queue.</p>
           ) : (
             <>
-              <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm sm:grid-cols-2">
+              <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm [overflow-wrap:anywhere] sm:grid-cols-2">
                 <div><dt className="font-semibold">Reference</dt><dd className="mt-1 break-all font-mono text-[#60708a]">{item.request_reference}</dd></div>
                 <div><dt className="font-semibold">Ticket</dt><dd className="mt-1 font-mono text-[#60708a]">{item.ticket_number ?? "Issued after verification"}</dd></div>
                 <div><dt className="font-semibold">Status</dt><dd className="mt-1 text-[#60708a]">{item.status_label}</dd></div>

@@ -89,7 +89,7 @@ export default async function LiveClassConfirmationPage({
                   Your payment was verified after the tutor slot could no longer be reserved. Keep your booking reference and contact us to arrange a new class or a refund. We have not issued a Zoom link for this slot.
                 </p>
               )}
-              <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm">
+              <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm [overflow-wrap:anywhere]">
                 <div><dt className="font-semibold">Booking reference</dt><dd className="mt-1 font-mono text-[#60708a]">{booking.booking_reference}</dd></div>
                 <div><dt className="font-semibold">Status</dt><dd className="mt-1 capitalize text-[#60708a]">{booking.status.replaceAll("_", " ")}</dd></div>
                 <div><dt className="font-semibold">Tutor</dt><dd className="mt-1 text-[#60708a]">{booking.tutor}</dd></div>

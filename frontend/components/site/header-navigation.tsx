@@ -26,10 +26,7 @@ const enhanceNavigation = String.raw`
   });
   root.addEventListener("focusout", event => {
     const group = event.target?.closest(".header-group[open]");
-    if (!group) return;
-    queueMicrotask(() => {
-      if (!group.contains(document.activeElement)) group.open = false;
-    });
+    if (group && !group.contains(event.relatedTarget)) group.open = false;
   });
   window.matchMedia("(min-width: 1280px)").addEventListener("change", close);
   for (const link of root.querySelectorAll("a[href]")) {
