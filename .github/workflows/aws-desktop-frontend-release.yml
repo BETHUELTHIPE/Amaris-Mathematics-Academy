@@ -153,7 +153,7 @@ jobs:
       always() && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
       (needs.publish.result == 'success' || (github.event_name == 'push' && needs.publish.result == 'skipped'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 28
+    timeout-minutes: 32
     environment: staging
     permissions:
       id-token: write

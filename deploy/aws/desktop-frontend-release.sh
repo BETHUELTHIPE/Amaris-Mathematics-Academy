@@ -95,14 +95,14 @@ jq -e '.deploymentController.type == "ECS" and
        (.deploymentConfiguration.minimumHealthyPercent <= 50 or .deploymentConfiguration.maximumPercent >= 150)' \
     <<< "$state" >/dev/null
 ready=false
-for attempt in {1..12}; do
+for attempt in {1..24}; do
   state="$(service_state)"
   if stable_service "$previous" <<< "$state" >/dev/null && healthy_tasks "$previous" "$desired" && public_health; then
     ready=true
     break
   fi
   jq -c '{desiredCount, runningCount, pendingCount, deployments: [.deployments[] | {status, rolloutState, runningCount}]}' <<< "$state"
-  printf 'Preflight attempt %s of 12 is waiting for staging health.\n' "$attempt"
+  printf 'Preflight attempt %s of 24 is waiting for staging health.\n' "$attempt"
   sleep 8
 done
 if ! "$ready"; then
@@ -131,7 +131,11 @@ jq -e '.taskDefinition | .family == "amaris-ecs-staging-alb-web" and .networkMod
 
 previous_image="$(jq -er '.taskDefinition.containerDefinitions[] | select(.name == "frontend").image' "$work/previous.json")"
 [[ "$previous_image" =~ ^"$registry"@sha256:[a-f0-9]{64}$ ]]
-if [[ "$previous_image" == "$candidate_image" ]]; then
+backend_uses_short_connections="$(jq -r '
+  .taskDefinition.containerDefinitions[] | select(.name == "backend") |
+  .entryPoint[2] | contains("export DATABASE_CONN_MAX_AGE=0\n")
+' "$work/previous.json")"
+if [[ "$previous_image" == "$candidate_image" && "$backend_uses_short_connections" == true ]]; then
   next="$previous"
 else
   jq --arg image "$candidate_image" '
@@ -140,12 +144,20 @@ else
     del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities,
         .registeredAt, .registeredBy, .deregisteredAt) |
     (.containerDefinitions[] | select(.name == "frontend").image) = $image |
+    (.containerDefinitions[] | select(.name == "backend").entryPoint[2]) |= (
+      if contains("export DATABASE_CONN_MAX_AGE=0\n") then .
+      else split("exec \"$@\"") |
+        if length == 2 then join("export DATABASE_CONN_MAX_AGE=0\nexec \"$@\"")
+        else error("Unexpected staging backend entry point") end
+      end
+    ) |
     .tags = [$tags[]? | select(.key | startswith("aws:") | not)] |
     if (.tags | length) == 0 then del(.tags) else . end
   ' "$work/previous.json" > "$work/candidate.json"
   next="$(aws ecs register-task-definition --cli-input-json "file://$work/candidate.json" \
     --query 'taskDefinition.taskDefinitionArn' --output text)"
   [[ "$next" == "${previous%:*}:"* && "$next" != "$previous" ]]
+  echo 'The staging web revision closes Django database connections at the end of each request.'
   stable_service "$previous" <<< "$(service_state)" >/dev/null
 fi
 
