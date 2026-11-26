@@ -87,7 +87,7 @@ jobs:
             [.MetricAlarms[] | select(.AlarmName as $name | $expected | index($name))] as $matched |
             ($matched | length) == 7 and
             all($matched[]; .ActionsEnabled and (.AlarmActions | index($topic)) != null and (.OKActions | index($topic)) != null) and
-            all($matched[] | select(.AlarmName=="amaris-staging-no-healthy-targets" or .AlarmName=="amaris-staging-unhealthy-targets"); (.Dimensions|length)==1 and .Dimensions[0].Name=="LoadBalancer")
+            all($matched[] | select(.AlarmName=="amaris-staging-no-healthy-targets" or .AlarmName=="amaris-staging-unhealthy-targets"); ([.Dimensions[].Name]|sort)==["LoadBalancer","TargetGroup"] and .TreatMissingData=="notBreaching")
           ' <<< "$alarms" >/dev/null
           echo "All seven expected CloudWatch alarms have enabled alarm and recovery actions pointing to the confirmed SNS topic."
       - name: Send one explicitly labelled SNS delivery test
