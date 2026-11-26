@@ -56,13 +56,35 @@ def main():
     connected = [h for h in hosts if h.get("agentConnected") and h["status"] == "ACTIVE"]
     full_slots = 0
     spare_slots = 0
+    capacity_known = True
     for i, host in enumerate(connected, 1):
         registered = resources(host, "registeredResources")
         remaining = resources(host, "remainingResources")
+        instances = aws("ec2", "describe-instances", "--instance-ids", host["ec2InstanceId"])["Reservations"]
+        instance = instances[0]["Instances"][0]
+        info = aws("ec2", "describe-instance-types", "--instance-types", instance["InstanceType"])["InstanceTypes"][0]
+        max_eni = info["NetworkInfo"]["MaximumNetworkInterfaces"]
+        interfaces = instance["NetworkInterfaces"]
+        has_trunk = any(n.get("InterfaceType") == "trunk" for n in interfaces)
+        if "ENI" not in registered or "ENI" not in remaining:
+            if has_trunk:
+                capacity_known = False
+            else:
+                # One primary host ENI; all other interfaces consume direct ENI slots.
+                registered["ENI"] = max(0, max_eni - 1)
+                remaining["ENI"] = max(0, max_eni - len(interfaces))
         full_slots += slots(registered, need)
         spare_slots += slots(remaining, need)
-        print(f"Host {i}: registered {json.dumps(registered)}, remaining {json.dumps(remaining)}", flush=True)
-    print(f"Connected hosts: {len(connected)}; conservative web slots before jobs/overhead: {full_slots}; currently spare: {spare_slots}", flush=True)
+        print(f"Host {i}: {instance['InstanceType']}, max direct ENIs {max_eni}, attached {len(interfaces)}, trunk {has_trunk}; registered {json.dumps(registered)}, remaining {json.dumps(remaining)}", flush=True)
+    subnets = svc.get("networkConfiguration", {}).get("awsvpcConfiguration", {}).get("subnets", [])
+    if subnets:
+        for i, subnet in enumerate(aws("ec2", "describe-subnets", "--subnet-ids", *subnets)["Subnets"], 1):
+            print(f"Application subnet {i}: {subnet['AvailableIpAddressCount']} free IPv4 addresses", flush=True)
+    if capacity_known:
+        print(f"Connected hosts: {len(connected)}; estimated web slots before singleton jobs/overhead: {full_slots}; currently spare: {spare_slots}", flush=True)
+        print(f"At least five task network slots are required for four web replicas and singleton jobs; six or more for rollout overlap.", flush=True)
+    else:
+        print(f"Connected hosts: {len(connected)}; exact ENI capacity unknown (trunking). Do not interpret missing counters as zero.", flush=True)
     params = aws("ssm", "describe-parameters", "--parameter-filters",
                  "Key=Name,Option=BeginsWith,Values=/amaris/aws-staging/shared-valkey/")["Parameters"]
     expected = {"/amaris/aws-staging/shared-valkey/" + s for s in ("cache", "public-cache", "broker", "result")}
