@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Least-privilege GitHub Actions OIDC role for publishing verified Amaris staging images to one ECR repository.
+Parameters:
+  GitHubRepository:
+    Type: String
+    Default: BETHUELTHIPE/Amaris-Mathematics-Academy
+  GitHubEnvironment:
+    Type: String
+    Default: staging
+  EcrRepositoryName:
+    Type: String
+    Default: amaris-staging-frontend
+Resources:
+  GitHubActionsOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+  EcrPublisherRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AmarisGitHubECRPublisher
+      Description: GitHub Actions staging-only ECR publisher; cannot deploy ECS or change AWS infrastructure.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !GetAtt GitHubActionsOidcProvider.Arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubRepository}:environment:${GitHubEnvironment}'
+      Policies:
+        - PolicyName: PublishOnlyAmarisStagingEcr
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: EcrLogin
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+              - Sid: PublishOnlyStagingRepository
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                  - ecr:DescribeImages
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepositoryName}'
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+Outputs:
+  EcrPublisherRoleArn:
+    Description: Use this role from the staging GitHub Actions environment via OIDC.
+    Value: !GetAtt EcrPublisherRole.Arn
+  OidcProviderArn:
+    Value: !GetAtt GitHubActionsOidcProvider.Arn
