@@ -1,4 +1,4 @@
-name: Verify the Amaris staging EC2 upgrade under the R1800 ceiling
+name: Verify the monthly cost inputs for two Amaris t4g.large hosts
 
 on:
   push:
@@ -64,3 +64,22 @@ jobs:
           if ! aws freetier get-account-plan-state --region us-east-1 --query '[accountPlanType,accountPlanStatus]' --output text; then
             echo 'Account plan API did not return a status.'
           fi
+      - name: Read staging disks, public IPs and load balancers
+        shell: bash
+        run: |
+          set -euo pipefail
+          volume_ids="$(aws ec2 describe-instances --filters Name=instance-state-name,Values=running \
+            --query 'Reservations[].Instances[].BlockDeviceMappings[].Ebs.VolumeId' --output text)"
+          aws ec2 describe-volumes --volume-ids $volume_ids \
+            --query 'Volumes[].{sizeGiB:Size,type:VolumeType,iops:Iops,throughput:Throughput}' --output table
+          echo 'Allocated public IPv4 addresses:'
+          aws ec2 describe-addresses --query 'length(Addresses)' --output text
+          echo 'Deployed load balancers:'
+          aws elbv2 describe-load-balancers \
+            --query 'LoadBalancers[].{name:LoadBalancerName,type:Type,ipType:IpAddressType}' --output table
+          echo 'Recent staging spend if Cost Explorer is available:'
+          start="$(date -u +%Y-%m-01)"
+          end="$(date -u +%F)"
+          aws ce get-cost-and-usage --region us-east-1 --time-period "Start=$start,End=$end" \
+            --granularity MONTHLY --metrics UnblendedCost --filter '{"Not":{"Dimensions":{"Key":"RECORD_TYPE","Values":["Credit","Refund","Tax"]}}}' \
+            --query 'ResultsByTime[].Total.UnblendedCost' --output table || true
