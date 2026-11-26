@@ -61,6 +61,7 @@ target_arns="$(jq -r '.loadBalancers[]?.targetGroupArn' <<< "$svc")"
 while IFS= read -r target_arn; do
   [[ -n "$target_arn" ]] || continue
   aws elbv2 describe-target-groups --target-group-arns "$target_arn" --output json | jq '[.TargetGroups[]|{name:.TargetGroupName,port:.Port,protocol:.Protocol,targetType:.TargetType,healthCheckPath:.HealthCheckPath,healthCheckPort:.HealthCheckPort}]'
+  aws elbv2 describe-target-health --target-group-arn "$target_arn" --output json | jq '[.TargetHealthDescriptions[]|{state:.TargetHealth.State,reason:.TargetHealth.Reason}] | {healthy:(map(select(.state=="healthy"))|length),unhealthy:(map(select(.state=="unhealthy"))|length),initial:(map(select(.state=="initial"))|length),draining:(map(select(.state=="draining"))|length)}'
 done <<< "$target_arns"
 
 jq '{architecture:.runtimePlatform.cpuArchitecture,localValkey:any(.containerDefinitions[]; .name=="valkey"),hostMountCount:([.volumes[]?|select((.host.sourcePath//"")!="")]|length),requestedCpu:([.containerDefinitions[]|.cpu//0]|add),requestedMemoryMiB:([.containerDefinitions[]|.memoryReservation//.memory//0]|add)}' <<< "$definition"
