@@ -1,0 +1,65 @@
+name: Activate the approved AWS Paid plan for the Amaris resize
+
+on:
+  push:
+    branches: [ops/aws-staging-ec2-resize-20261126]
+    paths: [.github/workflows/aws-staging-ec2-enable-paid.yml]
+
+permissions: {}
+
+jobs:
+  verify:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+    env:
+      AWS_PAGER: ''
+      AWS_REGION: eu-north-1
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - name: Authenticate with the staging deployment role
+        if: env.STAGING_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with existing staging credentials
+        if: env.STAGING_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Apply and verify the approved AWS account plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          read -r plan status <<< "$(aws freetier get-account-plan-state --region us-east-1 --query '[accountPlanType,accountPlanStatus]' --output text)"
+          if [[ "$plan" == FREE && "$status" == ACTIVE ]]; then
+            aws freetier upgrade-account-plan --region us-east-1 --account-plan-type PAID \
+              --query '[accountPlanType,accountPlanStatus]' --output text
+          elif [[ "$plan" != PAID ]]; then
+            echo '::error::The AWS account plan is in an unexpected state.'
+            exit 1
+          fi
+          for attempt in {1..16}; do
+            read -r plan status <<< "$(aws freetier get-account-plan-state --region us-east-1 --query '[accountPlanType,accountPlanStatus]' --output text)"
+            if [[ "$plan" == PAID && "$status" == ACTIVE ]]; then
+              echo 'The approved AWS Paid plan is active.'
+              exit 0
+            fi
+            sleep 8
+          done
+          echo '::error::AWS has not reported the Paid plan active.'
+          exit 1
