@@ -45,7 +45,7 @@ if [[ -n "$service_arns" && "$service_arns" != None ]]; then
   done < <(jq -r '[.services[].taskDefinition]|unique[]' <<< "$services")
 fi
 echo "Verified monitoring stack exports and rollback alarm definitions."
-jq '{serviceName,desiredCount,runningCount,pendingCount,controller:.deploymentController.type,strategy:(.deploymentConfiguration.strategy // "ROLLING"),currentRollbackAlarms:.deploymentConfiguration.alarms,advancedRouting:([.loadBalancers[]?|select(.advancedConfiguration != null)]|length)}' <<< "$svc"
+jq '{serviceName,desiredCount,runningCount,pendingCount,controller:.deploymentController.type,strategy:(.deploymentConfiguration.strategy // "ROLLING"),currentRollbackAlarms:.deploymentConfiguration.alarms,advancedRouting:([.loadBalancers[]?|select(.advancedConfiguration != null)]|length),subnetIds:.networkConfiguration.awsvpcConfiguration.subnets,securityGroupIds:.networkConfiguration.awsvpcConfiguration.securityGroups}' <<< "$svc"
 alb_details="$(aws elbv2 describe-load-balancers --load-balancer-arns "$alb" --output json)"
 jq '[.LoadBalancers[]|{scheme: .Scheme,ipAddressType:.IpAddressType,state:.State.Code,type:.Type,availabilityZoneCount:(.AvailabilityZones|length),securityGroupCount:(.SecurityGroups|length),privateIpv4AddressCount:([.AvailabilityZones[].LoadBalancerAddresses[]?|select(.PrivateIPv4Address!=null)]|length),ipv6AddressCount:([.AvailabilityZones[].LoadBalancerAddresses[]?|select(.IPv6Address!=null)]|length)}]' <<< "$alb_details"
 vpc_id="$(jq -er '.LoadBalancers[0].VpcId' <<< "$alb_details")"
@@ -66,7 +66,7 @@ while IFS= read -r target_arn; do
   aws elbv2 describe-target-health --target-group-arn "$target_arn" --output json | jq '[.TargetHealthDescriptions[]|{state:.TargetHealth.State,reason:.TargetHealth.Reason}] | {healthy:(map(select(.state=="healthy"))|length),unhealthy:(map(select(.state=="unhealthy"))|length),initial:(map(select(.state=="initial"))|length),draining:(map(select(.state=="draining"))|length)}'
 done <<< "$target_arns"
 
-jq '{architecture:.runtimePlatform.cpuArchitecture,localValkey:any(.containerDefinitions[]; .name=="valkey"),hostMountCount:([.volumes[]?|select((.host.sourcePath//"")!="")]|length),requestedCpu:([.containerDefinitions[]|.cpu//0]|add),requestedMemoryMiB:([.containerDefinitions[]|.memoryReservation//.memory//0]|add)}' <<< "$definition"
+jq '{architecture:.runtimePlatform.cpuArchitecture,executionRoleName:(.executionRoleArn|split("/")[-1]),localValkey:any(.containerDefinitions[]; .name=="valkey"),hostMountCount:([.volumes[]?|select((.host.sourcePath//"")!="")]|length),requestedCpu:([.containerDefinitions[]|.cpu//0]|add),requestedMemoryMiB:([.containerDefinitions[]|.memoryReservation//.memory//0]|add)}' <<< "$definition"
 jq '{volumes:[.volumes[]?|{name,hostPathConfigured:(.host.sourcePath != null),efsConfigured:(.efsVolumeConfiguration != null)}],containers:[.containerDefinitions[]|{name,cpu,memory,memoryReservation,essential,ports:[.portMappings[]?|{containerPort,hostPort,protocol}],mounts:[.mountPoints[]?|{sourceVolume,containerPath,readOnly}],dependencies:[.dependsOn[]?|{containerName,condition}],imageRepository:(.image|split("@")[0]|split(":")[0])}]}' <<< "$definition"
 instances="$(aws ecs list-container-instances --cluster "$cluster" --status ACTIVE --query containerInstanceArns --output text)"
 instance_details="{}"
