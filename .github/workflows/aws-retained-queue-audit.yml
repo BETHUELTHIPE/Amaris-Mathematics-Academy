@@ -41,5 +41,5 @@ jobs:
           aws-region: eu-north-1
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
-      - name: Compare retained snapshots with validated immutable image digest
+      - name: Inspect broker envelope metadata and compare retained snapshots
         run: bash deploy/aws/blue-green/audit-retained-queues.sh

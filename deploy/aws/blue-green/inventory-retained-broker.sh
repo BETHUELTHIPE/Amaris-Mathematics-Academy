@@ -31,7 +31,7 @@ else
   aws ssm get-parameter --region eu-north-1 --name /amaris/aws-staging/shared-valkey/host-password --with-decryption --query Parameter.Value --output text > "$tmp/password"
 fi
 python3 - "$mode" "$name" "$tmp" <<'PY'
-import hashlib,json,subprocess,sys,pathlib
+import base64,hashlib,json,subprocess,sys,pathlib,collections,re
 mode,name,tmp=sys.argv[1:]
 pw=pathlib.Path(tmp,"password").read_text() if mode=="shared" else None
 def cli(*args):
@@ -42,7 +42,7 @@ def cli(*args):
         data=subprocess.check_output(["docker","exec",name,"valkey-cli","--json","-n","2",*args],stderr=subprocess.DEVNULL,timeout=10)
     return json.loads(data)
 def digest(v): return hashlib.sha256(v.encode()).hexdigest()
-messages=[];cursor="0";iterations=0
+messages=[];cursor="0";iterations=0; shapes=collections.Counter()
 while True:
     cursor,keys=cli("SCAN",str(cursor))
     iterations+=1
@@ -50,16 +50,46 @@ while True:
     for key in keys:
         if cli("TYPE",key)!="list":continue
         for payload in cli("LRANGE",key,"0","-1"):
+            shape={"queue":key if key in ("default","critical","notifications","celery") else "other", "payload_type":type(payload).__name__}
+            task="unparseable";mid=payload
             try:
-                head=json.loads(payload).get("headers",{})
-                task=head.get("task","unknown")
-                mid=head.get("id")
-                assert isinstance(mid,str) and len(mid)<200
-                assert isinstance(task,str) and len(task)<128 and all(c.isalnum() or c in "._-" for c in task)
-            except Exception:
-                mid=payload;task="unparseable"
+                env=json.loads(payload)
+                if isinstance(env,str): env=json.loads(env)
+                shape["envelope_type"]=type(env).__name__
+                if isinstance(env,dict):
+                    shape["envelope_fields"]=[k for k in ("body","headers","properties","content-type","content-encoding","task","id") if k in env]
+                    head=env.get("headers") or {}
+                    prop=env.get("properties") or {}
+                    shape["header_fields"]=[k for k in ("task","id","eta","expires","retries","argsrepr","kwargsrepr") if k in head]
+                    shape["property_fields"]=[k for k in ("correlation_id","delivery_info","body_encoding","delivery_tag") if k in prop]
+                    task=head.get("task") or env.get("task")
+                    mid=head.get("id") or env.get("id") or prop.get("correlation_id")
+                    body=None
+                    if env.get("content-type")=="application/json" and isinstance(env.get("body"),str):
+                        try:
+                            raw=base64.b64decode(env["body"],validate=True)
+                            body=json.loads(raw)
+                            shape["body_type"]=type(body).__name__
+                        except Exception:
+                            shape["body_type"]="undecodable"
+                    if isinstance(body,dict):
+                        task=task or body.get("task")
+                        mid=mid or body.get("id")
+                        shape["args_empty"]=not body.get("args") and not body.get("kwargs")
+                    elif isinstance(body,list) and len(body)>=2:
+                        shape["args_empty"]=not body[0] and not body[1]
+                    shape["valid_task"]=isinstance(task,str) and bool(re.fullmatch(r"[A-Za-z0-9_.-]{1,128}",task))
+                    shape["valid_id"]=isinstance(mid,str) and 0<len(mid)<200
+                    if not shape["valid_task"]: task="unknown"
+                    if not shape["valid_id"]: mid=payload
+                else:
+                    task="unknown";mid=payload
+            except Exception as exc:
+                shape["parse_error"]=type(exc).__name__
+                task="unparseable";mid=payload
+            shapes[json.dumps(shape,sort_keys=True)]+=1
             messages.append({"id_hash":digest(mid),"body_hash":digest(payload),"task":task})
             assert len(messages)<10000
     if str(cursor)=="0":break
-print(json.dumps({"available":True,"messages":messages,"unacked":cli("HLEN","unacked"),"unacked_index":cli("ZCARD","unacked_index")}))
+print(json.dumps({"available":True,"messages":messages,"unacked":cli("HLEN","unacked"),"unacked_index":cli("ZCARD","unacked_index"),"shapes":[{"shape":json.loads(k),"count":v} for k,v in shapes.items()]}))
 PY

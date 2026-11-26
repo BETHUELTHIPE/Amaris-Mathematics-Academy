@@ -28,7 +28,7 @@ import collections,json,pathlib,sys
 p=pathlib.Path(sys.argv[1])
 data=[json.loads((p/f).read_text()) for f in ("source1.json","source2.json","shared.json")]
 for name,d in zip(("Original host retained snapshot","Second host retained snapshot","Shared broker"),data):
-    print(name+": "+json.dumps({"available":d["available"],"queue_count":len(d["messages"]),"task_types":dict(collections.Counter(m["task"] for m in d["messages"])),"unacked":d.get("unacked"),"unacked_index":d.get("unacked_index")}))
+    print(name+": "+json.dumps({"available":d["available"],"queue_count":len(d["messages"]),"task_types":dict(collections.Counter(m["task"] for m in d["messages"])),"unacked":d.get("unacked"),"unacked_index":d.get("unacked_index"),"message_shapes":d.get("shapes",[])}))
 shared=collections.Counter(m["id_hash"] for m in data[2]["messages"])
 for name,d in zip(("Original host","Second host"),data[:2]):
     if not d["available"]:continue
