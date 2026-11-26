@@ -38,11 +38,32 @@ class AuthenticationServiceUnavailable(APIException):
     default_code = "authentication_unavailable"
 
 
+def _registered_names(payload: dict) -> tuple[str, str]:
+    metadata = payload.get("user_metadata")
+    if not isinstance(metadata, dict):
+        return "", ""
+
+    def clean(key: str) -> str:
+        value = metadata.get(key)
+        return " ".join(value.split())[:80] if isinstance(value, str) else ""
+
+    names = (clean("full_name") or clean("name")).split()
+    first_name = clean("first_name") or clean("given_name") or (names[0] if names else "")
+    last_name = clean("last_name") or clean("family_name") or " ".join(names[1:])
+    return first_name, last_name
+
+
+def _complete_registered_names(names: tuple[str, str]) -> bool:
+    first, last = names
+    return len(first) >= 2 and len(last) >= 2 and (first.casefold(), last.casefold()) != ("student", "learner")
+
+
 @dataclass(frozen=True)
 class SupabaseStudentPrincipal:
     student: StudentRecord
     supabase_user_id: str
     email: str
+    has_registered_booking_name: bool = True
 
     @property
     def id(self):
@@ -103,6 +124,7 @@ class SupabaseStudentAuthentication(BaseAuthentication):
             student=student,
             supabase_user_id=user_id,
             email=email,
+            has_registered_booking_name=_complete_registered_names(_registered_names(user_payload)),
         )
         return principal, {"provider": "supabase", "token_sha256": hashlib.sha256(token.encode()).hexdigest()}
 
@@ -228,25 +250,37 @@ class SupabaseStudentAuthentication(BaseAuthentication):
 
     @staticmethod
     def _get_or_create_student(payload: dict, user_id: str, email: str) -> StudentRecord:
-        metadata = payload.get("user_metadata") if isinstance(payload.get("user_metadata"), dict) else {}
-        first_name = str(metadata.get("first_name") or "Student").strip()[:80] or "Student"
-        last_name = str(metadata.get("last_name") or "Learner").strip()[:80] or "Learner"
+        first_name, last_name = _registered_names(payload)
 
         try:
             student, created = StudentRecord.objects.get_or_create(
                 supabase_user_id=user_id,
                 defaults={
                     "email": email,
-                    "first_name": first_name,
-                    "last_name": last_name,
+                    "first_name": first_name or "Student",
+                    "last_name": last_name or "Learner",
                 },
             )
         except (IntegrityError, ValueError) as exc:
             raise AuthenticationFailed("The authenticated account could not be linked to a student profile.") from exc
 
-        if not created and student.email != email:
+        if created:
+            return student
+        updated = []
+        if student.email != email:
             if StudentRecord.objects.exclude(pk=student.pk).filter(email=email).exists():
                 raise AuthenticationFailed("The authenticated email is already linked to another student profile.")
             student.email = email
-            student.save(update_fields=["email", "updated_at"])
+            updated.append("email")
+        stored_names = (student.first_name.strip().casefold(), student.last_name.strip().casefold())
+        if _complete_registered_names((first_name, last_name)) and (
+            len(stored_names[0]) < 2
+            or len(stored_names[1]) < 2
+            or stored_names[0] == "student"
+            or stored_names[1] == "learner"
+        ):
+            student.first_name, student.last_name = first_name, last_name
+            updated.extend(("first_name", "last_name"))
+        if updated:
+            student.save(update_fields=[*updated, "updated_at"])
         return student

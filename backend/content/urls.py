@@ -8,6 +8,7 @@ from .live_class_views import (
     LiveClassSlotView,
 )
 from .payfast_views import PayFastITNView
+from .paystack_views import paystack_webhook
 from .rum import collect_web_vitals
 from .student_views import (
     AcceptancePaymentCompleteView,
@@ -85,6 +86,7 @@ urlpatterns = [
     path("tutor/slots/<int:slot_id>/", TutorSlotUpdateView.as_view(), name="tutor-slot-update"),
     path("video-requests/packages/", VideoRequestPackageView.as_view(), name="video-request-packages"),
     path("payfast/itn/", PayFastITNView.as_view(), name="payfast-itn"),
+    path("paystack/webhook/", paystack_webhook, name="paystack-webhook"),
     path("student/acceptance/seed/", AcceptanceSeedView.as_view(), name="student-acceptance-seed"),
     path(
         "student/acceptance/payments/<str:reference>/complete/",
