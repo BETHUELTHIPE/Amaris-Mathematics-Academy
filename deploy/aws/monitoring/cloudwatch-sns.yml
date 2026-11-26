@@ -15,6 +15,9 @@ Parameters:
   LoadBalancerFullName:
     Type: String
     AllowedPattern: 'app/[^/]+/[a-f0-9]+'
+  ActiveTargetGroupFullName:
+    Type: String
+    AllowedPattern: 'targetgroup/[^/]+/[a-f0-9]+'
 Resources:
   AlarmTopic:
     Type: AWS::SNS::Topic
@@ -114,7 +117,7 @@ Resources:
     DependsOn: AlarmTopicPolicy
     Properties:
       AlarmName: amaris-staging-no-healthy-targets
-      AlarmDescription: No healthy targets across the load balancer; color-agnostic during blue-green deployment
+      AlarmDescription: No healthy targets in the monitored active target group; inactive target groups may have no data
       ActionsEnabled: true
       AlarmActions: [!Ref AlarmTopic]
       OKActions: [!Ref AlarmTopic]
@@ -126,16 +129,18 @@ Resources:
       DatapointsToAlarm: 2
       Threshold: 1
       ComparisonOperator: LessThanThreshold
-      TreatMissingData: breaching
+      TreatMissingData: notBreaching
       Dimensions:
         - Name: LoadBalancer
           Value: !Ref LoadBalancerFullName
+        - Name: TargetGroup
+          Value: !Ref ActiveTargetGroupFullName
   UnhealthyTargets:
     Type: AWS::CloudWatch::Alarm
     DependsOn: AlarmTopicPolicy
     Properties:
       AlarmName: amaris-staging-unhealthy-targets
-      AlarmDescription: At least one unhealthy target across the load balancer; color-agnostic during blue-green deployment
+      AlarmDescription: At least one unhealthy target in the monitored active target group
       ActionsEnabled: true
       AlarmActions: [!Ref AlarmTopic]
       OKActions: [!Ref AlarmTopic]
@@ -151,6 +156,8 @@ Resources:
       Dimensions:
         - Name: LoadBalancer
           Value: !Ref LoadBalancerFullName
+        - Name: TargetGroup
+          Value: !Ref ActiveTargetGroupFullName
   AlbErrors:
     Type: AWS::CloudWatch::Alarm
     DependsOn: AlarmTopicPolicy
