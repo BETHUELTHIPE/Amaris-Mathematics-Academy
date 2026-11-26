@@ -99,7 +99,7 @@ export default async function TutorDashboardPage({
         <div className="mx-auto max-w-7xl px-5 py-10 lg:px-8 lg:py-14">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ffcc66]">Private tutor workspace</p>
           <div className="mt-3 flex flex-wrap items-start justify-between gap-5">
-            <div>
+            <div className="min-w-0 [overflow-wrap:anywhere]">
               <h1 className="text-4xl font-semibold tracking-tight">Welcome, {dashboard.tutor.name}.</h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/70">Manage your Zoom class timetable, booking details and teaching hours from one secure dashboard.</p>
             </div>
@@ -124,8 +124,8 @@ export default async function TutorDashboardPage({
 
       <div className="mx-auto max-w-7xl space-y-8 px-5 py-10 lg:px-8 lg:py-14">
         <Suspense fallback={<TutorEarningsSkeleton />}><TutorEarningsDetails pending={pendingEarnings} /></Suspense>
-        {notices.success && <div role="status" className="flex items-center gap-3 rounded-xl border border-[#a7ddcb] bg-[#ebfbf4] p-4 text-sm text-[#136950]"><CheckCircle2 className="size-5" />{notices.success.slice(0, 180)}</div>}
-        {notices.error && <div role="alert" className="rounded-xl border border-[#f5c2bf] bg-[#fff3f3] p-4 text-sm text-[#9b2525]">{notices.error.slice(0, 180)}</div>}
+        {notices.success && <div role="status" className="flex items-center gap-3 rounded-xl border border-[#a7ddcb] bg-[#ebfbf4] p-4 text-sm text-[#136950] [overflow-wrap:anywhere]"><CheckCircle2 className="size-5 shrink-0" />{notices.success.slice(0, 180)}</div>}
+        {notices.error && <div role="alert" className="rounded-xl border border-[#f5c2bf] bg-[#fff3f3] p-4 text-sm text-[#9b2525] [overflow-wrap:anywhere]">{notices.error.slice(0, 180)}</div>}
 
         <section className="rounded-[2rem] border border-[#dce4ef] bg-white p-6 sm:p-9" aria-labelledby="new-tutor-slot">
           <div className="flex items-start gap-4">
@@ -156,8 +156,8 @@ export default async function TutorDashboardPage({
                 return (
                   <article key={slot.id} className="min-w-0 rounded-2xl border border-[#dce4ef] bg-white p-6">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-semibold text-[#1f5bbd]">{slot.programme.toUpperCase()} · {slot.level}</span>
-                      <span className="rounded-full bg-[#f1f5fb] px-3 py-1 text-xs font-bold text-[#263852]">{slot.reserved ? "Reserved" : slot.is_active ? "Published" : "Paused"}</span>
+                      <span className="min-w-0 text-sm font-semibold text-[#1f5bbd] [overflow-wrap:anywhere]">{slot.programme.toUpperCase()} · {slot.level}</span>
+                      <span className="shrink-0 rounded-full bg-[#f1f5fb] px-3 py-1 text-xs font-bold text-[#263852]">{slot.reserved ? "Reserved" : slot.is_active ? "Published" : "Paused"}</span>
                     </div>
                     <h3 className="mt-3 text-xl font-semibold">{slot.subject === "mathematics" ? "Mathematics" : "Mathematical Literacy"}</h3>
                     <p className="mt-3 flex items-center gap-2 text-sm text-[#60708a]"><CalendarDays className="size-4" />{formatSessionTime(slot.starts_at)}–{formatSessionTime(slot.ends_at)}</p>
@@ -191,9 +191,9 @@ export default async function TutorDashboardPage({
           ) : (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               {bookingHistory.rows.map((booking) => (
-                <article key={booking.reference} className="rounded-2xl border border-[#dce4ef] bg-white p-6">
+                <article key={booking.reference} className="min-w-0 rounded-2xl border border-[#dce4ef] bg-white p-6 [overflow-wrap:anywhere]">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div><p className="text-sm font-bold text-[#1f5bbd]">{booking.level} · {booking.topic}</p><h3 className="mt-2 text-xl font-semibold">{booking.duration_hours} hour Zoom lesson</h3></div>
+                    <div className="min-w-0"><p className="text-sm font-bold text-[#1f5bbd]">{booking.level} · {booking.topic}</p><h3 className="mt-2 text-xl font-semibold">{booking.duration_hours} hour Zoom lesson</h3></div>
                     <span className="rounded-full bg-[#edf3ff] px-3 py-1 text-xs font-bold capitalize text-[#1f5bbd]">{booking.status.replaceAll("_", " ")}</span>
                   </div>
                   <p className="mt-3 flex items-center gap-2 text-sm text-[#60708a]"><CalendarDays className="size-4" />{formatSessionTime(booking.starts_at)}</p>

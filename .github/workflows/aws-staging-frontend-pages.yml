@@ -1,0 +1,45 @@
+name: Verify responsiveness and speed across AWS staging frontend pages
+
+on:
+  push:
+    branches: [perf/aws-staging-responsive-20261126]
+    paths:
+      - .github/workflows/aws-staging-frontend-pages.yml
+      - frontend/e2e/sitewide_responsive_audit.py
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-pages:
+    name: Check the live site at ${{ matrix.width }}px
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        width: [320, 390, 768, 1024, 1280, 1366, 1440, 1920, 2560]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - run: python -m pip install -r frontend/e2e/requirements.txt
+      - name: Capture navigation, layout, and cold load performance
+        env:
+          AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          AMARIS_SITEWIDE_ORIGIN: https://16.171.164.5
+          AMARIS_SITEWIDE_WIDTHS: ${{ matrix.width }}
+        run: python -u frontend/e2e/sitewide_responsive_audit.py
+      - name: Retain route measurements and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amaris-aws-staging-frontend-pages-${{ matrix.width }}
+          path: frontend/artifacts/sitewide-responsive/
+          retention-days: 7
+          if-no-files-found: warn

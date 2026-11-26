@@ -79,17 +79,17 @@ export default async function LiveClassConfirmationPage({
 
           {!booking ? (
             <p className="mt-5 text-sm leading-7 text-[#60708a]">
-              We could not retrieve this booking yet. If you have just returned from PayFast,
+              We could not retrieve this booking yet. If you have just returned from checkout,
               wait a moment and refresh. Access is never granted from a browser redirect alone.
             </p>
           ) : (
             <>
               {needsReview && (
                 <p className="mt-5 text-sm leading-7 text-[#60708a]">
-                  PayFast verified your payment after the tutor slot could no longer be reserved. Keep your booking reference and contact us to arrange a new class or a refund. We have not issued a Zoom link for this slot.
+                  Your payment was verified after the tutor slot could no longer be reserved. Keep your booking reference and contact us to arrange a new class or a refund. We have not issued a Zoom link for this slot.
                 </p>
               )}
-              <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm">
+              <dl className="mt-7 grid gap-4 rounded-2xl bg-[#f7f9fc] p-5 text-sm [overflow-wrap:anywhere]">
                 <div><dt className="font-semibold">Booking reference</dt><dd className="mt-1 font-mono text-[#60708a]">{booking.booking_reference}</dd></div>
                 <div><dt className="font-semibold">Status</dt><dd className="mt-1 capitalize text-[#60708a]">{booking.status.replaceAll("_", " ")}</dd></div>
                 <div><dt className="font-semibold">Tutor</dt><dd className="mt-1 text-[#60708a]">{booking.tutor}</dd></div>

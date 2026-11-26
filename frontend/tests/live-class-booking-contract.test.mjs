@@ -61,6 +61,12 @@ test("checkout preserves server-owned pricing and PayFast verification language"
   assert.match(checkoutPage, /verified callback required/);
 });
 
+test("long booking details wrap within checkout and confirmation panels", () => {
+  for (const source of [checkoutPage, confirmationPage]) {
+    assert.match(source, /<dl className="[^"]*\[overflow-wrap:anywhere\][^"]*"/);
+  }
+});
+
 test("confirmation page releases Zoom only for confirmed bookings", () => {
   assert.match(confirmationPage, /booking\?\.status === "confirmed"/);
   assert.match(confirmationPage, /booking\.zoom_join_url/);

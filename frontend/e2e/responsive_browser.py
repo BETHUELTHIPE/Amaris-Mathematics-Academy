@@ -168,7 +168,7 @@ def check_slow_submission(page: Page) -> None:
 
 def check_dashboard(page: Page) -> None:
     goto(page, "/dashboard")
-    require(page.get_by_text("Student dashboard", exact=True).is_visible(), "Student dashboard label is not visible")
+    page.get_by_text("Student dashboard", exact=True).wait_for(state="visible", timeout=10_000)
     require(page.get_by_role("heading", name=re.compile(r"Welcome, Responsive\.")).is_visible(), "Synthetic student dashboard did not render")
     require(page.get_by_role("navigation", name="Dashboard navigation").is_visible(), "Dashboard navigation is not visible")
     # On a 320px screen the shelf is below the fold. Scroll the actual
@@ -196,12 +196,12 @@ def check_dashboard(page: Page) -> None:
     require(notifications_link.get_attribute("href") == "/dashboard/notifications", "Notifications navigation has the wrong destination")
 
     goto(page, "/dashboard/orders")
-    require(page.get_by_role("heading", name="Orders & payments", exact=True).is_visible(), "Orders page is not visible")
+    page.get_by_role("heading", name="Orders & payments", exact=True).wait_for(state="visible", timeout=10_000)
     require(page.get_by_role("heading", name="No orders yet.", exact=True).is_visible(), "Orders empty state is not visible")
     assert_no_horizontal_overflow(page, "orders")
 
     goto(page, "/dashboard/notifications")
-    require(page.get_by_role("heading", name="Notifications", exact=True).is_visible(), "Notifications page is not visible")
+    page.get_by_role("heading", name="Notifications", exact=True).wait_for(state="visible", timeout=10_000)
     require(page.get_by_role("heading", name="You’re all caught up.", exact=True).is_visible(), "Notifications empty state is not visible")
     assert_no_horizontal_overflow(page, "notifications")
 

@@ -61,10 +61,14 @@ export type CheckoutSession = {
   course: { slug: string; title: string };
 };
 
+export type LiveClassPaymentProvider = "payfast" | "paystack";
+
 export type LiveClassCheckoutSession = {
   booking_reference: string;
   status: string;
   gateway_url: string;
+  payment_provider?: LiveClassPaymentProvider;
+  test_mode?: boolean;
   fields: Record<string, string>;
   booking: {
     programme: string;
@@ -233,16 +237,28 @@ async function liveClassCheckoutKey(slotId: string, topic: string, attempt: stri
   return `liveclass-${hex}`;
 }
 
+export async function supportsPaystackLiveClassCheckout(): Promise<boolean> {
+  try {
+    const options = await studentFetch<{ paystack_enabled?: boolean }>("/student/live-classes/checkout/");
+    return options.paystack_enabled === true;
+  } catch {
+    // Older AWS backend revisions and a disabled provider retain PayFast checkout.
+    return false;
+  }
+}
+
 export async function createStudentLiveClassCheckout(
   slotId: string,
   topic: string,
   attempt: string,
+  paymentProvider: LiveClassPaymentProvider = "payfast",
 ): Promise<LiveClassCheckoutSession> {
   return studentFetch<LiveClassCheckoutSession>("/student/live-classes/checkout/", {
     method: "POST",
     body: JSON.stringify({
       slot_id: slotId,
       topic: topic.trim(),
+      payment_provider: paymentProvider,
       idempotency_key: await liveClassCheckoutKey(slotId, topic, attempt),
     }),
   });

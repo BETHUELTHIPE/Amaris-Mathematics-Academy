@@ -83,7 +83,7 @@ jobs:
           npm ci --include=dev
           python -m pip install -r e2e/requirements.txt
           python -m playwright install --with-deps chromium
-      - name: Check signed-in synthetic student screens at four breakpoints
+      - name: Check signed-in synthetic student screens on phones, tablets and desktops
         working-directory: frontend
         env:
           NODE_ENV: development

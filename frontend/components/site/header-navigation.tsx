@@ -2,44 +2,6 @@ import type { ReactNode } from "react";
 import { ArrowUpRight, BookOpen, ChevronDown, GraduationCap, Menu, X } from "lucide-react";
 import { groupNavigation, type NavigationLink } from "@/lib/navigation";
 
-// Native <details> menus work before JavaScript. Only enhancement behaviours
-// (Escape, outside click, breakpoint close) need this tiny script; the header
-// itself stays a Server Component and requires no React navigation hydration.
-const enhanceNavigation = String.raw`
-(() => {
-  const root = document.currentScript?.previousElementSibling;
-  if (!(root instanceof HTMLElement) || !root.classList.contains("header-navigation")) return;
-  const close = () => root.querySelectorAll("details[open]").forEach(menu => { menu.open = false; });
-  document.addEventListener("pointerdown", event => {
-    if (!root.contains(event.target)) close();
-  }, { passive: true });
-  document.addEventListener("keydown", event => {
-    if (event.key !== "Escape") return;
-    const menu = document.activeElement?.closest("details[open]");
-    if (menu && root.contains(menu)) {
-      menu.open = false;
-      menu.querySelector("summary")?.focus();
-      event.preventDefault();
-    } else {
-      close();
-    }
-  });
-  root.addEventListener("focusout", event => {
-    const group = event.target?.closest(".header-group[open]");
-    if (!group) return;
-    queueMicrotask(() => {
-      if (!group.contains(document.activeElement)) group.open = false;
-    });
-  });
-  window.matchMedia("(min-width: 1280px)").addEventListener("change", close);
-  for (const link of root.querySelectorAll("a[href]")) {
-    if (link.origin === location.origin && link.pathname === location.pathname) {
-      link.setAttribute("aria-current", "page");
-    }
-  }
-})();
-`;
-
 export function HeaderNavigation({ links, desktopAccount, mobileAccount }: {
   links: NavigationLink[];
   desktopAccount: ReactNode;
@@ -65,7 +27,7 @@ export function HeaderNavigation({ links, desktopAccount, mobileAccount }: {
     </details>
   ));
 
-  return <><div className="header-navigation">
+  return <div className="header-navigation">
     <nav aria-label="Main navigation" className="header-desktop-nav">
       {groupMenus(false).slice(0, 1)}
       {featured.map(link => <a key={link.url} {...linkProps(link)} className="header-featured"><GraduationCap size={17} aria-hidden="true" />{link.label}</a>)}
@@ -83,5 +45,5 @@ export function HeaderNavigation({ links, desktopAccount, mobileAccount }: {
         <div className="header-mobile-account">{mobileAccount}</div>
       </div>
     </details>
-  </div><script dangerouslySetInnerHTML={{ __html: enhanceNavigation }} /></>;
+  </div>;
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { ConnectionRecovery } from "@/components/site/connection-recovery";
 import { DashboardRealUserVitals } from "@/components/site/dashboard-real-user-vitals";
-import globalStyles from "./globals.css?inline";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "Amaris Mathematics Academy", template: "%s | Amaris Mathematics Academy" },
@@ -20,13 +20,7 @@ export default function RootLayout({
   return (
     <html lang="en-ZA">
       <head>
-        {/*
-          Keep the complete generated stylesheet in the initial document.
-          The CSS is small once compressed, and inlining removes the extra
-          render-blocking stylesheet round trip that Lighthouse measured at
-          roughly 470 ms on the public pages.
-        */}
-        <style id="amaris-global-styles" dangerouslySetInnerHTML={{ __html: globalStyles }} />
+        <script src="/header-navigation.js" defer />
       </head>
       <body className="antialiased">
         {children}
