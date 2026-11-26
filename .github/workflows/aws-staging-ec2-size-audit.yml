@@ -1,0 +1,66 @@
+name: Verify the requested Amaris staging EC2 size
+
+on:
+  push:
+    branches: [ops/aws-staging-ec2-size-check-20261126]
+    paths: [.github/workflows/aws-staging-ec2-size-audit.yml]
+
+permissions: {}
+
+jobs:
+  verify:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+    env:
+      AWS_PAGER: ''
+      AWS_REGION: eu-north-1
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - name: Authenticate with the staging deployment role
+        if: env.STAGING_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with existing staging credentials
+        if: env.STAGING_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Read the EC2 inventory, ECS registration and requested type
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AWS_REGION" == eu-north-1 ]]
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          echo 'All nonterminated Stockholm EC2 instances:'
+          aws ec2 describe-instances --filters Name=instance-state-name,Values=pending,running,stopping,stopped \
+            --query 'Reservations[].Instances[].{id:InstanceId,type:InstanceType,state:State.Name,zone:Placement.AvailabilityZone,architecture:Architecture,group:Tags[?Key==`aws:autoscaling:groupName`].Value | [0]}' --output table
+          echo 'Amaris ECS host registration:'
+          instances="$(aws ecs list-container-instances --cluster amaris-ecs-staging --status ACTIVE --query containerInstanceArns --output text)"
+          if [[ -n "$instances" && "$instances" != None ]]; then
+            aws ecs describe-container-instances --cluster amaris-ecs-staging --container-instances $instances \
+              --query 'containerInstances[].{id:ec2InstanceId,connected:agentConnected,running:runningTasksCount}' --output table
+          fi
+          echo 'Requested size and eligibility:'
+          aws ec2 describe-instance-types --instance-types c6g.2xlarge \
+            --query 'InstanceTypes[0].{type:InstanceType,cpus:VCpuInfo.DefaultVCpus,memoryMiB:MemoryInfo.SizeInMiB,freeTier:FreeTierEligible}' --output table
+          aws ec2 describe-instance-type-offerings --location-type availability-zone --filters Name=instance-type,Values=c6g.2xlarge \
+            --query 'sort(InstanceTypeOfferings[].Location)' --output text
+          echo 'AWS account plan:'
+          if ! aws freetier get-account-plan-state --region us-east-1 --query '[accountPlanType,accountPlanStatus]' --output text; then
+            echo 'Account plan API did not return a status.'
+          fi
