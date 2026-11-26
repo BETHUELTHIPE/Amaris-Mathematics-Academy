@@ -1,5 +1,7 @@
 import copy
 import importlib.util
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -54,6 +56,28 @@ class TaskTests(unittest.TestCase):
     def test_reject_floating_image(self):
         with self.assertRaises(renderer.argparse.ArgumentTypeError):
             renderer.render(copy.deepcopy(self.task), renderer.REPO + ":latest", *self.images[1:])
+
+    def test_reuse_existing_nginx_digest_with_literal_config(self):
+        proxy = self.task["containerDefinitions"][-1]
+        proxy["image"] = "nginx@sha256:" + "a" * 64
+        task = renderer.render(self.task, *self.images[:2], None)
+        self.assertEqual(proxy["image"], "nginx@sha256:" + "a" * 64)
+        self.assertEqual(proxy["entryPoint"], ["/bin/sh", "-ec"])
+        self.assertEqual(task["volumes"], [])
+        self.assertNotIn("mountPoints", proxy)
+        with tempfile.TemporaryDirectory() as root:
+            command = proxy["command"][0].replace("cat > /etc/nginx/conf.d/", f"cat > {root}/")
+            command = command.removesuffix("exec /docker-entrypoint.sh nginx -g 'daemon off;'")
+            subprocess.run(["/bin/sh", "-ec", command], check=True)
+            configs = Path(__file__).with_name("proxy")
+            self.assertEqual((Path(root) / "default.conf").read_bytes(), (configs / "cms.conf").read_bytes())
+            self.assertEqual((Path(root) / "backend.inc").read_bytes(), (configs / "backend.inc").read_bytes())
+
+    def test_reject_reusing_floating_or_custom_proxy(self):
+        for candidate in ("nginx:latest", renderer.REPO + "@sha256:" + "a" * 64):
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                self.task["containerDefinitions"][-1]["image"] = candidate
+                renderer.render(copy.deepcopy(self.task), *self.images[:2], None)
 
     def test_reject_unreviewed_host_volume(self):
         self.task["volumes"].append({"name": "other"})

@@ -1,14 +1,16 @@
 """Render a stateless ARM64 web task from the existing staging service definition.
 
 Input is DescribeTaskDefinition.taskDefinition JSON, not environment secrets.
-All images must be immutable staging ECR digests. Redis connection strings are
-read by ECS from dedicated SecureString SSM parameters; no secret is printed.
+Application images must be immutable staging ECR digests. The proxy can reuse
+the current pinned Nginx image with the configuration embedded in the task.
+ECS reads Redis connection strings from dedicated SecureString SSM parameters.
 This script never registers or deploys a task.
 """
 import argparse
 import json
 import re
 import sys
+from pathlib import Path
 
 REPO = "110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend"
 SSM = "arn:aws:ssm:eu-north-1:110156539003:parameter/amaris/aws-staging/shared-valkey/"
@@ -21,9 +23,31 @@ URLS = {
 
 
 def image(value):
-    if not re.fullmatch(re.escape(REPO) + r"@sha256:[0-9a-f]{64}", value):
+    if not isinstance(value, str) or not re.fullmatch(re.escape(REPO) + r"@sha256:[0-9a-f]{64}", value):
         raise argparse.ArgumentTypeError("Use an immutable digest in the staging ECR repository")
     return value
+
+
+def configure_proxy(container, proxy):
+    if proxy is not None:
+        container["image"] = image(proxy)
+        return
+
+    current = container.get("image", "")
+    if not re.fullmatch(r"(?:(?:docker\.io/)?library/)?nginx@sha256:[0-9a-f]{64}", current):
+        raise ValueError("Expected the current immutable official Nginx image")
+    if container.get("entryPoint") or container.get("command") or container.get("readonlyRootFilesystem"):
+        raise ValueError("Unexpected proxy start configuration")
+    configs = Path(__file__).with_name("proxy")
+    commands = []
+    for source, destination in (("cms.conf", "default.conf"), ("backend.inc", "backend.inc")):
+        body = (configs / source).read_text(encoding="utf-8").rstrip("\n")
+        if "AMARIS_NGINX_CONFIG" in body.splitlines():
+            raise ValueError("Proxy config contains the shell delimiter")
+        commands.append(f"cat > /etc/nginx/conf.d/{destination} <<'AMARIS_NGINX_CONFIG'\n{body}\nAMARIS_NGINX_CONFIG")
+    commands.append("exec /docker-entrypoint.sh nginx -g 'daemon off;'")
+    container["entryPoint"] = ["/bin/sh", "-ec"]
+    container["command"] = ["\n".join(commands)]
 
 
 def render(task, backend, frontend, proxy):
@@ -36,8 +60,9 @@ def render(task, backend, frontend, proxy):
         raise ValueError("Unexpected existing containers; manual review required")
     if {v["name"] for v in task["volumes"]} != {"valkey-data", "cms-proxy", "proxy-headers"}:
         raise ValueError("Unexpected existing volumes; manual review required")
-    for name, digest in (("backend", backend), ("frontend", frontend), ("cms", proxy)):
+    for name, digest in (("backend", backend), ("frontend", frontend)):
         names[name]["image"] = image(digest)
+    configure_proxy(names["cms"], proxy)
     del names["valkey"]
     b = names["backend"]
     # The old wrapper explicitly overwrote SSM settings with localhost URLs.
@@ -70,11 +95,21 @@ def render(task, backend, frontend, proxy):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--backend", required=True, type=image)
-    p.add_argument("--frontend", required=True, type=image)
-    p.add_argument("--proxy", required=True, type=image)
+    p.add_argument("--backend", type=image)
+    p.add_argument("--frontend", type=image)
+    proxy_mode = p.add_mutually_exclusive_group(required=True)
+    proxy_mode.add_argument("--proxy", type=image)
+    proxy_mode.add_argument("--reuse-current-proxy", action="store_true")
     a = p.parse_args()
-    json.dump(render(json.load(sys.stdin), a.backend, a.frontend, a.proxy), sys.stdout, indent=2)
+    if bool(a.backend) != bool(a.frontend) or (a.proxy and not a.backend):
+        p.error("Supply the backend and frontend digests together, or reuse the running release")
+    task = json.load(sys.stdin)
+    current = {c["name"]: c.get("image") for c in task["containerDefinitions"]}
+    try:
+        result = render(task, a.backend or current.get("backend"), a.frontend or current.get("frontend"), a.proxy)
+    except (ValueError, argparse.ArgumentTypeError) as error:
+        p.error(str(error))
+    json.dump(result, sys.stdout, indent=2)
     print()
 
 
