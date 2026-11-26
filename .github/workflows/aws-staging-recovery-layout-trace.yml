@@ -1,0 +1,79 @@
+name: Trace tablet layout shifts on the staging recovery pages
+
+on:
+  push:
+    branches: [perf/aws-staging-responsive-20261126]
+    paths: [.github/workflows/aws-staging-recovery-layout-trace.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - run: python -m pip install playwright==1.62.0
+      - name: Find elements that move in the browser
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          python -u - <<'PY'
+          import json
+          import os
+          from playwright.sync_api import sync_playwright
+
+          paths = ("/connection-lost", "/errors/404", "/payments/cancelled",
+                   "/payments/failed", "/payments/pending", "/session-expired")
+          script = """() => {
+            window.shifts = [];
+            const rect = r => [r.x, r.y, r.width, r.height].map(Math.round);
+            new PerformanceObserver(list => {
+              for (const entry of list.getEntries()) {
+                if (entry.hadRecentInput || entry.value < .001) continue;
+                window.shifts.push({
+                  t: Math.round(entry.startTime), value: entry.value,
+                  sources: entry.sources.map(src => ({
+                    tag: src.node?.nodeName,
+                    cls: src.node?.className?.baseVal ?? String(src.node?.className || ""),
+                    p: rect(src.previousRect), n: rect(src.currentRect)
+                  }))
+                });
+              }
+            }).observe({type: "layout-shift", buffered: true});
+          }"""
+          with sync_playwright() as p:
+              browser = p.chromium.launch(executable_path=os.environ["CHROME"], headless=True,
+                                          args=["--no-sandbox", "--disable-dev-shm-usage"])
+              for path in paths:
+                  context = browser.new_context(viewport={"width": 768, "height": 900}, reduced_motion="reduce")
+                  page = context.new_page()
+                  page.add_init_script(script)
+                  try:
+                      response = page.goto("https://16.171.164.5" + path, wait_until="domcontentloaded", timeout=15000)
+                      page.wait_for_timeout(350)
+                      before = page.evaluate("window.shifts.length")
+                      page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                      page.wait_for_timeout(300)
+                      after = page.evaluate("window.shifts.length")
+                      page.wait_for_timeout(800)
+                      data = page.evaluate("""() => ({
+                        shifts, scrollY, viewHeight: innerHeight,
+                        documentHeight: document.documentElement.scrollHeight,
+                        visualHeight: visualViewport.height,
+                        heading: document.querySelector("h1")?.textContent,
+                        fonts: document.fonts.status,
+                        encoding: performance.getEntriesByType("navigation")[0]?.encodedBodySize
+                      })""")
+                      print(path, response.status, before, after, json.dumps(data))
+                  except Exception as error:
+                      print(path, type(error).__name__, str(error)[:240])
+                  finally:
+                      context.close()
+              browser.close()
+          PY
