@@ -81,22 +81,27 @@ jobs:
               .TargetGroupArn == $target or any(.ForwardConfig.TargetGroups[]?;
                 .TargetGroupArn == $target and (.Weight // 1) > 0))' >/dev/null
           echo 'The public-facing ALB listener forwards to the stateless ECS service.'
-          tasks='[]'
-          for attempt in {1..10}; do
+          expected="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0].desiredCount' --output text)"
+          [[ "$expected" =~ ^[1-9][0-9]*$ ]]
+          for attempt in {1..18}; do
             tasks="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" \
               --desired-status RUNNING --query taskArns --output json)"
             targets="$(aws elbv2 describe-target-health --target-group-arn "$target" \
               --query TargetHealthDescriptions --output json)"
-            if jq -e 'any(.[]; .TargetHealth.State == "healthy")' <<< "$targets" >/dev/null &&
-               jq -e 'length > 0' <<< "$tasks" >/dev/null; then
+            ready="$(jq '[.[] | select(.TargetHealth.State == "healthy")] | length' <<< "$targets")"
+            mapfile -t task_arns < <(jq -r '.[]' <<< "$tasks")
+            if [[ "$ready" == "$expected" ]] && [[ ${#task_arns[@]} == "$expected" ]] &&
+                aws ecs describe-tasks --cluster "$cluster" --tasks "${task_arns[@]}" --query tasks --output json |
+                  jq -e 'all(.[]; .lastStatus == "RUNNING" and .healthStatus == "HEALTHY")' >/dev/null; then
               break
             fi
-            jq '[.[] | .TargetHealth | {State, Reason}]' <<< "$targets"
+            printf 'Attempt %s: ALB has %s of %s healthy staging replicas.\n' "$attempt" "$ready" "$expected"
+            jq '[.[] | .TargetHealth | {State, Reason, Description}]' <<< "$targets"
             sleep 8
           done
           latest_state
-          jq -e 'any(.[]; .TargetHealth.State == "healthy")' <<< "$targets" >/dev/null
-          jq -er 'if length > 0 then "Running ECS tasks: \(length)" else error("The ALB service has no running tasks") end' <<< "$tasks"
+          [[ "$ready" == "$expected" ]]
+          printf 'ALB has %s healthy ECS targets.\n' "$ready"
           while IFS= read -r task; do
             detail="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0]' --output json)"
             jq '{lastStatus, healthStatus, containers: [.containers[] | {name, lastStatus, healthStatus}]}' <<< "$detail"
