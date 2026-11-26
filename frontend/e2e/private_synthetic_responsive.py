@@ -14,8 +14,7 @@ from playwright.sync_api import sync_playwright
 
 def check_current_navigation(page, width_name):
     suite.goto(page, "/")
-    suite.require(page.get_by_role("link", name="Amaris Mathematics Academy home").is_visible(),
-                  "Home brand link is missing")
+    page.get_by_role("link", name="Amaris Mathematics Academy home").wait_for(state="visible", timeout=10_000)
     compact = width_name in ("narrow-mobile", "mobile", "tablet")
     if compact:
         panel = page.locator(".header-mobile-menu")
@@ -57,10 +56,14 @@ def main():
     SCREENSHOTS.mkdir(parents=True, exist_ok=True)
     errors = []
     count = 0
+    viewports = {"narrow-mobile": {"width": 320, "height": 720}, **suite.VIEWPORTS}
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True, args=["--no-sandbox"])
+        browser = pw.chromium.launch(
+            executable_path=os.getenv("AMARIS_CHROME_PATH") or None,
+            headless=True, args=["--no-sandbox"],
+        )
         try:
-            for name, viewport in suite.VIEWPORTS.items():
+            for name, viewport in viewports.items():
                 ctx = browser.new_context(
                     viewport=viewport,
                     locale="en-ZA", timezone_id="Africa/Johannesburg",
@@ -90,7 +93,7 @@ def main():
                 ctx.close()
         finally:
             browser.close()
-    print(f"Private synthetic screen checks: {count}/{len(CASE_NAMES) * len(suite.VIEWPORTS)}")
+    print(f"Private synthetic screen checks: {count}/{len(CASE_NAMES) * len(viewports)}")
     if errors:
         raise AssertionError("; ".join(errors))
     print("PASS all synthetic student private screen checks")

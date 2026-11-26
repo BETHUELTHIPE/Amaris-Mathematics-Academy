@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from urllib.request import urlopen
 
-from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,18 +36,19 @@ DEVICES = (
     ("wide-desktop", 1920, 1080, False),
 )
 
-CONDITIONAL = (
-    "/checkout/",
-    "/learn/",
-    "/errors/",
+PROTECTED_PREFIXES = (
+    "/account/complete-profile",
+    "/book-online-class",
     "/book-online-live-class",
-    "/book-online-live-class/confirmation",
-    "/request-a-video/confirmation",
-    "/documents/invoice",
+    "/checkout",
     "/dashboard",
+    "/documents",
+    "/learn",
+    "/request-a-video",
+    "/reset-password",
     "/tutor/dashboard",
 )
-
+PUBLIC_EXCEPTIONS = {"/reset-password/verify"}
 # Source-backed public fixtures with known-good local fallbacks.
 DYNAMIC_PUBLIC_FIXTURES = {
     "courses/[slug]": {
@@ -111,7 +112,9 @@ METRICS = r"""() => {
       right:Math.round(x.rect.right), left:Math.round(x.rect.left)
     }));
   return {
-    viewport:w, documentWidth:root.scrollWidth,
+    viewport:w, documentWidth:Math.max(root.scrollWidth, document.body?.scrollWidth || 0),
+    hasLayout: Boolean(getComputedStyle(root).getPropertyValue('--background').trim()),
+    hasHeading: Boolean(document.querySelector('h1')?.textContent?.trim()),
     bodyWidth:document.body?.scrollWidth||0,
     cls:window.__amarisResponsive?.cls||0,
     lcp:window.__amarisResponsive?.lcp||0,
@@ -135,7 +138,9 @@ def discover():
         path = "/" + "/".join(re.sub(r"\[.*?\]", "responsive-test-invalid-slug", p) for p in parts)
         key = "/".join(parts)
         fixture = DYNAMIC_PUBLIC_FIXTURES.get(key)
-        protected = any(path.startswith(x) for x in CONDITIONAL if x != "/errors/")
+        protected = path not in PUBLIC_EXCEPTIONS and any(
+            path == prefix or path.startswith(prefix + "/") for prefix in PROTECTED_PREFIXES
+        )
         result.append({
             "route": path, "source": str(f.relative_to(ROOT)),
             "dynamic": dynamic,
@@ -199,7 +204,13 @@ def audit_page(browser, route, device, screenshots):
         res["http"]=response.status if response else None
         res["finalPath"]=page.url.replace(BASE,"")
         if not res["http"] or res["http"] < 500:
-            page.wait_for_load_state("load", timeout=25000)
+            try:
+                page.wait_for_load_state("load", timeout=6_000)
+            except PlaywrightTimeoutError:
+                # Optional media can continue loading after the main content paints.
+                res["loadEventObserved"] = False
+            else:
+                res["loadEventObserved"] = True
         page.wait_for_timeout(350)
         before=page.evaluate(METRICS)
         # Scroll to expose lazy content and catch post-render shifting.
@@ -227,6 +238,8 @@ def audit_page(browser, route, device, screenshots):
             )
         if res["http"] and res["http"] >= 500:
             res["status"] = "FAIL_HTTP_5XX"
+        elif coverage != "negative-404" and (not after["hasLayout"] or not after["hasHeading"]):
+            res["status"] = "FAIL_PAGE_RENDER"
         elif coverage == "valid-dynamic":
             if (res["http"] != 200 or res["finalPath"] != route["route"]
                     or not res["positiveContentMatched"]):
@@ -263,7 +276,7 @@ def audit_page(browser, route, device, screenshots):
             page.screenshot(path=str(file),full_page=True,animations="disabled",timeout=10000)
             screenshots.append(str(file.relative_to(ART)))
         print(f'{res["status"]:>23} {name:20} {route["route"]:48} HTTP={res.get("http")} overflow={res.get("overflowPx")} CLS={res.get("cls")} LCP={res.get("lcpMs")}ms TTFB={res.get("ttfbMs")}ms',flush=True)
-    except (PlaywrightError, Exception) as exc:
+    except Exception as exc:
         res["status"]="ERROR"
         res["errors"]=[str(exc)[:360]]
         print(f'ERROR {name} {route["route"]}: {str(exc)[:240]}',flush=True)
@@ -328,14 +341,13 @@ def run():
         failed.append({"status":"FAIL_POSITIVE_DYNAMIC_COVERAGE",
                        "required":required_positive,"actual":len(valid_dynamic)})
     phone = [row for row in verified_layout if row["throttled"]]
-    passing_lcp = [row for row in phone if row["lcpMs"] is not None and row["lcpMs"] <= LCP_BUDGET_MS]
-    slow_pages = sorted((row for row in phone if row not in passing_lcp),
+    slow_pages = sorted((row for row in phone if not row["lcpMs"] or row["lcpMs"] > LCP_BUDGET_MS),
                         key=lambda row: row["lcpMs"] or 0, reverse=True)
     if LIVE_ORIGIN and slow_pages:
         failed.extend({**row, "status": "FAIL_LAB_LCP"} for row in slow_pages)
     summary={"origin":BASE,"mobileLcpBudgetMs":LCP_BUDGET_MS,
-             "mobileLcpPassing":len(passing_lcp),"mobileLcpMeasured":len(phone),
-             "routesDiscovered":len(routes),"viewports":len(devices),"totalChecks":len(results),
+             "mobileLcpPassing":len(phone) - len(slow_pages),"mobileLcpMeasured":len(phone),
+             "pageTemplates":len({row["source"] for row in routes}),"routeCases":len(routes),"viewports":len(devices),"totalChecks":len(results),
              "counts":dict(counts),"failures":failed,"conditionalChecks":len(conditional),
              "validDynamicChecks":len(valid_dynamic),"validDynamicRoutes":len(fixtures),
              "negative404Checks":len(negative_404),"verifiedPageLayoutChecks":len(verified_layout),
@@ -351,11 +363,11 @@ def run():
     (ART/"results.json").write_text(json.dumps({"summary":summary,"results":results},indent=2))
     with (ART/"summary.md").open("w") as f:
         f.write("# Amaris sitewide responsive audit\n\n")
-        f.write(f'Routes: **{len(routes)}**; device sizes: **{len(devices)}**; checks: **{len(results)}**.\n\n')
+        f.write(f'Page templates: **{len({row["source"] for row in routes})}**; route cases: **{len(routes)}**; device sizes: **{len(devices)}**; checks: **{len(results)}**.\n\n')
         f.write("## Status counts\n\n")
         for status,count in counts.most_common(): f.write(f"- {status}: {count}\n")
         f.write("\n## Failure details\n\n")
-        for x in failed[:100]: f.write(f'- {x.get("route","<coverage gate>")} at {x.get("width","?")}px: {x["status"]}; overflow {x.get("overflowPx","?")}px; HTTP {x.get("http","?")}; elements {x.get("offenders",[])[:2]}; {x.get("errors",[])[:1]}\n')
+        for x in failed[:100]: f.write(f'- {x.get("route","<coverage gate>")} at {x.get("width","?")}px: {x["status"]}; overflow {x.get("overflowPx","?")}px; HTTP {x.get("http","?")}; LCP {x.get("lcpMs","?")}ms; elements {x.get("offenders",[])[:2]}; {x.get("errors",[])[:1]}\n')
         f.write(f"\n## Verified page layout checks: {len(verified_layout)}\n")
         f.write(f"Valid dynamic page checks (HTTP 200 + content): **{len(valid_dynamic)}**.\n")
         f.write(f"Invalid dynamic 404 checks (excluded): **{len(negative_404)}**.\n")

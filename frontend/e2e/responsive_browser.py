@@ -196,12 +196,12 @@ def check_dashboard(page: Page) -> None:
     require(notifications_link.get_attribute("href") == "/dashboard/notifications", "Notifications navigation has the wrong destination")
 
     goto(page, "/dashboard/orders")
-    require(page.get_by_role("heading", name="Orders & payments", exact=True).is_visible(), "Orders page is not visible")
+    page.get_by_role("heading", name="Orders & payments", exact=True).wait_for(state="visible", timeout=10_000)
     require(page.get_by_role("heading", name="No orders yet.", exact=True).is_visible(), "Orders empty state is not visible")
     assert_no_horizontal_overflow(page, "orders")
 
     goto(page, "/dashboard/notifications")
-    require(page.get_by_role("heading", name="Notifications", exact=True).is_visible(), "Notifications page is not visible")
+    page.get_by_role("heading", name="Notifications", exact=True).wait_for(state="visible", timeout=10_000)
     require(page.get_by_role("heading", name="You’re all caught up.", exact=True).is_visible(), "Notifications empty state is not visible")
     assert_no_horizontal_overflow(page, "notifications")
 

@@ -12,9 +12,13 @@ permissions:
 
 jobs:
   frontend-pages:
-    name: Check the live site at four viewport widths
+    name: Check the live site at ${{ matrix.width }}px
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        width: [320, 390, 768, 1440]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -29,13 +33,13 @@ jobs:
         env:
           AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
           AMARIS_SITEWIDE_ORIGIN: https://16.171.164.5
-          AMARIS_SITEWIDE_WIDTHS: 320,390,768,1440
+          AMARIS_SITEWIDE_WIDTHS: ${{ matrix.width }}
         run: python -u frontend/e2e/sitewide_responsive_audit.py
       - name: Retain route measurements and report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amaris-aws-staging-frontend-pages
+          name: amaris-aws-staging-frontend-pages-${{ matrix.width }}
           path: frontend/artifacts/sitewide-responsive/
           retention-days: 7
           if-no-files-found: warn
