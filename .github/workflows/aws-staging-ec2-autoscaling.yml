@@ -1,0 +1,60 @@
+name: Set up Amaris staging EC2 Auto Scaling
+
+on:
+  push:
+    branches: [ops/aws-staging-asg-20261126]
+    paths:
+      - .github/workflows/aws-staging-ec2-autoscaling.yml
+      - deploy/aws/ecs/staging-autoscaling.yml
+      - deploy/aws/ecs/deploy-staging-autoscaling.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-staging-ec2-autoscaling
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-staging-asg-20261126'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate the deployment script and CloudFormation template
+        run: |
+          bash -n deploy/aws/ecs/deploy-staging-autoscaling.sh
+          python3 -m pip install cfn-lint==1.61.0
+          cfn-lint -r eu-north-1 -t deploy/aws/ecs/staging-autoscaling.yml
+      - name: Authenticate to AWS using the staging role
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate to AWS using the configured staging keys
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Create and verify the private EC2 Auto Scaling group
+        run: bash deploy/aws/ecs/deploy-staging-autoscaling.sh

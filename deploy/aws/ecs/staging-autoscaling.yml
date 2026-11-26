@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private EC2 capacity for the Amaris Stockholm staging ECS cluster.
+
+Parameters:
+  StagingVpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  HostInstanceProfileArn:
+    Type: String
+    AllowedPattern: 'arn:aws:iam::[0-9]{12}:instance-profile/.+'
+  EcsOptimizedArmImage:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id
+
+Resources:
+  HostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Private Amaris staging ECS host egress to AWS APIs and registries.
+      VpcId: !Ref StagingVpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  HostLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref EcsOptimizedArmImage
+        InstanceType: t4g.small
+        IamInstanceProfile:
+          Arn: !Ref HostInstanceProfileArn
+        CreditSpecification:
+          CpuCredits: standard
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpTokens: required
+          HttpPutResponseHopLimit: 1
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: false
+            DeleteOnTermination: true
+            Groups: [!Ref HostSecurityGroup]
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              DeleteOnTermination: true
+              Encrypted: true
+              VolumeSize: 20
+              VolumeType: gp3
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            cat > /etc/ecs/ecs.config <<'ECS_CONFIG'
+            ECS_CLUSTER=amaris-ecs-staging
+            ECS_AWSVPC_BLOCK_IMDS=true
+            ECS_CONFIG
+
+  StagingAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: amaris-staging-ecs-asg
+      LaunchTemplate:
+        LaunchTemplateId: !Ref HostLaunchTemplate
+        Version: !GetAtt HostLaunchTemplate.LatestVersionNumber
+      VPCZoneIdentifier: !Ref PrivateSubnets
+      # On creation the desired capacity defaults to MinSize. ECS manages it thereafter.
+      MinSize: '0'
+      MaxSize: '2'
+      HealthCheckType: EC2
+      NewInstancesProtectedFromScaleIn: true
+      Tags:
+        - Key: Name
+          Value: amaris-staging-ecs-capacity
+          PropagateAtLaunch: true
+        - Key: Environment
+          Value: staging
+          PropagateAtLaunch: true
+        - Key: AmazonECSManaged
+          Value: ''
+          PropagateAtLaunch: true
+
+  StagingCapacityProvider:
+    Type: AWS::ECS::CapacityProvider
+    Properties:
+      Name: amaris-staging-ec2-asg
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !GetAtt StagingAutoScalingGroup.AutoScalingGroupARN
+        ManagedDraining: ENABLED
+        ManagedTerminationProtection: ENABLED
+        ManagedScaling:
+          Status: ENABLED
+          TargetCapacity: 100
+          MinimumScalingStepSize: 1
+          MaximumScalingStepSize: 2
+          InstanceWarmupPeriod: 300
+
+Outputs:
+  GroupName:
+    Value: !Ref StagingAutoScalingGroup
+  CapacityProviderName:
+    Value: !Ref StagingCapacityProvider
