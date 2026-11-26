@@ -1,0 +1,61 @@
+name: Inspect Amaris second ECS host registration
+
+on:
+  push:
+    branches: [ops/aws-staging-second-host-20261126]
+    paths: [.github/workflows/aws-staging-second-host-status.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-staging-second-host-status
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-staging-second-host-20261126'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      AMARIS_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate to AWS using the staging role
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate to AWS using the configured staging keys
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Read CloudFormation, EC2 and ECS state
+        run: |
+          aws cloudformation describe-stack-events --stack-name amaris-staging-ecs-second-host \
+            --query 'StackEvents[0:10].[LogicalResourceId,ResourceStatus,ResourceStatusReason]' --output table || true
+          aws ec2 describe-instances --filters Name=tag:Name,Values=amaris-ecs-staging-second-host \
+            --query 'Reservations[].Instances[].{id:InstanceId,state:State.Name,type:InstanceType,zone:Placement.AvailabilityZone}' --output table
+          ids="$(aws ecs list-container-instances --cluster amaris-ecs-staging --status ACTIVE --query containerInstanceArns --output text)"
+          if [[ -n "$ids" && "$ids" != None ]]; then
+            read -r -a arns <<< "$ids"
+            aws ecs describe-container-instances --cluster amaris-ecs-staging --container-instances "${arns[@]}" \
+              --query 'containerInstances[].{id:ec2InstanceId,connected:agentConnected,running:runningTasksCount,pending:pendingTasksCount}' --output table
+          fi
