@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# Read-only: never update ECS, modify ALB routing or force alarm states.
+set -euo pipefail
+export AWS_REGION=eu-north-1 AWS_DEFAULT_REGION=eu-north-1 AWS_PAGER=""
+dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+config="$dir/deployment-configuration.json"
+cluster=amaris-ecs-staging
+service=amaris-web-staging-alb
+topic=arn:aws:sns:eu-north-1:110156539003:amaris-staging-cloudwatch-alarms
+[[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+jq -e '.strategy=="BLUE_GREEN" and .alarms.enable and .alarms.rollback and .minimumHealthyPercent==100 and .maximumPercent==200 and .bakeTimeInMinutes>=15 and (.alarms.alarmNames|sort)==["amaris-staging-alb-5xx","amaris-staging-slow-responses","amaris-staging-target-5xx"]' "$config" >/dev/null
+mapfile -t names < <(jq -r '.alarms.alarmNames[]' "$config")
+stack_names="$(aws cloudformation describe-stacks --stack-name amaris-staging-monitoring --query 'Stacks[0].Outputs[?OutputKey==`DeploymentRollbackAlarmNames`].OutputValue | [0]' --output text)"
+jq -e --arg actual "$stack_names" '.alarms.alarmNames|sort==($actual|split(",")|sort)' "$config" >/dev/null
+svc="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0]' --output json)"
+jq -e '.status=="ACTIVE" and .desiredCount>0' <<< "$svc" >/dev/null
+definition="$(aws ecs describe-task-definition --task-definition "$(jq -er .taskDefinition <<< "$svc")" --query taskDefinition --output json)"
+alb="$(aws cloudformation describe-stacks --stack-name amaris-staging-alb --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerArn`].OutputValue | [0]' --output text)"
+[[ "$alb" == arn:aws:elasticloadbalancing:eu-north-1:110156539003:loadbalancer/app/* ]]
+alb_name="${alb#*loadbalancer/}"
+alarms="$(aws cloudwatch describe-alarms --alarm-names "${names[@]}" --output json)"
+jq -e --arg topic "$topic" --arg alb "$alb_name" --slurpfile cfg "$config" '
+  ([.MetricAlarms[].AlarmName]|sort)==($cfg[0].alarms.alarmNames|sort) and
+  all(.MetricAlarms[]; .ActionsEnabled and .Namespace=="AWS/ApplicationELB" and
+    (.Dimensions==[{"Name":"LoadBalancer","Value":$alb}]) and
+    (.AlarmActions|index($topic))!=null and (.OKActions|index($topic))!=null and
+    .TreatMissingData=="notBreaching" and
+    ((.AlarmName=="amaris-staging-alb-5xx" and .MetricName=="HTTPCode_ELB_5XX_Count" and .Threshold==5 and .Statistic=="Sum") or
+     (.AlarmName=="amaris-staging-target-5xx" and .MetricName=="HTTPCode_Target_5XX_Count" and .Threshold==5 and .Statistic=="Sum") or
+     (.AlarmName=="amaris-staging-slow-responses" and .MetricName=="TargetResponseTime" and .Threshold==2 and .ExtendedStatistic=="p95")))
+' <<< "$alarms" >/dev/null
+jq '[.MetricAlarms[]|{AlarmName,StateValue,MetricName,Threshold}]' <<< "$alarms"
+health_alarms="$(aws cloudwatch describe-alarms --alarm-names amaris-staging-no-healthy-targets amaris-staging-unhealthy-targets --output json)"
+jq '[.MetricAlarms[]|{name:.AlarmName,state:.StateValue,stateReason:.StateReason,metric:.MetricName,dimensions:.Dimensions,treatMissingData:.TreatMissingData}]' <<< "$health_alarms"
+
+service_arns="$(aws ecs list-services --cluster "$cluster" --query 'serviceArns' --output text)"
+if [[ -n "$service_arns" && "$service_arns" != None ]]; then
+  read -r -a service_array <<< "$service_arns"
+  services="$(aws ecs describe-services --cluster "$cluster" --services "${service_array[@]}" --output json)"
+  jq '[.services[]|{serviceName,desiredCount,runningCount,pendingCount,taskDefinitionFamily:(.taskDefinition|split("/")[1]|split(":")[0]),strategy:(.deploymentConfiguration.strategy//"ROLLING"),deploymentAlarms:.deploymentConfiguration.alarms}]' <<< "$services"
+  while IFS= read -r task_arn; do
+    [[ -n "$task_arn" ]] || continue
+    task_json="$(aws ecs describe-task-definition --task-definition "$task_arn" --query taskDefinition --output json)"
+    jq '{family,architecture:.runtimePlatform.cpuArchitecture,volumes:[.volumes[]?|{name,hostPathConfigured:(.host.sourcePath!=null)}],containers:[.containerDefinitions[]|{name,cpu,memory,memoryReservation,ports:[.portMappings[]?|{containerPort,hostPort}],mounts:[.mountPoints[]?|{sourceVolume,containerPath}],dependencies:[.dependsOn[]?|{containerName,condition}]}]}' <<< "$task_json"
+  done < <(jq -r '[.services[].taskDefinition]|unique[]' <<< "$services")
+fi
+echo "Verified monitoring stack exports and rollback alarm definitions."
+jq '{serviceName,desiredCount,runningCount,pendingCount,controller:.deploymentController.type,strategy:(.deploymentConfiguration.strategy // "ROLLING"),currentRollbackAlarms:.deploymentConfiguration.alarms,advancedRouting:([.loadBalancers[]?|select(.advancedConfiguration != null)]|length),subnetIds:.networkConfiguration.awsvpcConfiguration.subnets,securityGroupIds:.networkConfiguration.awsvpcConfiguration.securityGroups}' <<< "$svc"
+alb_details="$(aws elbv2 describe-load-balancers --load-balancer-arns "$alb" --output json)"
+jq '[.LoadBalancers[]|{scheme: .Scheme,ipAddressType:.IpAddressType,state:.State.Code,type:.Type,availabilityZoneCount:(.AvailabilityZones|length),securityGroupCount:(.SecurityGroups|length),privateIpv4AddressCount:([.AvailabilityZones[].LoadBalancerAddresses[]?|select(.PrivateIPv4Address!=null)]|length),ipv6AddressCount:([.AvailabilityZones[].LoadBalancerAddresses[]?|select(.IPv6Address!=null)]|length)}]' <<< "$alb_details"
+vpc_id="$(jq -er '.LoadBalancers[0].VpcId' <<< "$alb_details")"
+aws ec2 describe-vpcs --vpc-ids "$vpc_id" --output json | jq '[.Vpcs[]|{ipv4CidrCount:1,ipv6CidrCount:([.Ipv6CidrBlockAssociationSet[]?|select(.Ipv6CidrBlockState.State=="associated")]|length)}]'
+aws ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc_id" --output json | jq '[.Subnets[]|{availabilityZone:.AvailabilityZone,isPublic:(.MapPublicIpOnLaunch==true),availableIpv4:.AvailableIpAddressCount,hasIpv6:([.Ipv6CidrBlockAssociationSet[]?|select(.Ipv6CidrBlockState.State=="associated")]|length>0),autoAssignIpv6:.AssignIpv6AddressOnCreation}]'
+aws ec2 describe-security-groups --group-ids $(jq -r '.LoadBalancers[0].SecurityGroups[]' <<< "$alb_details") --output json | jq '[.SecurityGroups[]|{ingress:[.IpPermissions[]|{protocol:.IpProtocol,fromPort:.FromPort,toPort:.ToPort,ipv4Sources:(.IpRanges|length),ipv6Sources:(.Ipv6Ranges|length),sourceSecurityGroupCount:(.UserIdGroupPairs|length),openToWorldIpv4:any(.IpRanges[]?; .CidrIp=="0.0.0.0/0"),openToWorldIpv6:any(.Ipv6Ranges[]?; .CidrIpv6=="::/0")}]}]'
+
+listeners="$(aws elbv2 describe-listeners --load-balancer-arn "$alb" --output json)"
+jq '[.Listeners[]|{port:.Port,protocol:.Protocol,defaultForwardActions:([.DefaultActions[]?|select(.Type=="forward")]|length)}]' <<< "$listeners"
+while IFS= read -r listener_arn; do
+  rules="$(aws elbv2 describe-rules --listener-arn "$listener_arn" --output json)"
+  jq '[.Rules[]|{priority:.Priority,isDefault:.IsDefault,conditionFields:([.Conditions[].Field]|unique),hasSourceIpCondition:(any(.Conditions[]; .Field=="source-ip")),hasHostCondition:(any(.Conditions[]; .Field=="host-header")),hasPathCondition:(any(.Conditions[]; .Field=="path-pattern"))}]' <<< "$rules"
+done < <(jq -r '.Listeners[].ListenerArn' <<< "$listeners")
+target_arns="$(jq -r '.loadBalancers[]?.targetGroupArn' <<< "$svc")"
+while IFS= read -r target_arn; do
+  [[ -n "$target_arn" ]] || continue
+  aws elbv2 describe-target-groups --target-group-arns "$target_arn" --output json | jq '[.TargetGroups[]|{name:.TargetGroupName,port:.Port,protocol:.Protocol,targetType:.TargetType,healthCheckPath:.HealthCheckPath,healthCheckPort:.HealthCheckPort}]'
+  aws elbv2 describe-target-health --target-group-arn "$target_arn" --output json | jq '[.TargetHealthDescriptions[]|{state:.TargetHealth.State,reason:.TargetHealth.Reason}] | {healthy:(map(select(.state=="healthy"))|length),unhealthy:(map(select(.state=="unhealthy"))|length),initial:(map(select(.state=="initial"))|length),draining:(map(select(.state=="draining"))|length)}'
+done <<< "$target_arns"
+
+jq '{architecture:.runtimePlatform.cpuArchitecture,executionRoleName:(.executionRoleArn|split("/")[-1]),localValkey:any(.containerDefinitions[]; .name=="valkey"),hostMountCount:([.volumes[]?|select((.host.sourcePath//"")!="")]|length),requestedCpu:([.containerDefinitions[]|.cpu//0]|add),requestedMemoryMiB:([.containerDefinitions[]|.memoryReservation//.memory//0]|add)}' <<< "$definition"
+jq '{volumes:[.volumes[]?|{name,hostPathConfigured:(.host.sourcePath != null),efsConfigured:(.efsVolumeConfiguration != null)}],containers:[.containerDefinitions[]|{name,cpu,memory,memoryReservation,essential,ports:[.portMappings[]?|{containerPort,hostPort,protocol}],mounts:[.mountPoints[]?|{sourceVolume,containerPath,readOnly}],dependencies:[.dependsOn[]?|{containerName,condition}],imageRepository:(.image|split("@")[0]|split(":")[0])}]}' <<< "$definition"
+instances="$(aws ecs list-container-instances --cluster "$cluster" --status ACTIVE --query containerInstanceArns --output text)"
+instance_details="{}"
+if [[ -n "$instances" && "$instances" != None ]]; then
+  read -r -a arns <<< "$instances"
+  instance_details="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "${arns[@]}" --output json | jq '.containerInstances[0]')"
+  jq '{status,agentConnected,ec2InstanceId,registeredResources:[.registeredResources[]?|{name,integerValue}],remainingResources:[.remainingResources[]?|{name,integerValue}]}' <<< "$instance_details"
+  instance_id="$(jq -er .ec2InstanceId <<< "$instance_details")"
+  instance_info="$(aws ec2 describe-instances --instance-ids "$instance_id" --output json)"
+  jq '[.Reservations[].Instances[]|{instanceType:.InstanceType,state:.State.Name,availabilityZone:.Placement.AvailabilityZone,networkInterfaceCount:(.NetworkInterfaces|length),hasIpv6:(any(.NetworkInterfaces[]?; (.Ipv6Addresses|length)>0)),securityGroupCount:(.SecurityGroups|length)}]' <<< "$instance_info"
+  aws iam list-open-id-connect-providers --output json | jq '[.OpenIDConnectProviderList[].Arn|select(contains("token.actions.githubusercontent.com"))] | {githubOidcProviderPresent:(length>0)}'
+  aws iam list-roles --path-prefix / --output json | jq '[.Roles[]|select(.RoleName|test("Amaris.*(GitHub|ECR)|GitHub.*Amaris";"i"))|{roleName:.RoleName,arn:.Arn}]'
+  instance_type="$(aws ec2 describe-instances --instance-ids "$instance_id" --query 'Reservations[0].Instances[0].InstanceType' --output text)"
+  aws ec2 describe-instance-types --instance-types "$instance_type" --query 'InstanceTypes[0].{maximumNetworkInterfaces:NetworkInfo.MaximumNetworkInterfaces,ipv4AddressesPerInterface:NetworkInfo.Ipv4AddressesPerInterface}' --output json
+  aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance_id" --query 'InstanceInformationList[].{pingStatus:PingStatus,platformType:PlatformType,agentVersion:AgentVersion}' --output json
+  alb_dns="$(jq -er '.LoadBalancers[0].DNSName' <<< "$alb_details")"
+  alb_ipv4s="$(jq -r '.LoadBalancers[0].AvailabilityZones[].LoadBalancerAddresses[]?|(.PrivateIPv4Address // .IpAddress // empty)' <<< "$alb_details" | sort -u)"
+  if [[ -n "$alb_ipv4s" ]]; then
+    commands="$(jq -nc --arg host "$alb_dns" --arg ips "$alb_ipv4s" '{commands:([$ips|split("\\n")[]|select(length>0)|"curl -4 --max-time 8 -sS -o /dev/null -w \"http_status=%{http_code}\\n\" -A \"ELB-HealthChecker/2.0\" --resolve " + $host + ":80:" + . + " http://" + $host + "/__alb/ready"])}')"
+    command_id="$(aws ssm send-command --instance-ids "$instance_id" --document-name AWS-RunShellScript --parameters "$commands" --timeout-seconds 30 --query 'Command.CommandId' --output text)"
+    invocation_status=""
+    for _ in $(seq 1 20); do
+      invocation_status="$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" --query Status --output text 2>/dev/null || true)"
+      case "$invocation_status" in Success|Failed|TimedOut|Cancelled|Cancelling) break ;; esac
+      sleep 2
+    done
+    aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" --query '{status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' --output json
+    [[ "$invocation_status" == Success ]] || { echo "::warning::Private IPv4 ALB health smoke check did not complete successfully."; }
+  else
+    echo "::warning::The ALB has no private IPv4 address and the SSM staging instance has no IPv6 address; a VPC-local IPv6 test runner is required."
+  fi
+
+fi
+# Fail closed: ECS may ignore pre-existing ALARM states for an entire deployment.
+blocked=0
+if ! jq -e 'all(.MetricAlarms[]; .StateValue=="OK")' <<< "$alarms" >/dev/null; then
+  echo "::warning::Rollback alarms must all be OK before starting any deployment."
+  blocked=1
+fi
+if ! jq -e '.runningCount==.desiredCount and .pendingCount==0 and (.deployments|length)==1 and .deploymentController.type=="ECS" and .deploymentConfiguration.strategy=="BLUE_GREEN" and any(.loadBalancers[]?; .advancedConfiguration.alternateTargetGroupArn != null and .advancedConfiguration.productionListenerRule != null and .advancedConfiguration.testListenerRule != null and .advancedConfiguration.roleArn != null)' <<< "$svc" >/dev/null; then
+  echo "::warning::Service is not a stable native blue-green service with production and test routing."
+  blocked=1
+fi
+if jq -e 'any(.containerDefinitions[]; .name=="valkey") or any(.volumes[]?; (.host.sourcePath//"")!="")' <<< "$definition" >/dev/null; then
+  echo "::warning::Task-local state or host bind mounts block safe concurrent revisions."
+  blocked=1
+fi
+if (( blocked )); then
+  {
+    echo "## ECS blue-green readiness: BLOCKED"
+    echo
+    echo "- CloudWatch rollback alarm definitions and SNS actions were verified."
+    echo "- The live ECS service is still on rolling deployment with no advanced listener routing."
+    echo "- The active task still contains task-local Valkey and host-mounted volumes."
+    echo "- No deployment, task registration, listener change or traffic shift was performed."
+    echo
+    echo "Resolve shared state, immutable proxy configuration, listener rules and capacity before enabling blue-green."
+  } >> "$GITHUB_STEP_SUMMARY"
+  echo "READINESS=BLOCKED"
+  exit 0
+fi
+{
+  echo "## ECS blue-green readiness: READY FOR CONTROLLED STAGING CONVERSION"
+  echo
+  echo "Alarm, routing, task-state and service preflight checks passed. Database and rollback acceptance still require separate validation."
+} >> "$GITHUB_STEP_SUMMARY"
+echo "READINESS=PREPARED"

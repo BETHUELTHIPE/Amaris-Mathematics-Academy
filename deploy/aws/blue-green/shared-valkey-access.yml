@@ -1,0 +1,32 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Least-privilege access for the Amaris ECS task execution role to read only shared Valkey SecureString parameters.
+Parameters:
+  ExecutionRoleName:
+    Type: String
+    AllowedPattern: '^[A-Za-z0-9+=,.@_-]{1,64}$'
+Resources:
+  SharedValkeyParameterReadPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: AmarisSharedValkeySsmRead
+      Roles:
+        - !Ref ExecutionRoleName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ReadOnlySharedValkeyParameters
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/shared-valkey/*'
+          - Sid: DecryptOnlySharedValkeyParameterValuesViaSsm
+            Effect: Allow
+            Action:
+              - kms:Decrypt
+            Resource: '*'
+            Condition:
+              StringEquals:
+                kms:ViaService: !Sub 'ssm.${AWS::Region}.amazonaws.com'
+              ArnLike:
+                kms:EncryptionContext:PARAMETER_ARN: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/shared-valkey/*'

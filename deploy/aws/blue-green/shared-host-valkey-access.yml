@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private staging Valkey access on existing host
+Parameters:
+  HostSecurityGroup: {Type: 'AWS::EC2::SecurityGroup::Id'}
+  ApplicationSecurityGroup: {Type: 'AWS::EC2::SecurityGroup::Id'}
+  HostRoleName: {Type: String}
+  ExecutionRoleName: {Type: String}
+Resources:
+  Ingress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref HostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6379
+      ToPort: 6379
+      SourceSecurityGroupId: !Ref ApplicationSecurityGroup
+  Egress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6379
+      ToPort: 6379
+      DestinationSecurityGroupId: !Ref HostSecurityGroup
+  HostRead:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: AmarisStagingHostValkeyRead
+      Roles: [!Ref HostRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: ssm:GetParameter
+            Resource:
+              - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/shared-valkey/host-password
+              - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/shared-valkey/ca
+  TaskRead:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: AmarisStagingSharedHostValkeyRead
+      Roles: [!Ref ExecutionRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: ssm:GetParameters
+            Resource:
+              - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/shared-valkey/cache
+              - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/shared-valkey/public-cache
+              - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/shared-valkey/broker
+              - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/shared-valkey/result
+              - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/shared-valkey/ca
