@@ -5,7 +5,7 @@ umask 077
 cluster=amaris-ecs-staging
 service=amaris-web-staging-stateless
 registry=110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend
-source_sha=3a030218308b24085a607234bf2f301a6c25f5b7
+source_sha="${FRONTEND_SHA:?Missing verified frontend revision}"
 origin=https://16.171.164.5
 target_prefix=arn:aws:elasticloadbalancing:eu-north-1:110156539003:targetgroup/amaris-staging-stateless/
 work="$(mktemp -d)"

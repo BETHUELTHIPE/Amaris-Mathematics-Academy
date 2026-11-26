@@ -18,16 +18,14 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FRONTEND_SHA: 3a030218308b24085a607234bf2f301a6c25f5b7
-  VERIFIED_IMAGE_TAG: frontend-desktop-3a030218308b24085a607234bf2f301a6c25f5b7-45884538654-1
-  VERIFIED_IMAGE_DIGEST: sha256:ee762b8ea3f1a7e2fb8a91a660f2c879e9fefe48db22a210b7b9e4cb6f4d63b9
+  FRONTEND_SHA: 33f48a2b68b3f121308f2f0aec2aa63dd158408c
   ECR_REPO: 110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend
   AWS_REGION: eu-north-1
   AWS_PAGER: ''
 
 jobs:
   build:
-    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.event_name == 'workflow_dispatch'
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 18
     steps:
@@ -55,7 +53,7 @@ jobs:
           for attempt in {1..24}; do
             if curl -fsS --max-time 5 http://127.0.0.1:3000/ -o "$RUNNER_TEMP/desktop-preview.html"; then
               grep -Fq 'Amaris Mathematics Academy' "$RUNNER_TEMP/desktop-preview.html"
-              grep -Fq 'event.relatedTarget' "$RUNNER_TEMP/desktop-preview.html"
+              grep -Fq 'class="header-navigation"' "$RUNNER_TEMP/desktop-preview.html"
               exit 0
             fi
             sleep 2
@@ -149,9 +147,6 @@ jobs:
 
   deploy:
     needs: publish
-    if: >-
-      always() && github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' &&
-      (needs.publish.result == 'success' || (github.event_name == 'push' && needs.publish.result == 'skipped'))
     runs-on: ubuntu-24.04
     timeout-minutes: 46
     environment: staging
@@ -199,11 +194,5 @@ jobs:
           AMARIS_E2E_ROOT: ${{ github.workspace }}/candidate/frontend/e2e
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
-            digest="$(aws ecr describe-images --repository-name amaris-staging-frontend \
-              --image-ids "imageTag=$VERIFIED_IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text)"
-            test "$digest" = "$VERIFIED_IMAGE_DIGEST"
-            AMARIS_FRONTEND_DIGEST="$digest"
-          fi
           export AMARIS_FRONTEND_IMAGE="$ECR_REPO@${AMARIS_FRONTEND_DIGEST:?Missing published digest}"
           bash deploy/aws/desktop-frontend-release.sh deploy/aws/verify-desktop-frontend.py
