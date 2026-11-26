@@ -2,6 +2,7 @@
 
 This renderer is offline and does not register ECS definitions or change traffic.
 """
+import argparse
 import copy
 import importlib.util
 import json
@@ -13,7 +14,7 @@ spec = importlib.util.spec_from_file_location("web_renderer", root / "render-sta
 web_renderer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(web_renderer)
 
-def render(original):
+def render(original, host_valkey=False):
     original = copy.deepcopy(original)
     names = {c["name"]: c for c in original["containerDefinitions"]}
     expected = {"backend", "frontend", "cms", "valkey", "celery-worker", "celery-beat"}
@@ -28,6 +29,17 @@ def render(original):
     original["volumes"] = [v for v in original["volumes"] if v["name"] != "staging-celery-config"]
     web = web_renderer.render(original, names["backend"]["image"], names["frontend"]["image"], None)
     backend = next(c for c in web["containerDefinitions"] if c["name"] == "backend")
+    if host_valkey:
+        backend["secrets"].append({"name": "AMARIS_SHARED_VALKEY_CA", "valueFrom": web_renderer.SSM + "ca"})
+        entry = backend["entryPoint"][2]
+        if entry.count('exec "$@"') != 1:
+            raise ValueError("Unexpected web entrypoint")
+        ca_setup = ('umask 077\n'
+                    'printf "%s\\n" "$AMARIS_SHARED_VALKEY_CA" > /tmp/amaris-shared-valkey-ca.pem\n'
+                    'unset AMARIS_SHARED_VALKEY_CA\n'
+                    'test -s /tmp/amaris-shared-valkey-ca.pem\n'
+                    'exec "$@"')
+        backend["entryPoint"][2] = entry.replace('exec "$@"', ca_setup)
     module = (root.parent / "celery" / "staging_celery.py").read_text(encoding="utf-8")
     if "AMARIS_CELERY_CONFIG" in module.splitlines():
         raise ValueError("Unsafe module delimiter")
@@ -60,5 +72,8 @@ def render(original):
     return {"web": web, "jobs": jobs}
 
 if __name__ == "__main__":
-    json.dump(render(json.load(sys.stdin)), sys.stdout, indent=2)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host-valkey", action="store_true")
+    args = parser.parse_args()
+    json.dump(render(json.load(sys.stdin), host_valkey=args.host_valkey), sys.stdout, indent=2)
     print()

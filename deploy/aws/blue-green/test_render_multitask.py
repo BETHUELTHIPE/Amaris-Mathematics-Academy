@@ -47,6 +47,15 @@ class SplitTests(unittest.TestCase):
             self.assertIn("AMARIS_CELERY_CONFIG", c["entryPoint"][2])
             self.assertIn("deliver-video-request-notifications", c["entryPoint"][2])
 
+    def test_private_host_ca_injected_for_web_and_jobs(self):
+        result = split.render(self.fixture(), host_valkey=True)
+        for task in result.values():
+            for c in task["containerDefinitions"]:
+                if c["name"] in {"backend", "celery-worker", "celery-beat"}:
+                    self.assertIn({"name": "AMARIS_SHARED_VALKEY_CA", "valueFrom": renderer.SSM + "ca"}, c["secrets"])
+                    self.assertIn("test -s /tmp/amaris-shared-valkey-ca.pem", c["entryPoint"][2])
+                    self.assertIn("unset AMARIS_SHARED_VALKEY_CA", c["entryPoint"][2])
+
     def test_reject_unknown_volume(self):
         original = self.fixture()
         original["volumes"].append({"name": "unknown"})
