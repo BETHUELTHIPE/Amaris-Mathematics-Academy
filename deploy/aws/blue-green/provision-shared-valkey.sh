@@ -15,7 +15,7 @@ cache_stack=amaris-staging-shared-valkey
 access_stack=amaris-staging-shared-valkey-access
 base="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "110156539003" ]] || { echo "Unexpected AWS account; refusing." >&2; exit 1; }
-[[ "$(aws freetier get-account-plan-state --query accountPlanType --output text)" == "PAID" ]] || { echo "Paid-plan eligibility is unverified; no resources created." >&2; exit 1; }
+[[ "$(aws freetier get-account-plan-state --region us-east-1 --query accountPlanType --output text)" == "PAID" ]] || { echo "Paid-plan eligibility is unverified; no resources created." >&2; exit 1; }
 [[ "${REVIEWED_TOTAL_MONTHLY_ZAR:-}" =~ ^[0-9]+$ ]] && (( REVIEWED_TOTAL_MONTHLY_ZAR > 0 && REVIEWED_TOTAL_MONTHLY_ZAR <= 1100 )) || { echo "Reviewed all-in monthly forecast must be within R1100." >&2; exit 1; }
 svc="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0]' --output json)"
 jq -e '.status=="ACTIVE" and .desiredCount>0 and .runningCount==.desiredCount and .pendingCount==0' <<< "$svc" >/dev/null || { echo "Staging service is not stable; refusing." >&2; exit 1; }
