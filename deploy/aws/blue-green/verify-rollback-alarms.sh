@@ -30,6 +30,8 @@ jq -e --arg topic "$topic" --arg alb "$alb_name" --slurpfile cfg "$config" '
      (.AlarmName=="amaris-staging-slow-responses" and .MetricName=="TargetResponseTime" and .Threshold==2 and .ExtendedStatistic=="p95")))
 ' <<< "$alarms" >/dev/null
 jq '[.MetricAlarms[]|{AlarmName,StateValue,MetricName,Threshold}]' <<< "$alarms"
+health_alarms="$(aws cloudwatch describe-alarms --alarm-names amaris-staging-no-healthy-targets amaris-staging-unhealthy-targets --output json)"
+jq '[.MetricAlarms[]|{name:.AlarmName,state:.StateValue,stateReason:.StateReason,metric:.MetricName,dimensions:.Dimensions,treatMissingData:.TreatMissingData}]' <<< "$health_alarms"
 
 service_arns="$(aws ecs list-services --cluster "$cluster" --query 'serviceArns' --output text)"
 if [[ -n "$service_arns" && "$service_arns" != None ]]; then
