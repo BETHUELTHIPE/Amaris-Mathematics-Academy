@@ -23,7 +23,8 @@ oldid="$(basename "$task")"
 target_ok() { aws elbv2 describe-target-health --target-group-arn "$target" --output json | jq -e --argjson n "$1" '[.TargetHealthDescriptions[]|select(.TargetHealth.State=="healthy")]|length==$n' >/dev/null; }
 target_ok 1
 # Refuse concurrent deployments, existing separate jobs, or missing shared configuration.
-aws ecs describe-services --cluster "$cluster" --services "$jobs" --output json | jq -e 'all(.services[];.status=="INACTIVE")' >/dev/null
+jobs_before="$(aws ecs describe-services --cluster "$cluster" --services "$jobs" --output json)"
+jq -e 'all(.services[];.status=="INACTIVE" or (.status=="ACTIVE" and .desiredCount==0 and .runningCount==0 and .pendingCount==0))' <<< "$jobs_before" >/dev/null
 params="$(aws ssm describe-parameters --parameter-filters Key=Name,Option=BeginsWith,Values=/amaris/aws-staging/shared-valkey/ --query 'Parameters[].Name' --output json)"
 for key in cache public-cache broker result ca host-password; do jq -e --arg p "/amaris/aws-staging/shared-valkey/$key" 'index($p)!=null' <<< "$params" >/dev/null; done
 mapfile -t hosts < <(aws ecs list-container-instances --cluster "$cluster" --status ACTIVE --query containerInstanceArns --output json | jq -r '.[]')
@@ -35,7 +36,7 @@ tmp="$(mktemp -d)"
 phase=before
 maintenance=0
 old_placement="$(jq -c '.placementConstraints' <<< "$state")"
-old_deploy="$(jq -c '.deploymentConfiguration|{maximumPercent,minimumHealthyPercent,deploymentCircuitBreaker}' <<< "$state")"
+old_deploy="$(jq -c '.deploymentConfiguration|{maximumPercent,minimumHealthyPercent,deploymentCircuitBreaker}|with_entries(select(.value!=null))' <<< "$state")"
 network="$(jq -c .networkConfiguration <<< "$state")"
 rollback() {
   rc=$?
@@ -44,12 +45,26 @@ rollback() {
     if [[ "$phase" == before || "$phase" == copied ]]; then
       echo 'Before consumer activation: restoring original source service and gateway.' >&2
       bash "$runner" "$first" "$root/unpause-old-broker.sh" "$oldid" || true
+      current="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0].taskDefinition' --output text || true)"
+      if [[ "$current" != "$old" ]]; then
+        aws ecs update-service --cluster "$cluster" --service "$service" --desired-count 0 --query service.serviceName --output text >/dev/null || true
+        if ! aws ecs wait services-stable --cluster "$cluster" --services "$service"; then
+          echo 'Could not stop replacement web tasks safely; maintenance retained.' >&2
+          rm -rf "$tmp"; exit "$rc"
+        fi
+      fi
       aws ecs update-service --cluster "$cluster" --service "$service" --task-definition "$old" --desired-count 1 --placement-constraints "$old_placement" --deployment-configuration "$old_deploy" --query service.serviceName --output text >/dev/null || true
       if aws ecs wait services-stable --cluster "$cluster" --services "$service" && target_ok 1; then
         bash "$runner" "$first" "$root/cutover-gateway.sh" off || true
       else echo 'Old service recovery not healthy; gateway remains in maintenance.' >&2; fi
     else
-      echo 'Shared broker may now contain processed jobs. Do not restore stale local broker. Gateway remains in maintenance; repair using shared state.' >&2
+      echo 'Shared broker may contain processed jobs. Do not restore the stale local broker.' >&2
+      if target_ok 2; then
+        bash "$runner" "$first" "$root/cutover-gateway.sh" off || true
+        echo 'Healthy stateless web targets retained; Celery acceptance failed and requires repair using shared state.' >&2
+      else
+        echo 'Replacement web targets not healthy; maintenance retained.' >&2
+      fi
     fi
   fi
   rm -rf "$tmp"
@@ -64,7 +79,11 @@ jobsrev="$(aws ecs register-task-definition --cli-input-json "file://$tmp/jobs.j
 [[ "$webrev" == arn:aws:ecs:eu-north-1:110156539003:task-definition/amaris-ecs-staging-alb-web:* && "$jobsrev" == arn:aws:ecs:eu-north-1:110156539003:task-definition/amaris-ecs-staging-singleton-jobs:* ]]
 # Establish an empty service first; it cannot consume jobs until explicitly activated.
 pin="$(jq -nc --arg x "ec2InstanceId in ['$first']" '[{type:"memberOf",expression:$x}]')"
-aws ecs create-service --cluster "$cluster" --service-name "$jobs" --task-definition "$jobsrev" --desired-count 0 --launch-type EC2 --network-configuration "$network" --placement-constraints "$pin" --deployment-configuration maximumPercent=100,minimumHealthyPercent=0 --query service.serviceName --output text
+if jq -e 'any(.services[];.status=="ACTIVE")' <<< "$jobs_before" >/dev/null; then
+  aws ecs update-service --cluster "$cluster" --service "$jobs" --task-definition "$jobsrev" --desired-count 0 --placement-constraints "$pin" --deployment-configuration maximumPercent=100,minimumHealthyPercent=0 --query service.serviceName --output text
+else
+  aws ecs create-service --cluster "$cluster" --service-name "$jobs" --task-definition "$jobsrev" --desired-count 0 --launch-type EC2 --network-configuration "$network" --placement-constraints "$pin" --deployment-configuration maximumPercent=100,minimumHealthyPercent=0 --query service.serviceName --output text
+fi
 resource="service/$cluster/$service"
 aws application-autoscaling register-scalable-target --service-namespace ecs --scalable-dimension ecs:service:DesiredCount --resource-id "$resource" --min-capacity 1 --max-capacity 2 --suspended-state DynamicScalingInSuspended=true,DynamicScalingOutSuspended=true,ScheduledScalingSuspended=true >/dev/null
 maintenance=1

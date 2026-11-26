@@ -68,6 +68,10 @@ def main():
                     if dst.dump(key)!=payload:
                         raise RuntimeError("Restored serialization mismatch")
                     copied_count+=1
+                if db==2:
+                    destination_items=sum(dst.llen(k) for k in dst.scan_iter() if dst.type(k)==b"list")
+                    if destination_items!=queue_items:
+                        raise RuntimeError("Broker queued-list reconciliation failed")
                 inventory.append({"db":db,"copied_keys":copied_count,"queue_items":queue_items if db==2 else 0})
             # Persist both stores before resuming any source process.
             new[0].save()
