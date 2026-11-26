@@ -20,7 +20,176 @@ Parameters:
   TestHostHeader:
     Type: String
     Default: amaris-bluegreen-test.internal
-    AllowedPattern: '^[a-zA-Z0-9.-]+$'
+    AllowedPattern: '^[a-zA-Z0-9.-]+
+Resources:
+  PrivateTestRunnerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Egress-only security group for the private Amaris blue-green smoke runner.
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          DestinationSecurityGroupId: !Ref AlbSecurityGroupId
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+  AllowPrivateTestRunnerToAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AlbSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref PrivateTestRunnerSecurityGroup
+      Description: Permit only the private IPv6 staging smoke runner to reach the test listener.
+  PrivateTestListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ListenerArn
+      Priority: 10
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Ref TestHostHeader
+        - Field: source-ip
+          SourceIpConfig:
+            Values:
+              - !Ref VpcIpv6Cidr
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref AlternateTargetGroupArn
+  ProductionListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ListenerArn
+      Priority: 20
+      Conditions:
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - '/*'
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref PrimaryTargetGroupArn
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+  EcsLambdaHookRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeAmarisBlueGreenHealthProbe
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !GetAtt PrivateGreenHealthProbe.Arn
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+  PrivateGreenHealthProbe:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: amaris-staging-bluegreen-health-probe
+      Description: Private IPv6 smoke probe for the ECS green target group; ECS lifecycle hook rolls back on failure.
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 15
+      MemorySize: 128
+      VpcConfig:
+        Ipv6AllowedForDualStack: true
+        SubnetIds:
+          - !Ref TestSubnetA
+          - !Ref TestSubnetB
+        SecurityGroupIds:
+          - !Ref PrivateTestRunnerSecurityGroup
+      Environment:
+        Variables:
+          ALB_DNS_NAME: !Ref AlbDnsName
+          TEST_HOST_HEADER: !Ref TestHostHeader
+          HEALTH_PATH: !Ref HealthPath
+      Code:
+        ZipFile: |
+          import os
+          import urllib.request
+
+          def handler(event, context):
+              url = "http://" + os.environ["ALB_DNS_NAME"] + os.environ["HEALTH_PATH"]
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "Host": os.environ["TEST_HOST_HEADER"],
+                      "User-Agent": "ELB-HealthChecker/2.0",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=8) as response:
+                      if response.status != 200:
+                          return {
+                              "hookStatus": "FAILED",
+                              "reason": "Green target health endpoint returned HTTP " + str(response.status),
+                          }
+                      return {
+                          "hookStatus": "SUCCEEDED",
+                          "reason": "Private green target health endpoint returned HTTP 200",
+                      }
+              except Exception as exc:
+                  return {
+                      "hookStatus": "FAILED",
+                      "reason": "Private green target health probe failed: " + type(exc).__name__,
+                  }
+Outputs:
+  TestListenerRuleArn:
+    Value: !Ref PrivateTestListenerRule
+  ProductionListenerRuleArn:
+    Value: !Ref ProductionListenerRule
+  TestRunnerSecurityGroupId:
+    Value: !Ref PrivateTestRunnerSecurityGroup
+  HealthProbeLambdaArn:
+    Value: !GetAtt PrivateGreenHealthProbe.Arn
+  EcsLambdaHookRoleArn:
+    Value: !GetAtt EcsLambdaHookRole.Arn
+
+  AlbDnsName:
+    Type: String
+  TestSubnetA:
+    Type: AWS::EC2::Subnet::Id
+  TestSubnetB:
+    Type: AWS::EC2::Subnet::Id
+  HealthPath:
+    Type: String
+    Default: /__alb/ready
 Resources:
   PrivateTestRunnerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
