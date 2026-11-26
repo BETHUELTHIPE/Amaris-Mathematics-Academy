@@ -18,7 +18,7 @@ fi
 # Resolve current ECS service and live ALB target group, not a guessed resource ID.
 status="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0].status' --output text)"
 [[ "$status" == ACTIVE ]] || { echo "Expected an active staging ECS service" >&2; exit 1; }
-alb_arn="$(aws cloudformation describe-stacks --stack-name amaris-staging-alb --query 'Stacks[0].Outputs[?OutputKey==\`LoadBalancerArn\`].OutputValue | [0]' --output text)"
+alb_arn="$(aws cloudformation describe-stacks --stack-name amaris-staging-alb --query 'Stacks[0].Outputs[?OutputKey=='LoadBalancerArn'].OutputValue | [0]' --output text)"
 [[ "$alb_arn" == arn:aws:elasticloadbalancing:eu-north-1:110156539003:loadbalancer/app/* ]] || { echo "Could not resolve the expected staging ALB" >&2; exit 1; }
 aws cloudformation validate-template --template-body "file://$script_dir/cloudwatch-sns.yml" >/dev/null
 aws cloudformation deploy \
