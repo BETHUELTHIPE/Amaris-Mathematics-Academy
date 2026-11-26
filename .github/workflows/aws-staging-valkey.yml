@@ -1,0 +1,73 @@
+name: Verify the private Amaris staging Valkey broker and cache
+
+on:
+  push:
+    branches: [ops/aws-staging-celery-20261126]
+    paths: [.github/workflows/aws-staging-valkey.yml, deploy/aws/celery/verify-valkey.sh]
+
+permissions: {}
+
+jobs:
+  verify:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_PAGER: ''
+      AWS_REGION: eu-north-1
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate with the staging deployment role
+        if: env.STAGING_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with existing staging credentials
+        if: env.STAGING_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify private task networking and test Valkey directly
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          cluster=amaris-ecs-staging
+          task="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-alb --desired-status RUNNING --query taskArns --output json | jq -er 'if length==1 then .[0] else error("Expected one staging task") end')"
+          detail="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0]' --output json)"
+          jq -e '.lastStatus=="RUNNING" and .healthStatus=="HEALTHY"' <<< "$detail" >/dev/null
+          eni="$(jq -er '.attachments[]|select(.type=="ElasticNetworkInterface" and .status=="ATTACHED")|.details[]|select(.name=="networkInterfaceId").value' <<< "$detail")"
+          network="$(aws ec2 describe-network-interfaces --network-interface-ids "$eni" --query 'NetworkInterfaces[0]' --output json)"
+          private="$(jq -er 'select(.Association.PublicIp==null) | .PrivateIpAddress' <<< "$network")"
+          mapfile -t groups < <(jq -r '.Groups[].GroupId' <<< "$network")
+          [[ "${#groups[@]}" -gt 0 ]]
+          aws ec2 describe-security-groups --group-ids "${groups[@]}" --query SecurityGroups --output json | jq -e '
+            all(.[].IpPermissions[]; .IpProtocol != "-1" and
+              ((.IpProtocol != "tcp" and .IpProtocol != "6") or ((.FromPort // 0)>6379 or (.ToPort // 65535)<6379)))' >/dev/null
+          revision="$(jq -er .taskDefinitionArn <<< "$detail")"
+          aws ecs describe-task-definition --task-definition "$revision" --query taskDefinition --output json | jq -e '
+            .networkMode=="awsvpc" and all(.containerDefinitions[].portMappings[]?;
+              ((.containerPortRange // "") == "") and .containerPort!=6379 and .hostPort!=6379)' >/dev/null
+          echo 'The staging task ENI has no public IP, port mapping or security-group ingress for Valkey.'
+          host="$(jq -er .containerInstanceArn <<< "$detail")"
+          id="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host" --query 'containerInstances[0].ec2InstanceId' --output text)"
+          bash deploy/aws/ecs/run-on-host.sh "$id" deploy/aws/celery/verify-valkey.sh "$private"
+      - name: Check the public website after the tests
+        run: curl -fSs --max-time 12 https://16.171.164.5/health/dependencies/ | jq -e '.dependencies.postgresql and .dependencies.redis'
