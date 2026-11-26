@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: One additional private EC2 container instance for Amaris Stockholm staging.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet::Id
+  InstanceProfileName:
+    Type: String
+    AllowedPattern: '[A-Za-z0-9+=,.@_-]{1,128}'
+  ImageId:
+    Type: String
+    AllowedPattern: 'ami-[0-9a-f]+'
+  RootDevice:
+    Type: String
+    AllowedPattern: '/dev/[A-Za-z0-9]+'
+
+Resources:
+  HostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Private Amaris staging ECS host HTTPS egress.
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  SecondHost:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: t4g.small
+      IamInstanceProfile: !Ref InstanceProfileName
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: false
+          DeleteOnTermination: true
+          GroupSet: [!Ref HostSecurityGroup]
+          SubnetId: !Ref PrivateSubnet
+      CreditSpecification:
+        CPUCredits: standard
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      BlockDeviceMappings:
+        - DeviceName: !Ref RootDevice
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: true
+            VolumeSize: 30
+            VolumeType: gp3
+      Tags:
+        - Key: Name
+          Value: amaris-ecs-staging-second-host
+        - Key: Environment
+          Value: staging
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          cat > /etc/ecs/ecs.config <<'ECS_CONFIG'
+          ECS_CLUSTER=amaris-ecs-staging
+          ECS_ENABLE_TASK_ENI=true
+          ECS_AWSVPC_BLOCK_IMDS=true
+          ECS_CONFIG
+
+Outputs:
+  InstanceId:
+    Value: !Ref SecondHost
