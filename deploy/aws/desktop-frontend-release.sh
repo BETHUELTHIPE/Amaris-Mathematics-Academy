@@ -59,13 +59,29 @@ public_health() {
 stable_service() {
   jq -e --arg rev "$1" '
     .status == "ACTIVE" and .taskDefinition == $rev and .pendingCount == 0 and
-    .runningCount == .desiredCount and (.deployments | length) == 1 and
-    .deployments[0].rolloutState == "COMPLETED"'
+    .runningCount == .desiredCount and
+    any(.deployments[]; .status == "PRIMARY" and .taskDefinition == $rev and .rolloutState == "COMPLETED") and
+    all(.deployments[]; .status == "PRIMARY" or (.runningCount == 0 and .pendingCount == 0))'
+}
+
+recovering_service() {
+  jq -e --arg rev "$1" '
+    .status == "ACTIVE" and .taskDefinition == $rev and .desiredCount == 2 and
+    .runningCount >= 1 and .deploymentConfiguration.minimumHealthyPercent == 50 and
+    .deploymentConfiguration.deploymentCircuitBreaker.rollback == true and
+    all(.deployments[]; .taskDefinition == $rev) and
+    any(.deployments[]; .rolloutState == "COMPLETED")'
+}
+
+healthy_recovery_target() {
+  local target_status
+  target_status="$(aws elbv2 describe-target-health --target-group-arn "$target" --output json)" || return 1
+  jq -e 'any(.TargetHealthDescriptions[]; .TargetHealth.State == "healthy")' <<< "$target_status" >/dev/null
 }
 
 wait_until_healthy() {
-  local revision="$1" digest="${2:-}" current
-  for attempt in {1..75}; do
+  local revision="$1" digest="${2:-}" attempts="${3:-130}" current
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
     current="$(service_state)" || return 1
     if stable_service "$revision" <<< "$current" >/dev/null && healthy_tasks "$revision" "$desired" "$digest"; then
       return 0
@@ -80,6 +96,7 @@ wait_until_healthy() {
     fi
     sleep 8
   done
+  echo "ECS monitoring timed out for ${revision##*/}." >&2
   return 1
 }
 
@@ -95,10 +112,17 @@ jq -e '.deploymentController.type == "ECS" and
        (.deploymentConfiguration.minimumHealthyPercent <= 50 or .deploymentConfiguration.maximumPercent >= 150)' \
     <<< "$state" >/dev/null
 ready=false
+recovery=false
 for attempt in {1..24}; do
   state="$(service_state)"
   if stable_service "$previous" <<< "$state" >/dev/null && healthy_tasks "$previous" "$desired" && public_health; then
     ready=true
+    break
+  fi
+  if recovering_service "$previous" <<< "$state" >/dev/null && healthy_recovery_target && public_health; then
+    ready=true
+    recovery=true
+    echo 'Staging recovery preflight passed with an available ALB target and the previous completed revision.'
     break
   fi
   jq -c '{desiredCount, runningCount, pendingCount, deployments: [.deployments[] | {status, rolloutState, runningCount}]}' <<< "$state"
@@ -106,7 +130,7 @@ for attempt in {1..24}; do
   sleep 8
 done
 if ! "$ready"; then
-  echo 'The existing staging service must have two healthy ECS replicas and passing public health checks.' >&2
+  echo 'Staging did not provide a protected rollback revision and a healthy public baseline.' >&2
   exit 1
 fi
 backend_sha="$(curl -fsS --max-time 15 "$origin/health/version/" | jq -er .git_sha)"
@@ -158,7 +182,18 @@ else
     --query 'taskDefinition.taskDefinitionArn' --output text)"
   [[ "$next" == "${previous%:*}:"* && "$next" != "$previous" ]]
   echo 'The staging web revision closes Django database connections at the end of each request.'
-  stable_service "$previous" <<< "$(service_state)" >/dev/null
+  state="$(service_state)"
+  if "$recovery"; then
+    if ! recovering_service "$previous" <<< "$state" >/dev/null || ! healthy_recovery_target || ! public_health; then
+      echo 'The staging recovery baseline changed before the update.' >&2
+      exit 1
+    fi
+  else
+    if ! stable_service "$previous" <<< "$state" >/dev/null || ! healthy_tasks "$previous" "$desired"; then
+      echo 'The staging service baseline changed before the update.' >&2
+      exit 1
+    fi
+  fi
 fi
 
 rollback_on_failure() {
@@ -173,7 +208,7 @@ rollback_on_failure() {
     aws ecs update-service --cluster "$cluster" --service "$service" --task-definition "$previous" \
       --query 'service.taskDefinition' --output text || echo 'Could not request the previous revision.' >&2
   fi
-  if [[ "$active" == "$next" || "$active" == "$previous" ]] && wait_until_healthy "$previous" && public_health; then
+  if [[ "$active" == "$next" || "$active" == "$previous" ]] && wait_until_healthy "$previous" "" 90 && public_health; then
     printf 'Rollback verified: `%s` has two healthy ECS replicas.\n' "${previous##*/}" >> "$GITHUB_STEP_SUMMARY"
   else
     echo 'Automatic recovery could not verify the previous healthy revision.' >&2
@@ -188,6 +223,7 @@ if [[ "$next" != "$previous" ]]; then
     --query 'service.taskDefinition' --output text
 fi
 wait_until_healthy "$next" "$candidate_digest"
+printf 'ECS completed revision %s and both healthy tasks use the verified frontend digest.\n' "${next##*/}"
 public_health
 curl -fsS --max-time 15 "$origin/health/version/" | jq -e --arg sha "$backend_sha" '.git_sha == $sha' >/dev/null
 curl -fsS --max-time 15 "$origin/login" -o /dev/null
