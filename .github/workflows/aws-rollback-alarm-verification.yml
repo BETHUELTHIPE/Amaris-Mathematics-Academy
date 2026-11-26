@@ -39,11 +39,12 @@ jobs:
           bash -n deploy/aws/iam/bootstrap-github-oidc-ecr.sh
           bash -n deploy/aws/blue-green/render-deployment-configuration.sh
           bash -n deploy/aws/blue-green/prepare-no-traffic-prerequisites.sh
+          bash -n deploy/aws/blue-green/provision-shared-valkey.sh
           python -m unittest discover -s deploy/aws/blue-green -p 'test_render_stateless_task.py'
           python -m py_compile deploy/aws/blue-green/render-stateless-task.py
           jq -e '.strategy=="BLUE_GREEN" and .alarms.enable and .alarms.rollback and .minimumHealthyPercent==100 and .maximumPercent==200 and .bakeTimeInMinutes>=15 and all(.lifecycleHooks[]; .timeoutConfiguration.action=="ROLLBACK") and (.alarms.alarmNames|length)==3' deploy/aws/blue-green/deployment-configuration.json
           python3 -m pip install cfn-lint==1.61.0
-          cfn-lint -r eu-north-1 -t deploy/aws/blue-green/prerequisites.yml deploy/aws/blue-green/shared-valkey.yml deploy/aws/iam/github-oidc-ecr-publisher.yml deploy/aws/blue-green/test-routing.yml
+          cfn-lint -r eu-north-1 -t deploy/aws/blue-green/prerequisites.yml deploy/aws/blue-green/shared-valkey.yml deploy/aws/iam/github-oidc-ecr-publisher.yml deploy/aws/blue-green/test-routing.yml deploy/aws/blue-green/shared-valkey-access.yml
       - name: Authenticate with staging OIDC if configured
         if: env.AMARIS_AWS_ROLE != ''
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
