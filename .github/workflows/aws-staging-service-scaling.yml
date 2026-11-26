@@ -53,5 +53,5 @@ jobs:
           aws-region: eu-north-1
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
-      - name: Register and verify the ECS service scaling policy
+      - name: Check ECS readiness and apply the 2–4 task range when ready
         run: bash deploy/aws/ecs/configure-staging-service-scaling.sh
