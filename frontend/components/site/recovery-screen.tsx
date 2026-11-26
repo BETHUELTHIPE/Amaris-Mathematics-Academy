@@ -38,7 +38,7 @@ export function RecoveryScreen({ definition, reference }: { definition: Recovery
         </div>
       </header>
 
-      <section className="relative z-10 mx-auto grid w-full max-w-7xl flex-1 items-center gap-12 px-5 py-14 lg:grid-cols-[1fr_.72fr] lg:px-8 lg:py-20">
+      <section className="relative z-10 mx-auto grid w-full max-w-7xl flex-1 content-start items-start gap-12 px-5 py-14 lg:grid-cols-[1fr_.72fr] lg:content-normal lg:items-center lg:px-8 lg:py-20">
         <div className="max-w-3xl">
           <div className="flex items-center gap-4">
             <span className="grid size-14 place-items-center rounded-2xl border border-[#ffcc66]/30 bg-[#ffcc66]/10 text-[#ffcc66]"><Icon className="size-7" /></span>
