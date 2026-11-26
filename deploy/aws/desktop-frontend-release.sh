@@ -140,7 +140,8 @@ else
     del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities,
         .registeredAt, .registeredBy, .deregisteredAt) |
     (.containerDefinitions[] | select(.name == "frontend").image) = $image |
-    .tags = [$tags[]? | select(.key | startswith("aws:") | not)]
+    .tags = [$tags[]? | select(.key | startswith("aws:") | not)] |
+    if (.tags | length) == 0 then del(.tags) else . end
   ' "$work/previous.json" > "$work/candidate.json"
   next="$(aws ecs register-task-definition --cli-input-json "file://$work/candidate.json" \
     --query 'taskDefinition.taskDefinitionArn' --output text)"
