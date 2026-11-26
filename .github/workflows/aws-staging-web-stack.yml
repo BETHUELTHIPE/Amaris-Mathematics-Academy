@@ -1,0 +1,116 @@
+name: Verify the Amaris staging web stack
+
+on:
+  push:
+    branches: [ops/aws-staging-celery-20261126]
+    paths: [.github/workflows/aws-staging-web-stack.yml, deploy/aws/diagnostics/verify-web-stack.sh]
+
+permissions: {}
+
+jobs:
+  verify:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_PAGER: ''
+      AWS_REGION: eu-north-1
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate with the staging deployment role
+        if: env.STAGING_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with existing staging credentials
+        if: env.STAGING_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Check public frontend, API, and admin over verified HTTPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://16.171.164.5
+          http() { curl -fSs --max-time 15 --retry 1 "$@"; }
+          for path in / /login /admin/login/; do
+            case "$path" in
+              /) marker='Amaris Mathematics Academy' ;;
+              /login) marker='Amaris' ;;
+              /admin/login/) marker='csrfmiddlewaretoken' ;;
+            esac
+            http -D "$RUNNER_TEMP/amaris-headers" "$base$path" -o "$RUNNER_TEMP/amaris-page"
+            grep -Eiq '^content-type: text/html' "$RUNNER_TEMP/amaris-headers"
+            grep -Eiq '^x-amaris-network: public-alb' "$RUNNER_TEMP/amaris-headers"
+            grep -Fqi "$marker" "$RUNNER_TEMP/amaris-page"
+            printf 'Public %s returned the correct HTML over HTTPS through Nginx and the ALB.\n' "$path"
+          done
+          css="$(python - "$RUNNER_TEMP/amaris-page" <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          import sys
+
+          class AdminAssets(HTMLParser):
+              styles = []
+
+              def handle_starttag(self, tag, attrs):
+                  values = dict(attrs)
+                  href = values.get("href", "")
+                  if tag == "link" and values.get("rel") == "stylesheet" and href.startswith("/static/admin/"):
+                      self.styles.append(href)
+
+          parser = AdminAssets()
+          parser.feed(Path(sys.argv[1]).read_text())
+          print(parser.styles[0])
+          PY
+          )"
+          http -D "$RUNNER_TEMP/amaris-headers" "$base$css" -o /dev/null
+          grep -Eiq '^content-type: text/css' "$RUNNER_TEMP/amaris-headers"
+          echo 'Django Admin stylesheet loaded through Nginx.'
+          http "$base/api/auth-state" | jq -e '.authenticated == false and .emailVerified == false' >/dev/null
+          http "$base/api/v1/bootstrap/" | jq -e 'has("settings")' >/dev/null
+          http "$base/health/ready/" | jq -e '.status == "ready"' >/dev/null
+          http "$base/health/dependencies/" | jq -e '.dependencies.postgresql and .dependencies.redis' >/dev/null
+          echo 'The frontend auth route, Django API, PostgreSQL, and Valkey checks passed.'
+      - name: Verify live Nginx, Gunicorn, and Uvicorn on ECS
+        if: "!cancelled()"
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          inspect=deploy/aws/diagnostics/verify-web-stack.sh
+          runner=deploy/aws/ecs/run-on-host.sh
+          bash "$runner" i-02855f007d15af597 "$inspect" gateway
+
+          cluster=amaris-ecs-staging
+          tasks="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-alb \
+            --desired-status RUNNING --query taskArns --output json)"
+          jq -e 'length > 0' <<< "$tasks" >/dev/null
+          while IFS= read -r task; do
+            detail="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0]' --output json)"
+            jq -e '.lastStatus == "RUNNING" and .healthStatus == "HEALTHY" and
+              ([.containers[] | select(.name == "backend" or .name == "frontend" or .name == "cms")] |
+              length == 3 and all(.[]; .lastStatus == "RUNNING"))' <<< "$detail" >/dev/null
+            host="$(jq -er .containerInstanceArn <<< "$detail")"
+            instance="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host" \
+              --query 'containerInstances[0].ec2InstanceId' --output text)"
+            task_id="$(basename "$task")"
+            bash "$runner" "$instance" "$inspect" task "$task_id"
+          done < <(jq -r '.[]' <<< "$tasks")
