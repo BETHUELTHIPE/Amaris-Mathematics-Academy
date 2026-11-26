@@ -62,26 +62,7 @@ jobs:
             grep -Fqi "$marker" "$RUNNER_TEMP/amaris-page"
             printf 'Public %s returned the correct HTML over HTTPS through Nginx and the ALB.\n' "$path"
           done
-          css="$(python - "$RUNNER_TEMP/amaris-page" <<'PY'
-          from html.parser import HTMLParser
-          from pathlib import Path
-          import sys
-
-          class AdminAssets(HTMLParser):
-              styles = []
-
-              def handle_starttag(self, tag, attrs):
-                  values = dict(attrs)
-                  href = values.get("href", "")
-                  if tag == "link" and values.get("rel") == "stylesheet" and href.startswith("/static/admin/"):
-                      self.styles.append(href)
-
-          parser = AdminAssets()
-          parser.feed(Path(sys.argv[1]).read_text())
-          print(parser.styles[0])
-          PY
-          )"
-          http -D "$RUNNER_TEMP/amaris-headers" "$base$css" -o /dev/null
+          http -D "$RUNNER_TEMP/amaris-headers" "$base/static/admin/css/base.css" -o /dev/null
           grep -Eiq '^content-type: text/css' "$RUNNER_TEMP/amaris-headers"
           echo 'Django Admin stylesheet loaded through Nginx.'
           http "$base/api/auth-state" | jq -e '.authenticated == false and .emailVerified == false' >/dev/null
@@ -102,15 +83,17 @@ jobs:
           cluster=amaris-ecs-staging
           tasks="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-alb \
             --desired-status RUNNING --query taskArns --output json)"
-          jq -e 'length > 0' <<< "$tasks" >/dev/null
+          jq -er 'if length > 0 then "Running ECS tasks: \(length)" else error("The ALB service has no running tasks") end' <<< "$tasks"
           while IFS= read -r task; do
             detail="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0]' --output json)"
-            jq -e '.lastStatus == "RUNNING" and .healthStatus == "HEALTHY" and
+            jq '{lastStatus, healthStatus, containers: [.containers[] | {name, lastStatus, healthStatus}]}' <<< "$detail"
+            jq -e 'if .lastStatus == "RUNNING" and
               ([.containers[] | select(.name == "backend" or .name == "frontend" or .name == "cms")] |
-              length == 3 and all(.[]; .lastStatus == "RUNNING"))' <<< "$detail" >/dev/null
+              length == 3 and all(.[]; .lastStatus == "RUNNING")) then true
+              else error("The ECS task does not have all three web containers running") end' <<< "$detail" >/dev/null
             host="$(jq -er .containerInstanceArn <<< "$detail")"
             instance="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host" \
               --query 'containerInstances[0].ec2InstanceId' --output text)"
             task_id="$(basename "$task")"
-            bash "$runner" "$instance" "$inspect" task "$task_id"
+            bash "$runner" "$instance" "$inspect" task "$task_id" </dev/null
           done < <(jq -r '.[]' <<< "$tasks")

@@ -23,6 +23,7 @@ frontend="$(get_container frontend)"
 for container in "$proxy" "$backend" "$frontend"; do
   [[ "$container" =~ ^[a-f0-9]{12,64}$ ]] || { echo "Missing running ECS proxy, backend, or frontend container." >&2; exit 1; }
 done
+echo "Located the running Nginx, frontend, and backend containers."
 docker exec "$proxy" nginx -t
 config="$(docker exec "$proxy" nginx -T 2>/dev/null)"
 grep -Eq 'listen[[:space:]]+8080 default_server;' <<< "$config"
