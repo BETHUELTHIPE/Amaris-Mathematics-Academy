@@ -1,0 +1,37 @@
+{
+  "strategy": "BLUE_GREEN",
+  "minimumHealthyPercent": 100,
+  "maximumPercent": 200,
+  "bakeTimeInMinutes": 15,
+  "lifecycleHooks": [
+    {
+      "targetType": "PAUSE",
+      "lifecycleStages": [
+        "POST_TEST_TRAFFIC_SHIFT"
+      ],
+      "timeoutConfiguration": {
+        "timeoutInMinutes": 30,
+        "action": "ROLLBACK"
+      }
+    },
+    {
+      "targetType": "PAUSE",
+      "lifecycleStages": [
+        "POST_PRODUCTION_TRAFFIC_SHIFT"
+      ],
+      "timeoutConfiguration": {
+        "timeoutInMinutes": 15,
+        "action": "ROLLBACK"
+      }
+    }
+  ],
+  "alarms": {
+    "alarmNames": [
+      "amaris-staging-alb-5xx",
+      "amaris-staging-target-5xx",
+      "amaris-staging-slow-responses"
+    ],
+    "enable": true,
+    "rollback": true
+  }
+}
