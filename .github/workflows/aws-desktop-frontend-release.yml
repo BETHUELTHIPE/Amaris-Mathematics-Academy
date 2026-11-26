@@ -7,6 +7,7 @@ on:
       - .github/workflows/aws-desktop-frontend-release.yml
       - deploy/aws/desktop-frontend-release.sh
       - deploy/aws/verify-desktop-frontend.py
+      - deploy/aws/frontend.Dockerfile
   workflow_dispatch:
 
 permissions:

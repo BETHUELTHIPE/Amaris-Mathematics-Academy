@@ -13,6 +13,8 @@ FROM node:24-bookworm-slim AS runtime
 
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
 WORKDIR /app
+# The production entry point only needs Node and the built Nitro application.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 COPY --from=build --chown=node:node /app/.output ./.output
 USER node
 EXPOSE 3000
