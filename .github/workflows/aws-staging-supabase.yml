@@ -1,0 +1,118 @@
+name: Verify Supabase from Amaris AWS staging
+
+on:
+  push:
+    branches: [ops/aws-staging-celery-20261126]
+    paths: [.github/workflows/aws-staging-supabase.yml, deploy/aws/diagnostics/verify-supabase-runtime.sh]
+
+permissions: {}
+
+jobs:
+  verify:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_PAGER: ''
+      AWS_REGION: eu-north-1
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate with the staging deployment role
+        if: env.STAGING_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with existing staging credentials
+        if: env.STAGING_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify Supabase through the deployed backend
+        run: |
+          set -euo pipefail
+          cluster=amaris-ecs-staging
+          service=amaris-web-staging-stateless
+          ready_tasks() {
+            aws ecs list-tasks --cluster "$cluster" --service-name "$service" --desired-status RUNNING \
+              --query 'taskArns[]' --output json
+          }
+          tasks="$(ready_tasks)"
+          jq -e 'length > 0' <<< "$tasks" >/dev/null
+          storage_checked=0
+          checked=0
+          failures=0
+          while IFS= read -r task; do
+            detail="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0]' --output json)"
+            if ! jq -e '.lastStatus == "RUNNING" and any(.containers[]; .name=="backend" and .lastStatus=="RUNNING")' <<< "$detail" >/dev/null; then
+              echo 'An ECS replica is still starting.'
+              continue
+            fi
+            container="$(jq -er '.containerInstanceArn' <<< "$detail")"
+            host="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$container" \
+              --query 'containerInstances[0].ec2InstanceId' --output text)"
+            task_id="$(basename "$task")"
+            echo "Checking Supabase from ECS task $task_id."
+            runner=deploy/aws/ecs/run-on-host.sh
+            check=deploy/aws/diagnostics/verify-supabase-runtime.sh
+            if bash "$runner" "$host" "$check" "$task_id" database </dev/null; then
+              checked=$((checked+1))
+            else
+              failures=$((failures+1))
+            fi
+            if [[ "$storage_checked" == 0 ]] && bash "$runner" "$host" "$check" "$task_id" storage </dev/null; then
+              storage_checked=1
+            fi
+          done < <(jq -r '.[]' <<< "$tasks")
+          printf 'ECS tasks passing database and Auth checks: %s. Failures: %s.\n' "$checked" "$failures"
+          [[ "$checked" -gt 0 && "$failures" == 0 && "$storage_checked" == 1 ]]
+      - name: Verify staging student sign-in and the authenticated AWS API
+        if: '!cancelled()'
+        env:
+          STAGING_TEST_STUDENT_EMAIL: ${{ secrets.STAGING_TEST_STUDENT_EMAIL }}
+          STAGING_TEST_STUDENT_PASSWORD: ${{ secrets.STAGING_TEST_STUDENT_PASSWORD }}
+          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          import runpy
+          from urllib.error import HTTPError
+
+          probe = runpy.run_path("deploy/aws/verify-staging-auth.py")
+          names = ("STAGING_TEST_STUDENT_EMAIL", "STAGING_TEST_STUDENT_PASSWORD", "STAGING_SUPABASE_PUBLISHABLE_KEY")
+          args = [os.getenv(name, "") for name in names]
+          if not all(args):
+              missing = ", ".join(name for name, value in zip(names, args) if not value)
+              raise SystemExit(f"Protected staging test configuration is missing: {missing}.")
+          base = "https://16.171.164.5"
+          try:
+              probe["json_request"](base + "/api/v1/student/courses/")
+          except HTTPError as error:
+              if error.code not in {401, 403}:
+                  raise SystemExit(f"Signed-out API check returned HTTP {error.code}.") from None
+          else:
+              raise SystemExit("The student API accepted an anonymous request.")
+          print("The AWS student API rejected anonymous traffic.")
+          try:
+              probe["verify_student"](base, args[0].strip().lower(), args[1], args[2])
+          except HTTPError as error:
+              raise SystemExit(f"Staging test student sign-in or student API returned HTTP {error.code}.") from None
+          except Exception as error:
+              raise SystemExit(f"Student authentication verification failed: {type(error).__name__}.") from None
+          PY
