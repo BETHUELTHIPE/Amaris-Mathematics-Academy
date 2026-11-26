@@ -197,6 +197,7 @@ export default async function BookOnlineLiveClassPage({
                     </dl>
                     <Link
                       href={checkoutUrl}
+                      prefetch={false}
                       className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0b2a5b] px-6 py-3 font-bold text-white"
                     >
                       Choose this slot <ArrowRight className="size-4" />

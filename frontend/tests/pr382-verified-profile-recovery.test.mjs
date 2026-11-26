@@ -11,11 +11,17 @@ export async function requireVerifiedStudent() {
   if (state.guest) throw Object.assign(new Error("NEXT_REDIRECT"), {digest:"NEXT_REDIRECT;replace;/login?next=%2Faccount%2Fcomplete-profile;307;"});
   return { id: "verified-account", email: "verified@example.test" };
 }
-export async function createStudentLiveClassCheckout(slotId, topic, attempt) {
-  state.checkout = {slotId, topic, attempt};
+export async function supportsPaystackLiveClassCheckout() {
+  return state.paystackEnabled === true;
+}
+export async function createStudentLiveClassCheckout(slotId, topic, attempt, provider) {
+  state.checkout = {slotId, topic, attempt, provider};
   return {
     booking_reference: "LCB-SYNTHETIC",
-    gateway_url: "https://sandbox.payfast.co.za/eng/process",
+    payment_provider: state.responseProvider || provider,
+    gateway_url: state.checkoutUrl || (provider === "paystack"
+      ? "https://checkout.paystack.com/synthetic-checkout"
+      : "https://sandbox.payfast.co.za/eng/process"),
     booking: {
       tutor: "Tutor Example", programme: "CAPS", subject: "Mathematics", level: "Grade 12", topic,
       starts_at: "2026-12-01T13:00:00Z", duration_minutes: 60, amount: "250.00",
@@ -122,7 +128,7 @@ test("checkout still reads registration identity on the server, never form-provi
   assert.doesNotMatch(update,/form\.get\("userId"\)|form\.get\("email"\)|form\.get\("role"\)/);
 });
 
-function checkoutPage() {
+function checkoutPage(options = {}) {
   return LiveClassCheckoutPage({
     searchParams: Promise.resolve({
       slot: "00000000-0000-4000-8000-000000000301",
@@ -130,6 +136,7 @@ function checkoutPage() {
       attempt: "00000000-0000-4000-8000-000000000302",
       firstName: "Submitted",
       lastName: "Identity",
+      ...options,
     }),
   });
 }
@@ -162,5 +169,33 @@ test("verified checkout uses the registered name and sends only booking choices 
     slotId: "00000000-0000-4000-8000-000000000301",
     topic: "Algebra",
     attempt: "00000000-0000-4000-8000-000000000302",
+    provider: "payfast",
   });
+});
+
+test("provider choice is available before reserving a slot when backend enables Paystack", async () => {
+  state.metadata = {first_name: "Amara", last_name: "Ndlovu"};
+  state.paystackEnabled = true;
+  const html = renderToStaticMarkup(await checkoutPage());
+  assert.match(html, /Choose how to pay/);
+  assert.match(html, /PayFast/);
+  assert.match(html, /Paystack/);
+  assert.equal(state.checkout, undefined);
+});
+
+test("Paystack checkout still verifies identity and only renders a trusted hosted URL", async () => {
+  await assert.rejects(checkoutPage({provider: "paystack"}), /NEXT_REDIRECT/);
+  assert.equal(state.checkout, undefined);
+
+  state.metadata = {first_name: "Amara", last_name: "Ndlovu"};
+  const html = renderToStaticMarkup(await checkoutPage({provider: "paystack"}));
+  assert.match(html, /Registered student.*Amara Ndlovu/);
+  assert.match(html, /href="https:\/\/checkout\.paystack\.com\/synthetic-checkout"/);
+  assert.equal(state.checkout.provider, "paystack");
+
+  state.checkoutUrl = "https://checkout.paystack.com.example.test/synthetic-checkout";
+  await assert.rejects(checkoutPage({provider: "paystack"}), /NEXT_REDIRECT/);
+  state.checkoutUrl = undefined;
+  state.responseProvider = "payfast";
+  await assert.rejects(checkoutPage({provider: "paystack"}), /NEXT_REDIRECT/);
 });
