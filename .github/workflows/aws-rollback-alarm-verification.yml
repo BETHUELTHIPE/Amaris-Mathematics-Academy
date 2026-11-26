@@ -36,6 +36,7 @@ jobs:
       - name: Validate rollback configuration and stateless task renderer
         run: |
           bash -n deploy/aws/blue-green/verify-rollback-alarms.sh
+          bash -n deploy/aws/iam/bootstrap-github-oidc-ecr.sh
           python -m unittest discover -s deploy/aws/blue-green -p 'test_render_stateless_task.py'
           python -m py_compile deploy/aws/blue-green/render-stateless-task.py
           jq -e '.strategy=="BLUE_GREEN" and .alarms.enable and .alarms.rollback and .minimumHealthyPercent==100 and .maximumPercent==200 and .bakeTimeInMinutes>=15 and all(.lifecycleHooks[]; .timeoutConfiguration.action=="ROLLBACK") and (.alarms.alarmNames|length)==3' deploy/aws/blue-green/deployment-configuration.json
