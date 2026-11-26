@@ -18,29 +18,42 @@ service_state() {
 }
 
 healthy_tasks() {
-  local revision="$1" desired="$2" digest="${3:-}" ids count
-  mapfile -t ids < <(aws ecs list-tasks --cluster "$cluster" --service-name "$service" \
-    --desired-status RUNNING --query 'taskArns[]' --output text | tr '\t' '\n')
-  count="${#ids[@]}"
-  [[ "$count" == "$desired" ]] || return 1
-  aws ecs describe-tasks --cluster "$cluster" --tasks "${ids[@]}" --query tasks --output json |
-    jq -e --arg rev "$revision" --argjson desired "$desired" --arg digest "$digest" \
+  local revision="$1" desired="$2" digest="${3:-}" ids listed details targets
+  listed="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" \
+    --desired-status RUNNING --query taskArns --output json)" || return 1
+  mapfile -t ids < <(jq -r '.[]' <<< "$listed")
+  if [[ "${#ids[@]}" != "$desired" ]]; then
+    echo "ECS currently reports ${#ids[@]} of $desired expected tasks."
+    return 1
+  fi
+  details="$(aws ecs describe-tasks --cluster "$cluster" --tasks "${ids[@]}" --query tasks --output json)" || return 1
+  if ! jq -e --arg rev "$revision" --argjson desired "$desired" --arg digest "$digest" \
       'length == $desired and all(.[]; .taskDefinitionArn == $rev and
        .lastStatus == "RUNNING" and .healthStatus == "HEALTHY" and
-       ($digest == "" or any(.containers[]; .name == "frontend" and .imageDigest == $digest)))' >/dev/null || return 1
-  aws elbv2 describe-target-health --target-group-arn "$target" --output json |
-    jq -e --argjson desired "$desired" \
-      '[.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy")] | length == $desired' >/dev/null
+       ($digest == "" or any(.containers[]; .name == "frontend" and .imageDigest == $digest)))' <<< "$details" >/dev/null; then
+    jq -c '[.[] | {lastStatus, healthStatus, revision: (.taskDefinitionArn | split("/") | last)}]' <<< "$details"
+    return 1
+  fi
+  targets="$(aws elbv2 describe-target-health --target-group-arn "$target" --output json)" || return 1
+  if ! jq -e --argjson desired "$desired" \
+      '[.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy")] | length == $desired' <<< "$targets" >/dev/null; then
+    jq -c '[.TargetHealthDescriptions[].TargetHealth | {State, Reason}]' <<< "$targets"
+    return 1
+  fi
 }
 
 public_health() {
-  curl -fsS --retry 1 --max-time 15 "$origin/health/ready" | jq -e '.status == "ok"' >/dev/null &&
+  curl -fsS --retry 1 --max-time 15 "$origin/health/ready/" | jq -e '.status == "ready"' >/dev/null ||
+    { echo 'Public Django readiness check failed.' >&2; return 1; }
   curl -fsS --retry 1 --max-time 15 "$origin/health/dependencies/" |
-    jq -e '.dependencies.postgresql == true and .dependencies.redis == true' >/dev/null &&
+    jq -e '.dependencies.postgresql == true and .dependencies.redis == true' >/dev/null ||
+    { echo 'Public PostgreSQL or Valkey health check failed.' >&2; return 1; }
   curl -fsS --retry 1 --max-time 15 "$origin/api/auth-state" |
-    jq -e '.authenticated == false and .emailVerified == false' >/dev/null &&
+    jq -e '.authenticated == false and .emailVerified == false' >/dev/null ||
+    { echo 'Public anonymous frontend auth check failed.' >&2; return 1; }
   curl -fsS --retry 1 --max-time 15 "$origin/" -o "$work/home.html" &&
-  grep -Fq 'Amaris Mathematics Academy' "$work/home.html"
+    grep -Fq 'Amaris Mathematics Academy' "$work/home.html" ||
+    { echo 'Public homepage did not render.' >&2; return 1; }
 }
 
 stable_service() {
@@ -81,7 +94,18 @@ jq -e '.deploymentController.type == "ECS" and
        .deploymentConfiguration.minimumHealthyPercent >= 50 and
        (.deploymentConfiguration.minimumHealthyPercent <= 50 or .deploymentConfiguration.maximumPercent >= 150)' \
     <<< "$state" >/dev/null
-if ! stable_service "$previous" <<< "$state" >/dev/null || ! healthy_tasks "$previous" "$desired" || ! public_health; then
+ready=false
+for attempt in {1..12}; do
+  state="$(service_state)"
+  if stable_service "$previous" <<< "$state" >/dev/null && healthy_tasks "$previous" "$desired" && public_health; then
+    ready=true
+    break
+  fi
+  jq -c '{desiredCount, runningCount, pendingCount, deployments: [.deployments[] | {status, rolloutState, runningCount}]}' <<< "$state"
+  printf 'Preflight attempt %s of 12 is waiting for staging health.\n' "$attempt"
+  sleep 8
+done
+if ! "$ready"; then
   echo 'The existing staging service must have two healthy ECS replicas and passing public health checks.' >&2
   exit 1
 fi
