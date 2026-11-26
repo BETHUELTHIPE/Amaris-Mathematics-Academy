@@ -1,0 +1,197 @@
+name: Deploy the Amaris desktop frontend to AWS staging
+
+on:
+  push:
+    branches: [ops/aws-desktop-frontend-release-20261126]
+    paths:
+      - .github/workflows/aws-desktop-frontend-release.yml
+      - deploy/aws/desktop-frontend-release.sh
+      - deploy/aws/verify-desktop-frontend.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+
+env:
+  FRONTEND_SHA: 3a030218308b24085a607234bf2f301a6c25f5b7
+  ECR_REPO: 110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend
+  AWS_REGION: eu-north-1
+  AWS_PAGER: ''
+
+jobs:
+  build:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: BETHUELTHIPE/Amaris-Mathematics-Academy
+          ref: ${{ env.FRONTEND_SHA }}
+          path: candidate
+          persist-credentials: false
+      - name: Build the tested frontend revision
+        run: |
+          set -euo pipefail
+          test "$(git -C candidate rev-parse HEAD)" = "$FRONTEND_SHA"
+          docker build --file deploy/aws/frontend.Dockerfile --tag amaris-frontend:desktop-candidate \
+            --label "org.opencontainers.image.revision=$FRONTEND_SHA" candidate/frontend
+          test "$(docker image inspect --format '{{.Architecture}}' amaris-frontend:desktop-candidate)" = arm64
+      - name: Verify the ARM64 runtime renders the site
+        run: |
+          set -euo pipefail
+          docker run --rm --detach --name desktop-candidate -p 127.0.0.1:3000:3000 amaris-frontend:desktop-candidate
+          trap 'docker stop desktop-candidate >/dev/null 2>&1 || true' EXIT
+          for attempt in {1..24}; do
+            if curl -fsS --max-time 5 http://127.0.0.1:3000/ -o "$RUNNER_TEMP/desktop-preview.html"; then
+              grep -Fq 'Amaris Mathematics Academy' "$RUNNER_TEMP/desktop-preview.html"
+              grep -Fq 'event.relatedTarget' "$RUNNER_TEMP/desktop-preview.html"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs desktop-candidate
+          exit 1
+      - name: Scan candidate container for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: amaris-frontend:desktop-candidate
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          scanners: vuln
+      - name: Archive the tested and scanned image
+        run: |
+          set -euo pipefail
+          mkdir image
+          cd image
+          docker save amaris-frontend:desktop-candidate | gzip -1 > frontend.tar.gz
+          sha256sum frontend.tar.gz > frontend.sha256
+          docker image inspect --format '{{.Id}}' amaris-frontend:desktop-candidate > image-id.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amaris-desktop-frontend-image
+          path: image/
+          retention-days: 3
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    outputs:
+      frontend-digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: amaris-desktop-frontend-image
+          path: image
+      - name: Verify the archived image
+        working-directory: image
+        run: |
+          set -euo pipefail
+          sha256sum -c frontend.sha256
+          docker load --input frontend.tar.gz
+          test "$(docker image inspect --format '{{.Id}}' amaris-frontend:desktop-candidate)" = "$(cat image-id.txt)"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' amaris-frontend:desktop-candidate)" = "$FRONTEND_SHA"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+          inline-session-policy: >-
+            {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ecr:GetAuthorizationToken","Resource":"*"},{"Effect":"Allow","Action":["ecr:BatchCheckLayerAvailability","ecr:InitiateLayerUpload","ecr:UploadLayerPart","ecr:CompleteLayerUpload","ecr:PutImage","ecr:DescribeImages"],"Resource":"arn:aws:ecr:eu-north-1:110156539003:repository/amaris-staging-frontend"}]}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Publish the verified image to staging ECR
+        id: publish
+        run: |
+          set -euo pipefail
+          registry="${ECR_REPO%%/*}"
+          tag="frontend-desktop-$FRONTEND_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          trap 'docker logout "$registry" >/dev/null' EXIT
+          docker tag amaris-frontend:desktop-candidate "$ECR_REPO:$tag"
+          docker push "$ECR_REPO:$tag"
+          digest="$(aws ecr describe-images --repository-name amaris-staging-frontend \
+            --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          printf 'Published frontend revision `%s` as `%s`.\n' "$FRONTEND_SHA" "$digest" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: BETHUELTHIPE/Amaris-Mathematics-Academy
+          ref: ${{ env.FRONTEND_SHA }}
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - run: python -m pip install -r candidate/frontend/e2e/requirements.txt
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Replace the staging frontend image and verify the release
+        env:
+          AMARIS_FRONTEND_DIGEST: ${{ needs.publish.outputs.frontend-digest }}
+          AMARIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          AMARIS_E2E_ROOT: ${{ github.workspace }}/candidate/frontend/e2e
+        run: |
+          set -euo pipefail
+          export AMARIS_FRONTEND_IMAGE="$ECR_REPO@${AMARIS_FRONTEND_DIGEST:?Missing published digest}"
+          bash deploy/aws/desktop-frontend-release.sh deploy/aws/verify-desktop-frontend.py
