@@ -51,8 +51,8 @@ jobs:
           target="$(jq -er '.loadBalancers[0].targetGroupArn' <<< "$state")"
           aws elbv2 describe-target-health --target-group-arn "$target" --output json |
             jq '[.TargetHealthDescriptions[] | .TargetHealth | {State,Reason}]'
-          read -r -a recent < <(aws ecs list-service-deployments --cluster "$cluster" --service "$service" \
-            --max-items 2 --query 'serviceDeployments[].serviceDeploymentArn' --output text)
+          mapfile -t recent < <(aws ecs list-service-deployments --cluster "$cluster" --service "$service" \
+            --max-results 4 --query 'serviceDeployments[].serviceDeploymentArn' --output json | jq -r '.[]')
           if (( ${#recent[@]} )); then
             aws ecs describe-service-deployments --service-deployment-arns "${recent[@]}" --output json |
               jq '[.serviceDeployments[] | {status, statusReason, lifecycleStage, startedAt,
