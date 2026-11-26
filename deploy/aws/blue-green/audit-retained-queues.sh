@@ -8,6 +8,8 @@ root=deploy/aws/blue-green
 aws ecs describe-services --cluster "$cluster" --services amaris-web-staging-alb amaris-staging-singleton-jobs --output json | jq -e '(.services|length)==2 and all(.services[];.desiredCount==0 and .runningCount==0 and .pendingCount==0)' >/dev/null
 legacy="$(aws ecs describe-task-definition --task-definition amaris-ecs-staging-alb-web:3 --query taskDefinition --output json)"
 image="$(jq -er '.containerDefinitions[]|select(.name=="valkey")|.image' <<< "$legacy")"
+[[ "$image" =~ ^(docker\.io/)?valkey/valkey@sha256:[a-f0-9]{64}$ ]]
+digest="${image##*:}"
 path="$(jq -er '.volumes[]|select(.name=="valkey-data")|.host.sourcePath' <<< "$legacy")"
 [[ "$path" == /opt/amaris-staging/alb/valkey ]]
 first="$(aws cloudformation describe-stack-resource --stack-name amaris-aws-staging --logical-resource-id StagingHost --query StackResourceDetail.PhysicalResourceId --output text)"
@@ -15,9 +17,12 @@ second="$(aws cloudformation describe-stack-resource --stack-name amaris-staging
 [[ "$first" =~ ^i-[a-f0-9]+$ && "$second" =~ ^i-[a-f0-9]+$ && "$first" != "$second" ]]
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-bash deploy/aws/ecs/run-on-host.sh "$first" "$root/inventory-retained-broker.sh" source "$image" "$path" > "$tmp/source1.json"
-bash deploy/aws/ecs/run-on-host.sh "$second" "$root/inventory-retained-broker.sh" source "$image" "$path" > "$tmp/source2.json"
-bash deploy/aws/ecs/run-on-host.sh "$second" "$root/inventory-retained-broker.sh" shared "$image" "$path" > "$tmp/shared.json"
+echo "Inspecting original retained broker snapshot."
+bash deploy/aws/ecs/run-on-host.sh "$first" "$root/inventory-retained-broker.sh" source "$digest" "$path" > "$tmp/source1.json"
+echo "Inspecting second host retained broker snapshot."
+bash deploy/aws/ecs/run-on-host.sh "$second" "$root/inventory-retained-broker.sh" source "$digest" "$path" > "$tmp/source2.json"
+echo "Inspecting shared broker."
+bash deploy/aws/ecs/run-on-host.sh "$second" "$root/inventory-retained-broker.sh" shared "$digest" "$path" > "$tmp/shared.json"
 python3 - "$tmp" <<'PY'
 import collections,json,pathlib,sys
 p=pathlib.Path(sys.argv[1])

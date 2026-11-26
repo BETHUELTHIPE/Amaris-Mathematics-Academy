@@ -41,5 +41,5 @@ jobs:
           aws-region: eu-north-1
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
-      - name: Compare retained snapshots and shared queue identities
+      - name: Compare retained snapshots with validated immutable image digest
         run: bash deploy/aws/blue-green/audit-retained-queues.sh

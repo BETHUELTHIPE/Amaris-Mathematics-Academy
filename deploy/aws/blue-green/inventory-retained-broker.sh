@@ -2,7 +2,9 @@
 set -euo pipefail
 umask 077
 mode="$1"
-image="$2"
+digest="$2"
+[[ "$digest" =~ ^[a-f0-9]{64}$ ]]
+image="valkey/valkey@sha256:$digest"
 path="$3"
 [[ "$mode" == source || "$mode" == shared ]]
 [[ "$image" =~ ^(docker\.io/)?valkey/valkey@sha256:[a-f0-9]{64}$ ]]
@@ -42,7 +44,7 @@ def cli(*args):
 def digest(v): return hashlib.sha256(v.encode()).hexdigest()
 messages=[];cursor="0";iterations=0
 while True:
-    cursor,keys=cli("SCAN",cursor)
+    cursor,keys=cli("SCAN",str(cursor))
     iterations+=1
     assert iterations<10000
     for key in keys:
