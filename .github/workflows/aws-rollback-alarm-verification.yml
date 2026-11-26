@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
-    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && ((github.event_name == 'push' && github.ref == 'refs/heads/ops/aws-cloudwatch-sns-20261126') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ops/aws-alarm-rollback-20261126' && github.base_ref == 'ops/aws-cloudwatch-sns-20261126'))
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && ((github.event_name == 'push' && github.ref == 'refs/heads/ops/aws-cloudwatch-sns-20261126') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ops/aws-bluegreen-rollback-20261126' && github.base_ref == 'ops/aws-cloudwatch-sns-20261126'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: staging
@@ -33,17 +33,25 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Validate rollback configuration
+      - name: Validate rollback configuration and stateless task renderer
         run: |
           bash -n deploy/aws/blue-green/verify-rollback-alarms.sh
+          bash -n deploy/aws/iam/bootstrap-github-oidc-ecr.sh
+          bash -n deploy/aws/blue-green/render-deployment-configuration.sh
+          bash -n deploy/aws/blue-green/prepare-no-traffic-prerequisites.sh
+          bash -n deploy/aws/blue-green/provision-shared-valkey.sh
+          python -m unittest discover -s deploy/aws/blue-green -p 'test_render_stateless_task.py'
+          python -m py_compile deploy/aws/blue-green/render-stateless-task.py
           jq -e '.strategy=="BLUE_GREEN" and .alarms.enable and .alarms.rollback and .minimumHealthyPercent==100 and .maximumPercent==200 and .bakeTimeInMinutes>=15 and all(.lifecycleHooks[]; .timeoutConfiguration.action=="ROLLBACK") and (.alarms.alarmNames|length)==3' deploy/aws/blue-green/deployment-configuration.json
+          python3 -m pip install cfn-lint==1.61.0
+          cfn-lint -r eu-north-1 -t deploy/aws/blue-green/prerequisites.yml deploy/aws/blue-green/shared-valkey.yml deploy/aws/iam/github-oidc-ecr-publisher.yml deploy/aws/blue-green/test-routing.yml deploy/aws/blue-green/shared-valkey-access.yml
       - name: Authenticate with staging OIDC if configured
         if: env.AMARIS_AWS_ROLE != ''
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
         with:
           role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
           inline-session-policy: >-
-            {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ecs:DescribeServices","ecs:DescribeTaskDefinition","ecs:ListContainerInstances","ecs:DescribeContainerInstances","cloudwatch:DescribeAlarms","cloudformation:DescribeStacks"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":"eu-north-1"}}}]}
+            {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ecs:DescribeServices","ecs:DescribeTaskDefinition","ecs:ListServices","ecs:ListContainerInstances","ecs:DescribeContainerInstances","cloudwatch:DescribeAlarms","cloudformation:DescribeStacks","elasticloadbalancing:DescribeLoadBalancers","elasticloadbalancing:DescribeListeners","elasticloadbalancing:DescribeRules","elasticloadbalancing:DescribeTargetGroups","elasticloadbalancing:DescribeTargetHealth","ec2:DescribeInstances","ec2:DescribeInstanceTypes","ec2:DescribeVpcs","ec2:DescribeSubnets","ec2:DescribeSecurityGroups","ssm:DescribeInstanceInformation","iam:ListOpenIDConnectProviders","iam:ListRoles"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":"eu-north-1"}}},{"Effect":"Allow","Action":"ssm:SendCommand","Resource":["arn:aws:ssm:eu-north-1::document/AWS-RunShellScript","arn:aws:ec2:eu-north-1:110156539003:instance/i-02855f007d15af597"],"Condition":{"StringEquals":{"aws:RequestedRegion":"eu-north-1"}}},{"Effect":"Allow","Action":"ssm:GetCommandInvocation","Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":"eu-north-1"}}}]}
           aws-region: eu-north-1
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
