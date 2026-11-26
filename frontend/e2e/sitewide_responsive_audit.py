@@ -12,6 +12,7 @@ import re
 import subprocess
 import time
 from collections import Counter
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -21,7 +22,9 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 ART = ROOT / "artifacts" / "sitewide-responsive"
 ART.mkdir(parents=True, exist_ok=True)
-BASE = "http://127.0.0.1:3016"
+LIVE_ORIGIN = os.environ.get("AMARIS_SITEWIDE_ORIGIN", "").rstrip("/")
+BASE = LIVE_ORIGIN or "http://127.0.0.1:3016"
+LCP_BUDGET_MS = 2500
 
 DEVICES = (
     ("small-phone", 320, 700, True),
@@ -65,18 +68,32 @@ DYNAMIC_PUBLIC_FIXTURES = {
 
 INIT = r"""
 (() => {
-  window.__amarisResponsive = {cls:0, lcp:0};
+  window.__amarisResponsive = {cls:0, lcp:0, lcpElement:null};
+  let sessionStart = 0, previousShift = 0, sessionValue = 0;
   try {
     new PerformanceObserver(list => {
       for (const entry of list.getEntries()) {
-        if (!entry.hadRecentInput) window.__amarisResponsive.cls += entry.value;
+        if (entry.hadRecentInput) continue;
+        if (sessionValue && entry.startTime - previousShift < 1000 &&
+            entry.startTime - sessionStart < 5000) {
+          sessionValue += entry.value;
+        } else {
+          sessionStart = entry.startTime;
+          sessionValue = entry.value;
+        }
+        previousShift = entry.startTime;
+        window.__amarisResponsive.cls = Math.max(window.__amarisResponsive.cls, sessionValue);
       }
     }).observe({type:'layout-shift', buffered:true});
   } catch {}
   try {
     new PerformanceObserver(list => {
       const entries=list.getEntries();
-      if(entries.length) window.__amarisResponsive.lcp=entries[entries.length-1].startTime;
+      const candidate = entries.at(-1);
+      if (candidate) {
+        window.__amarisResponsive.lcp = candidate.startTime;
+        window.__amarisResponsive.lcpElement = candidate.element?.tagName ?? null;
+      }
     }).observe({type:'largest-contentful-paint', buffered:true});
   } catch {}
 })();
@@ -98,6 +115,11 @@ METRICS = r"""() => {
     bodyWidth:document.body?.scrollWidth||0,
     cls:window.__amarisResponsive?.cls||0,
     lcp:window.__amarisResponsive?.lcp||0,
+    lcpElement:window.__amarisResponsive?.lcpElement,
+    ttfb:performance.getEntriesByType('navigation')[0]?.responseStart ?? null,
+    resources:performance.getEntriesByType('resource')
+      .filter(entry => new URL(entry.name).origin === location.origin)
+      .reduce((bytes, entry) => bytes + entry.transferSize, 0),
     offenders
   };
 }"""
@@ -155,6 +177,17 @@ def audit_page(browser, route, device, screenshots):
                                 ignore_https_errors=False)
     context.add_init_script(INIT)
     page=context.new_page()
+    throttled = bool(LIVE_ORIGIN) and width == 390
+    if throttled:
+        session = context.new_cdp_session(page)
+        session.send("Network.enable")
+        session.send("Network.emulateNetworkConditions", {
+            "offline": False,
+            "latency": 80,
+            "downloadThroughput": 1_600_000 / 8,
+            "uploadThroughput": 750_000 / 8,
+        })
+        session.send("Emulation.setCPUThrottlingRate", {"rate": 4})
     errors=[]
     page.on("pageerror",lambda error:errors.append(str(error)[:180]))
     res={"route":route["route"],"source":route["source"],
@@ -165,6 +198,8 @@ def audit_page(browser, route, device, screenshots):
         response=page.goto(BASE+route["route"],wait_until="domcontentloaded",timeout=35000)
         res["http"]=response.status if response else None
         res["finalPath"]=page.url.replace(BASE,"")
+        if not res["http"] or res["http"] < 500:
+            page.wait_for_load_state("load", timeout=25000)
         page.wait_for_timeout(350)
         before=page.evaluate(METRICS)
         # Scroll to expose lazy content and catch post-render shifting.
@@ -174,7 +209,11 @@ def audit_page(browser, route, device, screenshots):
         res["documentWidth"]=max(before["documentWidth"],after["documentWidth"])
         res["overflowPx"]=max(0,res["documentWidth"]-width)
         res["cls"]=round(max(before["cls"],after["cls"]),4)
-        res["lcpMs"]=round(after["lcp"]) if after["lcp"] else None
+        res["lcpMs"]=round(before["lcp"]) if before["lcp"] else None
+        res["lcpElement"]=before["lcpElement"]
+        res["ttfbMs"]=round(before["ttfb"]) if before["ttfb"] is not None else None
+        res["resourceTransferBytes"]=before["resources"]
+        res["throttled"]=throttled
         res["offenders"]=after["offenders"] if res["overflowPx"]>2 else []
         res["errors"]=errors[:3]
         coverage = route["coverage"]
@@ -223,7 +262,7 @@ def audit_page(browser, route, device, screenshots):
             file=ART / f"{name}-{filename}.png"
             page.screenshot(path=str(file),full_page=True,animations="disabled",timeout=10000)
             screenshots.append(str(file.relative_to(ART)))
-        print(f'{res["status"]:>23} {name:20} {route["route"]:48} HTTP={res.get("http")} overflow={res.get("overflowPx")} CLS={res.get("cls")}',flush=True)
+        print(f'{res["status"]:>23} {name:20} {route["route"]:48} HTTP={res.get("http")} overflow={res.get("overflowPx")} CLS={res.get("cls")} LCP={res.get("lcpMs")}ms TTFB={res.get("ttfbMs")}ms',flush=True)
     except (PlaywrightError, Exception) as exc:
         res["status"]="ERROR"
         res["errors"]=[str(exc)[:360]]
@@ -231,6 +270,28 @@ def audit_page(browser, route, device, screenshots):
     finally:
         context.close()
     return res
+
+
+@contextmanager
+def serve_frontend():
+    if LIVE_ORIGIN:
+        yield
+        return
+    with (ART/"nitro.log").open("w") as log:
+        server = subprocess.Popen(["node", ".output/server/index.mjs"], cwd=ROOT,
+                                  env={**os.environ, "HOST": "127.0.0.1", "PORT": "3016",
+                                       "NITRO_PORT": "3016", "NODE_ENV": "production",
+                                       "CMS_API_URL": ""}, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            wait_for_server(server)
+            yield
+        finally:
+            server.terminate()
+            try:
+                server.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait()
 
 
 def run():
@@ -242,35 +303,39 @@ def run():
         raise RuntimeError("Some known public dynamic pages lack a valid fixture.")
     screenshots=[]
     results=[]
-    with (ART/"nitro.log").open("w") as log:
-        server=subprocess.Popen(["node",".output/server/index.mjs"],cwd=ROOT,
-                                env={**os.environ,"HOST":"127.0.0.1","PORT":"3016",
-                                     "NITRO_PORT":"3016","NODE_ENV":"production",
-                                     "CMS_API_URL":""},stdout=log,stderr=subprocess.STDOUT)
+    widths = os.environ.get("AMARIS_SITEWIDE_WIDTHS", "")
+    requested_widths = {int(width) for width in widths.split(",")} if widths else set()
+    devices = [device for device in DEVICES if not requested_widths or device[1] in requested_widths]
+    if not devices or (requested_widths and {device[1] for device in devices} != requested_widths):
+        raise ValueError("AMARIS_SITEWIDE_WIDTHS must use supported viewport widths")
+    with serve_frontend(), sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=os.environ.get("AMARIS_CHROME_PATH") or None,
+                                    headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         try:
-            wait_for_server(server)
-            with sync_playwright() as p:
-                browser=p.chromium.launch(executable_path=os.environ.get("AMARIS_CHROME_PATH") or None,
-                                          headless=True,args=["--no-sandbox","--disable-dev-shm-usage"])
-                for device in DEVICES:
-                    for route in routes:
-                        results.append(audit_page(browser,route,device,screenshots))
-                browser.close()
+            for device in devices:
+                for route in routes:
+                    results.append(audit_page(browser, route, device, screenshots))
         finally:
-            server.terminate()
-            try: server.wait(timeout=8)
-            except subprocess.TimeoutExpired: server.kill()
+            browser.close()
     counts=Counter(row["status"] for row in results)
     failed=[row for row in results if row["status"].startswith("FAIL") or row["status"]=="ERROR"]
     conditional=[row for row in results if "CONDITIONAL" in row["status"]]
     valid_dynamic=[row for row in results if row["status"] == "PASS_VALID_DYNAMIC"]
     negative_404=[row for row in results if row["status"] == "PASS_EXPECTED_404"]
     verified_layout=[row for row in results if row["status"] in ("PASS", "PASS_VALID_DYNAMIC")]
-    required_positive=len(fixtures) * len(DEVICES)
+    required_positive=len(fixtures) * len(devices)
     if len(valid_dynamic) != required_positive:
         failed.append({"status":"FAIL_POSITIVE_DYNAMIC_COVERAGE",
                        "required":required_positive,"actual":len(valid_dynamic)})
-    summary={"routesDiscovered":len(routes),"viewports":len(DEVICES),"totalChecks":len(results),
+    phone = [row for row in verified_layout if row["throttled"]]
+    passing_lcp = [row for row in phone if row["lcpMs"] is not None and row["lcpMs"] <= LCP_BUDGET_MS]
+    slow_pages = sorted((row for row in phone if row not in passing_lcp),
+                        key=lambda row: row["lcpMs"] or 0, reverse=True)
+    if LIVE_ORIGIN and slow_pages:
+        failed.extend({**row, "status": "FAIL_LAB_LCP"} for row in slow_pages)
+    summary={"origin":BASE,"mobileLcpBudgetMs":LCP_BUDGET_MS,
+             "mobileLcpPassing":len(passing_lcp),"mobileLcpMeasured":len(phone),
+             "routesDiscovered":len(routes),"viewports":len(devices),"totalChecks":len(results),
              "counts":dict(counts),"failures":failed,"conditionalChecks":len(conditional),
              "validDynamicChecks":len(valid_dynamic),"validDynamicRoutes":len(fixtures),
              "negative404Checks":len(negative_404),"verifiedPageLayoutChecks":len(verified_layout),
@@ -280,12 +345,13 @@ def run():
                  "Invalid dynamic slugs are negative HTTP 404 checks, NOT proof of a real page.",
                  "Real course and error-detail paths require HTTP 200, the expected h1 and page content.",
                  "Authenticated lesson/checkout details remain unverified without isolated logged-in fixtures.",
-                 "Locally served production-equivalent Nitro build, not live Render or real-user telemetry.",
+                 "Live Chromium lab results, not real-user telemetry." if LIVE_ORIGIN else
+                 "Locally served production-equivalent Nitro build.",
              ]}
     (ART/"results.json").write_text(json.dumps({"summary":summary,"results":results},indent=2))
     with (ART/"summary.md").open("w") as f:
         f.write("# Amaris sitewide responsive audit\n\n")
-        f.write(f'Routes: **{len(routes)}**; device sizes: **{len(DEVICES)}**; checks: **{len(results)}**.\n\n')
+        f.write(f'Routes: **{len(routes)}**; device sizes: **{len(devices)}**; checks: **{len(results)}**.\n\n')
         f.write("## Status counts\n\n")
         for status,count in counts.most_common(): f.write(f"- {status}: {count}\n")
         f.write("\n## Failure details\n\n")
