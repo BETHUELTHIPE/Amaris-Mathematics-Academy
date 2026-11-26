@@ -1,0 +1,100 @@
+name: Activate staging CloudWatch SNS monitoring
+on:
+  pull_request:
+    branches: [ops/aws-verified-release-20261126]
+    types: [opened, synchronize, reopened]
+    paths:
+      - deploy/aws/monitoring/**
+      - .github/workflows/aws-monitoring-activation.yml
+permissions:
+  contents: read
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+jobs:
+  activate:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ops/aws-cloudwatch-sns-20261126' && github.base_ref == 'ops/aws-verified-release-20261126'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ""
+      AMARIS_AWS_ROLE: ${{ vars.AWS_MONITORING_DEPLOY_ROLE || vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      OPERATOR_EMAIL: ${{ secrets.AWS_MONITORING_EMAIL }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate monitoring infrastructure
+        run: |
+          bash -n deploy/aws/monitoring/deploy.sh
+          python3 -m pip install cfn-lint==1.61.0
+          cfn-lint -r eu-north-1 -t deploy/aws/monitoring/cloudwatch-sns.yml
+      - name: Authenticate to AWS using the staging role
+        if: env.AMARIS_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ env.AMARIS_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with existing configured staging keys
+        if: env.AMARIS_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify AWS account and private notification parameter
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == "110156539003" ]]
+          if [[ -z "$OPERATOR_EMAIL" ]]; then
+            echo "::error::Configure AWS_MONITORING_EMAIL in the protected staging environment; refusing to create an unnotified alarm stack."
+            exit 1
+          fi
+      - name: Deploy only monitoring infrastructure
+        run: |
+          set -euo pipefail
+          bash deploy/aws/monitoring/deploy.sh
+      - name: Verify CloudWatch alarms and SNS subscription state
+        run: |
+          set -euo pipefail
+          aws cloudwatch describe-alarms --alarm-name-prefix amaris-staging- --query 'MetricAlarms[].{Name:AlarmName,State:StateValue,ActionsEnabled:ActionsEnabled}' --output table
+          topic="$(aws cloudformation describe-stacks --stack-name amaris-staging-monitoring --query 'Stacks[0].Outputs[?OutputKey==`AlarmTopicArn`].OutputValue | [0]' --output text)"
+          aws sns list-subscriptions-by-topic --topic-arn "$topic" --query 'Subscriptions[].{Protocol:Protocol,SubscriptionArn:SubscriptionArn}' --output table
+      - name: Verify confirmed recipient and all seven alarm actions
+        run: |
+          set -euo pipefail
+          topic="$(aws cloudformation describe-stacks --stack-name amaris-staging-monitoring --query 'Stacks[0].Outputs[?OutputKey==`AlarmTopicArn`].OutputValue | [0]' --output text)"
+          [[ "$topic" == arn:aws:sns:eu-north-1:110156539003:amaris-staging-cloudwatch-alarms ]]
+          subscriptions="$(aws sns list-subscriptions-by-topic --topic-arn "$topic" --output json)"
+          jq -e --arg recipient "$OPERATOR_EMAIL" --arg topic "$topic" '
+            (.Subscriptions | length) == 1 and
+            all(.Subscriptions[]; .Protocol == "email" and .Endpoint == $recipient and (.SubscriptionArn | startswith($topic + ":")))
+          ' <<< "$subscriptions" >/dev/null
+          echo "Requested SNS email subscription is confirmed; no other subscribers are present."
+          alarms="$(aws cloudwatch describe-alarms --alarm-name-prefix amaris-staging- --output json)"
+          jq -e --arg topic "$topic" '
+            ["amaris-staging-alb-5xx","amaris-staging-ecs-cpu-high","amaris-staging-ecs-memory-high","amaris-staging-no-healthy-targets","amaris-staging-slow-responses","amaris-staging-target-5xx","amaris-staging-unhealthy-targets"] as $expected |
+            [.MetricAlarms[] | select(.AlarmName as $name | $expected | index($name))] as $matched |
+            ($matched | length) == 7 and
+            all($matched[]; .ActionsEnabled and (.AlarmActions | index($topic)) != null and (.OKActions | index($topic)) != null) and
+            all($matched[] | select(.AlarmName=="amaris-staging-no-healthy-targets" or .AlarmName=="amaris-staging-unhealthy-targets"); ([.Dimensions[].Name]|sort)==["LoadBalancer","TargetGroup"] and .TreatMissingData=="notBreaching")
+          ' <<< "$alarms" >/dev/null
+          echo "All seven expected CloudWatch alarms have enabled alarm and recovery actions pointing to the confirmed SNS topic."
+      - name: Send one explicitly labelled SNS delivery test
+        if: github.event.action == 'synchronize' && github.event.before == 'daa24e7bb2f59431153bd725bacd41404f862513' && github.run_attempt == 1
+        run: |
+          set -euo pipefail
+          topic="arn:aws:sns:eu-north-1:110156539003:amaris-staging-cloudwatch-alarms"
+          message_id="$(aws sns publish --topic-arn "$topic" --subject 'Amaris AWS monitoring - TEST notification' --message 'TEST ONLY: Amaris Mathematics Academy staging monitoring. Your confirmed SNS subscription is being tested. This is not an outage or a real CloudWatch alarm. No website or alarm state was changed.' --query MessageId --output text)"
+          [[ "$message_id" =~ ^[0-9a-fA-F-]{36}$ ]]
+          echo "SNS accepted the test notification. MessageId: $message_id"
