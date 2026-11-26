@@ -23,6 +23,16 @@ mapfile -t app_sgs < <(jq -r '.networkConfiguration.awsvpcConfiguration.security
 subnets="$(aws ec2 describe-subnets --subnet-ids "${app_subnets[@]}" --output json)"
 jq -e '(.Subnets|length)==2 and ([.Subnets[].AvailabilityZone]|unique|length)==2 and all(.Subnets[];.MapPublicIpOnLaunch==false)' <<< "$subnets" >/dev/null || { echo "Cache subnets must be private subnets in separate AZs." >&2; exit 1; }
 vpc_id="$(jq -er '.Subnets[0].VpcId' <<< "$subnets")"
+for subnet in "${app_subnets[@]}"; do
+  routes="$(aws ec2 describe-route-tables --filters "Name=association.subnet-id,Values=$subnet" --output json)"
+  if [[ "$(jq '.RouteTables|length' <<< "$routes")" -eq 0 ]]; then
+    routes="$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$vpc_id" "Name=association.main,Values=true" --output json)"
+  fi
+  if jq -e 'any(.RouteTables[].Routes[]; ((.DestinationCidrBlock=="0.0.0.0/0" or .DestinationIpv6CidrBlock=="::/0") and ((.GatewayId//"")|startswith("igw-")))' <<< "$routes" >/dev/null; then
+    echo "Refusing to place shared Valkey in a subnet with a direct Internet Gateway route." >&2
+    exit 1
+  fi
+done
 [[ "$(jq -r '[.Subnets[].VpcId]|unique|length' <<< "$subnets")" == "1" ]] || { echo "Application subnets do not share a VPC." >&2; exit 1; }
 alb_arn="$(aws cloudformation describe-stacks --stack-name amaris-staging-alb --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerArn`].OutputValue | [0]' --output text)"
 alb_subnets="$(aws elbv2 describe-load-balancers --load-balancer-arns "$alb_arn" --query 'LoadBalancers[0].AvailabilityZones[].SubnetId' --output text)"
