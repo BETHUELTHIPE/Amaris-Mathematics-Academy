@@ -227,6 +227,10 @@ printf 'ECS completed revision %s and both healthy tasks use the verified fronte
 public_health
 curl -fsS --max-time 15 "$origin/health/version/" | jq -e --arg sha "$backend_sha" '.git_sha == $sha' >/dev/null
 curl -fsS --max-time 15 "$origin/login" -o /dev/null
+grep -Fq 'src="/header-navigation.js"' "$work/home.html"
+curl -fsS --max-time 15 "$origin/header-navigation.js" -o "$work/header-navigation.js"
+cmp "${AMARIS_HEADER_SCRIPT:?Missing verified header script}" "$work/header-navigation.js"
+echo 'Public HTTPS serves the exact verified desktop navigation script.'
 if [[ -n "${1:-}" ]]; then
   AMARIS_SITEWIDE_ORIGIN="$origin" python "$1"
 fi

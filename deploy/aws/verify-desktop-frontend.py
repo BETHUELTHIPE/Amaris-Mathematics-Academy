@@ -16,6 +16,15 @@ with sync_playwright() as playwright:
             try:
                 check_current_navigation(page)
                 print(f"Live desktop menu passed at {width} × {height}.", flush=True)
+            except Exception:
+                state = page.evaluate("""() => ({
+                    document: document.readyState,
+                    controls: document.documentElement.dataset.amarisHeaderControls,
+                    open: Array.from(document.querySelectorAll('.header-group')).map(menu => menu.open),
+                    focus: document.activeElement?.tagName,
+                })""")
+                print(f"Desktop menu diagnostics at {width} × {height}: {state}", flush=True)
+                raise
             finally:
                 page.close()
     finally:
