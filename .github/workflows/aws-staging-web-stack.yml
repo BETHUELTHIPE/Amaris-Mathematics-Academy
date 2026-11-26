@@ -44,7 +44,68 @@ jobs:
           aws-region: eu-north-1
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
+      - name: Verify live Nginx, Gunicorn, and Uvicorn on ECS
+        if: "!cancelled()"
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          inspect=deploy/aws/diagnostics/verify-web-stack.sh
+          runner=deploy/aws/ecs/run-on-host.sh
+          bash "$runner" i-02855f007d15af597 "$inspect" gateway
+
+          cluster=amaris-ecs-staging
+          service=amaris-web-staging-alb
+          latest_state() {
+            aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0]' --output json |
+              jq '{desiredCount, runningCount, pendingCount, deployments: [.deployments[] |
+                {status, rolloutState, desiredCount, runningCount, pendingCount, failedTasks}],
+                events: [.events[:6][] | {createdAt, message}]}'
+          }
+
+          latest_state
+          stops="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" \
+            --desired-status STOPPED --query taskArns --max-items 8 --output json)"
+          mapfile -t stopped_tasks < <(jq -r '.[]' <<< "$stops")
+          if (( ${#stopped_tasks[@]} )); then
+            aws ecs describe-tasks --cluster "$cluster" --tasks "${stopped_tasks[@]}" --query tasks --output json |
+              jq 'sort_by(.stoppedAt // "") | reverse | .[:4] | map({stoppedAt, stopCode, stoppedReason,
+                containers: [.containers[] | {name, exitCode, reason} | select(.exitCode != null or .reason != null)]})'
+          fi
+
+          target="$(aws cloudformation describe-stack-resource --stack-name amaris-staging-alb --logical-resource-id ApplicationTargets \
+            --query StackResourceDetail.PhysicalResourceId --output text)"
+          tasks='[]'
+          for attempt in {1..10}; do
+            tasks="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" \
+              --desired-status RUNNING --query taskArns --output json)"
+            targets="$(aws elbv2 describe-target-health --target-group-arn "$target" \
+              --query TargetHealthDescriptions --output json)"
+            if jq -e 'any(.[]; .TargetHealth.State == "healthy")' <<< "$targets" >/dev/null &&
+               jq -e 'length > 0' <<< "$tasks" >/dev/null; then
+              break
+            fi
+            jq '[.[] | .TargetHealth | {State, Reason}]' <<< "$targets"
+            sleep 8
+          done
+          latest_state
+          jq -e 'any(.[]; .TargetHealth.State == "healthy")' <<< "$targets" >/dev/null
+          jq -er 'if length > 0 then "Running ECS tasks: \(length)" else error("The ALB service has no running tasks") end' <<< "$tasks"
+          while IFS= read -r task; do
+            detail="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0]' --output json)"
+            jq '{lastStatus, healthStatus, containers: [.containers[] | {name, lastStatus, healthStatus}]}' <<< "$detail"
+            jq -e 'if .lastStatus == "RUNNING" and
+              ([.containers[] | select(.name == "backend" or .name == "frontend" or .name == "cms")] |
+              length == 3 and all(.[]; .lastStatus == "RUNNING")) then true
+              else error("The ECS task does not have all three web containers running") end' <<< "$detail" >/dev/null
+            host="$(jq -er .containerInstanceArn <<< "$detail")"
+            instance="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host" \
+              --query 'containerInstances[0].ec2InstanceId' --output text)"
+            task_id="$(basename "$task")"
+            bash "$runner" "$instance" "$inspect" task "$task_id" </dev/null
+          done < <(jq -r '.[]' <<< "$tasks")
       - name: Check public frontend, API, and admin over verified HTTPS
+        if: '!cancelled()'
         shell: bash
         run: |
           set -euo pipefail
@@ -70,30 +131,3 @@ jobs:
           http "$base/health/ready/" | jq -e '.status == "ready"' >/dev/null
           http "$base/health/dependencies/" | jq -e '.dependencies.postgresql and .dependencies.redis' >/dev/null
           echo 'The frontend auth route, Django API, PostgreSQL, and Valkey checks passed.'
-      - name: Verify live Nginx, Gunicorn, and Uvicorn on ECS
-        if: "!cancelled()"
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
-          inspect=deploy/aws/diagnostics/verify-web-stack.sh
-          runner=deploy/aws/ecs/run-on-host.sh
-          bash "$runner" i-02855f007d15af597 "$inspect" gateway
-
-          cluster=amaris-ecs-staging
-          tasks="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-alb \
-            --desired-status RUNNING --query taskArns --output json)"
-          jq -er 'if length > 0 then "Running ECS tasks: \(length)" else error("The ALB service has no running tasks") end' <<< "$tasks"
-          while IFS= read -r task; do
-            detail="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0]' --output json)"
-            jq '{lastStatus, healthStatus, containers: [.containers[] | {name, lastStatus, healthStatus}]}' <<< "$detail"
-            jq -e 'if .lastStatus == "RUNNING" and
-              ([.containers[] | select(.name == "backend" or .name == "frontend" or .name == "cms")] |
-              length == 3 and all(.[]; .lastStatus == "RUNNING")) then true
-              else error("The ECS task does not have all three web containers running") end' <<< "$detail" >/dev/null
-            host="$(jq -er .containerInstanceArn <<< "$detail")"
-            instance="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host" \
-              --query 'containerInstances[0].ec2InstanceId' --output text)"
-            task_id="$(basename "$task")"
-            bash "$runner" "$instance" "$inspect" task "$task_id" </dev/null
-          done < <(jq -r '.[]' <<< "$tasks")
