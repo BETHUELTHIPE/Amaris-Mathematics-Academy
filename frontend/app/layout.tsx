@@ -19,6 +19,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en-ZA">
+      <head>
+        <script src="/header-navigation.js" defer />
+      </head>
       <body className="antialiased">
         {children}
         <ConnectionRecovery />

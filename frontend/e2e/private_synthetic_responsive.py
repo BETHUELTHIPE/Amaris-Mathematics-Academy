@@ -27,6 +27,7 @@ def check_current_navigation(page):
     else:
         nav = page.get_by_role("navigation", name="Main navigation")
         nav.wait_for(state="visible")
+        expect(page.locator("html")).to_have_attribute("data-amaris-header-controls", "ready")
         for menu in nav.locator("details.header-group").all():
             trigger = menu.locator("summary")
             trigger.press("Enter")
@@ -45,6 +46,7 @@ def check_current_navigation(page):
             # Allow subpixel rounding at the bottom edge of the scroll container.
             expect(links.last).to_be_in_viewport(ratio=0.99)
             links.last.press("Escape")
+            expect(menu).to_have_js_property("open", False)
             expect(dropdown).to_be_hidden()
             expect(trigger).to_be_focused()
         group = nav.locator("details.header-group").filter(

@@ -97,6 +97,7 @@ details[open] > summary .header-chevron { transform:rotate(180deg); }
   padding:.7rem; border:1px solid #ffffff21; border-top:2px solid #ffcc66; border-radius:1rem;
   background:#0c2042; box-shadow:0 24px 60px #0005; transform-origin:top center;
 }
+.header-group:not([open]) > .header-dropdown { display:none; }
 .header-group:last-child .header-dropdown { left:auto; right:0; }
 .header-dropdown-caption { padding:.45rem .7rem .7rem; color:#ffcc66; font-size:.7rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
 .header-menu-link { display:flex; align-items:center; justify-content:space-between; gap:.8rem; border-radius:.6rem; padding:.8rem .7rem; color:#ecf1fa; transition:background 180ms,color 180ms; }

@@ -2,8 +2,6 @@ import type { ReactNode } from "react";
 import { ArrowUpRight, BookOpen, ChevronDown, GraduationCap, Menu, X } from "lucide-react";
 import { groupNavigation, type NavigationLink } from "@/lib/navigation";
 
-import { HeaderNavigationControls } from "@/components/site/header-navigation-controls";
-
 export function HeaderNavigation({ links, desktopAccount, mobileAccount }: {
   links: NavigationLink[];
   desktopAccount: ReactNode;
@@ -29,7 +27,7 @@ export function HeaderNavigation({ links, desktopAccount, mobileAccount }: {
     </details>
   ));
 
-  return <HeaderNavigationControls>
+  return <div className="header-navigation">
     <nav aria-label="Main navigation" className="header-desktop-nav">
       {groupMenus(false).slice(0, 1)}
       {featured.map(link => <a key={link.url} {...linkProps(link)} className="header-featured"><GraduationCap size={17} aria-hidden="true" />{link.label}</a>)}
@@ -47,5 +45,5 @@ export function HeaderNavigation({ links, desktopAccount, mobileAccount }: {
         <div className="header-mobile-account">{mobileAccount}</div>
       </div>
     </details>
-  </HeaderNavigationControls>;
+  </div>;
 }
