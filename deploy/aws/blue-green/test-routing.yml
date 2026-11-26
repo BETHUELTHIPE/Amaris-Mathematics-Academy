@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private, source-restricted ECS blue-green listener rules for Amaris staging.
+Parameters:
+  ListenerArn:
+    Type: String
+    AllowedPattern: '^arn:aws:elasticloadbalancing:eu-north-1:[0-9]{12}:listener/app/.+$'
+  PrimaryTargetGroupArn:
+    Type: String
+    AllowedPattern: '^arn:aws:elasticloadbalancing:eu-north-1:[0-9]{12}:targetgroup/.+$'
+  AlternateTargetGroupArn:
+    Type: String
+    AllowedPattern: '^arn:aws:elasticloadbalancing:eu-north-1:[0-9]{12}:targetgroup/.+$'
+  VpcIpv6Cidr:
+    Type: String
+    AllowedPattern: '^[0-9a-fA-F:]+/[0-9]{1,3}$'
+  AlbSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  TestHostHeader:
+    Type: String
+    Default: amaris-bluegreen-test.internal
+    AllowedPattern: '^[a-zA-Z0-9.-]+$'
+Resources:
+  PrivateTestRunnerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Egress-only security group for the private Amaris blue-green smoke runner.
+      VpcId: !Select [3, !Split [':', !Ref ListenerArn]]
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          DestinationSecurityGroupId: !Ref AlbSecurityGroupId
+      Tags:
+        - Key: Project
+          Value: Amaris
+        - Key: Environment
+          Value: staging
+  AllowPrivateTestRunnerToAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AlbSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref PrivateTestRunnerSecurityGroup
+      Description: Permit only the private IPv6 staging smoke runner to reach the test listener.
+  PrivateTestListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ListenerArn
+      Priority: 10
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Ref TestHostHeader
+        - Field: source-ip
+          SourceIpConfig:
+            Values:
+              - !Ref VpcIpv6Cidr
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref AlternateTargetGroupArn
+  ProductionListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ListenerArn
+      Priority: 20
+      Conditions:
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - '/*'
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref PrimaryTargetGroupArn
+Outputs:
+  TestListenerRuleArn:
+    Value: !Ref PrivateTestListenerRule
+  ProductionListenerRuleArn:
+    Value: !Ref ProductionListenerRule
+  TestRunnerSecurityGroupId:
+    Value: !Ref PrivateTestRunnerSecurityGroup
