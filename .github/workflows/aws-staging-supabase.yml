@@ -113,6 +113,8 @@ jobs:
               probe["verify_student"](base, args[0].strip().lower(), args[1], args[2])
           except HTTPError as error:
               raise SystemExit(f"Staging test student sign-in or student API returned HTTP {error.code}.") from None
+          except probe["VerificationError"] as error:
+              raise SystemExit(str(error)) from None
           except Exception as error:
               raise SystemExit(f"Student authentication verification failed: {type(error).__name__}.") from None
           PY

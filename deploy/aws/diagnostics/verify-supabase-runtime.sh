@@ -41,7 +41,12 @@ def check_database():
             with connection.cursor() as cursor:
                 cursor.execute("select 1, to_regclass('auth.users') is not null, to_regclass('public.django_migrations') is not null")
                 assert cursor.fetchone() == (1, True, True), "Database or schema check failed."
-                assert connection.connection.pgconn.ssl_in_use, "The connection to the configured endpoint did not use TLS."
+                driver = connection.connection
+                if hasattr(driver, "pgconn"):
+                    tls = driver.pgconn.ssl_in_use
+                else:
+                    tls = driver.info.ssl_in_use
+                assert tls, "The connection to the configured endpoint did not use TLS."
             successful += 1
         except Exception as error:
             cause = error.__cause__ or error
@@ -52,7 +57,9 @@ def check_database():
                 ("authentication failed", "authentication"), ("could not translate", "DNS"),
                 ("connection reset", "connection reset"), ("server closed", "server closed connection"),
             ) if phrase in detail), "unclassified")
-            print(f"PostgreSQL sample failure: {type(cause).__name__}, {matched}.", flush=True)
+            print(f"PostgreSQL sample failure: {type(cause).__name__}, {matched}.", file=sys.stderr, flush=True)
+            if isinstance(cause, AssertionError):
+                print(str(cause), file=sys.stderr, flush=True)
         finally:
             connection.close()
         time.sleep(1)
@@ -116,5 +123,9 @@ try:
 except Exception as error:
     # Errors can include credentials, object URLs or raw provider responses.
     print(f"Supabase runtime check failed: {type(error).__name__}.", file=sys.stderr)
+    if isinstance(error, HTTPError):
+        print(f"Supabase returned HTTP {error.code}.", file=sys.stderr)
+    if isinstance(error, AssertionError):
+        print(str(error), file=sys.stderr)
     raise SystemExit(1) from None
 PY
