@@ -1,32 +1,12 @@
 import json
 import os
-import signal
 import sys
 import time
 import tempfile
-from pathlib import Path
 from redis import Redis
-
-def descendants(pid):
-    children = Path(f"/proc/{pid}/task/{pid}/children").read_text().split()
-    return [int(c) for c in children] + [d for c in children for d in descendants(int(c))]
 
 def main():
     values = json.load(sys.stdin)
-    for row in Path("/proc/1/environ").read_bytes().split(b"\0"):
-        if row:
-            key, _, val = row.decode().partition("=")
-            os.environ[key] = val
-    from staging_celery import app
-    # Explicitly pin the old loopback broker.
-    app.conf.broker_url = "redis://127.0.0.1:6379/2"
-    app.conf.result_backend = "redis://127.0.0.1:6379/3"
-    i = app.control.inspect(timeout=3)
-    for method in ("active", "reserved", "scheduled"):
-        reply = getattr(i,method)()
-        if not reply or len(reply) != 1 or any(reply.values()):
-            raise RuntimeError("Worker not fully drained")
-    frozen = []
     copied = []
     old = [Redis(host="127.0.0.1",port=6379,db=db,socket_timeout=5) for db in range(4)]
     with tempfile.NamedTemporaryFile(mode="w") as ca:
@@ -37,15 +17,7 @@ def main():
         try:
             if any(c.dbsize() for c in new):
                 raise RuntimeError("Destination must be empty; refusing overwrite")
-            # SIGSTOP only Celery processes, not this docker-exec process.
-            os.kill(1,signal.SIGSTOP); frozen.append(1)
-            for pid in descendants(1):
-                if pid == os.getpid():
-                    raise RuntimeError("Unexpected process hierarchy")
-                try:
-                    os.kill(pid,signal.SIGSTOP); frozen.append(pid)
-                except ProcessLookupError:
-                    pass
+            # Source producers and worker are frozen from the host PID namespace.
             if old[2].hlen("unacked") or old[2].zcard("unacked_index"):
                 raise RuntimeError("Unacknowledged jobs remain")
             old[0].save()
@@ -82,10 +54,6 @@ def main():
             for dst,key in reversed(copied):
                 dst.delete(key)
             raise
-        finally:
-            for pid in reversed(frozen):
-                try: os.kill(pid,signal.SIGCONT)
-                except ProcessLookupError: pass
 
 try:
     main()
