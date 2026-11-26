@@ -3,7 +3,7 @@ name: Verify the Amaris staging web stack
 on:
   push:
     branches: [ops/aws-staging-celery-20261126]
-    paths: [.github/workflows/aws-staging-web-stack.yml, deploy/aws/diagnostics/verify-web-stack.sh]
+    paths: [.github/workflows/aws-staging-web-stack.yml, deploy/aws/diagnostics/verify-web-stack.sh, deploy/aws/diagnostics/diagnose-web-readiness.sh]
 
 permissions: {}
 
@@ -44,6 +44,23 @@ jobs:
           aws-region: eu-north-1
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
+      - name: Check PostgreSQL and Valkey from each live staging backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          cluster=amaris-ecs-staging
+          tasks="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-stateless \
+            --desired-status RUNNING --query taskArns --output json)"
+          while IFS= read -r task; do
+            container_instance="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" \
+              --query 'tasks[0].containerInstanceArn' --output text)"
+            [[ "$container_instance" == arn:aws:ecs:* ]] || continue
+            host="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$container_instance" \
+              --query 'containerInstances[0].ec2InstanceId' --output text)"
+            [[ "$host" =~ ^i-[0-9a-f]+$ ]] || continue
+            printf 'Checking staging ECS task %s.\n' "$(basename "$task")"
+            bash deploy/aws/ecs/run-on-host.sh "$host" deploy/aws/diagnostics/diagnose-web-readiness.sh "$(basename "$task")" </dev/null
+          done < <(jq -r '.[]' <<< "$tasks")
       - name: Verify live Nginx, Gunicorn, and Uvicorn on ECS
         if: "!cancelled()"
         shell: bash
