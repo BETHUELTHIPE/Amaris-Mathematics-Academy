@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-[[ "$1" =~ ^[a-f0-9]{32}$ && "$2" =~ ^(database|storage)$ ]]
+[[ "$1" =~ ^[a-f0-9]{32}$ && "$2" =~ ^(database|storage|transaction)$ ]]
 arn="arn:aws:ecs:eu-north-1:110156539003:task/amaris-ecs-staging/$1"
 backend="$(docker ps -q --filter "label=com.amazonaws.ecs.task-arn=$arn" --filter label=com.amazonaws.ecs.container-name=backend)"
 [[ "$backend" =~ ^[a-f0-9]{12,64}$ ]] || { echo 'The staging backend container is not running yet.' >&2; exit 1; }
@@ -115,6 +115,23 @@ try:
     import django
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "amaris_cms.settings")
     django.setup()
+    if sys.argv[1] == "transaction":
+        from django.db import connection
+        from content.models import SiteSettings
+
+        settings = connection.settings_dict
+        assert settings["HOST"].endswith(".pooler.supabase.com") and settings["USER"].endswith(f".{PROJECT}")
+        settings["PORT"] = "6543"
+        settings["CONN_MAX_AGE"] = 0
+        settings["DISABLE_SERVER_SIDE_CURSORS"] = True
+        settings["OPTIONS"]["prepare_threshold"] = None
+        assert check_database()
+        with connection.cursor() as cursor:
+            cursor.execute("show statement_timeout")
+            statement_timeout = cursor.fetchone()[0]
+        assert SiteSettings.objects.values("pk").first() is not None, "The staging ORM query did not return the site settings row."
+        print(f"Supavisor transaction pool passed four TLS connections and a Django ORM query. Statement timeout: {statement_timeout}.")
+        raise SystemExit(0)
     if sys.argv[1] == "database":
         healthy = check_database()
         check_auth()

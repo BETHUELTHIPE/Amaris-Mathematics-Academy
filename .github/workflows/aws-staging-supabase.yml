@@ -71,7 +71,7 @@ jobs:
             echo "Checking Supabase from ECS task $task_id."
             runner=deploy/aws/ecs/run-on-host.sh
             check=deploy/aws/diagnostics/verify-supabase-runtime.sh
-            if bash "$runner" "$host" "$check" "$task_id" database </dev/null; then
+            if bash "$runner" "$host" "$check" "$task_id" transaction </dev/null; then
               checked=$((checked+1))
             else
               failures=$((failures+1))
@@ -80,7 +80,7 @@ jobs:
               storage_checked=1
             fi
           done < <(jq -r '.[]' <<< "$tasks")
-          printf 'ECS tasks passing database and Auth checks: %s. Failures: %s.\n' "$checked" "$failures"
+          printf 'ECS tasks passing the transaction pool trial: %s. Failures: %s.\n' "$checked" "$failures"
           [[ "$checked" -gt 0 && "$failures" == 0 && "$storage_checked" == 1 ]]
       - name: Verify staging student sign-in and the authenticated AWS API
         if: '!cancelled()'
