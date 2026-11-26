@@ -29,7 +29,7 @@ jobs:
           persist-credentials: false
       - name: Validate cutover scripts and task definitions
         run: |
-          for f in cutover-gateway freeze-copy-valkey unpause-old-broker verify-shared-celery-jobs activate-stateless-staging; do bash -n "deploy/aws/blue-green/$f.sh"; done
+          for f in preflight-queue-copy cutover-gateway freeze-copy-valkey unpause-old-broker verify-shared-celery-jobs activate-stateless-staging; do bash -n "deploy/aws/blue-green/$f.sh"; done
           python3 -m py_compile deploy/aws/blue-green/migrate-valkey-data.py
           python3 -m unittest discover -s deploy/aws/blue-green -p 'test_render*.py' -v
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
@@ -48,5 +48,5 @@ jobs:
           aws-region: eu-north-1
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
-      - name: Controlled staging-only queue cutover and two-replica activation
+      - name: Retry after non-disruptive queue-copy preflight; activate two staging replicas
         run: bash deploy/aws/blue-green/activate-stateless-staging.sh

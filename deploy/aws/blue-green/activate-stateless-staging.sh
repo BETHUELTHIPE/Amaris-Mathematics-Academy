@@ -22,6 +22,8 @@ task="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" --desi
 oldid="$(basename "$task")"
 target_ok() { aws elbv2 describe-target-health --target-group-arn "$target" --output json | jq -e --argjson n "$1" '[.TargetHealthDescriptions[]|select(.TargetHealth.State=="healthy")]|length==$n' >/dev/null; }
 target_ok 1
+# Run non-disruptive probes before entering maintenance.
+bash "$runner" "$first" "$root/preflight-queue-copy.sh" "$ip"
 # Refuse concurrent deployments, existing separate jobs, or missing shared configuration.
 jobs_before="$(aws ecs describe-services --cluster "$cluster" --services "$jobs" --output json)"
 jq -e 'all(.services[];.status=="INACTIVE" or (.status=="ACTIVE" and .desiredCount==0 and .runningCount==0 and .pendingCount==0))' <<< "$jobs_before" >/dev/null
@@ -96,7 +98,7 @@ aws ecs update-service --cluster "$cluster" --service "$service" --desired-count
 aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task"
 aws ecs wait services-stable --cluster "$cluster" --services "$service"
 # Preserve old disk and never start another local-broker task after enabling shared consumers.
-aws ecs update-service --cluster "$cluster" --service "$service" --task-definition "$webrev" --desired-count 2 --placement-constraints '[{"type":"distinctInstance"}]' --deployment-configuration 'maximumPercent=150,minimumHealthyPercent=100,deploymentCircuitBreaker={enable=true,rollback=false}' --query service.serviceName --output text
+aws ecs update-service --cluster "$cluster" --service "$service" --task-definition "$webrev" --desired-count 2 --placement-constraints '[{"type":"distinctInstance"}]' --deployment-configuration '{"maximumPercent":150,"minimumHealthyPercent":100,"deploymentCircuitBreaker":{"enable":true,"rollback":false}}' --query service.serviceName --output text
 aws ecs wait services-stable --cluster "$cluster" --services "$service"
 target_ok 2
 mapfile -t webtasks < <(aws ecs list-tasks --cluster "$cluster" --service-name "$service" --desired-status RUNNING --query taskArns --output json | jq -r '.[]')
