@@ -32,8 +32,11 @@ DEVICES = (
     ("android-landscape", 667, 375, True),
     ("tablet-portrait", 768, 1024, False),
     ("tablet-landscape", 1024, 768, False),
-    ("laptop", 1440, 900, False),
-    ("wide-desktop", 1920, 1080, False),
+    ("compact-laptop", 1280, 720, False),
+    ("laptop", 1366, 768, False),
+    ("desktop", 1440, 900, False),
+    ("full-hd", 1920, 1080, False),
+    ("wide-desktop", 2560, 1440, False),
 )
 
 PROTECTED_PREFIXES = (

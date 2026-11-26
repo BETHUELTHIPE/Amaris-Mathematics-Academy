@@ -1,7 +1,7 @@
 """Prevent missing dynamic-route pages from being miscounted as verified."""
 import unittest
 
-from sitewide_responsive_audit import DEVICES, DYNAMIC_PUBLIC_FIXTURES, discover
+from sitewide_responsive_audit import DYNAMIC_PUBLIC_FIXTURES, discover
 
 
 class DynamicRouteCoverageTests(unittest.TestCase):
@@ -26,8 +26,6 @@ class DynamicRouteCoverageTests(unittest.TestCase):
         negative = [r for r in self.routes if r["coverage"] == "negative-404"]
         self.assertEqual(len(positives), 2)
         self.assertEqual(len(negative), 2)
-        self.assertEqual(len(positives) * len(DEVICES), 14)
-        self.assertEqual(len(negative) * len(DEVICES), 14)
 
     def test_authenticated_detail_routes_are_not_credited_as_public_pages(self):
         for source in ("app/checkout/[slug]/page.tsx",

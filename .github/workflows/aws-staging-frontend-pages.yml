@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        width: [320, 390, 768, 1440]
+        width: [320, 390, 768, 1024, 1280, 1366, 1440, 1920, 2560]
     steps:
       - uses: actions/checkout@v5
         with:
