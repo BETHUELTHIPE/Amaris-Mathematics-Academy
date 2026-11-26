@@ -56,9 +56,9 @@ jobs:
               --query 'containerInstances[].{id:ec2InstanceId,connected:agentConnected,running:runningTasksCount}' --output table
           fi
           echo 'Requested size and eligibility:'
-          aws ec2 describe-instance-types --instance-types c6g.2xlarge \
-            --query 'InstanceTypes[0].{type:InstanceType,cpus:VCpuInfo.DefaultVCpus,memoryMiB:MemoryInfo.SizeInMiB,freeTier:FreeTierEligible}' --output table
-          aws ec2 describe-instance-type-offerings --location-type availability-zone --filters Name=instance-type,Values=c6g.2xlarge \
+          aws ec2 describe-instance-types --instance-types c6gd.2xlarge \
+            --query 'InstanceTypes[0].{type:InstanceType,cpus:VCpuInfo.DefaultVCpus,memoryMiB:MemoryInfo.SizeInMiB,nvmeGB:InstanceStorageInfo.TotalSizeInGB,freeTier:FreeTierEligible}' --output table
+          aws ec2 describe-instance-type-offerings --location-type availability-zone --filters Name=instance-type,Values=c6gd.2xlarge \
             --query 'sort(InstanceTypeOfferings[].Location)' --output text
           echo 'AWS account plan:'
           if ! aws freetier get-account-plan-state --region us-east-1 --query '[accountPlanType,accountPlanStatus]' --output text; then
