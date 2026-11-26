@@ -1,0 +1,95 @@
+name: Verify the Amaris staging ALB security group
+
+on:
+  push:
+    branches: [ops/aws-staging-celery-20261126]
+    paths: [.github/workflows/aws-staging-alb-security.yml]
+
+permissions: {}
+
+jobs:
+  verify:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_PAGER: ''
+      AWS_REGION: eu-north-1
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - name: Authenticate with the staging deployment role
+        if: env.STAGING_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with existing staging credentials
+        if: env.STAGING_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify live ALB security groups and target health
+        shell: bash
+        run: |
+          set -euo pipefail
+          resource_id() {
+            aws cloudformation describe-stack-resource --stack-name "$1" --logical-resource-id "$2" \
+              --query StackResourceDetail.PhysicalResourceId --output text
+          }
+          alb_sg="$(resource_id amaris-staging-alb LoadBalancerSecurityGroup)"
+          gateway_sg="$(resource_id amaris-aws-staging WebSecurityGroup)"
+          task_sg="$(aws cloudformation describe-stacks --stack-name amaris-staging-vpc \
+            --query "Stacks[0].Outputs[?OutputKey=='PrivateTaskSecurityGroup'].OutputValue | [0]" --output text)"
+          printf 'ALB security group %s, gateway security group %s, ECS security group %s\n' "$alb_sg" "$gateway_sg" "$task_sg"
+          lb="$(aws elbv2 describe-load-balancers --names amaris-staging-alb --query 'LoadBalancers[0]' --output json)"
+          jq -e --arg sg "$alb_sg" '.SecurityGroups == [$sg] and .Type == "application" and .State.Code == "active"' <<< "$lb" >/dev/null
+          echo 'The dedicated security group is attached to the active staging ALB.'
+          vpc="$(jq -er .VpcId <<< "$lb")"
+          groups="$(aws ec2 describe-security-groups --group-ids "$alb_sg" "$gateway_sg" "$task_sg" --query SecurityGroups --output json)"
+          jq -e --arg alb "$alb_sg" --arg gateway "$gateway_sg" --arg task "$task_sg" --arg vpc "$vpc" '
+            def exact_tcp_group($port; $group):
+              (.IpProtocol == "tcp" or .IpProtocol == "6") and .FromPort == $port and .ToPort == $port
+              and ([.UserIdGroupPairs[].GroupId] == [$group])
+              and (((.IpRanges // []) + (.Ipv6Ranges // []) + (.PrefixListIds // [])) | length == 0);
+            def includes_tcp($port):
+              .IpProtocol == "-1" or
+              ((.IpProtocol == "tcp" or .IpProtocol == "6") and .FromPort <= $port and .ToPort >= $port);
+            (length == 3 and all(.[]; .VpcId == $vpc)) and
+            (map(select(.GroupId == $alb))[0] |
+              (.IpPermissions | length == 1 and all(.[]; exact_tcp_group(80; $gateway))) and
+              (.IpPermissionsEgress | length == 1 and all(.[]; exact_tcp_group(8080; $task)))) and
+            (map(select(.GroupId == $task))[0].IpPermissions | map(select(includes_tcp(8080))) |
+              length == 1 and all(.[]; exact_tcp_group(8080; $alb)))
+          ' <<< "$groups" >/dev/null
+          echo 'Verified gateway-only ingress on TCP 80 and ALB-to-ECS access on TCP 8080.'
+          lb_arn="$(jq -er .LoadBalancerArn <<< "$lb")"
+          target="$(resource_id amaris-staging-alb ApplicationTargets)"
+          aws elbv2 describe-listeners --load-balancer-arn "$lb_arn" --query Listeners --output json |
+            jq -e --arg target "$target" 'any(.[]; .Protocol == "HTTP" and .Port == 80 and
+              any(.DefaultActions[]; .Type == "forward" and .TargetGroupArn == $target))' >/dev/null
+          aws elbv2 describe-target-groups --target-group-arns "$target" --query 'TargetGroups[0]' --output json |
+            jq -e --arg vpc "$vpc" '.VpcId == $vpc and .TargetType == "ip" and .Port == 8080' >/dev/null
+          health="$(aws elbv2 describe-target-health --target-group-arn "$target" --query TargetHealthDescriptions --output json)"
+          mapfile -t healthy_ips < <(jq -er '.[] | select(.TargetHealth.State == "healthy" and .Target.Port == 8080) | .Target.Id' <<< "$health")
+          [[ "${#healthy_ips[@]}" -gt 0 ]]
+          for ip in "${healthy_ips[@]}"; do
+            aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$vpc" "Name=addresses.private-ip-address,Values=$ip" \
+              --query NetworkInterfaces --output json |
+              jq -e --arg group "$task_sg" 'length == 1 and all(.[]; .Association.PublicIp == null and ([.Groups[].GroupId] == [$group]))' >/dev/null
+          done
+          printf '%s healthy ECS target(s) use the private task security group.\n' "${#healthy_ips[@]}"
+      - name: Check the public website over HTTPS
+        run: curl -fSs --max-time 12 https://16.171.164.5/health/dependencies/ | jq -e '.dependencies.postgresql and .dependencies.redis'
