@@ -64,3 +64,32 @@ jobs:
           if ! aws freetier get-account-plan-state --region us-east-1 --query '[accountPlanType,accountPlanStatus]' --output text; then
             echo 'Account plan API did not return a status.'
           fi
+      - name: Read a day of CloudWatch capacity metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+          start="$(date -u -d '24 hours ago' +%FT%TZ)"
+          end="$(date -u +%FT%TZ)"
+          metric() {
+            local namespace="$1" name="$2" statistic="$3"
+            shift 3
+            aws cloudwatch get-metric-statistics --namespace "$namespace" --metric-name "$name" \
+              --start-time "$start" --end-time "$end" --period 300 --statistics "$statistic" \
+              --dimensions "$@" --query Datapoints --output json | jq -c --arg stat "$statistic" --arg metric "$name" '
+                map(.[$stat]) | sort | {metric:$metric,samples:length,median:.[(length/2|floor)],min:first,max:last,total:(if $stat=="Sum" and length>0 then add else null end)}'
+          }
+          ids="$(aws ec2 describe-instances --filters Name=instance-state-name,Values=running --query 'Reservations[].Instances[].InstanceId' --output text)"
+          for id in $ids; do
+            echo "EC2 $id"
+            metric AWS/EC2 CPUUtilization Average "Name=InstanceId,Value=$id"
+            metric AWS/EC2 CPUCreditBalance Minimum "Name=InstanceId,Value=$id"
+          done
+          echo 'ECS amaris-web-staging-alb:'
+          for name in CPUUtilization MemoryUtilization; do
+            metric AWS/ECS "$name" Average Name=ClusterName,Value=amaris-ecs-staging Name=ServiceName,Value=amaris-web-staging-alb
+          done
+          alb="$(aws elbv2 describe-load-balancers --names amaris-staging-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text)"
+          alb="${alb#*/}"
+          echo 'Application Load Balancer:'
+          metric AWS/ApplicationELB RequestCount Sum "Name=LoadBalancer,Value=$alb"
+          metric AWS/ApplicationELB TargetResponseTime Average "Name=LoadBalancer,Value=$alb"
