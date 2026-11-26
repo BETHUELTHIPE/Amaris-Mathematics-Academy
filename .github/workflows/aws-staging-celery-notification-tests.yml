@@ -1,0 +1,52 @@
+name: Test Amaris booking and video notification logic in isolation
+
+on:
+  push:
+    branches: [ops/aws-staging-celery-20261126]
+    paths: [.github/workflows/aws-staging-celery-notification-tests.yml, deploy/aws/celery/notification-tests.sh]
+
+permissions: {}
+
+jobs:
+  verify:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_PAGER: ''
+      AWS_REGION: eu-north-1
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate with the staging deployment role
+        if: env.STAGING_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with existing staging credentials
+        if: env.STAGING_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Run existing notification tests with synthetic data and local mail
+        shell: bash
+        run: |
+          set -euo pipefail
+          id="$(aws cloudformation describe-stack-resource --stack-name amaris-aws-staging --logical-resource-id StagingHost --query StackResourceDetail.PhysicalResourceId --output text)"
+          bash deploy/aws/ecs/run-on-host.sh "$id" deploy/aws/celery/notification-tests.sh
