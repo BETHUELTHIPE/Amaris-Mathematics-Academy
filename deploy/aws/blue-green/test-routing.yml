@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Private, source-restricted ECS blue-green listener rules for Amaris staging.
+Description: Private IPv6 test routing and ECS lifecycle health probe for Amaris staging.
 Parameters:
   ListenerArn:
     Type: String
@@ -20,12 +20,21 @@ Parameters:
   TestHostHeader:
     Type: String
     Default: amaris-bluegreen-test.internal
-    AllowedPattern: '^[a-zA-Z0-9.-]+
+    AllowedPattern: '^[a-zA-Z0-9.-]+$'
+  AlbDnsName:
+    Type: String
+  TestSubnetA:
+    Type: AWS::EC2::Subnet::Id
+  TestSubnetB:
+    Type: AWS::EC2::Subnet::Id
+  HealthPath:
+    Type: String
+    Default: /__alb/ready
 Resources:
   PrivateTestRunnerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Egress-only security group for the private Amaris blue-green smoke runner.
+      GroupDescription: Egress-only security group for the private Amaris blue-green health probe.
       VpcId: !Ref VpcId
       SecurityGroupEgress:
         - IpProtocol: tcp
@@ -45,7 +54,7 @@ Resources:
       FromPort: 80
       ToPort: 80
       SourceSecurityGroupId: !Ref PrivateTestRunnerSecurityGroup
-      Description: Permit only the private IPv6 staging smoke runner to reach the test listener.
+      Description: Permit only the private IPv6 health probe to reach the test listener.
   PrivateTestListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
@@ -121,7 +130,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: amaris-staging-bluegreen-health-probe
-      Description: Private IPv6 smoke probe for the ECS green target group; ECS lifecycle hook rolls back on failure.
+      Description: Private IPv6 smoke probe for the green target group; ECS rolls back when the probe fails.
       Runtime: python3.12
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -180,75 +189,3 @@ Outputs:
     Value: !GetAtt PrivateGreenHealthProbe.Arn
   EcsLambdaHookRoleArn:
     Value: !GetAtt EcsLambdaHookRole.Arn
-
-  AlbDnsName:
-    Type: String
-  TestSubnetA:
-    Type: AWS::EC2::Subnet::Id
-  TestSubnetB:
-    Type: AWS::EC2::Subnet::Id
-  HealthPath:
-    Type: String
-    Default: /__alb/ready
-Resources:
-  PrivateTestRunnerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Egress-only security group for the private Amaris blue-green smoke runner.
-      VpcId: !Ref VpcId
-      SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          DestinationSecurityGroupId: !Ref AlbSecurityGroupId
-      Tags:
-        - Key: Project
-          Value: Amaris
-        - Key: Environment
-          Value: staging
-  AllowPrivateTestRunnerToAlb:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref AlbSecurityGroupId
-      IpProtocol: tcp
-      FromPort: 80
-      ToPort: 80
-      SourceSecurityGroupId: !Ref PrivateTestRunnerSecurityGroup
-      Description: Permit only the private IPv6 staging smoke runner to reach the test listener.
-  PrivateTestListenerRule:
-    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Properties:
-      ListenerArn: !Ref ListenerArn
-      Priority: 10
-      Conditions:
-        - Field: host-header
-          HostHeaderConfig:
-            Values:
-              - !Ref TestHostHeader
-        - Field: source-ip
-          SourceIpConfig:
-            Values:
-              - !Ref VpcIpv6Cidr
-      Actions:
-        - Type: forward
-          TargetGroupArn: !Ref AlternateTargetGroupArn
-  ProductionListenerRule:
-    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Properties:
-      ListenerArn: !Ref ListenerArn
-      Priority: 20
-      Conditions:
-        - Field: path-pattern
-          PathPatternConfig:
-            Values:
-              - '/*'
-      Actions:
-        - Type: forward
-          TargetGroupArn: !Ref PrimaryTargetGroupArn
-Outputs:
-  TestListenerRuleArn:
-    Value: !Ref PrivateTestListenerRule
-  ProductionListenerRuleArn:
-    Value: !Ref ProductionListenerRule
-  TestRunnerSecurityGroupId:
-    Value: !Ref PrivateTestRunnerSecurityGroup
