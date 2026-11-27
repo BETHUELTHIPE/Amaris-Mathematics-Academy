@@ -1,0 +1,36 @@
+name: Plan selective builds for reviewed changes
+on:
+  pull_request:
+    branches: [release/aws-full-platform-20261125, ops/aws-selective-bluegreen-20261127]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compute changed components and validate release policy
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          python3 deploy/aws/blue-green/selective-release-plan.py --self-test
+          if [[ -z "$BASE" || -z "$HEAD" ]]; then
+            echo 'Manual dispatch requires an approved exact source comparison; no build started.'
+            exit 0
+          fi
+          [[ "$BASE" =~ ^[0-9a-f]{40}$ && "$HEAD" =~ ^[0-9a-f]{40}$ ]]
+          git diff --name-only --no-renames -z "$BASE" "$HEAD" | python3 deploy/aws/blue-green/selective-release-plan.py | tee selective-plan.json
+          echo '### Selective component plan (not deployment approval)' >> "$GITHUB_STEP_SUMMARY"
+          cat selective-plan.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
+        with:
+          name: selective-release-plan
+          path: selective-plan.json
+          if-no-files-found: error
