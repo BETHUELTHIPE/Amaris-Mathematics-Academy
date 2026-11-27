@@ -47,15 +47,23 @@ jobs:
         run: |
           set -euo pipefail
           test "$(aws sts get-caller-identity --query Account --output text)" = 110156539003
-          origin=amaris-mathematics-academy-media-stage-110156539003-eu-north-1.s3.eu-north-1.amazonaws.com
-          aws cloudfront list-distributions --output json | jq --arg origin "$origin" '
-            [.DistributionList.Items[]? | select(any(.Origins.Items[]; .DomainName == $origin)) |
-              {Id,Enabled,Status}] | {existing_staging_media_distributions:length,distributions:.}'
+          bucket=amaris-mathematics-academy-media-stage-110156539003-eu-north-1
+          aws cloudfront list-distributions --output json | jq --slurp --arg prefix "$bucket.s3" '
+            [.[].DistributionList.Items[]?] as $rows |
+            {account_distributions:($rows|length),
+             matching_staging_media:([$rows[]|select(any(.Origins.Items[]; .DomainName|startswith($prefix)))]|length)}'
       - name: Clear the empty failed stack record to allow a clean retry
         run: |
           set -euo pipefail
           stack=amaris-staging-course-video-cdn
-          snapshot="$(aws cloudformation describe-stacks --stack-name "$stack" --output json)"
+          if ! snapshot="$(aws cloudformation describe-stacks --stack-name "$stack" --output json 2>&1)"; then
+            if [[ "$snapshot" == *"Stack with id $stack does not exist"* ]]; then
+              echo 'The failed stack record is already cleared.'
+              exit 0
+            fi
+            printf '%s\n' "$snapshot" >&2
+            exit 1
+          fi
           if ! jq -e '.Stacks[0].StackStatus == "ROLLBACK_COMPLETE"' <<< "$snapshot" >/dev/null; then
             echo 'The stack is not a rolled-back creation. Leaving it in place.'
             exit 0
