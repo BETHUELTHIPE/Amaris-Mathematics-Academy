@@ -1,0 +1,133 @@
+name: Audit staging migration compatibility for Paystack
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-staging-schema-audit.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-paystack-schema-audit
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Inspect Paystack schema on the existing staging replica in a read-only transaction
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import json
+          import re
+          import shlex
+          import time
+          from urllib.request import urlopen
+
+          import boto3
+
+          account = "110156539003"
+          cluster = "amaris-ecs-staging"
+          service = "amaris-web-staging-stateless"
+          assert boto3.client("sts").get_caller_identity()["Account"] == account
+          with urlopen("https://16.171.164.5/health/version/", timeout=12) as response:
+              assert json.load(response)["git_sha"] == "cfdb105761836c7730fec52ada54c58c624206db"
+          ecs = boto3.client("ecs")
+          ssm = boto3.client("ssm")
+          running = ecs.list_tasks(cluster=cluster, serviceName=service, desiredStatus="RUNNING")["taskArns"]
+          assert len(running) == 2
+          task, = ecs.describe_tasks(cluster=cluster, tasks=[running[0]])["tasks"]
+          assert task["taskDefinitionArn"].endswith("/amaris-ecs-staging-alb-web:14")
+          host, = ecs.describe_container_instances(
+              cluster=cluster, containerInstances=[task["containerInstanceArn"]]
+          )["containerInstances"]
+          task_arn = task["taskArn"]
+          assert re.fullmatch(rf"arn:aws:ecs:eu-north-1:{account}:task/{cluster}/[0-9a-f]{{32}}", task_arn)
+          command = """set -euo pipefail
+          backend=$(docker ps -q --filter label=com.amazonaws.ecs.task-arn=TASK --filter label=com.amazonaws.ecs.container-name=backend)
+          [[ "$backend" =~ ^[a-f0-9]{12,64}$ ]]
+          docker exec -i "$backend" python - 2>/dev/null <<'AUDIT'
+          import json
+          import os
+          import re
+          from urllib.parse import urlsplit
+          for line in os.environ.pop("AMARIS_RUNTIME_ENV", "").splitlines():
+              key, sep, value = line.partition("=")
+              if sep:
+                  os.environ.setdefault(key, value)
+          url = urlsplit(os.environ["DATABASE_URL"])
+          project = "atyhhjwwxgzeurnwayay"
+          host = url.hostname or ""
+          assert host == "db."+project+".supabase.co" or (host.endswith(".pooler.supabase.com") and (url.username or "").endswith("."+project))
+          schema = os.environ.get("DATABASE_SCHEMA", "").strip() or "public"
+          assert re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema)
+          assert schema not in {"auth", "storage", "vault", "extensions"} and "prod" not in schema.lower()
+          import django
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "amaris_cms.settings")
+          django.setup()
+          from django.db import connection, transaction
+          assert connection.vendor == "postgresql"
+          with transaction.atomic(), connection.cursor() as cursor:
+              cursor.execute("SET TRANSACTION READ ONLY")
+              cursor.execute("SET LOCAL statement_timeout = '5s'")
+              cursor.execute("SELECT name FROM " + connection.ops.quote_name(schema) + ".django_migrations WHERE app = %s AND name ~ %s ORDER BY name", ["content", "^002[0-2]_"])
+              migrations = [row[0] for row in cursor.fetchall()]
+              cursor.execute("SELECT column_name, data_type, character_maximum_length, is_nullable FROM information_schema.columns WHERE table_schema = %s AND table_name = %s AND column_name IN (%s, %s, %s) ORDER BY column_name", [schema, "content_liveclassbooking", "payment_provider", "paystack_checkout_url", "paystack_mode"])
+              columns = cursor.fetchall()
+              cursor.execute("SELECT indexname FROM pg_indexes WHERE schemaname = %s AND tablename = %s AND indexname = %s", [schema, "content_liveclassbooking", "liveclass_paystack_transaction_unique"])
+              unique_index = cursor.fetchone() is not None
+          print(json.dumps({"migrations": migrations, "paystack_columns": columns, "paystack_unique_index": unique_index}))
+          AUDIT
+          """.replace("TASK", shlex.quote(task_arn))
+          command_id = ssm.send_command(
+              InstanceIds=[host["ec2InstanceId"]],
+              DocumentName="AWS-RunShellScript",
+              Parameters={"commands": [command], "executionTimeout": ["35"]},
+              TimeoutSeconds=55,
+          )["Command"]["CommandId"]
+          for _ in range(22):
+              time.sleep(3)
+              try:
+                  result = ssm.get_command_invocation(CommandId=command_id, InstanceId=host["ec2InstanceId"])
+              except ssm.exceptions.InvocationDoesNotExist:
+                  continue
+              if result["Status"] == "Success":
+                  record = json.loads(result["StandardOutputContent"])
+                  assert set(record) == {"migrations", "paystack_columns", "paystack_unique_index"}
+                  assert all(re.fullmatch(r"002[0-2]_[a-z0-9_]+", item) for item in record["migrations"])
+                  assert all(row[0] in {"payment_provider", "paystack_checkout_url", "paystack_mode"} for row in record["paystack_columns"])
+                  print(json.dumps(record))
+                  break
+              if result["Status"] not in {"Pending", "Delayed", "InProgress"}:
+                  raise SystemExit(f"Staging schema audit failed: {result['Status']}")
+          else:
+              ssm.cancel_command(CommandId=command_id)
+              raise SystemExit("Staging schema audit did not complete")
+          PY
