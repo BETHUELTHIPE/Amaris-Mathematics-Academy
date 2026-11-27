@@ -1,0 +1,102 @@
+name: Verify both staging CodeBuild runtimes without releasing an application
+on:
+  push:
+    branches: [ops/aws-selective-bluegreen-20261127]
+    paths: [.github/workflows/aws-staging-codebuild-smoke.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-staging-codebuild-smoke
+  cancel-in-progress: false
+jobs:
+  smoke:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-selective-bluegreen-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Run bounded ARM64 toolchain and artifact acceptance
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import boto3, io, zipfile, os, time, json, hashlib
+          from botocore.config import Config
+          account = "110156539003"
+          assert boto3.client("sts").get_caller_identity()["Account"] == account
+          region = "eu-north-1"
+          bucket = f"amaris-staging-build-artifacts-{account}-{region}"
+          s3 = boto3.client("s3", region_name=region)
+          cb = boto3.client("codebuild", region_name=region)
+          run = os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"]
+          projects = ["amaris-staging-frontend", "amaris-staging-backend"]
+          actual = cb.batch_get_projects(names=projects)
+          assert len(actual["projects"]) == 2 and not actual.get("projectsNotFound")
+          ids = []
+          try:
+              for project in projects:
+                  component = project.rsplit("-",1)[-1]
+                  buf = io.BytesIO()
+                  with zipfile.ZipFile(buf, "w") as archive:
+                      archive.writestr("probe.txt", run + "\n")
+                  key = f"sources/smoke/{run}/{component}.zip"
+                  s3.put_object(Bucket=bucket, Key=key, Body=buf.getvalue(), ServerSideEncryption="AES256", ExpectedBucketOwner=account)
+                  runtime = "nodejs: 24" if component == "frontend" else "python: 3.13"
+                  command = "node --version && node -e 'if(process.versions.node.split(\".\")[0]!==\"24\")process.exit(1)'" if component == "frontend" else "python --version && python -c 'import sys; assert sys.version_info[:2]==(3,13)'"
+                  spec = {"version":0.2,"phases":{"install":{"runtime-versions":dict([runtime.split(": ")])},
+                      "build":{"commands":["test \"$(uname -m)\" = aarch64",command,"docker info >/dev/null","test -s probe.txt","mkdir -p evidence","cp probe.txt evidence/","echo smoke-only > evidence/mode.txt"]}},
+                      "artifacts":{"base-directory":"evidence","files":["**/*"]}}
+                  result = cb.start_build(projectName=project, sourceLocationOverride=f"{bucket}/{key}",
+                      buildspecOverride=json.dumps(spec), timeoutInMinutesOverride=5, queuedTimeoutInMinutesOverride=5,
+                      artifactsOverride={"type":"S3","location":bucket,"path":f"candidates/{component}/smoke/{run}","name":"smoke.zip","packaging":"ZIP","namespaceType":"NONE"},
+                      idempotencyToken=f"smoke-{run}-{component}")["build"]
+                  ids.append(result["id"])
+                  print("Started bounded smoke build:",project,flush=True)
+              for _ in range(100):
+                  builds = cb.batch_get_builds(ids=ids)["builds"]
+                  assert len(builds)==2
+                  if all(b["buildComplete"] for b in builds):
+                      for b in builds:
+                          assert b["buildStatus"]=="SUCCEEDED", b["projectName"] + " status " + b["buildStatus"]
+                          component = b["projectName"].rsplit("-",1)[-1]
+                          key = f"candidates/{component}/smoke/{run}/smoke.zip"
+                          obj = s3.get_object(Bucket=bucket, Key=key, ExpectedBucketOwner=account)
+                          with zipfile.ZipFile(io.BytesIO(obj["Body"].read())) as z:
+                              assert z.read("probe.txt").decode().strip()==run
+                              assert z.read("mode.txt").decode().strip()=="smoke-only"
+                          print("PASS:",b["projectName"],"ARM64 runtime, Docker and private artifact round trip",flush=True)
+                      break
+                  time.sleep(5)
+              else:
+                  raise RuntimeError("Build smoke timeout")
+          finally:
+              if ids:
+                  for b in cb.batch_get_builds(ids=ids)["builds"]:
+                      if not b["buildComplete"]:
+                          cb.stop_build(id=b["id"])
+          print("PASS: both build runtimes verified. No application image published or traffic changed.")
+          PY
