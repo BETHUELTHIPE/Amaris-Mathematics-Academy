@@ -2,6 +2,7 @@ import uuid
 from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -236,6 +237,14 @@ class VideoAsset(PublishableModel):
     youtube_video_id = models.CharField(max_length=32, blank=True)
     youtube_url = models.URLField(blank=True)
     source_file = models.FileField(upload_to="videos/%Y/%m/", blank=True)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        editable=False,
+        related_name="submitted_lesson_videos",
+    )
     aws_media_key = models.CharField(max_length=255, blank=True, editable=False)
     vimeo_video_id = models.CharField(max_length=19, blank=True, editable=False)
     thumbnail = models.ImageField(upload_to="videos/thumbnails/", blank=True)
