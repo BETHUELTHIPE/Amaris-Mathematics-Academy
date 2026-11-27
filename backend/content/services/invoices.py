@@ -48,7 +48,9 @@ def render_invoice_pdf(invoice: Invoice | LiveClassBooking | VideoRequest) -> by
     number, email = _invoice_identity(invoice)
     if invoice.gateway_verified_at is None:
         raise ValueError("Only server-verified payments receive invoices.")
+    payment_provider = "PayFast"
     if isinstance(invoice, LiveClassBooking):
+        payment_provider = invoice.get_payment_provider_display()
         line = InvoiceLine(
             description=(
                 f"{invoice.get_programme_display()} {invoice.get_subject_display()} - {invoice.level} live class"
@@ -83,6 +85,7 @@ def render_invoice_pdf(invoice: Invoice | LiveClassBooking | VideoRequest) -> by
             currency=invoice.currency,
             lines=(line,),
             total=invoice.amount,
+            payment_provider=payment_provider,
         )
     )
 

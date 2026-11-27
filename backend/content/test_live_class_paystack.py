@@ -3,18 +3,22 @@ import hmac
 import json
 import time
 from datetime import timedelta
+from io import BytesIO
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from pypdf import PdfReader
 from rest_framework.test import APIClient
 
 from content.authentication import SupabaseStudentPrincipal
 from content.models import LiveClassBooking, StudentRecord, TutorAvailabilitySlot
 from content.services import paystack
 from content.services.live_classes import process_live_class_notification
+from content.tasks import deliver_live_class_confirmation
 
 TEST_KEY = "sk_test_synthetic"
 TEST_WEBHOOK_SECRET = "whsec_synthetic"
@@ -162,6 +166,32 @@ class LiveClassPaystackTests(TestCase):
             self.assertEqual(confirmed["invoice_number"], invoice_number)
             self.assertEqual(confirmed["zoom_join_url"], self.slot.zoom_join_url)
             self.assertEqual(gateway.call_count, 2)
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        BOOKING_ADMIN_EMAIL="paystack-admin@example.test",
+    )
+    def test_paystack_receipt_names_its_provider_for_all_three_recipients(self):
+        self.slot.tutor.email = "paystack-tutor@example.test"
+        self.slot.tutor.save(update_fields=["email"])
+        response, _ = self.initialize()
+        reference = response.json()["booking_reference"]
+        with mock.patch.object(paystack, "_request", return_value=self.successful_payment(reference)):
+            self.assertEqual(self.callback(reference, modern=True).status_code, 200)
+            self.assertEqual(deliver_live_class_confirmation.run(), 1)
+            self.assertEqual(self.callback(reference).status_code, 200)
+            self.assertEqual(deliver_live_class_confirmation.run(), 0)
+
+        self.assertEqual(
+            [message.to for message in mail.outbox],
+            [[self.student.email], [self.slot.tutor.email], ["paystack-admin@example.test"]],
+        )
+        pdf = mail.outbox[0].attachments[0][1]
+        self.assertTrue(all(message.attachments[0][1] == pdf for message in mail.outbox))
+        pages = PdfReader(BytesIO(pdf)).pages
+        invoice_text = " ".join(" ".join(page.extract_text().split()) for page in pages)
+        self.assertIn("Payment verified through Paystack.", invoice_text)
+        self.assertNotIn("Payment verified through PayFast.", invoice_text)
 
     def test_invalid_verification_and_cross_provider_callbacks_cannot_confirm(self):
         response, _ = self.initialize()
