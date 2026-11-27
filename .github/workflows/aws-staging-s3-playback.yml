@@ -1,0 +1,106 @@
+name: Verify Amaris staging private S3 lesson playback
+
+on:
+  push:
+    branches: [ops/aws-staging-cloudfront-course-video]
+    paths:
+      - .github/workflows/aws-staging-s3-playback.yml
+      - deploy/aws/diagnostics/verify-s3-lesson-playback.sh
+
+permissions: {}
+
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+
+jobs:
+  playback:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify access controls and byte-range video delivery
+        run: |
+          set -euo pipefail
+          bucket=amaris-mathematics-academy-media-stage-110156539003-eu-north-1
+          cluster=amaris-ecs-staging
+          service=amaris-web-staging-stateless
+          prefix="academy-media/videos/cdn-fallback-check-"
+          key="${prefix}${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.mp4"
+          fixture="$RUNNER_TEMP/amaris-playback-fixture.mp4"
+          task_definition="$(aws ecs describe-services --cluster "$cluster" --services "$service" \
+            --query 'services[0].taskDefinition' --output text)"
+          read -r -a tasks <<< "$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" \
+            --desired-status RUNNING --query 'taskArns' --output text)"
+          mapfile -t healthy_tasks < <(aws ecs describe-tasks --cluster "$cluster" --tasks "${tasks[@]}" --output json |
+            jq -r --arg definition "$task_definition" '.tasks[] |
+              select(.taskDefinitionArn == $definition and .lastStatus == "RUNNING" and
+                any(.containers[]; .name == "backend" and .lastStatus == "RUNNING")) |
+              [.taskArn, .containerInstanceArn] | @tsv')
+          test "${#healthy_tasks[@]}" -gt 0
+          aws s3api get-public-access-block --bucket "$bucket" --output json |
+            jq -e '.PublicAccessBlockConfiguration | [.[]] | length == 4 and all(.[]; . == true)' >/dev/null
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg
+          fi
+          ffmpeg -nostdin -loglevel error -f lavfi -i color=c=blue:s=64x64:d=1 \
+            -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$fixture"
+          sha="$(sha256sum "$fixture" | cut -d' ' -f1)"
+          version=""
+          cleanup() {
+            status=$?
+            if [[ -n "$version" ]]; then
+              if aws s3api delete-object --bucket "$bucket" --key "$key" --version-id "$version" >/dev/null &&
+                aws s3api list-object-versions --bucket "$bucket" --prefix "$key" --output json |
+                  jq -e --arg key "$key" 'all(((.Versions // []) + (.DeleteMarkers // []))[]; .Key != $key)' >/dev/null
+              then
+                echo 'Removed the synthetic video version.'
+              else
+                echo 'Could not verify that the synthetic video version was removed.' >&2
+                status=1
+              fi
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          aws s3api get-bucket-versioning --bucket "$bucket" --query Status --output text | grep -qx Enabled
+          version="$(aws s3api put-object --bucket "$bucket" --key "$key" --body "$fixture" --content-type video/mp4 \
+            --if-none-match '*' --server-side-encryption AES256 --query VersionId --output text)"
+          [[ -n "$version" && "$version" != None && "$version" != null ]]
+          for task in "${healthy_tasks[@]}"; do
+            IFS=$'\t' read -r task_arn container_instance <<< "$task"
+            instance_id="$(aws ecs describe-container-instances --cluster "$cluster" \
+              --container-instances "$container_instance" --query 'containerInstances[0].ec2InstanceId' --output text)"
+            bash deploy/aws/ecs/run-on-host.sh "$instance_id" deploy/aws/diagnostics/verify-s3-lesson-playback.sh \
+              "${task_arn##*/}" "$key" "$sha" </dev/null
+          done
