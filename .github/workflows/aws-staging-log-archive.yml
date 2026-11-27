@@ -6,6 +6,9 @@ on:
     paths: [.github/workflows/aws-staging-log-archive.yml, deploy/aws/log-archive/**]
 
 permissions: {}
+concurrency:
+  group: amaris-aws-staging-log-archive
+  cancel-in-progress: false
 
 jobs:
   archive:
@@ -46,9 +49,21 @@ jobs:
         run: |
           set -euo pipefail
           test "$(aws sts get-caller-identity --query Account --output text)" = 110156539003
-          aws cloudformation deploy --stack-name amaris-staging-log-archive \
+          role="$(aws cloudformation describe-stack-resource --stack-name amaris-aws-staging \
+            --logical-resource-id StagingInstanceRole --query StackResourceDetail.PhysicalResourceId --output text)"
+          stack=amaris-staging-log-archive
+          status="$(aws cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || true)"
+          if [[ "$status" == ROLLBACK_COMPLETE ]]; then
+            # A failed first creation can leave an empty stack record.
+            aws cloudformation list-stack-resources --stack-name "$stack" --output json |
+              jq -e 'all(.StackResourceSummaries[]; .ResourceStatus == "DELETE_COMPLETE" or
+                   (.ResourceStatus == "CREATE_FAILED" and (.PhysicalResourceId // "") == ""))' >/dev/null
+            aws cloudformation delete-stack --stack-name "$stack"
+            aws cloudformation wait stack-delete-complete --stack-name "$stack"
+          fi
+          aws cloudformation deploy --stack-name "$stack" \
             --template-file deploy/aws/log-archive/stack.yml --capabilities CAPABILITY_IAM \
-            --no-fail-on-empty-changeset --tags Application=Amaris-Mathematics-Academy Environment=staging
+            --parameter-overrides "InstanceRoleName=$role" --no-fail-on-empty-changeset --tags Application=Amaris-Mathematics-Academy Environment=staging
       - name: Verify CloudWatch to Lambda to S3 delivery
         run: |
           python -m pip -q install boto3
@@ -58,13 +73,12 @@ jobs:
         run: |
           aws cloudformation describe-stack-events --stack-name amaris-staging-log-archive --output json |
             jq '[.StackEvents[] | select(.ResourceStatus | endswith("FAILED")) | {LogicalResourceId, ResourceStatusReason}][:6]'
-      - name: Identify Academy logging sources
+      - name: Collect running Academy application logs from both hosts
         run: |
           set -euo pipefail
           source deploy/aws/log-archive/hosts.sh
-          aws logs describe-log-groups --query 'logGroups[].logGroupName' --output json | jq '[.[] | select(test("amaris|mathematics";"i"))]'
-          aws ecs list-services --cluster "$cluster" --query serviceArns --output json
           for host in "${hosts[@]}"; do
-            aws ec2 describe-instances --instance-ids "$host" --query 'Reservations[].Instances[].{instance:InstanceId,profile:IamInstanceProfile.Arn}' --output json
-            bash deploy/aws/ecs/run-on-host.sh "$host" deploy/aws/log-archive/inventory-host.sh
+            bash deploy/aws/ecs/run-on-host.sh "$host" deploy/aws/log-archive/collect-host.sh
           done
+      - name: Verify application streams in the encrypted archive
+        run: python deploy/aws/log-archive/verify-archive.py --application

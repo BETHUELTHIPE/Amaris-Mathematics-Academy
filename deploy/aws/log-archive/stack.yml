@@ -1,6 +1,24 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Amaris Mathematics Academy staging application logs and private S3 archive
+Parameters:
+  InstanceRoleName:
+    Type: String
+    AllowedPattern: 'amaris-aws-staging-StagingInstanceRole-[A-Za-z0-9]+'
 Resources:
+  HostLogDelivery:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: AmarisStagingLogDelivery
+      Roles: [!Ref InstanceRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: logs:DescribeLogGroups
+            Resource: '*'
+          - Effect: Allow
+            Action: [logs:DescribeLogStreams, logs:CreateLogStream, logs:PutLogEvents]
+            Resource: !GetAtt ApplicationLogs.Arn
   ApplicationLogs:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: RetainExceptOnCreate
@@ -59,7 +77,9 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: s3:PutObject
-                Resource: [!Sub '${Archive.Arn}/staging/*', !Sub '${Archive.Arn}/aws/lambda/async/*']
+                Resource: !Sub '${Archive.Arn}/*'
+                Condition:
+                  StringEquals: {'s3:ResourceAccount': !Ref AWS::AccountId}
               - Effect: Allow
                 Action: s3:ListBucket
                 Resource: !GetAtt Archive.Arn
