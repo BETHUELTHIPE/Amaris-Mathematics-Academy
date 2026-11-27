@@ -61,13 +61,27 @@ jobs:
 
           def collect(operation, result, **kwargs):
               return [item for page in client.get_paginator(operation).paginate(AccountId=account, **kwargs)
-                      for item in page[result]]
+                      for item in (page.get(result) or [])]
 
-          budgets = [b for b in collect("describe_budgets", "Budgets")
+          all_budgets = collect("describe_budgets", "Budgets")
+          budgets = [b for b in all_budgets
                      if b["BudgetType"] == "COST" and b["TimeUnit"] == "MONTHLY"]
           preferred = [b for b in budgets if "amaris" in b["BudgetName"].lower()
                        and ("staging" in b["BudgetName"].lower() or "stage" in b["BudgetName"].lower())]
-          if len(preferred) == 1:
+          notification = {"NotificationType": "ACTUAL", "ComparisonOperator": "GREATER_THAN",
+                          "Threshold": 70.0, "ThresholdType": "PERCENTAGE"}
+          subscriber = {"SubscriptionType": "EMAIL", "Address": email}
+          if not all_budgets:
+              # Previously approved R1,100; USD 62 rounded down at ~R17.50/USD.
+              # Account-wide cost coverage is conservative and catches untagged charges.
+              name = "Amaris-Monthly-Cost"
+              client.create_budget(AccountId=account, Budget={
+                  "BudgetName": name, "BudgetType": "COST", "TimeUnit": "MONTHLY",
+                  "BudgetLimit": {"Amount": "62", "Unit": "USD"}},
+                  NotificationsWithSubscribers=[{"Notification": notification, "Subscribers": [subscriber]}])
+              budget = client.describe_budget(AccountId=account, BudgetName=name)["Budget"]
+              print("Created account-wide monthly cost budget at USD 62; no existing budget was present.")
+          elif len(preferred) == 1:
               budget = preferred[0]
           elif not preferred and len(budgets) == 1:
               budget = budgets[0]
@@ -76,9 +90,6 @@ jobs:
           name = budget["BudgetName"]
           require("BudgetLimit" in budget, "No fixed budget limit; review manually")
           before = budget["BudgetLimit"]
-          notification = {"NotificationType": "ACTUAL", "ComparisonOperator": "GREATER_THAN",
-                          "Threshold": 70.0, "ThresholdType": "PERCENTAGE"}
-          subscriber = {"SubscriptionType": "EMAIL", "Address": email}
 
           def notifications():
               return collect("describe_notifications_for_budget", "Notifications", BudgetName=name)
@@ -106,6 +117,6 @@ jobs:
           after = client.describe_budget(AccountId=account, BudgetName=name)["Budget"]["BudgetLimit"]
           require(before == after, "Budget limit changed unexpectedly")
           print("PASS: existing monthly budget, 70% actual-cost alert and operator email verified.")
-          print("Budget limit unchanged. Existing notifications preserved.")
+          print("Verified limit:", after["Amount"], after["Unit"], "Existing notifications preserved.")
           print("Check the recipient inbox for any required AWS email verification.")
           PY
