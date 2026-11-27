@@ -1,0 +1,54 @@
+name: Observe the AWS staging Paystack rollout
+on:
+  push:
+    branches: [qa/aws-staging-payfast-tutor-applications-20261127]
+    paths: [.github/workflows/qa-aws-paystack-rollout-status.yml]
+permissions: {}
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Confirm staging task health, webhook status and probe cleanup
+        run: |
+          set -euo pipefail
+          cluster=amaris-ecs-staging
+          services="$(aws ecs describe-services --cluster "$cluster" \
+            --services amaris-web-staging-stateless amaris-staging-singleton-jobs --output json)"
+          jq -c '.services[] | {serviceName, desiredCount, runningCount, pendingCount,
+            deployments: [.deployments[] | {status, rolloutState, taskDefinition, createdAt, runningCount, pendingCount}],
+            capacity_events: [.events[:6][] | select(.message | test("was unable|unhealthy|steady state")) | {createdAt,message}]}' <<< "$services"
+          target="$(jq -er '.services[] | select(.serviceName=="amaris-web-staging-stateless") | .loadBalancers[] | select(.containerName=="cms").targetGroupArn' <<< "$services")"
+          aws elbv2 describe-target-health --target-group-arn "$target" --output json |
+            jq -c '[.TargetHealthDescriptions[] | .TargetHealth | {State,Reason}]'
+          endpoint=https://16.171.164.5
+          curl -fsS --max-time 12 "$endpoint/health/version/" | jq -c '{git_sha}'
+          curl -sS --max-time 12 -o /dev/null -w 'Paystack webhook GET HTTP %{http_code}\n' "$endpoint/api/v1/paystack/webhook/"
+          aws ssm describe-parameters --parameter-filters 'Key=Name,Option=Equals,Values=/amaris/aws-staging/paystack-qa-46051269184-1' --output json |
+            jq -e '.Parameters | length == 0' >/dev/null
+          echo "Verified temporary staging Paystack credential probe was removed."
