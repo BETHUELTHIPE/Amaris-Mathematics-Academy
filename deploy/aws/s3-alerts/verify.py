@@ -8,7 +8,8 @@ from collections import Counter
 
 import boto3
 
-from configure import ACCOUNT, ARCHIVE, MEDIA, REGION, STACK, stack_outputs
+from configure import (ACCOUNT, ARCHIVE, MEDIA, REGION, STACK, NOTIFICATION_ID,
+                       S3_EVENTS, notification_configuration, stack_outputs)
 
 
 def event_for(bucket, kind):
@@ -32,19 +33,19 @@ def verify_rule(session, rule_name):
         raise RuntimeError("The S3 EventBridge rule is disabled")
     pattern = rule["EventPattern"]
     for bucket in (MEDIA, ARCHIVE):
-        for kind in (
-            "Object Created", "Object Deleted", "Object Tags Added", "Object Tags Deleted",
-            "Object ACL Updated", "Object Retention Updated", "Object Storage Class Changed",
-            "Object Restore Completed", "Object Access Tier Changed", "Async Copy Completion",
-        ):
-            if not events.test_event_pattern(EventPattern=pattern, Event=json.dumps(event_for(bucket, kind)))["Result"]:
-                raise RuntimeError(f"AWS EventBridge did not match {kind}")
-    unrelated = event_for("unrelated-bucket", "Object Created")
-    read = event_for(MEDIA, "AWS API Call via CloudTrail")
-    for excluded in (unrelated, read):
-        if events.test_event_pattern(EventPattern=pattern, Event=json.dumps(excluded))["Result"]:
+        if not events.test_event_pattern(
+            EventPattern=pattern, Event=json.dumps(event_for(bucket, "Async Copy Completion"))
+        )["Result"]:
+            raise RuntimeError("AWS EventBridge did not match asynchronous copy completion")
+    excluded = (
+        event_for("unrelated-bucket", "Async Copy Completion"),
+        event_for(MEDIA, "Object Created"),
+        event_for(MEDIA, "AWS API Call via CloudTrail"),
+    )
+    for event in excluded:
+        if events.test_event_pattern(EventPattern=pattern, Event=json.dumps(event))["Result"]:
             raise RuntimeError("The EventBridge rule matched an event outside its scope")
-    print("AWS EventBridge confirmed native object-event coverage and bucket isolation.", flush=True)
+    print("AWS EventBridge confirmed copy-completion coverage and bucket isolation.", flush=True)
 
 
 def write_fixture(s3, bucket, key, tagging, expected):
@@ -102,12 +103,17 @@ def main():
     keys = {bucket: f"staging-s3-alert-smoke/{uuid.uuid4().hex}.txt" for bucket in (MEDIA, ARCHIVE)}
     expected = Counter()
     s3 = session.client("s3")
+    for bucket in keys:
+        config = notification_configuration(s3, bucket)
+        queue = next(row for row in config["QueueConfigurations"] if row["Id"] == NOTIFICATION_ID)
+        if queue["QueueArn"] != outputs["QueueArn"] or set(queue["Events"]) != set(S3_EVENTS):
+            raise RuntimeError("A bucket is missing its staging S3 queue notifications")
     start_time = int(time.time() * 1000)
     for bucket, key in keys.items():
         write_fixture(s3, bucket, key, tagging=bucket == MEDIA, expected=expected)
     print("Removed temporary object versions from both staging buckets.", flush=True)
     verify_sns_receipts(session.client("logs"), outputs["FunctionLogs"], keys, expected, start_time)
-    print("PASS: S3 to EventBridge to SQS to Lambda to the confirmed SNS topic.", flush=True)
+    print("PASS: S3 object notifications to SQS to Lambda to the confirmed SNS topic.", flush=True)
 
 
 if __name__ == "__main__":

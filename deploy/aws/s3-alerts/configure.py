@@ -1,4 +1,4 @@
-"""Validate and enable EventBridge for the two existing Academy staging buckets."""
+"""Preserve existing S3 notifications and configure the Academy staging queues."""
 
 import argparse
 import time
@@ -11,6 +11,12 @@ STACK = "amaris-staging-s3-object-alerts"
 ARCHIVE = f"amaris-mathematics-academy-logs-{ACCOUNT}-{REGION}"
 MEDIA = f"amaris-mathematics-academy-media-stage-{ACCOUNT}-{REGION}"
 TOPIC = f"arn:aws:sns:{REGION}:{ACCOUNT}:amaris-staging-cloudwatch-alarms"
+NOTIFICATION_ID = "amaris-staging-s3-object-alerts"
+S3_EVENTS = [
+    "s3:ObjectCreated:*", "s3:ObjectRemoved:*", "s3:ObjectTagging:*", "s3:ObjectAnnotation:*",
+    "s3:ObjectAcl:Put", "s3:ObjectRetention:Put", "s3:ObjectRestore:*", "s3:LifecycleExpiration:*",
+    "s3:LifecycleTransition", "s3:IntelligentTiering", "s3:Replication:*", "s3:ReducedRedundancyLostObject",
+]
 
 
 def notification_configuration(s3, bucket):
@@ -19,16 +25,31 @@ def notification_configuration(s3, bucket):
     return config
 
 
-def enable_eventbridge(s3, bucket):
+def comparable_configuration(config):
+    return {
+        key: (
+            {row["Id"]: {**row, "Events": sorted(row["Events"])} for row in value}
+            if key.endswith("Configurations") else value
+        )
+        for key, value in config.items()
+    }
+
+
+def enable_notifications(s3, bucket, queue_arn):
     existing = notification_configuration(s3, bucket)
-    if "EventBridgeConfiguration" in existing:
+    queue = {"Id": NOTIFICATION_ID, "QueueArn": queue_arn, "Events": S3_EVENTS}
+    queues = [
+        row for row in existing.get("QueueConfigurations", []) if row["Id"] != NOTIFICATION_ID
+    ]
+    updated = {**existing, "EventBridgeConfiguration": {}, "QueueConfigurations": [*queues, queue]}
+    if comparable_configuration(existing) == comparable_configuration(updated):
         return False
-    updated = {**existing, "EventBridgeConfiguration": {}}
     s3.put_bucket_notification_configuration(
         Bucket=bucket, ExpectedBucketOwner=ACCOUNT, NotificationConfiguration=updated
     )
-    if notification_configuration(s3, bucket) != updated:
-        raise RuntimeError("The bucket notification configuration did not match the intended update")
+    saved = notification_configuration(s3, bucket)
+    if comparable_configuration(saved) != comparable_configuration(updated):
+        raise RuntimeError("The bucket notification configuration did not preserve the intended destinations")
     return True
 
 
@@ -81,13 +102,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=["preflight", "enable"])
     args = parser.parse_args()
-    s3 = preflight(boto3.Session(region_name=REGION))
+    session = boto3.Session(region_name=REGION)
+    s3 = preflight(session)
     if args.operation == "enable":
-        changed = [bucket for bucket in (ARCHIVE, MEDIA) if enable_eventbridge(s3, bucket)]
+        queue_arn = stack_outputs(session.client("cloudformation"), STACK)["QueueArn"]
+        if not queue_arn.startswith(f"arn:aws:sqs:{REGION}:{ACCOUNT}:{STACK}-PendingEvents-"):
+            raise RuntimeError("Unexpected staging object notification target")
+        changed = [bucket for bucket in (ARCHIVE, MEDIA) if enable_notifications(s3, bucket, queue_arn)]
         for bucket in changed:
-            print(f"Enabled EventBridge for {bucket}, preserving its other notifications.", flush=True)
+            print(f"Enabled S3 queue notifications and EventBridge for {bucket}, preserving its other notifications.", flush=True)
         if changed:
-            print("Waiting five minutes for the S3 EventBridge settings to propagate.", flush=True)
+            print("Waiting five minutes for the S3 notification settings to propagate.", flush=True)
             time.sleep(305)
 
 

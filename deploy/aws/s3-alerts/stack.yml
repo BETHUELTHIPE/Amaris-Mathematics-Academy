@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Notify the Amaris staging operator of S3 object events through EventBridge, SQS, Lambda and SNS
+Description: Notify the Amaris staging operator of S3 object events through SQS, Lambda and SNS
 Parameters:
   ArchiveBucket:
     Type: String
@@ -24,7 +24,7 @@ Resources:
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt FailedEvents.Arn
         maxReceiveCount: 5
-  EventBridgeAccess:
+  QueueAccess:
     Type: AWS::SQS::QueuePolicy
     Properties:
       Queues: [!Ref PendingEvents, !Ref FailedEvents]
@@ -38,9 +38,20 @@ Resources:
             Condition:
               ArnEquals:
                 aws:SourceArn: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/amaris-staging-s3-object-events
+          - Effect: Allow
+            Principal: {Service: s3.amazonaws.com}
+            Action: sqs:SendMessage
+            Resource: !GetAtt PendingEvents.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnEquals:
+                aws:SourceArn:
+                  - !Sub arn:${AWS::Partition}:s3:::${ArchiveBucket}
+                  - !Sub arn:${AWS::Partition}:s3:::${MediaBucket}
   ObjectEvents:
     Type: AWS::Events::Rule
-    DependsOn: EventBridgeAccess
+    DependsOn: QueueAccess
     Properties:
       Name: amaris-staging-s3-object-events
       EventPattern:
@@ -50,9 +61,7 @@ Resources:
         resources:
           - !Sub arn:${AWS::Partition}:s3:::${ArchiveBucket}
           - !Sub arn:${AWS::Partition}:s3:::${MediaBucket}
-        detail-type:
-          - prefix: 'Object '
-          - Async Copy Completion
+        detail-type: [Async Copy Completion]
       State: ENABLED
       Targets:
         - Id: PendingEvents
@@ -107,6 +116,7 @@ Resources:
           import hashlib
           import json
           import os
+          from urllib.parse import unquote_plus
 
           import boto3
           from botocore.config import Config
@@ -125,7 +135,7 @@ Resources:
               if (event["source"] != "aws.s3" or event["account"] != os.environ["ACCOUNT"]
                       or event["region"] != os.environ["AWS_REGION"]
                       or bucket != bucket_arns[arn]
-                      or not (kind.startswith("Object ") or kind == "Async Copy Completion")):
+                      or kind != "Async Copy Completion"):
                   raise ValueError("Unexpected S3 event")
               obj = detail.get("object", {})
               key = obj.get("key")
@@ -138,6 +148,52 @@ Resources:
                   "size_bytes": obj.get("size"), "event_id": event["id"],
               }
 
+          notification_names = {
+              "ObjectCreated": "Object Created",
+              "ObjectRemoved": "Object Deleted",
+              "ObjectTagging:Put": "Object Tags Added",
+              "ObjectTagging:Delete": "Object Tags Deleted",
+              "ObjectRestore:Post": "Object Restore Initiated",
+              "ObjectRestore:Completed": "Object Restore Completed",
+              "ObjectRestore:Delete": "Object Restore Expired",
+              "ObjectAcl:Put": "Object ACL Updated",
+              "ObjectRetention:Put": "Object Retention Updated",
+              "ObjectAnnotation:Put": "Object Annotation Created",
+              "ObjectAnnotation:Delete": "Object Annotation Removed",
+              "LifecycleExpiration": "Object Deleted",
+              "LifecycleTransition": "Object Storage Class Changed",
+              "IntelligentTiering": "Object Access Tier Changed",
+              "Replication": "Object Replication Event",
+              "ReducedRedundancyLostObject": "Reduced Redundancy Object Lost",
+          }
+
+          def summarize_notification(original):
+              bucket = original["s3"]["bucket"]["name"]
+              arn = original["s3"]["bucket"]["arn"]
+              name = original["eventName"]
+              obj = original["s3"]["object"]
+              kind = notification_names.get(name) or notification_names.get(name.partition(":")[0])
+              if (original["eventSource"] != "aws:s3" or original["awsRegion"] != os.environ["AWS_REGION"]
+                      or bucket_arns.get(arn) != bucket or not kind):
+                  raise ValueError("Unexpected S3 notification")
+              key = unquote_plus(obj["key"])
+              request_id = (original.get("responseElements") or {}).get("x-amz-request-id")
+              identity = [bucket, key, name, request_id, obj.get("sequencer"), obj.get("versionId"), original["eventTime"]]
+              return {
+                  "event": kind, "bucket": bucket, "key": key, "time_utc": original["eventTime"],
+                  "reason": name, "version_id": obj.get("versionId"), "size_bytes": obj.get("size"),
+                  "event_id": hashlib.sha256(json.dumps(identity).encode()).hexdigest(),
+              }
+
+          def notification_rows(payload):
+              if payload.get("Event") == "s3:TestEvent":
+                  if payload.get("Service") == "Amazon S3" and payload.get("Bucket") in buckets:
+                      return []
+                  raise ValueError("Unexpected bucket validation event")
+              if "Records" in payload:
+                  return [summarize_notification(record) for record in payload["Records"]]
+              return [summarize(payload)]
+
           def handler(event, context):
               failures = []
               rows = {}
@@ -145,12 +201,13 @@ Resources:
               for message in event["Records"]:
                   message_id = message["messageId"]
                   try:
-                      row = summarize(json.loads(message["body"]))
+                      batch = notification_rows(json.loads(message["body"]))
                   except (KeyError, StopIteration, TypeError, ValueError, AttributeError):
                       print(json.dumps({"status": "invalid_event", "message_id": message_id}))
                       failures.append({"itemIdentifier": message_id})
                       continue
-                  rows[row["event_id"]] = row
+                  for row in batch:
+                      rows[row["event_id"]] = row
                   accepted.append({"itemIdentifier": message_id})
 
               if not rows:
@@ -188,6 +245,7 @@ Resources:
       ScalingConfig: {MaximumConcurrency: 2}
 Outputs:
   Rule: {Value: !Ref ObjectEvents}
+  QueueArn: {Value: !GetAtt PendingEvents.Arn}
   Function: {Value: !Ref NotifyOperator}
   FunctionLogs: {Value: !Ref FunctionLogs}
   DeadLetterQueue: {Value: !GetAtt FailedEvents.QueueName}
