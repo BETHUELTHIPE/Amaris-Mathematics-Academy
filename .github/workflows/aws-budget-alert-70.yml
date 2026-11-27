@@ -1,0 +1,111 @@
+name: Set AWS monthly budget email alert at 70 percent
+on:
+  push:
+    branches: [ops/aws-budget-alert-70]
+    paths: [.github/workflows/aws-budget-alert-70.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-budget-alert-70
+  cancel-in-progress: false
+jobs:
+  configure:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-budget-alert-70'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Add and verify the actual-spend alert without altering budget limits
+        env:
+          OPERATOR_EMAIL: ${{ secrets.AWS_MONITORING_EMAIL }}
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import os
+          import boto3
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+
+          account = "110156539003"
+          require(boto3.client("sts").get_caller_identity()["Account"] == account, "Unexpected account")
+          email = os.environ.get("OPERATOR_EMAIL", "").strip()
+          require(bool(email) and "@" in email, "Missing protected monitoring email")
+          client = boto3.client("budgets", region_name="us-east-1")
+
+          def collect(operation, result, **kwargs):
+              return [item for page in client.get_paginator(operation).paginate(AccountId=account, **kwargs)
+                      for item in page[result]]
+
+          budgets = [b for b in collect("describe_budgets", "Budgets")
+                     if b["BudgetType"] == "COST" and b["TimeUnit"] == "MONTHLY"]
+          preferred = [b for b in budgets if "amaris" in b["BudgetName"].lower()
+                       and ("staging" in b["BudgetName"].lower() or "stage" in b["BudgetName"].lower())]
+          if len(preferred) == 1:
+              budget = preferred[0]
+          elif not preferred and len(budgets) == 1:
+              budget = budgets[0]
+          else:
+              raise SystemExit("No unambiguous existing monthly cost budget. No changes made.")
+          name = budget["BudgetName"]
+          require("BudgetLimit" in budget, "No fixed budget limit; review manually")
+          before = budget["BudgetLimit"]
+          notification = {"NotificationType": "ACTUAL", "ComparisonOperator": "GREATER_THAN",
+                          "Threshold": 70.0, "ThresholdType": "PERCENTAGE"}
+          subscriber = {"SubscriptionType": "EMAIL", "Address": email}
+
+          def notifications():
+              return collect("describe_notifications_for_budget", "Notifications", BudgetName=name)
+
+          def matches(n):
+              return all(n.get(k, "PERCENTAGE" if k == "ThresholdType" else None) == v
+                         for k, v in notification.items())
+
+          def subscribers():
+              return collect("describe_subscribers_for_notification", "Subscribers",
+                             BudgetName=name, Notification=notification)
+
+          existing = notifications()
+          if not any(matches(n) for n in existing):
+              require(len(existing) < 5, "Existing notification limit reached; no alert removed.")
+              client.create_notification(AccountId=account, BudgetName=name,
+                                         Notification=notification, Subscribers=[subscriber])
+          elif not any(s.get("SubscriptionType") == "EMAIL" and s.get("Address") == email for s in subscribers()):
+              client.create_subscriber(AccountId=account, BudgetName=name,
+                                       Notification=notification, Subscriber=subscriber)
+
+          require(any(matches(n) for n in notifications()), "Threshold read-back failed")
+          require(any(s.get("SubscriptionType") == "EMAIL" and s.get("Address") == email for s in subscribers()),
+                  "Subscriber read-back failed")
+          after = client.describe_budget(AccountId=account, BudgetName=name)["Budget"]["BudgetLimit"]
+          require(before == after, "Budget limit changed unexpectedly")
+          print("PASS: existing monthly budget, 70% actual-cost alert and operator email verified.")
+          print("Budget limit unchanged. Existing notifications preserved.")
+          print("Check the recipient inbox for any required AWS email verification.")
+          PY
