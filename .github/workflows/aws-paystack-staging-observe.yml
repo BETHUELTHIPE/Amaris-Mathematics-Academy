@@ -60,6 +60,11 @@ jobs:
             aws elbv2 describe-target-health --target-group-arn "$arn" --output json |
               jq --arg group "$group" '{group:$group,states:[.TargetHealthDescriptions[] | .TargetHealth.State]}'
           done
+          aws ec2 describe-instances --filters Name=vpc-id,Values=vpc-0252538d2febd4641 Name=instance-state-name,Values=pending,running,shutting-down \
+            --query 'Reservations[].Instances[].{type:InstanceType,state:State.Name,purpose:Tags[?Key==`Purpose`].Value|[0]}'
+          if snapshot="$(aws cloudformation describe-stacks --stack-name amaris-staging-paystack-green-46066676826-1 --query 'Stacks[0].StackStatus' --output text 2>/dev/null)"; then
+            echo "Temporary capacity stack status $snapshot"
+          fi
           origin=https://16.171.164.5
           curl -fsS --max-time 12 "$origin/health/version/" | jq '{git_sha}'
           curl -fsS --max-time 12 "$origin/health/dependencies/" | jq '{dependencies}'
