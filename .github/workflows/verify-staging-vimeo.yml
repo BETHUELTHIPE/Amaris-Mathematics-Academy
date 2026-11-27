@@ -13,6 +13,22 @@ jobs:
     timeout-minutes: 8
     environment: staging
     steps:
+      - name: Repeat the direct Vimeo account check with curl
+        env:
+          ACADEMY_VIMEO_TOKEN: ${{ secrets.ACADEMY_VIMEO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="${ACADEMY_VIMEO_TOKEN}"
+          if [[ ! "$token" =~ ^[A-Za-z0-9._~+/-]+=*$ ]]; then
+            echo 'The stored credential is empty or has unexpected formatting.'
+            exit 1
+          fi
+          status="$(printf 'header = "Authorization: Bearer %s"\n' "$token" |
+            curl -q --silent --show-error --max-time 20 --output /dev/null \
+              --write-out '%{http_code}' --config - 'https://api.vimeo.com/me?fields=uri')"
+          printf 'Direct Vimeo account check returned HTTP %s.\n' "$status"
+          [[ "$status" == 200 ]]
       - name: Check token and private academy folder
         env:
           ACADEMY_VIMEO_TOKEN: ${{ secrets.ACADEMY_VIMEO_TOKEN }}
