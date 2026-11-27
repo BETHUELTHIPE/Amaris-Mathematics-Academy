@@ -11,9 +11,7 @@ jobs:
     if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/feat/tutor-course-media-uploads'
     runs-on: ubuntu-24.04
     timeout-minutes: 3
-    environment:
-      name: staging
-      deployment: false
+    environment: staging
     steps:
       - name: Check token and private academy folder
         env:
@@ -29,7 +27,7 @@ jobs:
 
           token = os.environ.get("ACADEMY_VIMEO_TOKEN", "").strip()
           if not token:
-              sys.exit("Staging Vimeo token is missing or unavailable.")
+              sys.exit("GitHub Actions did not supply ACADEMY_VIMEO_TOKEN to the staging job.")
           class NoRedirect(HTTPRedirectHandler):
               def redirect_request(self, req, fp, code, msg, headers, newurl):
                   return None
