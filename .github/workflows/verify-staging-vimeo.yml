@@ -10,7 +10,7 @@ jobs:
   verify:
     if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/feat/tutor-course-media-uploads'
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 8
     environment: staging
     steps:
       - name: Check token and private academy folder
@@ -54,4 +54,139 @@ jobs:
               sys.exit("The academy folder could not be verified.")
           print("PASS: Academy account and folder access verified.")
           print("Read-only check: upload permissions and playback are not verified.")
+          PY
+      - name: Verify a disposable MP4 upload and the staging embed allowlist
+        env:
+          ACADEMY_VIMEO_TOKEN: ${{ secrets.ACADEMY_VIMEO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ffmpeg >/dev/null || {
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          }
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          import tempfile
+          import time
+          from pathlib import Path
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlsplit
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+          folder = "/users/261260024/projects/31427264"
+          domain = "16.171.164.5"
+          origin = "https://" + domain
+          token = os.environ["ACADEMY_VIMEO_TOKEN"].strip()
+          title = "Amaris disposable staging upload " + os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"]
+
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          opener = build_opener(NoRedirect())
+          def api(path, method="GET", payload=None):
+              req = Request("https://api.vimeo.com" + path, method=method, headers={
+                  "Authorization": "Bearer " + token,
+                  "Accept": "application/vnd.vimeo.*+json;version=3.4",
+                  "Content-Type": "application/json",
+              }, data=json.dumps(payload).encode() if payload is not None else None)
+              with opener.open(req, timeout=15) as resp:
+                  raw = resp.read(1000000)
+                  return json.loads(raw) if raw else {}
+
+          phase = "generation of the test clip"
+          uri = None
+          try:
+              with tempfile.TemporaryDirectory() as tmp:
+                  video = Path(tmp, "fixture.mp4")
+                  subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i",
+                                  "color=c=blue:s=64x64:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                                  str(video)], check=True, timeout=30)
+                  data = video.read_bytes()
+
+              phase = "creating a private video in the academy folder"
+              draft = api("/me/videos", "POST", {
+                  "name": title,
+                  "folder_uri": folder,
+                  "upload": {"approach": "tus", "size": str(len(data))},
+                  "privacy": {"view": "disable", "embed": "whitelist", "download": False},
+              })
+              candidate = draft.get("uri", "")
+              if not re.fullmatch(r"/videos/[1-9][0-9]{0,18}", candidate):
+                  sys.exit("Vimeo returned an invalid video URI.")
+              uri = candidate
+              privacy = draft.get("privacy") or {}
+              if privacy.get("view") != "disable" or privacy.get("embed") != "whitelist" or privacy.get("download") is not False:
+                  sys.exit("Vimeo did not apply the required privacy settings.")
+              print("Vimeo authorized creation of an embed-restricted test video.", flush=True)
+
+              phase = "adding the staging host to the embed allowlist"
+              api(f"{uri}/privacy/domains/{domain}", "PUT")
+              allowlist = api(f"{uri}/privacy/domains?fields=data.domain")
+              if not any(item.get("domain") == domain for item in allowlist.get("data", [])):
+                  sys.exit("Vimeo did not retain the staging host in its embed allowlist.")
+              print("Vimeo accepted the staging host for embedded playback.", flush=True)
+
+              phase = "testing browser access to the Vimeo upload endpoint"
+              url = draft.get("upload", {}).get("upload_link", "")
+              parsed = urlsplit(url)
+              if (parsed.scheme != "https" or parsed.username or parsed.password or
+                      not (parsed.hostname or "").endswith(".vimeo.com")):
+                  sys.exit("Invalid Vimeo upload endpoint.")
+              req = Request(url, method="OPTIONS", headers={"Origin": origin,
+                  "Access-Control-Request-Method": "PATCH",
+                  "Access-Control-Request-Headers": "content-type,tus-resumable,upload-offset"})
+              with opener.open(req, timeout=20) as resp:
+                  if resp.headers.get("Access-Control-Allow-Origin") not in (origin, "*"):
+                      sys.exit("Vimeo upload does not allow the staging web origin.")
+
+              phase = "uploading the test clip"
+              req = Request(url, method="PATCH", data=data, headers={"Origin": origin,
+                  "Content-Type": "application/offset+octet-stream", "Tus-Resumable": "1.0.0",
+                  "Upload-Offset": "0"})
+              with opener.open(req, timeout=25) as resp:
+                  if resp.status != 204 or resp.headers.get("Upload-Offset") != str(len(data)):
+                      sys.exit("Vimeo did not confirm all the test bytes.")
+
+              phase = "checking completed upload, folder and privacy"
+              for attempt in range(12):
+                  state = api(f"{uri}?fields=uri,upload.status,privacy,parent_folder.uri")
+                  if state.get("upload", {}).get("status") == "complete":
+                      break
+                  time.sleep(4)
+              settings = state.get("privacy") or {}
+              if (state.get("uri") != uri or state.get("upload", {}).get("status") != "complete" or
+                      (state.get("parent_folder") or {}).get("uri") != folder or
+                      settings.get("view") != "disable" or settings.get("embed") != "whitelist" or
+                      settings.get("download") is not False):
+                  sys.exit("The uploaded clip did not satisfy the academy folder and privacy checks.")
+              print("PASS: Vimeo confirmed the real MP4 upload, expected academy folder and restricted privacy.", flush=True)
+          except HTTPError as exc:
+              code = ""
+              if exc.url.startswith("https://api.vimeo.com/"):
+                  try:
+                      raw_code = json.loads(exc.read(16384)).get("error_code")
+                      if isinstance(raw_code, int):
+                          code = f"; Vimeo error code {raw_code}"
+                  except (ValueError, AttributeError):
+                      pass
+              sys.exit(f"Vimeo failed during {phase} (HTTP {exc.code}{code}).")
+          except (URLError, TimeoutError, ValueError):
+              sys.exit(f"Vimeo connection or response failed during {phase}.")
+          finally:
+              if uri:
+                  try:
+                      created = api(f"{uri}?fields=uri,name")
+                      if created.get("uri") == uri and created.get("name") == title:
+                          api(uri, "DELETE")
+                          print("Removed the one disposable test clip.", flush=True)
+                  except HTTPError as exc:
+                      print(f"Cleanup of {title} ({uri}) returned HTTP {exc.code}.", flush=True)
+                  except (URLError, TimeoutError, ValueError):
+                      print(f"Cleanup of {title} ({uri}) could not be verified.", flush=True)
           PY
