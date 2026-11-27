@@ -1,0 +1,176 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Independent staging ARM64 CodeBuild projects; no deploy authority or automatic trigger.
+Resources:
+  BuildArtifacts:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub amaris-staging-build-artifacts-${AWS::AccountId}-${AWS::Region}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      VersioningConfiguration: {Status: Enabled}
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireBuildInputsAndOutputs
+            Status: Enabled
+            ExpirationInDays: 14
+            NoncurrentVersionExpiration: {NoncurrentDays: 7}
+            AbortIncompleteMultipartUpload: {DaysAfterInitiation: 1}
+  ArtifactPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BuildArtifacts
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt BuildArtifacts.Arn, !Sub '${BuildArtifacts.Arn}/*']
+            Condition:
+              Bool: {'aws:SecureTransport': 'false'}
+  FrontendLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/codebuild/amaris-staging-frontend, RetentionInDays: 14}
+  BackendLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/codebuild/amaris-staging-backend, RetentionInDays: 14}
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: codebuild.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: {'aws:SourceAccount': !Ref 'AWS::AccountId'}
+              ArnLike:
+                'aws:SourceArn': !Sub 'arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/amaris-staging-*'
+      Policies:
+        - PolicyName: BuildArtifactsAndLogsOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetBucketLocation, s3:GetBucketAcl]
+                Resource: !GetAtt BuildArtifacts.Arn
+              - Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion]
+                Resource: !Sub '${BuildArtifacts.Arn}/sources/*'
+              - Effect: Allow
+                Action: [s3:PutObject, s3:AbortMultipartUpload]
+                Resource: !Sub '${BuildArtifacts.Arn}/candidates/*'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: [!GetAtt FrontendLogs.Arn, !GetAtt BackendLogs.Arn]
+  FrontendBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: amaris-staging-frontend
+      ServiceRole: !GetAtt BuildRole.Arn
+      TimeoutInMinutes: 30
+      QueuedTimeoutInMinutes: 10
+      ConcurrentBuildLimit: 1
+      Source:
+        Type: S3
+        Location: !Sub '${BuildArtifacts}/sources/unconfigured.zip'
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 24
+            pre_build:
+              commands:
+                - test -f release-source.sha
+                - grep -Eq '^[0-9a-f]{40}$' release-source.sha
+                - cd frontend && npm ci && npm run lint && npm run typecheck && npm run build && npm run test:unit
+            build:
+              commands:
+                - cd "$CODEBUILD_SRC_DIR"
+                - docker build -f deploy/aws/frontend.Dockerfile -t amaris-frontend:candidate frontend
+                - test "$(docker image inspect --format '{{.Architecture}}' amaris-frontend:candidate)" = arm64
+                - mkdir -p evidence
+                - cp release-source.sha evidence/
+                - docker save amaris-frontend:candidate | gzip -1 > evidence/image.tar.gz
+                - cd evidence && sha256sum image.tar.gz > image.sha256
+          artifacts:
+            base-directory: evidence
+            files: ['**/*']
+      Artifacts:
+        Type: S3
+        Location: !Ref BuildArtifacts
+        Path: candidates/frontend
+        Name: candidate.zip
+        Packaging: ZIP
+        NamespaceType: BUILD_ID
+      Environment:
+        Type: ARM_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux-aarch64-standard:3.0
+        PrivilegedMode: true
+      LogsConfig:
+        CloudWatchLogs: {Status: ENABLED, GroupName: !Ref FrontendLogs}
+  BackendBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: amaris-staging-backend
+      ServiceRole: !GetAtt BuildRole.Arn
+      TimeoutInMinutes: 40
+      QueuedTimeoutInMinutes: 10
+      ConcurrentBuildLimit: 1
+      Source:
+        Type: S3
+        Location: !Sub '${BuildArtifacts}/sources/unconfigured.zip'
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                python: 3.13
+            pre_build:
+              commands:
+                - test -f release-source.sha
+                - grep -Eq '^[0-9a-f]{40}$' release-source.sha
+                - cd backend && pip install -r requirements-dev.txt && black --check . && ruff check . && mypy
+            build:
+              commands:
+                - cd "$CODEBUILD_SRC_DIR"
+                - docker build -f backend/Dockerfile -t amaris-backend:candidate backend
+                - test "$(docker image inspect --format '{{.Architecture}}' amaris-backend:candidate)" = arm64
+                - mkdir -p evidence
+                - cp release-source.sha evidence/
+                - docker save amaris-backend:candidate | gzip -1 > evidence/image.tar.gz
+                - cd evidence && sha256sum image.tar.gz > image.sha256
+          artifacts:
+            base-directory: evidence
+            files: ['**/*']
+      Artifacts:
+        Type: S3
+        Location: !Ref BuildArtifacts
+        Path: candidates/backend
+        Name: candidate.zip
+        Packaging: ZIP
+        NamespaceType: BUILD_ID
+      Environment:
+        Type: ARM_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux-aarch64-standard:3.0
+        PrivilegedMode: true
+      LogsConfig:
+        CloudWatchLogs: {Status: ENABLED, GroupName: !Ref BackendLogs}
+Outputs:
+  ArtifactBucket: {Value: !Ref BuildArtifacts}
+  FrontendProject: {Value: !Ref FrontendBuild}
+  BackendProject: {Value: !Ref BackendBuild}
