@@ -132,7 +132,7 @@ jobs:
               print("PASS: private test listener and rule created; ingress restricted to staging edge security group; production rules unchanged.",flush=True)
               print("Test port:",port,"Test rule:",rule["RuleArn"],"Infrastructure role:",role["RoleName"],flush=True)
               # Empty target group should respond 503 from the controlled runner; no student traffic.
-              script="set -euo pipefail\ncode=$(curl --noproxy '*' -sS --max-time 12 -o /dev/null -w '%{http_code}' 'http://"+alb["DNSName"]+":"+str(port)+"/__alb/ready')\n[[ \"$code\" == 503 ]]\necho 'PASS: protected runner reached empty green target group (HTTP 503 expected)'\n"
+              script="set -euo pipefail\ncode=$(curl --noproxy '*' -6 -sS --retry 2 --retry-delay 2 --max-time 12 -o /dev/null -w '%{http_code}' 'http://"+alb["DNSName"]+":"+str(port)+"/__alb/ready')\n[[ \"$code\" == 503 ]]\necho 'PASS: protected runner reached empty green target group (HTTP 503 expected)'\n"
               encoded=base64.b64encode(script.encode()).decode()
               cmd=ssm.send_command(InstanceIds=[host],DocumentName="AWS-RunShellScript",Parameters={"commands":["printf '%s' '"+encoded+"' | base64 -d | bash"],"executionTimeout":["30"]},TimeoutSeconds=60)["Command"]["CommandId"]
               for _ in range(20):
@@ -146,6 +146,8 @@ jobs:
                       print(result["StandardOutputContent"].strip(),flush=True)
                       break
                   if result["Status"] not in ("Pending","InProgress","Delayed"):
+                      print(result.get("StandardOutputContent","")[-1000:],flush=True)
+                      print(result.get("StandardErrorContent","")[-1000:],flush=True)
                       raise RuntimeError("Private test runner failed: "+result["Status"])
                   time.sleep(3)
               else:
