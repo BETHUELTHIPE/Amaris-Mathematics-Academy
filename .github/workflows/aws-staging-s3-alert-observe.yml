@@ -59,6 +59,22 @@ jobs:
               echo "$logical"
               aws sqs get-queue-attributes --queue-url "$url" --attribute-names                 ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible --output json
             done
+          for bucket in amaris-mathematics-academy-logs-110156539003-eu-north-1 \
+              amaris-mathematics-academy-media-stage-110156539003-eu-north-1; do
+            aws s3api get-bucket-notification-configuration --bucket "$bucket" --expected-bucket-owner 110156539003 --output json |
+              jq --arg bucket "$bucket" '{bucket:$bucket,eventbridge:has("EventBridgeConfiguration")}'
+          done
+          aws events describe-rule --name amaris-staging-s3-object-events --output json |
+            jq '{State, EventPattern:(.EventPattern|fromjson)}'
+          aws events list-targets-by-rule --rule amaris-staging-s3-object-events --output json |
+            jq '[.Targets[]|{Id,Arn,DeadLetterConfig}]'
+          for metric in MatchedEvents Invocations FailedInvocations InvocationsSentToDLQ InvocationsFailedToBeSentToDLQ; do
+            echo "EventBridge $metric"
+            aws cloudwatch get-metric-statistics --namespace AWS/Events --metric-name "$metric" \
+              --dimensions Name=RuleName,Value=amaris-staging-s3-object-events --statistics Sum \
+              --start-time "$(date -u -d '15 minutes ago' +%FT%TZ)" --end-time "$(date -u +%FT%TZ)" \
+              --period 60 --output json | jq '[.Datapoints[]|{Timestamp,Sum}]|sort_by(.Timestamp)'
+          done
           start_ms="$(date -u -d '20 minutes ago' +%s)000"
           aws logs filter-log-events --log-group-name "$group" --start-time "$start_ms"             --filter-pattern '"status"' --max-items 500 --output json |
             jq '[.events[].message|fromjson?|select(.status != null)]|group_by(.status)|map({status:.[0].status,count:length,types:([.[].event]|map(select(.!=null))|unique)})'
