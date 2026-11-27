@@ -61,7 +61,13 @@ jobs:
           healthy = [x for x in elb.describe_target_health(TargetGroupArn=primary)["TargetHealthDescriptions"] if x["TargetHealth"]["State"] == "healthy"]
           assert len(healthy) >= service["desiredCount"], "Current targets not healthy"
           listeners = elb.describe_listeners(LoadBalancerArn=alb)["Listeners"]
-          before = {l["ListenerArn"]: list(elb.get_paginator("describe_rules").paginate(ListenerArn=l["ListenerArn"])) for l in listeners}
+          def snapshot():
+              result = {}
+              for l in listeners:
+                  rules = [r for p in elb.get_paginator("describe_rules").paginate(ListenerArn=l["ListenerArn"]) for r in p.get("Rules", [])]
+                  result[l["ListenerArn"]] = sorted(rules, key=lambda r: r["RuleArn"])
+              return result
+          before = snapshot()
           try:
               green = elb.describe_target_groups(Names=["amaris-staging-web-green"])["TargetGroups"][0]
           except elb.exceptions.TargetGroupNotFoundException:
@@ -72,7 +78,7 @@ jobs:
           assert green["TargetType"] == "ip" and green["HealthCheckPath"] == blue["HealthCheckPath"]
           assert not green.get("LoadBalancerArns", []), "Existing green group already attached; inspect manually"
           assert not elb.describe_target_health(TargetGroupArn=green["TargetGroupArn"]).get("TargetHealthDescriptions", []), "Green group is not empty"
-          after = {l["ListenerArn"]: list(elb.get_paginator("describe_rules").paginate(ListenerArn=l["ListenerArn"])) for l in listeners}
+          after = snapshot()
           assert before == after, "Listener routing changed concurrently"
           print("PASS: current healthy blue target group preserved; detached empty green target group available.")
           print("Green target group:", green["TargetGroupName"])
