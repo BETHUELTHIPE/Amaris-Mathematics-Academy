@@ -113,6 +113,7 @@ jobs:
                       print(result["StandardOutputContent"].strip(), flush=True)
                       return result["StandardOutputContent"]
                   if result["Status"] not in ("Pending","InProgress","Delayed"):
+                      print(result.get("StandardOutputContent","")[-1500:], flush=True)
                       print(result.get("StandardErrorContent","")[-1500:], flush=True)
                       raise RuntimeError("Remote check failed: " + result["Status"])
                   time.sleep(5)
@@ -177,6 +178,7 @@ jobs:
 
           probe_code = """import urllib.request, urllib.error, ipaddress
           expected = EXPECTED
+          urllib.request.install_opener(urllib.request.build_opener(urllib.request.ProxyHandler({})))
           with urllib.request.urlopen('https://checkip.amazonaws.com/', timeout=12) as r:
               actual = r.read(64).decode().strip()
           assert str(ipaddress.ip_address(actual)) == expected, 'Unexpected outbound IP'
@@ -196,16 +198,35 @@ jobs:
           escaped = base64.b64encode(probe_code.encode()).decode()
           for host in hosts:
               remote(host["InstanceId"], "set -euo pipefail\nprintf '%s' '" + escaped + "' | base64 -d | python3\n")
-          # Exercise real CMS containers on both hosts when present, not only EC2 host networking.
+          # Test the live ECS task network namespaces using the host Python binary.
+          # This avoids container image executable/user restrictions without changing the containers.
+          task_arns = [arn for p in ecs.get_paginator("list_tasks").paginate(cluster=cluster,
+                       serviceName="amaris-web-staging-stateless", desiredStatus="RUNNING") for arn in p["taskArns"]]
+          require(len(task_arns) >= 2, "Expected at least two running web tasks")
+          task_ids = {arn.rsplit("/",1)[-1] for arn in task_arns}
+          require(all(len(t) == 32 and all(ch in "0123456789abcdef" for ch in t) for t in task_ids), "Unexpected task identifier")
           container_script = """set -euo pipefail
+          command -v nsenter >/dev/null
+          py="$(command -v python3)"
           mapfile -t ids < <(docker ps --filter label=com.amazonaws.ecs.cluster=amaris-ecs-staging --filter label=com.amazonaws.ecs.container-name=cms --format '{{.ID}}')
           for id in "${ids[@]}"; do
-            printf '%s' 'ENCODED' | base64 -d | docker exec -i "$id" python -
-            echo 'PASS: live CMS container outbound NAT'
+            arn="$(docker inspect --format '{{index .Config.Labels "com.amazonaws.ecs.task-arn"}}' "$id")"
+            task="${arn##*/}"
+            case " TASKIDS " in
+              *" $task "*) ;;
+              *) continue ;;
+            esac
+            pid="$(docker inspect --format '{{.State.Pid}}' "$id")"
+            [[ "$pid" =~ ^[1-9][0-9]*$ ]]
+            [[ "$(readlink "/proc/$pid/ns/net")" != "$(readlink /proc/self/ns/net)" ]]
+            printf '%s' 'ENCODED' | base64 -d | nsenter --target "$pid" --net -- "$py" -
+            printf 'PASS: ECS task network outbound NAT %s\\n' "$task"
           done
-          """.replace("ENCODED",escaped)
-          evidence = "".join(remote(host, container_script) for host in targets)
-          require("PASS: live CMS container outbound NAT" in evidence, "No CMS container egress test obtained")
+          """.replace("ENCODED",escaped).replace("TASKIDS"," ".join(sorted(task_ids)))
+          evidence = "\\n".join(remote(host, container_script) for host in targets)
+          observed = {line.split()[-1] for line in evidence.splitlines() if line.startswith("PASS: ECS task network outbound NAT ")}
+          require(observed == task_ids, "Not every running web task was tested")
+          print("PASS: all " + str(len(observed)) + " running ECS web task network namespaces verified", flush=True)
           check_routes()
           health()
           print("PASS: existing NAT configured, private egress verified, S3 gateway preserved. No paid NAT gateway created.", flush=True)
