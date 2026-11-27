@@ -120,16 +120,20 @@ def promote(spare):
     old_tasks = probe["service_tasks"]()
     assert len(old_tasks) == 2
     routes = list(listen_rules(alb))
-    public_rule, = (
-        rule for listener, rule in routes
-        if listener["Port"] != 8081 and primary in str(rule["Actions"])
-    )
-    test_rule, = (
-        rule for listener, rule in routes
-        if listener["Port"] == 8081 and alternate in str(rule["Actions"])
-    )
+    existing = old_lb.get("advancedConfiguration")
+    if existing:
+        public_rule, = (rule for listener, rule in routes if
+                        listener["Port"] != 8081 and rule["RuleArn"] == existing["productionListenerRule"])
+        test_rule, = (rule for listener, rule in routes if
+                      listener["Port"] == 8081 and rule["RuleArn"] == existing["testListenerRule"])
+        assert set(weights(test_rule)) <= {primary, alternate}
+    else:
+        public_rule, = (rule for listener, rule in routes if
+                        listener["Port"] != 8081 and primary in str(rule["Actions"]))
+        test_rule, = (rule for listener, rule in routes if
+                      listener["Port"] == 8081 and alternate in str(rule["Actions"]))
+        assert effective_group(test_rule["RuleArn"]) == alternate
     assert effective_group(public_rule["RuleArn"]) == primary
-    assert effective_group(test_rule["RuleArn"]) == alternate
     lb, = elb.describe_load_balancers(LoadBalancerArns=[alb])["LoadBalancers"]
     nodes = probe["private_alb_nodes"](lb)
 

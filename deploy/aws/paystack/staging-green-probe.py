@@ -150,18 +150,30 @@ def main(spare):
     alternate = green["TargetGroupArn"]
     assert not targets(alternate), "The private green group is already in use"
     listeners = elb.describe_listeners(LoadBalancerArn=alb)["Listeners"]
+    advanced = load_balancer.get("advancedConfiguration")
     green_rules = []
     for listener in listeners:
         for page in elb.get_paginator("describe_rules").paginate(ListenerArn=listener["ListenerArn"]):
             for rule in page["Rules"]:
-                if alternate in str(rule["Actions"]):
+                if advanced and rule["RuleArn"] == advanced["productionListenerRule"]:
+                    # After rollback ECS keeps the alternate in the public rule at zero weight.
+                    for action in rule["Actions"]:
+                        weights = action.get("ForwardConfig", {}).get("TargetGroups", [])
+                        mentions_alternate = alternate in str(action)
+                        assert not mentions_alternate or any(
+                            row["TargetGroupArn"] == alternate and row.get("Weight") == 0 for row in weights
+                        )
+                    continue
+                is_test = rule["RuleArn"] == advanced["testListenerRule"] if advanced else alternate in str(rule["Actions"])
+                if is_test:
                     assert listener["Port"] == 8081 and listener["Protocol"] == "HTTP"
                     assert not rule["IsDefault"]
                     green_rules.append(rule)
+                else:
+                    assert alternate not in str(rule["Actions"]), "The green group has an unexpected listener rule"
     assert len(green_rules) == 1, "Expected one private rule for the green group"
-    if advanced := load_balancer.get("advancedConfiguration"):
+    if advanced:
         assert advanced["alternateTargetGroupArn"] == alternate
-        assert advanced["testListenerRule"] == green_rules[0]["RuleArn"]
     lb, = elb.describe_load_balancers(LoadBalancerArns=[alb])["LoadBalancers"]
     nodes = private_alb_nodes(lb)
     baseline = service_tasks()
