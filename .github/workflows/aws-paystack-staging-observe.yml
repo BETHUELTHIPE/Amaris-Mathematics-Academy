@@ -74,6 +74,15 @@ jobs:
                 jq '[.containerInstances[] | {status,agentConnected,runningTasksCount,pendingTasksCount}]'
             fi
           done
+          jq '.services[0] | {placementConstraints,placementStrategy,availabilityZoneRebalancing,launchType,capacityProviderStrategy}' <<< "$state"
+          stopped="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" --desired-status STOPPED --output json)"
+          mapfile -t failed_tasks < <(jq -r '.taskArns[0:32][]' <<< "$stopped")
+          if (( ${#failed_tasks[@]} )); then
+            aws ecs describe-tasks --cluster "$cluster" --tasks "${failed_tasks[@]}" --output json |
+              jq '[.tasks[] | select(.taskDefinitionArn | endswith(":17")) |
+                {Task:(.taskArn|split("/")[-1]),az:.availabilityZone,stopCode,stoppedReason:(.stoppedReason|split("\\n")[0]|.[0:450]),
+                 containers:[.containers[] | {name,exitCode,reason:(.reason//""|split("\\n")[0]|.[0:250])}]}]'
+          fi
           origin=https://16.171.164.5
           curl -sSL --max-time 12 -o /dev/null -w 'Homepage HTTP %{http_code}\n' "$origin/"
           curl -fsS --max-time 12 "$origin/health/version/" | jq '{git_sha}'
