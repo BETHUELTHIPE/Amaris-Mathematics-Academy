@@ -44,6 +44,8 @@ jobs:
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
       - name: Verify budget, launch the private host and validate ECS trunking
+        env:
+          ALLOW_PLAN_UPGRADE: ${{ github.event_name == 'push' && github.event.head_commit.message == 'Apply approved AWS Paid plan and activate staging capacity' }}
         run: |
           set -euo pipefail
           account=110156539003
@@ -70,6 +72,28 @@ jobs:
           }
 
           check_health
+          plan_region=us-east-1
+          plan_type() {
+            aws freetier get-account-plan-state --region "$plan_region" --output json |
+              jq -er --arg account "$account" 'select(.accountId == $account and .accountPlanStatus == "ACTIVE") | .accountPlanType'
+          }
+
+          current_plan="$(plan_type)"
+          if [[ "$current_plan" == FREE && "$ALLOW_PLAN_UPGRADE" == true ]]; then
+            aws freetier upgrade-account-plan --region "$plan_region" --account-plan-type PAID --output json |
+              jq -e --arg account "$account" '.accountId == $account and .accountPlanType == "PAID"' >/dev/null
+          elif [[ "$current_plan" != PAID ]]; then
+            echo 'AWS Paid plan is required for the approved m7g.large instance.' >&2
+            exit 1
+          fi
+          for attempt in {1..12}; do
+            if [[ "$(plan_type)" == PAID ]]; then
+              break
+            fi
+            sleep 5
+          done
+          [[ "$(plan_type)" == PAID ]]
+          echo 'Verified active AWS Paid account plan and US$142 monthly cost budget.'
           aws iam get-role --role-name AWSServiceRoleForECS --query 'Role.RoleName' --output text | grep -qx AWSServiceRoleForECS
           before="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-stateless --desired-status RUNNING --query 'taskArns' --output json | jq -c 'sort')"
           jq -e 'length==2' <<< "$before" >/dev/null
