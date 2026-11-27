@@ -1,0 +1,173 @@
+name: Verify AWS staging PayFast, booking email and tutor applications
+on:
+  push:
+    branches: [qa/aws-staging-payfast-tutor-applications-20261127]
+    paths: [.github/workflows/qa-aws-staging-payfast-tutor-applications.yml]
+permissions: {}
+jobs:
+  payment-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate with the staging deployment role
+        if: env.STAGING_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with existing staging credentials
+        if: env.STAGING_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Read the active task revisions and check the public payment paths
+        run: |
+          set -euo pipefail
+          site=https://16.171.164.5
+          curl -fsS --max-time 15 "$site/health/dependencies/" | jq -e '.dependencies.postgresql and .dependencies.redis' >/dev/null
+          for path in /api/v1/payfast/itn/ /api/v1/tutor-applications/ /tutor/apply; do
+            result="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$site$path")"
+            printf 'HTTP GET %s %s\n' "$path" "$result"
+            case "$path:$result" in /api/v1/payfast/itn/:405|/api/v1/tutor-applications/:401|/tutor/apply:200|/tutor/apply:302|/tutor/apply:307) ;; *) exit 1 ;; esac
+          done
+          cat > "$RUNNER_TEMP/read-booking-config.sh" <<'BASH'
+          set -euo pipefail
+          task="$1"
+          container="$2"
+          id="$(docker ps -q --filter "label=com.amazonaws.ecs.task-arn=$task" --filter "label=com.amazonaws.ecs.container-name=$container")"
+          [[ "$id" =~ ^[a-f0-9]+$ ]]
+          docker exec -i "$id" python - <<'PY'
+          import json
+          import os
+          import smtplib
+          from urllib.parse import urlsplit
+          from django.conf import settings
+
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "amaris_cms.settings")
+          role = os.environ.get("AMARIS_CONTAINER_ROLE", "")
+          env_mode = os.environ.get("PAYFAST_MODE") or os.environ.get("PAYFAST_ENV") or "sandbox"
+          notify = urlsplit(os.environ.get("PAYFAST_NOTIFY_URL", ""))
+          storage = settings.STORAGES.get("tutor_qualifications", {})
+          mail_backend = settings.EMAIL_BACKEND.rsplit(".", 2)[-2]
+          smtp_status = "not configured"
+          if mail_backend == "smtp":
+              try:
+                  from django.core.mail import get_connection
+                  with get_connection(timeout=10) as connection:
+                      assert connection.connection
+                  smtp_status = "authenticated" if settings.EMAIL_HOST_USER and settings.EMAIL_HOST_PASSWORD else "connected"
+              except (OSError, smtplib.SMTPException, AssertionError) as error:
+                  smtp_status = type(error).__name__
+          print(json.dumps({
+              "payfast_mode": env_mode if env_mode in {"sandbox", "live"} else "invalid",
+              "notify_url_is_aws_staging": notify.scheme == "https" and notify.hostname == "16.171.164.5" and notify.path == "/api/v1/payfast/itn/",
+              "smtp": smtp_status, "mail_backend": mail_backend,
+              "tutor_six_documents_strict": settings.TUTOR_REQUIRE_SIX_DOCUMENTS,
+              "tutor_private_bucket_is_admin": storage.get("OPTIONS", {}).get("bucket_name") == "amaris-staging-admin",
+              "invoice_private_bucket_is_students": settings.SUPABASE_S3_STUDENT_BUCKET == "amaris-staging-students",
+          }))
+          PY
+          BASH
+          cluster=amaris-ecs-staging
+          inspect() {
+            local service="$1" container="$2" task host instance revision
+            task="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" --desired-status RUNNING --query 'taskArns[0]' --output text)"
+            host="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0].containerInstanceArn' --output text)"
+            instance="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host" --query 'containerInstances[0].ec2InstanceId' --output text)"
+            revision="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0].taskDefinitionArn' --output text)"
+            printf '%s revision %s\n' "$service" "$(basename "$revision")"
+            # Pass the ECS task suffix to avoid quoting ARNs in the host helper.
+            sed 's|com.amazonaws.ecs.task-arn=$task|com.amazonaws.ecs.task-arn=arn:aws:ecs:eu-north-1:110156539003:task/amaris-ecs-staging/$task|' "$RUNNER_TEMP/read-booking-config.sh" > "$RUNNER_TEMP/booking-config-host.sh"
+            basename "$task" | grep -Eq '^[a-f0-9]+$'
+            bash deploy/aws/ecs/run-on-host.sh "$instance" "$RUNNER_TEMP/booking-config-host.sh" "$(basename "$task")" "$container"
+          }
+          inspect amaris-web-staging-stateless backend
+          inspect amaris-staging-singleton-jobs celery-worker
+
+  tutor-auth:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Sign in with the approved staging tutor and read their private application
+        env:
+          TEST_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
+          PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          python - <<'PY'
+          import hashlib, os, runpy
+          from urllib.error import HTTPError, URLError
+
+          helpers = runpy.run_path("deploy/aws/verify-staging-auth.py")
+          request = helpers["json_request"]
+          email = os.environ["TEST_EMAIL"].strip().lower()
+          assert hashlib.sha256(email.encode()).hexdigest() == "2351cb430f5976021719b1c7fb36bd3ec0559d79a32b694c38b7f4a0313bb03a", "Approved staging tutor fixture mismatch"
+          assert os.environ["TEST_PASSWORD"] and os.environ["PUBLISHABLE_KEY"], "Missing staging tutor sign-in configuration"
+          endpoint = "https://16.171.164.5/api/v1/tutor-applications/"
+          try:
+              request(endpoint)
+          except HTTPError as error:
+              assert error.code in (401, 403)
+          else:
+              raise SystemExit("Unsigned request reached the private tutor API")
+          try:
+              session, _ = request("https://atyhhjwwxgzeurnwayay.supabase.co/auth/v1/token?grant_type=password",
+                  method="POST", headers={"apikey": os.environ["PUBLISHABLE_KEY"]},
+                  data={"email": email, "password": os.environ["TEST_PASSWORD"]})
+              assert session["user"].get("email_confirmed_at") and session["user"]["email"].lower() == email
+              result, headers = request(endpoint, headers={"Authorization": "Bearer " + session["access_token"]})
+              assert isinstance(result, dict) and "application" in result and "public" not in headers.get("Cache-Control","").lower()
+          except HTTPError as error:
+              raise SystemExit(f"Staging tutor verification returned HTTP {error.code}") from None
+          except URLError:
+              raise SystemExit("Staging tutor verification could not connect") from None
+          from urllib.request import Request, urlopen
+          application = result["application"]
+          if application is None:
+              print("Approved tutor has no stored application to download.")
+          else:
+              documents = application["documents"]
+              categories = {"id", "cv", "matric", "academic", "tertiary", "other"}
+              assert len(documents) == 6 and {document["category"] for document in documents} == categories
+              for document in documents:
+                  download = endpoint + "documents/" + document["id"] + "/"
+                  try:
+                      with urlopen(download, timeout=15):
+                          raise AssertionError("Anonymous document download unexpectedly succeeded")
+                  except HTTPError as error:
+                      assert error.code in (401, 403, 404)
+                  with urlopen(Request(download, headers={"Authorization": "Bearer " + session["access_token"]}), timeout=30) as response:
+                      assert response.status == 200 and "no-store" in response.headers["Cache-Control"]
+                      assert response.read(1)
+              print("Verified six staged category downloads for the approved applicant and anonymous access denial.")
+          print("Verified staging tutor sign-in, authenticated AWS API access and signed-out denial.")
+          PY
+
