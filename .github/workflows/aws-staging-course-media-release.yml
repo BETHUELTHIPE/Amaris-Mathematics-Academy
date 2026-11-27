@@ -2,7 +2,7 @@ name: Release Amaris course media to AWS staging
 on:
   push:
     branches: [ops/aws-course-media-staging-release-20261127]
-    paths: [.github/workflows/aws-staging-course-media-release.yml, deploy/aws/course-media/**]
+    paths: [.github/workflows/aws-staging-course-media-release.yml, deploy/aws/course-media/**, deploy/aws/frontend.Dockerfile]
 permissions:
   contents: read
 concurrency:
