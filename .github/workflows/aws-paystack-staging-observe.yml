@@ -47,7 +47,7 @@ jobs:
           service=amaris-web-staging-stateless
           state="$(aws ecs describe-services --cluster "$cluster" --services "$service" --output json)"
           jq -e '.services | length == 1 and .[0].serviceName == "amaris-web-staging-stateless"' <<< "$state" >/dev/null
-          jq '.services[0] | {runningCount,desiredCount,pendingCount,revision:(.taskDefinition | split("/")[-1]),strategy:(.deploymentConfiguration.strategy // "ROLLING")}' <<< "$state"
+          jq '.services[0] | {runningCount,desiredCount,pendingCount,revision:(.taskDefinition | split("/")[-1]),deployments:[.deployments[] | {status,runningCount,pendingCount,rolloutState}],strategy:(.deploymentConfiguration.strategy // "ROLLING")}' <<< "$state"
           recent="$(aws ecs list-service-deployments --cluster "$cluster" --service "$service" --max-results 4 --no-paginate --output json)"
           jq '[.serviceDeployments[] | {status,createdAt}]' <<< "$recent"
           latest="$(jq -r '.serviceDeployments[0].serviceDeploymentArn // empty' <<< "$recent")"
@@ -74,6 +74,7 @@ jobs:
             fi
           done
           origin=https://16.171.164.5
+          curl -sSL --max-time 12 -o /dev/null -w 'Homepage HTTP %{http_code}\n' "$origin/"
           curl -fsS --max-time 12 "$origin/health/version/" | jq '{git_sha}'
           curl -fsS --max-time 12 "$origin/health/dependencies/" | jq '{dependencies}'
           curl -sS --max-time 12 -o /dev/null -w 'Webhook GET HTTP %{http_code}\n' "$origin/api/v1/paystack/webhook/"
