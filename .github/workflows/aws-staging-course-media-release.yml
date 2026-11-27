@@ -1,7 +1,7 @@
-name: Release Amaris course media to AWS staging
+name: Release Amaris tutor uploads to AWS staging
 on:
   push:
-    branches: [ops/aws-course-media-staging-release-20261127]
+    branches: [ops/aws-tutor-media-staging-20261127]
     paths: [.github/workflows/aws-staging-course-media-release.yml, deploy/aws/course-media/**, deploy/aws/frontend.Dockerfile]
 permissions:
   contents: read
@@ -9,8 +9,8 @@ concurrency:
   group: amaris-stockholm-staging-release
   cancel-in-progress: false
 env:
-  FRONTEND_SHA: bcf08afa4846a66fc5f8be1318883e880e17a59e
-  BACKEND_SHA: a62a425f2ce84be89ae1327c8a232664e9c04534
+  FRONTEND_SHA: 2c61105f01422fd71a081d57878930cf13871d03
+  BACKEND_SHA: cfdb105761836c7730fec52ada54c58c624206db
   ECR_REPO: 110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend
   AWS_REGION: eu-north-1
   AWS_PAGER: ''
@@ -60,7 +60,7 @@ jobs:
           test "$(docker image inspect --format '{{.Architecture}}' amaris-media:verified)" = arm64
           if [[ "$COMPONENT" == backend ]]; then
             docker run --rm --entrypoint python -e DJANGO_DEBUG=true amaris-media:verified \
-              manage.py test content.test_course_media content.test_student_api
+              manage.py test content.test_tutor_media content.test_course_media content.test_tutor_dashboard content.test_student_api
           else
             docker run -d --rm --name amaris-candidate -p 127.0.0.1:3000:3000 amaris-media:verified
             trap 'docker stop amaris-candidate >/dev/null' EXIT

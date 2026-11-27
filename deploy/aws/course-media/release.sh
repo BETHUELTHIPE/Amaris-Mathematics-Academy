@@ -139,7 +139,7 @@ jq -c '.deploymentConfiguration | {maximumPercent, minimumHealthyPercent, deploy
 printf 'Preflight passed. Current rollback revision is %s.\n' "${previous##*/}"
 printf 'Previous revision: `%s`\n\n' "${previous##*/}" >> "$GITHUB_STEP_SUMMARY"
 
-[[ "$backend_sha" == 44e800ccc4ad4c0f88f5c6f7dde72907b06da19c ]]
+[[ "$backend_sha" == a62a425f2ce84be89ae1327c8a232664e9c04534 ]]
 [[ "$FRONTEND_DIGEST" =~ ^sha256:[a-f0-9]{64}$ && "$BACKEND_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
 [[ "$source_sha" =~ ^[a-f0-9]{40}$ ]]
 outputs="$(aws cloudformation describe-stacks --stack-name amaris-staging-course-media   --query 'Stacks[0].Outputs' --output json)"
@@ -149,9 +149,9 @@ media_bucket="$(jq -er '.[] | select(.OutputKey=="BucketName").OutputValue' <<< 
 [[ "$media_bucket" == amaris-mathematics-academy-media-stage-110156539003-eu-north-1 ]]
 
 aws ecs describe-task-definition --task-definition "$previous" --output json > "$work/previous.json"
-jq -e '.taskDefinition as $t |
+jq -e --arg role "$media_role" '.taskDefinition as $t |
     $t.family=="amaris-ecs-staging-alb-web" and $t.networkMode=="awsvpc" and
-    ($t.taskRoleArn // "")=="" and $t.runtimePlatform.cpuArchitecture=="ARM64" and
+    ($t.taskRoleArn // "")==$role and $t.runtimePlatform.cpuArchitecture=="ARM64" and
     ($t.volumes|length)==0 and ([$t.containerDefinitions[].name]|sort)==["backend","cms","frontend"] and
     ($t.containerDefinitions[] | select(.name=="backend").entryPoint[2] | contains("export DATABASE_CONN_MAX_AGE=0\n"))'   "$work/previous.json" > /dev/null
 
@@ -162,8 +162,8 @@ jq --arg back "$registry@$BACKEND_DIGEST" --arg front "$registry@$FRONTEND_DIGES
   (.containerDefinitions[]|select(.name=="frontend").image)=$front |
   (.containerDefinitions[]|select(.name=="backend")) |= (
     .image=$back |
-    .environment=((.environment // []) + [{name:"ACADEMY_MEDIA_BUCKET",value:$bucket},{name:"ACADEMY_MEDIA_REGION",value:"eu-north-1"}]) |
-    .entryPoint[2] |= (split("exec \"$@\"") |
+    .environment |= (map(select(.name!="ACADEMY_MEDIA_BUCKET" and .name!="ACADEMY_MEDIA_REGION")) + [{name:"ACADEMY_MEDIA_BUCKET",value:$bucket},{name:"ACADEMY_MEDIA_REGION",value:"eu-north-1"}]) |
+     .entryPoint[2] |= (gsub("export RELEASE_GIT_SHA=[a-f0-9]{40}\n"; "") | split("exec \"$@\"") |
       if length==2 then join("export RELEASE_GIT_SHA="+$sha+"\nexec \"$@\"") else error("Unexpected backend runtime wrapper") end)
   )
 ' "$work/previous.json" > "$work/web.json"
@@ -217,5 +217,7 @@ curl -fsS --max-time 15 "$origin/static/content/admin-course-media.js" -o "$work
 cmp "$BACKEND_CHECKOUT/backend/content/static/content/admin-course-media.js" "$work/admin.js"
 curl -fsS --max-time 15 "$origin/header-navigation.js" -o "$work/header.js"
 cmp "$FRONTEND_CHECKOUT/frontend/public/header-navigation.js" "$work/header.js"
+signed_out="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$origin/api/v1/tutor/videos/")"
+[[ "$signed_out" == 401 ]]
 echo "The staging media release is healthy at ${next##*/}. Both new image digests and public assets matched."
 printf 'AWS staging task definition `%s` passed roll-out verification.\n' "${next##*/}" >> "$GITHUB_STEP_SUMMARY"

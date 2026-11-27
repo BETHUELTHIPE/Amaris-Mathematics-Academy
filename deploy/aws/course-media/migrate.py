@@ -14,7 +14,7 @@ assert database["HOST"] == f"db.{project}.supabase.co" or (
 )
 assert settings.ACADEMY_MEDIA_BUCKET == "amaris-mathematics-academy-media-stage-110156539003-eu-north-1"
 s3_client().list_objects_v2(Bucket=settings.ACADEMY_MEDIA_BUCKET, Prefix="academy-media/", MaxKeys=1)
-target = ("content", "0020_academy_course_media")
+target = ("content", "0021_tutor_video_submissions")
 executor = MigrationExecutor(connection)
 plan = [(migration.app_label, migration.name, backwards) for migration, backwards in executor.migration_plan([target])]
 assert plan in ([], [(*target, False)]), "Unexpected database migration plan"
