@@ -1,0 +1,163 @@
+name: Deploy staging CloudWatch log bug alerts
+on:
+  push:
+    branches: [ops/aws-staging-log-bug-alerts]
+    paths: [.github/workflows/aws-staging-log-bug-alerts.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-staging-log-bug-alerts
+  cancel-in-progress: false
+jobs:
+  alerts:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-staging-log-bug-alerts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Configure and verify log metric alarms
+        env:
+          OPERATOR_EMAIL: ${{ secrets.AWS_MONITORING_EMAIL }}
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import boto3
+          import hashlib
+          import os
+          import time
+
+          def require(ok, message):
+              if not ok:
+                  raise SystemExit(message)
+
+          region = "eu-north-1"
+          account = "110156539003"
+          topic = f"arn:aws:sns:{region}:{account}:amaris-staging-cloudwatch-alarms"
+          primary = "/amaris/mathematics-academy/staging"
+          namespace = "Amaris/Staging/LogBugs"
+          logs = boto3.client("logs", region_name=region)
+          cw = boto3.client("cloudwatch", region_name=region)
+          sns = boto3.client("sns", region_name=region)
+          require(boto3.client("sts").get_caller_identity()["Account"] == account, "Wrong AWS account")
+          email = os.environ.get("OPERATOR_EMAIL", "").strip()
+          subscribers = [s for p in sns.get_paginator("list_subscriptions_by_topic").paginate(TopicArn=topic)
+                         for s in p["Subscriptions"]]
+          require(bool(email) and len(subscribers) == 1 and subscribers[0]["Protocol"] == "email"
+                  and subscribers[0]["Endpoint"] == email
+                  and subscribers[0]["SubscriptionArn"].startswith(topic + ":"),
+                  "Expected exactly one confirmed Academy operator email; no changes made.")
+
+          # Covers plain application logs and Docker JSON wrappers without exposing their contents.
+          pattern = r"%ERROR|CRITICAL|FATAL|Traceback|Exception:|Error:|error:|\x5berror\x5d|\x5bcrit\x5d|\x5bemerg\x5d|panic:%"
+          positive = [
+              "ERROR django.request Internal Server Error",
+              "CRITICAL gunicorn worker failure",
+              "Traceback (most recent call last):",
+              '{"log":"[ERROR] celery worker failed"}',
+              "2026 [error] nginx upstream failed",
+              "Error: Next.js request failed",
+              "ConnectionError: Redis unavailable",
+              "OperationalError: database unavailable",
+              "FATAL application failure",
+              "panic: runtime failure",
+          ]
+          negative = ["INFO GET /health/ 200", "DEBUG scheduler tick", "WARNING retry planned", "INFO normal request"]
+          matched = logs.test_metric_filter(filterPattern=pattern, logEventMessages=positive + negative)["matches"]
+          require({m["eventNumber"] for m in matched} == set(range(len(positive))),
+                  "AWS filter test did not classify all fixtures correctly.")
+          print("PASS: AWS filter classified error and normal-log fixtures.")
+
+          # Only known Academy staging prefixes; never attach alerts to unrelated or production groups.
+          prefixes = ("/amaris/mathematics-academy/staging", "/aws/lambda/amaris-mathematics-academy-staging",
+                      "/aws/lambda/amaris-staging", "/ecs/amaris-staging", "/ecs/amaris-ecs-staging",
+                      "/ecs/amaris-web-staging")
+          groups = set()
+          for prefix in prefixes:
+              for page in logs.get_paginator("describe_log_groups").paginate(logGroupNamePrefix=prefix):
+                  for group in page["logGroups"]:
+                      name = group["logGroupName"]
+                      if name == prefix or name.startswith((prefix + "/", prefix + "-")):
+                          groups.add(name)
+          require(primary in groups, "Academy application log group missing; no changes made.")
+          require(len(groups) <= 20, "Unexpected number of staging log groups; review scope.")
+          plans = []
+          for group in sorted(groups):
+              digest = hashlib.sha256(group.encode()).hexdigest()[:12]
+              metric = "Errors-" + digest
+              alarm = "amaris-staging-log-bugs-" + digest
+              # Preflight every group before writing: only STANDARD supports metric filters.
+              details = logs.describe_log_groups(logGroupNamePrefix=group)["logGroups"]
+              exact = next((g for g in details if g["logGroupName"] == group), {})
+              require(exact.get("logGroupClass", "STANDARD") == "STANDARD", "Unsupported log class: " + group)
+              plans.append((group, metric, alarm))
+
+          for group, metric, alarm in plans:
+              logs.put_metric_filter(logGroupName=group, filterName="amaris-staging-bug-errors-v1",
+                  filterPattern=pattern, metricTransformations=[{
+                      "metricName": metric, "metricNamespace": namespace, "metricValue": "1",
+                      "defaultValue": 0.0, "unit": "Count"}])
+              cw.put_metric_alarm(AlarmName=alarm,
+                  AlarmDescription="Academy staging error logs in " + group + ". Review CloudWatch Logs; synthetic tests may be labelled in a test stream.",
+                  ActionsEnabled=True, AlarmActions=[topic], OKActions=[topic],
+                  Namespace=namespace, MetricName=metric, Statistic="Sum", Period=60,
+                  EvaluationPeriods=1, DatapointsToAlarm=1, Threshold=1,
+                  ComparisonOperator="GreaterThanOrEqualToThreshold", TreatMissingData="notBreaching")
+              f = logs.describe_metric_filters(logGroupName=group, filterNamePrefix="amaris-staging-bug-errors-v1")["metricFilters"]
+              a = cw.describe_alarms(AlarmNames=[alarm])["MetricAlarms"]
+              require(len(f) == 1 and f[0]["filterPattern"] == pattern
+                      and f[0]["metricTransformations"][0]["metricName"] == metric
+                      and len(a) == 1 and a[0]["ActionsEnabled"] and a[0]["AlarmActions"] == [topic]
+                      and a[0]["OKActions"] == [topic] and a[0]["MetricName"] == metric,
+                      "Read-back failed: " + group)
+              print("PASS: " + group + " -> " + alarm + " -> existing SNS")
+          print(f"Verified {len(plans)} log group alarms. No production changes.")
+
+          # A single labelled synthetic event on the first push only. Never force alarm state.
+          if os.environ["GITHUB_EVENT_NAME"] != "push" or os.environ["GITHUB_RUN_ATTEMPT"] != "1":
+              print("Synthetic email test skipped for manual rerun.")
+              raise SystemExit(0)
+          alarm = next(a for g, m, a in plans if g == primary)
+          for _ in range(18):
+              state = cw.describe_alarms(AlarmNames=[alarm])["MetricAlarms"][0]["StateValue"]
+              if state != "INSUFFICIENT_DATA":
+                  break
+              time.sleep(10)
+          if state != "OK":
+              raise SystemExit("Synthetic test blocked: primary alarm is not OK; investigate existing errors.")
+          stream = "monitoring-test/" + os.environ["GITHUB_RUN_ID"]
+          logs.create_log_stream(logGroupName=primary, logStreamName=stream)
+          started = int(time.time() * 1000)
+          logs.put_log_events(logGroupName=primary, logStreamName=stream, logEvents=[{
+              "timestamp": started, "message": "ERROR AMARIS SYNTHETIC MONITORING TEST - not a real application failure"}])
+          for _ in range(24):
+              state = cw.describe_alarms(AlarmNames=[alarm])["MetricAlarms"][0]["StateValue"]
+              if state == "ALARM":
+                  print("PASS: CloudWatch observed ALARM after the labelled test log. Verify SNS email in recipient inbox.")
+                  break
+              time.sleep(10)
+          else:
+              raise SystemExit("No alarm transition observed after synthetic error. Investigate delivery.")
+          PY
