@@ -1,0 +1,206 @@
+name: Reconcile and verify existing staging NAT instance
+on:
+  push:
+    branches: [ops/aws-staging-nat-configuration]
+    paths: [.github/workflows/aws-staging-nat-configuration.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-staging-nat-configuration
+  cancel-in-progress: false
+jobs:
+  nat:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-staging-nat-configuration'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Reconcile existing NAT and verify application egress
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import base64
+          import json
+          import time
+          import urllib.request
+          import boto3
+
+          account = "110156539003"
+          region = "eu-north-1"
+          vpc = "vpc-0252538d2febd4641"
+          private_table = "rtb-0dc01e9f7a0dc9515"
+          public_table = "rtb-0518491414266806d"
+          nat = "i-02855f007d15af597"
+          endpoint = "vpce-021234ea87b755a8d"
+          subnets = {"subnet-041cecdd7bd182d11","subnet-0f4422980fa309a1c"}
+          cluster = "amaris-ecs-staging"
+          ec2 = boto3.client("ec2", region_name=region)
+          ecs = boto3.client("ecs", region_name=region)
+          ssm = boto3.client("ssm", region_name=region)
+
+          def require(ok, message):
+              if not ok:
+                  raise RuntimeError(message)
+
+          def table(ident):
+              return ec2.describe_route_tables(RouteTableIds=[ident])["RouteTables"][0]
+
+          def check_routes():
+              private = table(private_table)
+              require(private["VpcId"] == vpc and {x.get("SubnetId") for x in private["Associations"]} == subnets,
+                      "Unexpected private subnet associations")
+              defaults = [r for r in private["Routes"] if r.get("DestinationCidrBlock") == "0.0.0.0/0"]
+              require(len(defaults) == 1 and defaults[0]["State"] == "active" and defaults[0].get("InstanceId") == nat,
+                      "Expected active default route through the existing NAT instance; no replacement performed")
+              require(not any(r.get("GatewayId","").startswith("igw-") for r in private["Routes"]), "Private subnet has direct IGW route")
+              require(any(r.get("GatewayId") == endpoint and r.get("DestinationPrefixListId") and r["State"] == "active" for r in private["Routes"]),
+                      "S3 gateway route missing")
+              e = ec2.describe_vpc_endpoints(VpcEndpointIds=[endpoint])["VpcEndpoints"][0]
+              require(e["State"] == "available" and private_table in e["RouteTableIds"], "S3 endpoint unavailable")
+              public = table(public_table)
+              require(public["VpcId"] == vpc and any(r.get("DestinationCidrBlock") == "0.0.0.0/0" and r.get("GatewayId","").startswith("igw-") and r["State"] == "active" for r in public["Routes"]),
+                      "Public NAT host has no active internet gateway route")
+              return public
+
+          def health():
+              for path in ("/health/ready","/health/dependencies/"):
+                  with urllib.request.urlopen("https://16.171.164.5" + path, timeout=15) as r:
+                      data = json.load(r)
+                  require(data.get("status") == "ok" if path.endswith("ready") else all(data.get("dependencies",{}).get(k) for k in ("postgresql","redis")), "Website health failed")
+              for name, minimum in (("amaris-web-staging-stateless",2),("amaris-staging-singleton-jobs",1)):
+                  row = ecs.describe_services(cluster=cluster, services=[name])["services"][0]
+                  require(row["runningCount"] >= minimum and row["runningCount"] == row["desiredCount"], "Unexpected service counts")
+              print("PASS: website HTTPS, PostgreSQL, Redis, web and jobs service counts", flush=True)
+
+          def remote(host, script):
+              payload = base64.b64encode(script.encode()).decode()
+              cmd = "printf '%s' '" + payload + "' | base64 -d | bash"
+              ident = ssm.send_command(InstanceIds=[host], DocumentName="AWS-RunShellScript",
+                  Parameters={"commands":[cmd],"executionTimeout":["120"]},TimeoutSeconds=90,
+                  Comment="Reconcile or verify Amaris staging NAT")["Command"]["CommandId"]
+              for _ in range(36):
+                  try:
+                      result = ssm.get_command_invocation(CommandId=ident, InstanceId=host)
+                  except ssm.exceptions.InvocationDoesNotExist:
+                      time.sleep(5)
+                      continue
+                  if result["Status"] == "Success":
+                      print(result["StandardOutputContent"].strip(), flush=True)
+                      return result["StandardOutputContent"]
+                  if result["Status"] not in ("Pending","InProgress","Delayed"):
+                      print(result.get("StandardErrorContent","")[-1500:], flush=True)
+                      raise RuntimeError("Remote check failed: " + result["Status"])
+                  time.sleep(5)
+              raise RuntimeError("SSM check timed out")
+
+          require(boto3.client("sts").get_caller_identity()["Account"] == account, "Wrong account")
+          public = check_routes()
+          instance = ec2.describe_instances(InstanceIds=[nat])["Reservations"][0]["Instances"][0]
+          require(instance["VpcId"] == vpc and instance["State"]["Name"] == "running"
+                  and instance["SubnetId"] in {a.get("SubnetId") for a in public["Associations"]}
+                  and instance.get("PublicIpAddress"), "Unexpected NAT instance")
+          ip = instance["PublicIpAddress"]
+          hosts = [i for p in ec2.get_paginator("describe_instances").paginate(Filters=[{"Name":"vpc-id","Values":[vpc]},{"Name":"instance-state-name","Values":["running"]}])
+                   for res in p["Reservations"] for i in res["Instances"] if i["SubnetId"] in subnets]
+          require(hosts, "No private EC2 host")
+          targets = [nat] + [i["InstanceId"] for i in hosts]
+          for host in targets:
+              info = ssm.describe_instance_information(Filters=[{"Key":"InstanceIds","Values":[host]}])["InstanceInformationList"]
+              require(len(info) == 1 and info[0]["PingStatus"] == "Online", "SSM unavailable")
+          health()
+          if instance.get("SourceDestCheck") is not False:
+              ec2.modify_instance_attribute(InstanceId=nat, SourceDestCheck={"Value":False})
+          require(ec2.describe_instance_attribute(InstanceId=nat, Attribute="sourceDestCheck")["SourceDestCheck"]["Value"] is False, "Source/destination check not disabled")
+          print("PASS: NAT instance source/destination check disabled and both private routes verified", flush=True)
+
+          configure = r"""
+          set -euo pipefail
+          unit=amaris-staging-private-nat.service
+          script=/opt/amaris-staging/vpc/nat.sh
+          test -x "$script"
+          systemctl cat "$unit" | grep -Fq "ExecStart=$script"
+          interface="$(ip -4 route show default | awk 'NR==1 {print $5}')"
+          [[ "$interface" =~ ^[a-z0-9]+$ ]]
+          private=10.86.0.128/25
+          vpc=10.86.0.0/24
+          ports=443,465,587,5432,6543
+          check() {
+            [[ "$(sysctl -n net.ipv4.ip_forward)" == 1 ]] &&
+            [[ "$(sysctl -n net.ipv4.conf.all.send_redirects)" == 0 ]] &&
+            [[ "$(sysctl -n net.ipv4.conf.$interface.send_redirects)" == 0 ]] &&
+            iptables -w -t nat -C POSTROUTING -s "$private" ! -d "$vpc" -o "$interface" -p tcp -m multiport --dports "$ports" -j MASQUERADE &&
+            iptables -w -t filter -C FORWARD -i "$interface" -o "$interface" -s "$private" ! -d "$vpc" -p tcp -m multiport --dports "$ports" -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT &&
+            iptables -w -t filter -C FORWARD -i "$interface" -o "$interface" -d "$private" ! -s "$vpc" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+          }
+          systemctl enable "$unit" >/dev/null
+          if ! check || ! systemctl is-active --quiet "$unit"; then
+            systemctl restart "$unit"
+          fi
+          check
+          systemctl is-enabled --quiet "$unit"
+          systemctl is-active --quiet "$unit"
+          echo 'PASS: persistent NAT service, IPv4 forwarding, MASQUERADE and connection tracking rules'
+          echo 'Configured forwarded TCP ports: 443 465 587 5432 6543'
+          """
+          remote(nat, configure)
+
+          probe_code = """import urllib.request, urllib.error, ipaddress
+          expected = EXPECTED
+          with urllib.request.urlopen('https://checkip.amazonaws.com/', timeout=12) as r:
+              actual = r.read(64).decode().strip()
+          assert str(ipaddress.ip_address(actual)) == expected, 'Unexpected outbound IP'
+          print('PASS: HTTPS public egress uses the existing NAT public IP')
+          for name, url in [('AWS STS','https://sts.eu-north-1.amazonaws.com/'),('Vimeo','https://api.vimeo.com/'),('Paystack','https://api.paystack.co/')]:
+              try:
+                  with urllib.request.urlopen(url, timeout=12) as r:
+                      status = r.status
+              except urllib.error.HTTPError as exc:
+                  status = exc.code
+              assert 200 <= status < 500, name + ' unavailable'
+              print('PASS: ' + name + ' HTTPS reachability (HTTP ' + str(status) + ')')
+          """.replace("EXPECTED",repr(ip))
+          # Python string content is dedented by YAML together with the embedded program.
+          import textwrap
+          probe_code = textwrap.dedent(probe_code)
+          escaped = base64.b64encode(probe_code.encode()).decode()
+          for host in hosts:
+              remote(host["InstanceId"], "set -euo pipefail\nprintf '%s' '" + escaped + "' | base64 -d | python3\n")
+          # Exercise real CMS containers on both hosts when present, not only EC2 host networking.
+          container_script = """set -euo pipefail
+          mapfile -t ids < <(docker ps --filter label=com.amazonaws.ecs.cluster=amaris-ecs-staging --filter label=com.amazonaws.ecs.container-name=cms --format '{{.ID}}')
+          for id in "${ids[@]}"; do
+            printf '%s' 'ENCODED' | base64 -d | docker exec -i "$id" python -
+            echo 'PASS: live CMS container outbound NAT'
+          done
+          """.replace("ENCODED",escaped)
+          evidence = "".join(remote(host, container_script) for host in targets)
+          require("PASS: live CMS container outbound NAT" in evidence, "No CMS container egress test obtained")
+          check_routes()
+          health()
+          print("PASS: existing NAT configured, private egress verified, S3 gateway preserved. No paid NAT gateway created.", flush=True)
+          PY
