@@ -35,14 +35,14 @@ class CourseMediaTests(TestCase):
         endpoint = reverse("admin:content_videoasset_begin_upload")
         payload = {"provider": "s3", "asset": "", "filename": "algebra.mp4", "title": "Algebra", "size": 20}
         self.client.force_login(self.staff)
-        self.assertEqual(self.client.post(endpoint, payload, content_type="application/json").status_code, 403)
+        self.assertEqual(self.client.post(endpoint, payload, content_type="application/json", secure=True).status_code, 403)
         self.client.force_login(self.admin)
-        page = self.client.get(reverse("admin:content_videoasset_add"))
+        page = self.client.get(reverse("admin:content_videoasset_add"), secure=True)
         self.assertContains(page, "data-academy-upload")
         self.assertContains(page, "Open the academy Vimeo folder")
         with patch("content.services.course_media.s3_client") as factory:
             factory.return_value.generate_presigned_url.return_value = "https://example.invalid/upload"
-            response = self.client.post(endpoint, payload, content_type="application/json")
+            response = self.client.post(endpoint, payload, content_type="application/json", secure=True)
         self.assertEqual(response.status_code, 200)
         params = factory.return_value.generate_presigned_url.call_args.kwargs["Params"]
         self.assertEqual(params["IfNoneMatch"], "*")
