@@ -1,0 +1,171 @@
+name: Release Amaris course media to AWS staging
+on:
+  push:
+    branches: [ops/aws-course-media-staging-release-20261127]
+    paths: [.github/workflows/aws-staging-course-media-release.yml, deploy/aws/course-media/**]
+permissions:
+  contents: read
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+env:
+  FRONTEND_SHA: d4fc2819240b927c52d95d8581ca5505cdece0f1
+  BACKEND_SHA: 41135990e514b129c002c1a60ef803e3fa298b75
+  ECR_REPO: 110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend
+  AWS_REGION: eu-north-1
+  AWS_PAGER: ''
+
+jobs:
+  images:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 28
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      COMPONENT: ${{ matrix.component }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: BETHUELTHIPE/Amaris-Mathematics-Academy
+          ref: ${{ matrix.component == 'backend' && env.BACKEND_SHA || env.FRONTEND_SHA }}
+          path: candidate
+          persist-credentials: false
+      - name: Build and test the pinned ARM64 image
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          if [[ "$COMPONENT" == backend ]]; then
+            sha="$BACKEND_SHA"
+            dockerfile=candidate/backend/Dockerfile
+          else
+            sha="$FRONTEND_SHA"
+            dockerfile=deploy/aws/frontend.Dockerfile
+          fi
+          test "$(git -C candidate rev-parse HEAD)" = "$sha"
+          docker build --file "$dockerfile" --tag amaris-media:verified \
+            --label "org.opencontainers.image.revision=$sha" "candidate/$COMPONENT"
+          test "$(docker image inspect --format '{{.Architecture}}' amaris-media:verified)" = arm64
+          if [[ "$COMPONENT" == backend ]]; then
+            docker run --rm --entrypoint python -e DJANGO_DEBUG=true amaris-media:verified \
+              manage.py test content.test_course_media content.test_student_api
+          else
+            docker run -d --rm --name amaris-candidate -p 127.0.0.1:3000:3000 amaris-media:verified
+            trap 'docker stop amaris-candidate >/dev/null' EXIT
+            for attempt in {1..24}; do
+              if curl -fsS --max-time 4 http://127.0.0.1:3000/header-navigation.js -o "$RUNNER_TEMP/navigation"; then
+                cmp candidate/frontend/public/header-navigation.js "$RUNNER_TEMP/navigation"
+                exit 0
+              fi
+              sleep 2
+            done
+            exit 1
+          fi
+      - name: Scan for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: amaris-media:verified
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          scanners: vuln
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Publish the scanned image by digest
+        run: |
+          set -euo pipefail
+          tag="course-media-$COMPONENT-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          registry="${ECR_REPO%%/*}"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          trap 'docker logout "$registry" >/dev/null' EXIT
+          docker tag amaris-media:verified "$ECR_REPO:$tag"
+          docker push "$ECR_REPO:$tag"
+          digest="$(aws ecr describe-images --repository-name amaris-staging-frontend \
+            --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf '%s\n' "$digest" > "$COMPONENT.digest"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: course-media-${{ matrix.component }}-digest
+          path: ${{ matrix.component }}.digest
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    needs: images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 48
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BACKEND_SHA }}
+          path: media-backend
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.FRONTEND_SHA }}
+          path: media-frontend
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: course-media-*-digest
+          path: digests
+          merge-multiple: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Migrate and release only the staging web service
+        run: |
+          set -euo pipefail
+          export BACKEND_CHECKOUT="$PWD/media-backend" FRONTEND_CHECKOUT="$PWD/media-frontend"
+          export BACKEND_DIGEST="$(cat digests/backend.digest)" FRONTEND_DIGEST="$(cat digests/frontend.digest)"
+          bash deploy/aws/course-media/release.sh
