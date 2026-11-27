@@ -3,6 +3,7 @@ import hmac
 import json
 import time
 from datetime import timedelta
+from decimal import Decimal
 from io import BytesIO
 from unittest import mock
 
@@ -18,7 +19,9 @@ from content.authentication import SupabaseStudentPrincipal
 from content.models import LiveClassBooking, StudentRecord, TutorAvailabilitySlot
 from content.services import paystack
 from content.services.live_classes import process_live_class_notification
+from content.services.tutor_finance import record_live_class_sale
 from content.tasks import deliver_live_class_confirmation
+from content.tutor_finance_models import TutorContract, TutorEarning, TutorPayout
 
 TEST_KEY = "sk_test_synthetic"
 TEST_WEBHOOK_SECRET = "whsec_synthetic"
@@ -225,6 +228,44 @@ class LiveClassPaystackTests(TestCase):
         self.assertEqual(booking.status, LiveClassBooking.Status.PAYMENT_REVIEW)
         self.assertTrue(booking.paid_at)
         self.assertFalse(booking.invoice_number)
+
+    def create_finance_contract(self):
+        return TutorContract.objects.create(
+            tutor=self.slot.tutor,
+            service=TutorContract.Service.LIVE_CLASS,
+            tutor_percent=Decimal("30.00"),
+            contract_reference="synthetic-paystack-contract",
+        )
+
+    def test_test_mode_payments_never_create_tutor_revenue(self):
+        self.create_finance_contract()
+        response, _ = self.initialize()
+        reference = response.json()["booking_reference"]
+        with mock.patch.object(paystack, "_request", return_value=self.successful_payment(reference)):
+            self.assertEqual(self.callback(reference, modern=True).status_code, 200)
+        booking = LiveClassBooking.objects.get(reference=reference)
+        self.assertEqual(booking.status, LiveClassBooking.Status.CONFIRMED)
+        self.assertIsNone(record_live_class_sale(booking))
+        self.assertFalse(TutorEarning.objects.exists())
+        self.assertFalse(TutorPayout.objects.exists())
+
+    @mock.patch.dict("os.environ", {"PAYSTACK_MODE": "live", "PAYSTACK_SECRET_KEY": "sk_live_synthetic"})
+    def test_verified_live_payment_records_contract_earning_once(self):
+        contract = self.create_finance_contract()
+        response, _ = self.initialize()
+        reference = response.json()["booking_reference"]
+        data = {**self.successful_payment(reference), "domain": "live"}
+        with mock.patch.object(paystack, "_request", return_value=data):
+            self.assertEqual(self.callback(reference, modern=True).status_code, 200)
+            self.assertEqual(self.callback(reference, modern=True).status_code, 200)
+        earning = TutorEarning.objects.get(source_reference=reference)
+        self.assertEqual(earning.contract_id, contract.pk)
+        self.assertEqual(earning.gross, Decimal("500.00"))
+        self.assertEqual(earning.tutor_amount, Decimal("150.00"))
+        self.assertEqual(earning.academy_amount, Decimal("350.00"))
+        self.assertEqual(earning.state, TutorEarning.State.HELD)
+        self.assertEqual(TutorEarning.objects.count(), 1)
+        self.assertFalse(TutorPayout.objects.exists())
 
     def test_provider_initialization_failure_keeps_same_booking_reference_for_retry(self):
         with mock.patch.object(paystack, "_request", side_effect=paystack.PaystackUnavailable):
