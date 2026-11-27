@@ -17,10 +17,16 @@ if [[ ! -x "$collector" ]]; then
     curl -fsS --retry 2 --max-time 45 "$repo/amazon_linux/$arch/latest/$file" -o "$temp/$file"
   done
   curl -fsS --retry 2 --max-time 20 "$repo/assets/amazon-cloudwatch-agent.gpg" -o "$temp/signing-key"
-  gpg --homedir "$temp" --batch --import "$temp/signing-key"
-  fingerprint="$(gpg --homedir "$temp" --batch --with-colons --fingerprint | awk -F: '$1 == "fpr" && !seen++ {print $10}')"
+  fingerprint="$(gpg --homedir "$temp" --batch --no-autostart --with-colons --show-keys "$temp/signing-key" |
+    awk -F: '$1 == "fpr" && !seen++ {print $10}')"
   [[ "$fingerprint" == 937616F3450B7D806CBD9725D58167303B789C72 ]]
-  gpg --homedir "$temp" --batch --verify "$temp/$package.sig" "$temp/$package"
+  gpg --homedir "$temp" --batch --no-autostart --dearmor -o "$temp/vendor.gpg" "$temp/signing-key"
+  if command -v gpgv >/dev/null; then
+    gpgv --keyring "$temp/vendor.gpg" "$temp/$package.sig" "$temp/$package"
+  else
+    gpg --homedir "$temp" --batch --no-autostart --no-default-keyring \
+      --keyring "$temp/vendor.gpg" --verify "$temp/$package.sig" "$temp/$package"
+  fi
   rpm -U "$temp/$package"
 fi
 
