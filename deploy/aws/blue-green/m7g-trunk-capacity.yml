@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Prepare dedicated private m7g.large ECS launch template; no EC2 instances or ASG are created.
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  EcsAmi:
+    Type: AWS::EC2::Image::Id
+Resources:
+  TrunkHostRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - {Key: Project, Value: Amaris}
+        - {Key: Environment, Value: staging}
+  TrunkHostProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref TrunkHostRole]
+  TrunkHostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Private ECS host, no inbound traffic, HTTPS egress for ECS and SSM
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+      Tags:
+        - {Key: Environment, Value: staging}
+  TrunkHostTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: amaris-staging-m7g-large-trunk
+      LaunchTemplateData:
+        ImageId: !Ref EcsAmi
+        InstanceType: m7g.large
+        IamInstanceProfile: {Arn: !GetAtt TrunkHostProfile.Arn}
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpTokens: required
+          HttpPutResponseHopLimit: 1
+        PrivateDnsNameOptions:
+          HostnameType: ip-name
+          EnableResourceNameDnsARecord: false
+          EnableResourceNameDnsAAAARecord: false
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: false
+            DeleteOnTermination: true
+            Groups: [!Ref TrunkHostSecurityGroup]
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeType: gp3
+              VolumeSize: 30
+              Encrypted: true
+              DeleteOnTermination: true
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            set -euo pipefail
+            cat > /etc/ecs/ecs.config <<'ECS'
+            ECS_CLUSTER=amaris-ecs-staging
+            ECS_ENABLE_TASK_ENI=true
+            ECS_AWSVPC_BLOCK_IMDS=true
+            ECS_ENABLE_AWSLOGS_EXECUTIONROLE_OVERRIDE=true
+            ECS_INSTANCE_ATTRIBUTES={"amaris.capacity":"m7g-large-trunk"}
+            ECS
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - {Key: Name, Value: amaris-staging-m7g-large-trunk}
+              - {Key: Environment, Value: staging}
+              - {Key: Project, Value: Amaris}
+          - ResourceType: volume
+            Tags:
+              - {Key: Environment, Value: staging}
+              - {Key: Project, Value: Amaris}
+Outputs:
+  RoleArn: {Value: !GetAtt TrunkHostRole.Arn}
+  LaunchTemplateId: {Value: !Ref TrunkHostTemplate}
+  LaunchTemplateVersion: {Value: !GetAtt TrunkHostTemplate.LatestVersionNumber}
