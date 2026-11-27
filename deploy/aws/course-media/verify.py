@@ -1,7 +1,9 @@
 """Verify the exact Django presign path against the staging AWS media bucket."""
 
 import os
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
@@ -21,7 +23,31 @@ from content.services.course_media import (
 
 ORIGIN = "https://16.171.164.5"
 BUCKET = os.environ["ACADEMY_MEDIA_BUCKET"]
-body = b"disposable academy media infrastructure fixture"
+with tempfile.TemporaryDirectory() as directory:
+    video = Path(directory, "test.mp4")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=64x64:d=1",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(video),
+        ],
+        check=True,
+        timeout=20,
+    )
+    body = video.read_bytes()
+assert body[4:8] == b"ftyp"
 upload = begin_video_upload(
     user_id="staging-probe",
     asset_id="",
@@ -80,6 +106,12 @@ try:
             response.read() == body
             and response.headers.get("x-amz-server-side-encryption") == "AES256"
         )
+    with urlopen(
+        Request(get_url, headers={"Range": "bytes=0-15"}), timeout=12
+    ) as response:
+        assert response.status == 206 and response.read() == body[:16]
+        assert response.headers.get("Content-Range") == f"bytes 0-15/{len(body)}"
+    print("Confirmed a byte-range read for video playback and seeking.")
     try:
         urlopen(Request(url.split("?")[0]), timeout=12).close()
     except HTTPError as exc:
