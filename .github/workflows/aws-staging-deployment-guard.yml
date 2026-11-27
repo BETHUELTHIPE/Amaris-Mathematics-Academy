@@ -58,7 +58,8 @@ jobs:
               return set(arn for p in ecs.get_paginator("list_tasks").paginate(cluster=cluster,serviceName=name,desiredStatus="RUNNING") for arn in p["taskArns"])
           def health():
               with urllib.request.urlopen("https://16.171.164.5/health/dependencies/",timeout=15) as r:
-                  assert all(json.load(r)["dependencies"].get(k) for k in ("postgresql","redis"))
+                  dependencies=json.load(r)["dependencies"]
+                  assert all(dependencies.get(k) for k in ("postgresql","redis"))
               s=service()
               assert s["runningCount"]==s["desiredCount"]==2 and s["pendingCount"]==0
               assert len(s["deployments"])==1
