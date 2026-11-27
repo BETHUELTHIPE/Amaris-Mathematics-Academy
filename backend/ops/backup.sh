@@ -9,6 +9,8 @@ stage_dir=$(mktemp -d)
 status=0
 
 mkdir -p "$metrics_dir"
+# A failed retry must never leave a previous success marker looking fresh.
+rm -f "$metrics_dir/backup-success"
 
 write_attempt_metric() {
     finished_at=$(date +%s)
@@ -59,10 +61,24 @@ if ! restic snapshots >/dev/null 2>&1; then
     restic init
 fi
 
-restic backup "$stage_dir" --tag "${BACKUP_TAG:-automated}" --tag amaris
+case "${BACKUP_ENVIRONMENT:-}" in
+    "") # Backwards compatible with existing repositories.
+        restic backup "$stage_dir" --tag "${BACKUP_TAG:-automated}" --tag amaris
+        forget_filter=amaris
+        ;;
+    staging|production|ci)
+        restic backup "$stage_dir" --tag "${BACKUP_TAG:-automated}" --tag amaris --tag "$BACKUP_ENVIRONMENT"
+        forget_filter="amaris,$BACKUP_ENVIRONMENT"
+        ;;
+    *)
+        echo "Invalid BACKUP_ENVIRONMENT" >&2
+        exit 1
+        ;;
+esac
 restic check --read-data-subset="${RESTIC_CHECK_SUBSET:-1/20}"
+# Use an AND-tag filter to avoid pruning another environment's snapshots.
 restic forget \
-    --tag amaris \
+    --tag "$forget_filter" \
     --keep-daily "${BACKUP_KEEP_DAILY:-7}" \
     --keep-weekly "${BACKUP_KEEP_WEEKLY:-5}" \
     --keep-monthly "${BACKUP_KEEP_MONTHLY:-12}" \

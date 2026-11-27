@@ -1,0 +1,88 @@
+name: Staging Backup Readiness
+
+# Manual on purpose: do not silently copy staging/student data to a CI runner.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-backup-readiness
+  cancel-in-progress: false
+
+jobs:
+  verify-staging-backups:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    env:
+      STAGING_BACKUP_DATABASE_URL: ${{ secrets.STAGING_BACKUP_DATABASE_URL }}
+      STAGING_BACKUP_EXPECTED_DB_HOST: ${{ vars.STAGING_BACKUP_EXPECTED_DB_HOST }}
+      STAGING_BACKUP_EXPECTED_DB_NAME: ${{ vars.STAGING_BACKUP_EXPECTED_DB_NAME }}
+      STAGING_BACKUP_MAX_AGE_HOURS: ${{ vars.STAGING_BACKUP_MAX_AGE_HOURS || '48' }}
+      RESTIC_REPOSITORY: ${{ secrets.STAGING_BACKUP_RESTIC_REPOSITORY }}
+      RESTIC_PASSWORD: ${{ secrets.STAGING_BACKUP_RESTIC_PASSWORD }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.STAGING_BACKUP_AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.STAGING_BACKUP_AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ vars.STAGING_BACKUP_AWS_REGION || 'eu-central-1' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail closed on missing credentials or wrong staging database identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release/check_staging_backup_readiness.py config
+
+      - name: Build the exact recovery tooling image
+        run: docker build -t "amaris-staging-recovery:${GITHUB_SHA}" backend
+
+      - name: Verify staging PostgreSQL with a read-only query
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --entrypoint /bin/sh \
+            -e STAGING_BACKUP_DATABASE_URL \
+            -e PGSSLMODE=require \
+            "amaris-staging-recovery:${GITHUB_SHA}" \
+            -c 'psql "$STAGING_BACKUP_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT 1;" | grep -qx 1'
+
+      - name: Read staging Restic snapshot metadata without restoring student data
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --entrypoint restic \
+            -e RESTIC_REPOSITORY \
+            -e RESTIC_PASSWORD \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            -e AWS_DEFAULT_REGION \
+            "amaris-staging-recovery:${GITHUB_SHA}" \
+            snapshots --json > "${RUNNER_TEMP}/staging-snapshots.json"
+          python3 scripts/release/check_staging_backup_readiness.py snapshots < "${RUNNER_TEMP}/staging-snapshots.json"
+          rm -f "${RUNNER_TEMP}/staging-snapshots.json"
+
+      - name: Verify encrypted repository integrity (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --entrypoint restic \
+            -e RESTIC_REPOSITORY \
+            -e RESTIC_PASSWORD \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            -e AWS_DEFAULT_REGION \
+            "amaris-staging-recovery:${GITHUB_SHA}" \
+            check --read-data-subset=1/20
+
+      - name: Record exact scope of the successful check
+        run: |
+          echo "Staging database connectivity: PASS"
+          echo "Staging encrypted backup freshness: PASS"
+          echo "Staging remote repository sampled integrity: PASS"
+          echo "Live staging restore into a dedicated isolated database: NOT VERIFIED"
