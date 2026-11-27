@@ -56,7 +56,15 @@ jobs:
           container="$2"
           id="$(docker ps -q --filter "label=com.amazonaws.ecs.task-arn=$task" --filter "label=com.amazonaws.ecs.container-name=$container")"
           [[ "$id" =~ ^[a-f0-9]+$ ]]
-          docker exec -i "$id" python - <<'PY'
+          docker exec -i "$id" sh -ec '
+            while IFS= read -r setting; do
+              if [ -n "$setting" ]; then export "$setting"; fi
+            done <<AMARIS_SETTINGS
+          $AMARIS_RUNTIME_ENV
+          AMARIS_SETTINGS
+            unset AMARIS_RUNTIME_ENV
+            exec python -
+          ' <<'PY'
           import json
           import os
           import smtplib
