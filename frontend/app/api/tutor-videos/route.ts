@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSiteUrl } from "@/lib/supabase/config";
 import { TutorApiError, tutorFetch } from "@/lib/tutor-api";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +8,8 @@ const maxBody = 4096;
 
 export async function POST(request: Request) {
   const result = (body: unknown, status: number) => NextResponse.json(body, { status, headers: privateHeaders });
-  if (request.headers.get("origin") !== new URL(request.url).origin) {
+  // The backend transport URL may use HTTP behind the AWS HTTPS proxy.
+  if (request.headers.get("origin") !== new URL(getSiteUrl()).origin) {
     return result({ detail: "Submit the upload from the Amaris tutor dashboard." }, 403);
   }
   if (!request.headers.get("content-type")?.startsWith("application/json")) {
