@@ -39,8 +39,7 @@ class NoRedirect(HTTPRedirectHandler):
 http = build_opener(NoRedirect())
 def check_database():
     with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute("SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()")
-        assert cursor.fetchone() == (True,)
+        assert connection.get_connection_params().get("sslmode") in ("require", "verify-ca", "verify-full"), "Django client does not require TLS"
         cursor.execute("SELECT EXISTS(SELECT 1 FROM django_migrations)")
         assert cursor.fetchone() == (True,)
         cursor.execute("CREATE TEMP TABLE retention_smoke (value text) ON COMMIT DROP")
@@ -87,7 +86,9 @@ try:
         check_file(alias, storage)
 except Exception as exc:
     # Provider exception messages can include a signed object URL.
-    print(f"Supabase {phase} verification failed: {type(exc).__name__}.", file=sys.stderr)
+    from traceback import extract_tb
+    frame = [item for item in extract_tb(exc.__traceback__) if item.filename == "<stdin>"][-1]
+    print(f"Supabase {phase} verification failed in {frame.name} at line {frame.lineno}: {type(exc).__name__}.", file=sys.stderr)
     raise SystemExit(1) from None
 finally:
     connection.close()

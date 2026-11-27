@@ -94,3 +94,31 @@ jobs:
               raise SystemExit("Staging tutor verification could not connect") from None
           print("Verified staging tutor sign-in, authenticated AWS API access and signed-out denial.")
           PY
+
+  database-backup-status:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    environment:
+      name: staging
+      deployment: false
+    permissions: {}
+    steps:
+      - name: Read managed database backup status for staging
+        env:
+          MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_AUTH_MANAGEMENT_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+          request = Request("https://api.supabase.com/v1/projects/atyhhjwwxgzeurnwayay/database/backups",
+              headers={"Authorization": "Bearer " + os.environ["MANAGEMENT_TOKEN"]})
+          try:
+              with urlopen(request, timeout=15) as response:
+                  data = json.load(response)
+          except HTTPError as error:
+              raise SystemExit(f"Backup metadata request returned HTTP {error.code}.") from None
+          completed = [str(b.get("inserted_at", "")) for b in data.get("backups", []) if b.get("status") == "COMPLETED"]
+          print(f"Completed backups reported: {len(completed)}. Most recent: {max(completed, default='none listed')}.")
+          print(f"Physical backup active: {data.get('physical_backup_data',{}).get('physical_backup_enabled',data.get('physical_backup_enabled'))}. PITR active: {data.get('pitr_enabled')}.")
+          PY
