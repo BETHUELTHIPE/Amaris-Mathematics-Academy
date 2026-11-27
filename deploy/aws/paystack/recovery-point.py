@@ -10,6 +10,7 @@ from pathlib import Path
 
 import boto3
 from botocore.exceptions import ClientError
+from botocore.config import Config
 
 ACCOUNT = "110156539003"
 REGION = "eu-north-1"
@@ -22,7 +23,8 @@ ROOT.mkdir(mode=0o700, exist_ok=True)
 session = boto3.Session(region_name=REGION)
 assert session.client("sts").get_caller_identity()["Account"] == ACCOUNT
 ecs = session.client("ecs")
-s3 = session.client("s3")
+s3 = session.client("s3", endpoint_url=f"https://s3.{REGION}.amazonaws.com",
+                    config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}))
 ssm = session.client("ssm")
 state = ecs.describe_services(cluster=CLUSTER, services=[SERVICE])["services"][0]
 assert state["status"] == "ACTIVE" and state["desiredCount"] == state["runningCount"] == 2 and state["pendingCount"] == 0
@@ -89,7 +91,8 @@ subprocess.run(["pg_dump","--dbname="+os.environ["DATABASE_URL"],"--schema="+sch
 PY
 then echo 'BLOCKED: source dump failed (details withheld)'; exit 1; fi
 test -s "$work/app.dump"
-curl --fail --silent --show-error --max-time 120 -X PUT -H 'x-amz-server-side-encryption: AES256' -H 'If-None-Match: *' --upload-file "$work/app.dump" """ + shlex.quote(url) + """ >/dev/null 2>"$work/upload.err" || { echo 'BLOCKED: private encrypted backup upload failed'; exit 1; }
+status=$(curl --fail --silent --show-error --max-time 120 -X PUT -H 'x-amz-server-side-encryption: AES256' -H 'If-None-Match: *' --upload-file "$work/app.dump" """ + shlex.quote(url) + """ -o "$work/upload-response" -w '%{http_code}' 2>"$work/upload.err") || { echo 'BLOCKED: private encrypted backup upload failed'; exit 1; }
+[[ "$status" == 200 ]] || { echo "BLOCKED: S3 PUT returned HTTP $status"; exit 1; }
 printf 'PASS: staging dump uploaded; bytes='
 wc -c < "$work/app.dump"
 """
@@ -105,14 +108,20 @@ for _ in range(75):
     except ssm.exceptions.InvocationDoesNotExist:
         continue
     if result["Status"] == "Success":
+        match = re.fullmatch(r"PASS: staging dump uploaded; bytes=\s*([0-9]+)", result.get("StandardOutputContent","").strip())
+        if not match or int(match.group(1)) <= 0:
+            raise SystemExit("BLOCKED: remote command completed without verified upload marker")
+        print("PASS: remote S3 PUT returned 200; uploaded bytes:", match.group(1))
         break
     if result["Status"] not in ("Pending","InProgress","Delayed"):
+        safe = [line for line in result.get("StandardOutputContent","").splitlines() if re.fullmatch(r"BLOCKED: [A-Za-z0-9 ();:-]+",line)]
+        print("\n".join(safe))
         raise SystemExit("BLOCKED: remote backup command "+result["Status"])
 else:
     ssm.cancel_command(CommandId=command)
     raise SystemExit("BLOCKED: backup command timeout")
 head = s3.head_object(**args, Key=key)
-assert head["ServerSideEncryption"] == "AES256" and head["ContentLength"] > 0 and head.get("VersionId")
+assert head["ServerSideEncryption"] == "AES256" and head["ContentLength"] == int(match.group(1)) and head.get("VersionId")
 s3.download_file(BUCKET,key,str(ROOT/"app.dump"),ExtraArgs={"VersionId":head["VersionId"],"ExpectedBucketOwner":ACCOUNT})
 assert (ROOT/"app.dump").stat().st_size == head["ContentLength"]
 (ROOT/"app.dump").chmod(0o600)
