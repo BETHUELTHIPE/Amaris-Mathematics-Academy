@@ -147,7 +147,7 @@ def _begin_vimeo(title, size):
     return {"url": link}, match.group(1)
 
 
-def begin_video_upload(*, user_id, asset_id, provider, filename, size, title):
+def begin_video_upload(*, user_id, asset_id, provider, filename, size, title, scope="admin"):
     if not enabled_providers().get(provider):
         raise ValidationError("This upload provider is unavailable.")
     if isinstance(size, bool) or not isinstance(size, int) or not 0 < size <= MAX_BYTES:
@@ -189,13 +189,15 @@ def begin_video_upload(*, user_id, asset_id, provider, filename, size, title):
             "provider": provider,
             "ref": reference,
             "size": size,
+            "title": title,
+            "scope": scope,
         },
         salt="academy-video-upload",
     )
     return {**post, "ticket": ticket}
 
 
-def verify_video_upload(ticket, *, user_id, asset_id, provider):
+def verify_video_upload(ticket, *, user_id, asset_id, provider, scope="admin"):
     try:
         claims = signing.loads(ticket, salt="academy-video-upload", max_age=6 * 3600)
     except signing.BadSignature:
@@ -204,6 +206,7 @@ def verify_video_upload(ticket, *, user_id, asset_id, provider):
         ) from None
     if (
         claims["admin"] != str(user_id)
+        or claims.get("scope", "admin") != scope
         or claims["asset"] != str(asset_id)
         or claims["provider"] != provider
         or not enabled_providers().get(provider)
@@ -246,7 +249,7 @@ def verify_video_upload(ticket, *, user_id, asset_id, provider):
         raise ValidationError(
             "The provider could not verify the file. Wait for the upload to finish and try saving again."
         ) from None
-    return reference
+    return (reference, claims["title"]) if scope == "tutor" else reference
 
 
 def lesson_playback_url(video):

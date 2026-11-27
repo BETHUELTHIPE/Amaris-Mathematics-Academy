@@ -97,7 +97,9 @@ export async function tutorFetch<T>(
   if (!response.ok) {
     let message = response.status === 401 || response.status === 403
       ? "This account has not been approved as a tutor."
-      : "Unable to save your tutor session. Check the details and try again.";
+      : path.startsWith("/tutor/videos/")
+        ? "The video upload is temporarily unavailable. Try again."
+        : "Unable to save your tutor session. Check the details and try again.";
     if (response.status === 400) {
       const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
       if (typeof body.detail === "string") message = body.detail.slice(0, 250);
@@ -145,4 +147,12 @@ export function createTutorSlot(input: SlotInput): Promise<TutorSlot> {
 
 export function updateTutorSlot(id: number, input: SlotInput): Promise<TutorSlot> {
   return tutorFetch<TutorSlot>(`/tutor/slots/${id}/`, "PATCH", input);
+}
+
+
+export type TutorVideo = { id: string; title: string; provider: "s3" | "vimeo"; ready: boolean };
+export type TutorVideoLibrary = { providers: Record<TutorVideo["provider"], boolean>; videos: TutorVideo[] };
+
+export function getTutorVideoLibrary(): Promise<TutorVideoLibrary> {
+  return tutorFetch<TutorVideoLibrary>("/tutor/videos/");
 }

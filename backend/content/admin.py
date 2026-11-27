@@ -237,13 +237,29 @@ class VideoAssetAdmin(PublishableAdmin):
             ),
         ] + super().get_urls()
 
-    list_display = ("title", "provider", "duration_seconds", "allow_preview", "is_published", "updated_at")
-    list_filter = PublishableAdmin.list_filter + ("provider", "allow_preview")
+    list_display = (
+        "title",
+        "provider",
+        "duration_seconds",
+        "submitted_by",
+        "allow_preview",
+        "is_published",
+        "updated_at",
+    )
+    list_filter = PublishableAdmin.list_filter + (
+        "provider",
+        "allow_preview",
+        ("submitted_by", admin.EmptyFieldListFilter),
+    )
     list_editable = ("allow_preview", "is_published")
-    search_fields = ("title", "youtube_video_id", "youtube_url", "transcript")
-    readonly_fields = ("id", "created_at", "updated_at")
+    search_fields = ("title", "youtube_video_id", "youtube_url", "transcript", "submitted_by__email")
+    list_select_related = ("submitted_by",)
+    readonly_fields = ("id", "submitted_by", "created_at", "updated_at")
     fieldsets = (
-        ("Video", {"fields": ("id", "title", "provider", "upload_ticket", "duration_seconds", "thumbnail")}),
+        (
+            "Video",
+            {"fields": ("id", "title", "provider", "upload_ticket", "submitted_by", "duration_seconds", "thumbnail")},
+        ),
         ("Private YouTube", {"fields": ("youtube_video_id", "youtube_url")}),
         ("Existing video file and captions", {"fields": ("source_file", "captions_file")}),
         ("Learning content", {"fields": ("transcript", "allow_preview")}),

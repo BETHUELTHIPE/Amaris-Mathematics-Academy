@@ -9,7 +9,8 @@ import { getStudentIdentity } from "@/lib/auth";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { createTutorSlotAction, pauseTutorSlotAction, updateTutorSlotAction } from "@/app/tutor/actions";
-import { getTutorDashboard, getTutorEarnings, TutorApiError, type TutorEarnings } from "@/lib/tutor-api";
+import { getTutorDashboard, getTutorEarnings, getTutorVideoLibrary, TutorApiError, type TutorEarnings } from "@/lib/tutor-api";
+import { TutorLessonVideos } from "@/components/tutor/lesson-videos";
 import { TutorEarningsPanel } from "@/components/site/tutor-earnings";
 import { paginatePrivateRows, PrivatePagination } from "@/components/site/private-pagination";
 
@@ -38,6 +39,17 @@ function TutorEarningsSkeleton() {
 
 async function TutorEarningsDetails({ pending }: { pending: Promise<TutorEarnings | null> }) {
   return <TutorEarningsPanel earnings={await pending} />;
+}
+
+async function TutorVideoDetails() {
+  try {
+    return <TutorLessonVideos library={await getTutorVideoLibrary()} />;
+  } catch {
+    return <section className="rounded-[2rem] border border-[#dce4ef] bg-white p-5 sm:p-9">
+      <h2 className="text-2xl font-semibold">Lesson videos</h2>
+      <p role="status" className="mt-2 text-sm text-[#53647b]">Lesson videos are temporarily unavailable.</p>
+    </section>;
+  }
 }
 
 export default async function TutorDashboardPage({
@@ -124,6 +136,7 @@ export default async function TutorDashboardPage({
 
       <div className="mx-auto max-w-7xl space-y-8 px-5 py-10 lg:px-8 lg:py-14">
         <Suspense fallback={<TutorEarningsSkeleton />}><TutorEarningsDetails pending={pendingEarnings} /></Suspense>
+        <Suspense fallback={<p role="status">Loading lesson videos…</p>}><TutorVideoDetails /></Suspense>
         {notices.success && <div role="status" className="flex items-center gap-3 rounded-xl border border-[#a7ddcb] bg-[#ebfbf4] p-4 text-sm text-[#136950]"><CheckCircle2 className="size-5" />{notices.success.slice(0, 180)}</div>}
         {notices.error && <div role="alert" className="rounded-xl border border-[#f5c2bf] bg-[#fff3f3] p-4 text-sm text-[#9b2525]">{notices.error.slice(0, 180)}</div>}
 

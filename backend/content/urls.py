@@ -27,6 +27,7 @@ from .tutor_application_views import (
     TutorApplicationDocumentView,
     TutorApplicationView,
 )
+from .tutor_media_views import TutorVideoUploadFinishView, TutorVideoUploadStartView, TutorVideoUploadView
 from .tutor_views import TutorDashboardView, TutorEarningsView, TutorSlotCreateView, TutorSlotUpdateView
 from .video_request_views import (
     VideoRequestCheckoutView,
@@ -81,6 +82,9 @@ urlpatterns = [
     path("live-classes/slots/", LiveClassSlotView.as_view(), name="live-class-slots"),
     path("tutor/dashboard/", TutorDashboardView.as_view(), name="tutor-dashboard"),
     path("tutor/earnings/", TutorEarningsView.as_view(), name="tutor-earnings"),
+    path("tutor/videos/", TutorVideoUploadView.as_view(), name="tutor-video-list"),
+    path("tutor/videos/start/", TutorVideoUploadStartView.as_view(), name="tutor-video-start"),
+    path("tutor/videos/finish/", TutorVideoUploadFinishView.as_view(), name="tutor-video-finish"),
     path("tutor/slots/", TutorSlotCreateView.as_view(), name="tutor-slot-create"),
     path("tutor/slots/<int:slot_id>/", TutorSlotUpdateView.as_view(), name="tutor-slot-update"),
     path("video-requests/packages/", VideoRequestPackageView.as_view(), name="video-request-packages"),
