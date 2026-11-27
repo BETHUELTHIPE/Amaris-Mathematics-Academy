@@ -105,6 +105,7 @@ jobs:
           created_listener=None
           created_rule=None
           created_ingress=False
+          created_egress=False
           try:
               existing=[l for l in listeners() if l["Port"]==port]
               assert len(existing)<=1
@@ -127,6 +128,16 @@ jobs:
                   ec2.authorize_security_group_ingress(GroupId=albsg,IpPermissions=[{"IpProtocol":"tcp","FromPort":port,"ToPort":port,"UserIdGroupPairs":[{"GroupId":edge,"Description":"Staging green test from controlled edge host only"}]}])
                   created_ingress=True
               restricted()
+              # The existing edge security group may permit ALB port 80 only.
+              edge_group=ec2.describe_security_groups(GroupIds=[edge])["SecurityGroups"][0]
+              assert edge_group["VpcId"]==vpc
+              runner=ec2.describe_instances(InstanceIds=[host])["Reservations"][0]["Instances"][0]
+              assert runner["VpcId"]==vpc and any(g["GroupId"]==edge for g in runner["SecurityGroups"])
+              egress=edge_group.get("IpPermissionsEgress",[])
+              permitted=any(covers(p) and (any(g["GroupId"]==albsg for g in p.get("UserIdGroupPairs",[])) or any(x["CidrIp"]=="0.0.0.0/0" for x in p.get("IpRanges",[]))) for p in egress)
+              if not permitted:
+                  ec2.authorize_security_group_egress(GroupId=edge,IpPermissions=[{"IpProtocol":"tcp","FromPort":port,"ToPort":port,"UserIdGroupPairs":[{"GroupId":albsg,"Description":"Private green test listener only"}]}])
+                  created_egress=True
               assert production_snapshot()==before
               health()
               print("PASS: private test listener and rule created; ingress restricted to staging edge security group; production rules unchanged.",flush=True)
@@ -135,7 +146,8 @@ jobs:
               import ipaddress
               nodes=[n["PrivateIpAddress"] for p in ec2.get_paginator("describe_network_interfaces").paginate(Filters=[{"Name":"description","Values":["ELB "+arn.split("loadbalancer/",1)[1]]},{"Name":"vpc-id","Values":[vpc]},{"Name":"status","Values":["in-use"]}]) for n in p["NetworkInterfaces"]]
               assert 1<=len(nodes)<=8 and all(ipaddress.ip_address(n) in ipaddress.ip_network("10.86.0.0/25") for n in nodes)
-              script="set -euo pipefail\nfor node in "+" ".join(nodes)+"; do\n  code=$(curl --noproxy '*' -sS --max-time 12 -o /dev/null -w '%{http_code}' \"http://$node:"+str(port)+"/__alb/ready\")\n  echo \"Test listener HTTP $code\"\n  [[ \"$code\" == 503 ]]\ndone\necho 'PASS: protected runner reached empty green target group (HTTP 503 expected)'\n"
+              script="set -euo pipefail\nfor node in "+" ".join(nodes)+"; do\n  code=$(curl --noproxy '*' -sS --connect-timeout 5 --max-time 10 --retry 2 --retry-connrefused --retry-delay 2 -o /dev/null -w '%{http_code}' \"http://$node:"+str(port)+"/__alb/ready\")\n  echo \"Test listener HTTP $code\"\n  [[ \"$code\" == 503 ]]\ndone\necho 'PASS: protected runner reached empty green target group (HTTP 503 expected)'\n"
+              time.sleep(12)
               encoded=base64.b64encode(script.encode()).decode()
               cmd=ssm.send_command(InstanceIds=[host],DocumentName="AWS-RunShellScript",Parameters={"commands":["printf '%s' '"+encoded+"' | base64 -d | bash"],"executionTimeout":["30"]},TimeoutSeconds=60)["Command"]["CommandId"]
               for _ in range(20):
@@ -158,6 +170,8 @@ jobs:
               health()
               print("PASS: protected green routing prepared. No service deployment or traffic shift.")
           except BaseException:
+              if created_egress:
+                  ec2.revoke_security_group_egress(GroupId=edge,IpPermissions=[{"IpProtocol":"tcp","FromPort":port,"ToPort":port,"UserIdGroupPairs":[{"GroupId":albsg}]}])
               if created_ingress:
                   ec2.revoke_security_group_ingress(GroupId=albsg,IpPermissions=[{"IpProtocol":"tcp","FromPort":port,"ToPort":port,"UserIdGroupPairs":[{"GroupId":edge}]}])
               if created_rule:
