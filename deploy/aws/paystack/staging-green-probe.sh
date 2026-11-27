@@ -25,7 +25,7 @@ service_state() {
 
 healthy() {
   if [[ "$mode" == native ]]; then
-    python deploy/aws/paystack/staging-native-rollout.py check
+    python deploy/aws/paystack/staging-native-rollout.py "check${1:-}"
     return
   fi
   local state
@@ -85,7 +85,7 @@ cleanup() {
   trap '' INT TERM
   if "$stack_started"; then
     # The probe stops its standalone tasks before returning. Check again before removing the host.
-    local hosts registered running
+    local hosts registered tasks
     hosts="$(active_hosts)" || { echo "Temporary host retained: ECS status unavailable" >&2; exit 1; }
     registered="$(jq -r --arg host "$spare" '.[] | select(.ec2InstanceId == $host) | .containerInstanceArn' <<< "$hosts")"
     if [[ -n "$registered" ]]; then
@@ -93,9 +93,9 @@ cleanup() {
         --status DRAINING --query 'containerInstances[0].status' --output text || exit 1
       local drained=false
       for attempt in {1..45}; do
-        running="$(aws ecs list-tasks --cluster "$cluster" --container-instance "$registered" \
-          --desired-status RUNNING --query 'taskArns' --output json)" || exit 1
-        if jq -e 'length == 0' <<< "$running" >/dev/null && healthy; then
+        tasks="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$registered" \
+          --query 'containerInstances[0]' --output json)" || exit 1
+        if jq -e '.status=="DRAINING" and .runningTasksCount==0 and .pendingTasksCount==0' <<< "$tasks" >/dev/null && healthy -drain; then
           drained=true
           break
         fi

@@ -47,11 +47,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          for attempt in {1..20}; do
+            verdict="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46068205023" --jq '.conclusion // empty')"
+            if [[ "$verdict" == success ]]; then break; fi
+            [[ -z "$verdict" && "$attempt" -lt 20 ]]
+            sleep 10
+          done
           for run in 46059730757 46060920155 46064280648 46065439979 46065635240; do
             gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.conclusion' | grep -qx success
           done
       - name: Release the pinned candidate through a protected staging traffic pause
         run: |
           set -euo pipefail
-          python -m pip install --quiet boto3
+          python -m pip install --quiet --upgrade 'boto3>=1.43.119,<2'
+          python - <<'PY'
+          import boto3
+          import botocore
+          from botocore import loaders
+
+          ecs = loaders.Loader().load_service_model("ecs", "service-2")
+          operation = ecs["operations"]["UpdateService"]
+          request = ecs["shapes"][operation["input"]["shape"]]["members"]
+          deployment = ecs["shapes"][request["deploymentConfiguration"]["shape"]]["members"]
+          assert "ContinueServiceDeployment" in ecs["operations"] and "lifecycleHooks" in deployment
+          print("AWS SDK supports deployment pause hooks.", boto3.__version__, botocore.__version__)
+          PY
           bash deploy/aws/paystack/staging-green-probe.sh native

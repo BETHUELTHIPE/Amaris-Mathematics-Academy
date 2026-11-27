@@ -78,7 +78,7 @@ def public_smoke(expected):
     )
 
 
-def settled():
+def settled(verify_public=True):
     info = web()
     if info["status"] != "ACTIVE" or info["desiredCount"] != 2 or info["runningCount"] != 2 or info["pendingCount"]:
         return False
@@ -91,7 +91,7 @@ def settled():
         active = load_balancer["targetGroupArn"]
     revision = info["taskDefinition"].rsplit("/", 1)[-1]
     expected = {baseline: baseline_sha, candidate: candidate_sha}.get(revision)
-    return bool(expected and healthy_count(active) == 2 and public_smoke(expected))
+    return bool(expected and healthy_count(active) == 2 and (not verify_public or public_smoke(expected)))
 
 
 def describe_deployment(deployment):
@@ -154,7 +154,6 @@ def promote(spare):
         "minimumHealthyPercent": 100,
         "bakeTimeInMinutes": 5,
         "alarms": alarms,
-        "deploymentCircuitBreaker": {"enable": False, "rollback": False},
         "lifecycleHooks": [{
             "targetType": "PAUSE",
             "lifecycleStages": ["POST_TEST_TRAFFIC_SHIFT"],
@@ -257,6 +256,6 @@ def terminated(signum, _frame):
 
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, terminated)
-    if sys.argv[1] == "check":
-        raise SystemExit(0 if settled() else 1)
+    if sys.argv[1] in {"check", "check-drain"}:
+        raise SystemExit(0 if settled(verify_public=sys.argv[1] == "check") else 1)
     promote(sys.argv[1])
