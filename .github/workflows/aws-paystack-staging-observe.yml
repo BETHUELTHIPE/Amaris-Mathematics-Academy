@@ -89,3 +89,25 @@ jobs:
           curl -fsS --max-time 12 "$origin/health/dependencies/" | jq '{dependencies}'
           curl -sS --max-time 12 -o /dev/null -w 'Webhook GET HTTP %{http_code}\n' "$origin/api/v1/paystack/webhook/"
           curl -sS --max-time 12 -o /dev/null -w 'Unsigned webhook POST HTTP %{http_code}\n' -X POST "$origin/api/v1/paystack/webhook/"
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Reproduce the release drain checks without changing resources
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          if python deploy/aws/paystack/staging-native-rollout.py check-drain; then
+            echo 'Service health check for draining capacity passed.'
+          else
+            status="$?"
+            echo "Service health check for draining capacity failed with exit $status."
+          fi
+          stack=amaris-staging-paystack-green-46068313425-1
+          if instance="$(aws cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue | [0]' --output text 2>/dev/null)"; then
+            ids="$(aws ecs list-container-instances --cluster amaris-ecs-staging --status DRAINING --query containerInstanceArns --output json)"
+            mapfile -t hosts < <(jq -r '.[]' <<< "$ids")
+            if (( ${#hosts[@]} )); then
+              aws ecs describe-container-instances --cluster amaris-ecs-staging --container-instances "${hosts[@]}" --output json |
+                jq --arg instance "$instance" '[.containerInstances[] | select(.ec2InstanceId==$instance) | {status,runningTasksCount,pendingTasksCount}]'
+            fi
+          fi
