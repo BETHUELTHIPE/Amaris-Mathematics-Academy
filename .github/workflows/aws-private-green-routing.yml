@@ -1,0 +1,162 @@
+name: Configure private green test listener and ECS deployment role
+on:
+  push:
+    branches: [ops/aws-selective-bluegreen-20261127]
+    paths: [.github/workflows/aws-private-green-routing.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-private-green-routing
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-selective-bluegreen-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Prepare protected test route without modifying production listener
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import boto3, json, time, base64, urllib.request
+          account="110156539003"
+          assert boto3.client("sts").get_caller_identity()["Account"]==account
+          ecs=boto3.client("ecs")
+          ec2=boto3.client("ec2")
+          elb=boto3.client("elbv2")
+          iam=boto3.client("iam")
+          ssm=boto3.client("ssm")
+          vpc="vpc-0252538d2febd4641"
+          edge="sg-037ced8e9b8da3084"
+          albsg="sg-0c24d3ce123f80596"
+          host="i-02855f007d15af597"
+          port=8081
+          def health():
+              with urllib.request.urlopen("https://16.171.164.5/health/dependencies/",timeout=15) as r:
+                  assert all(json.load(r)["dependencies"].get(k) for k in ("postgresql","redis"))
+          health()
+          svc=ecs.describe_services(cluster="amaris-ecs-staging",services=["amaris-web-staging-stateless"])["services"][0]
+          assert svc["runningCount"]==svc["desiredCount"] and svc["runningCount"]>=2
+          primary=svc["loadBalancers"][0]["targetGroupArn"]
+          blue=elb.describe_target_groups(TargetGroupArns=[primary])["TargetGroups"][0]
+          green=elb.describe_target_groups(Names=["amaris-staging-web-green"])["TargetGroups"][0]
+          assert blue["VpcId"]==green["VpcId"]==vpc and len(blue["LoadBalancerArns"])==1
+          arn=blue["LoadBalancerArns"][0]
+          alb=elb.describe_load_balancers(LoadBalancerArns=[arn])["LoadBalancers"][0]
+          assert alb["SecurityGroups"]==[albsg]
+          assert not any(x!=arn for x in green.get("LoadBalancerArns",[]))
+          assert not elb.describe_target_health(TargetGroupArn=green["TargetGroupArn"]).get("TargetHealthDescriptions",[])
+          def listeners():
+              return [x for p in elb.get_paginator("describe_listeners").paginate(LoadBalancerArn=arn) for x in p["Listeners"]]
+          def production_snapshot():
+              return sorted([(l["ListenerArn"], l["DefaultActions"],sorted([r for p in elb.get_paginator("describe_rules").paginate(ListenerArn=l["ListenerArn"]) for r in p["Rules"]],key=lambda r:r["RuleArn"])) for l in listeners() if l["Port"]!=port],key=lambda x:x[0])
+          before=production_snapshot()
+          assert before
+          def ingress():
+              return ec2.describe_security_groups(GroupIds=[albsg])["SecurityGroups"][0]["IpPermissions"]
+          def covers(p):
+              return p["IpProtocol"]=="-1" or (p["IpProtocol"] in ("tcp","6") and p.get("FromPort",65536)<=port<=p.get("ToPort",-1))
+          def restricted():
+              for p in ingress():
+                  if covers(p):
+                      assert not p.get("IpRanges") and not p.get("Ipv6Ranges") and not p.get("PrefixListIds")
+                      assert all(g["GroupId"]==edge for g in p.get("UserIdGroupPairs",[]))
+          restricted()
+          role_name="amaris-staging-ecs-bluegreen-lb"
+          trust={"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ecs.amazonaws.com"},"Action":"sts:AssumeRole"}]}
+          try:
+              role=iam.get_role(RoleName=role_name)["Role"]
+              assert role["AssumeRolePolicyDocument"]==trust
+          except iam.exceptions.NoSuchEntityException:
+              role=iam.create_role(RoleName=role_name,AssumeRolePolicyDocument=json.dumps(trust),Tags=[{"Key":"Environment","Value":"staging"}])["Role"]
+          policy="arn:aws:iam::aws:policy/AmazonECSInfrastructureRolePolicyForLoadBalancers"
+          attached=iam.list_attached_role_policies(RoleName=role_name).get("AttachedPolicies",[])
+          assert all(p["PolicyArn"]==policy for p in attached)
+          assert not iam.list_role_policies(RoleName=role_name).get("PolicyNames")
+          if not attached:
+              iam.attach_role_policy(RoleName=role_name,PolicyArn=policy)
+          created_listener=None
+          created_rule=None
+          created_ingress=False
+          try:
+              existing=[l for l in listeners() if l["Port"]==port]
+              assert len(existing)<=1
+              if existing:
+                  listener=existing[0]
+                  assert listener["Protocol"]=="HTTP" and listener["DefaultActions"][0]["Type"]=="fixed-response"
+              else:
+                  listener=elb.create_listener(LoadBalancerArn=arn,Protocol="HTTP",Port=port,DefaultActions=[{"Type":"fixed-response","FixedResponseConfig":{"StatusCode":"404","ContentType":"text/plain","MessageBody":"Private deployment test"}}])["Listeners"][0]
+                  created_listener=listener["ListenerArn"]
+              lr=listener["ListenerArn"]
+              rules=[r for p in elb.get_paginator("describe_rules").paginate(ListenerArn=lr) for r in p["Rules"] if not r["IsDefault"]]
+              if rules:
+                  assert len(rules)==1 and rules[0]["Priority"]=="10" and rules[0]["Actions"][0].get("TargetGroupArn")==green["TargetGroupArn"]
+                  rule=rules[0]
+              else:
+                  rule=elb.create_rule(ListenerArn=lr,Priority=10,Conditions=[{"Field":"path-pattern","Values":["/*"]}],Actions=[{"Type":"forward","TargetGroupArn":green["TargetGroupArn"]}])["Rules"][0]
+                  created_rule=rule["RuleArn"]
+              restricted()
+              if not any(covers(p) and any(g["GroupId"]==edge for g in p.get("UserIdGroupPairs",[])) for p in ingress()):
+                  ec2.authorize_security_group_ingress(GroupId=albsg,IpPermissions=[{"IpProtocol":"tcp","FromPort":port,"ToPort":port,"UserIdGroupPairs":[{"GroupId":edge,"Description":"Staging green test from controlled edge host only"}]}])
+                  created_ingress=True
+              restricted()
+              assert production_snapshot()==before
+              health()
+              print("PASS: private test listener and rule created; ingress restricted to staging edge security group; production rules unchanged.",flush=True)
+              print("Test port:",port,"Test rule:",rule["RuleArn"],"Infrastructure role:",role["RoleName"],flush=True)
+              # Empty target group should respond 503 from the controlled runner; no student traffic.
+              script="set -euo pipefail\ncode=$(curl --noproxy '*' -sS --max-time 12 -o /dev/null -w '%{http_code}' 'http://"+alb["DNSName"]+":"+str(port)+"/__alb/ready')\n[[ \"$code\" == 503 ]]\necho 'PASS: protected runner reached empty green target group (HTTP 503 expected)'\n"
+              encoded=base64.b64encode(script.encode()).decode()
+              cmd=ssm.send_command(InstanceIds=[host],DocumentName="AWS-RunShellScript",Parameters={"commands":["printf '%s' '"+encoded+"' | base64 -d | bash"],"executionTimeout":["30"]},TimeoutSeconds=60)["Command"]["CommandId"]
+              for _ in range(20):
+                  try:
+                      result=ssm.get_command_invocation(CommandId=cmd,InstanceId=host)
+                  except ssm.exceptions.InvocationDoesNotExist:
+                      time.sleep(3)
+                      continue
+                  if result["Status"]=="Success":
+                      assert "PASS:" in result["StandardOutputContent"]
+                      print(result["StandardOutputContent"].strip(),flush=True)
+                      break
+                  if result["Status"] not in ("Pending","InProgress","Delayed"):
+                      raise RuntimeError("Private test runner failed: "+result["Status"])
+                  time.sleep(3)
+              else:
+                  raise RuntimeError("Private test runner timeout")
+              health()
+              print("PASS: protected green routing prepared. No service deployment or traffic shift.")
+          except BaseException:
+              if created_ingress:
+                  ec2.revoke_security_group_ingress(GroupId=albsg,IpPermissions=[{"IpProtocol":"tcp","FromPort":port,"ToPort":port,"UserIdGroupPairs":[{"GroupId":edge}]}])
+              if created_rule:
+                  elb.delete_rule(RuleArn=created_rule)
+              if created_listener:
+                  elb.delete_listener(ListenerArn=created_listener)
+              raise
+          PY
