@@ -2,7 +2,6 @@
 
 import ipaddress
 import os
-import re
 import shlex
 import signal
 import sys
@@ -16,6 +15,7 @@ CLUSTER = "amaris-ecs-staging"
 SERVICE = "amaris-web-staging-stateless"
 VPC = "vpc-0252538d2febd4641"
 EDGE = "i-02855f007d15af597"
+EDGE_GROUP = "sg-037ced8e9b8da3084"
 BASELINE = "amaris-ecs-staging-alb-web:14"
 CANDIDATE = "amaris-ecs-staging-alb-web:17"
 BACKEND_SHA = "164838a3143c22cc7b60ab669e1f0c7dca616a0f"
@@ -67,22 +67,53 @@ def task_address(task):
     return None
 
 
-def check_private_route(alb_dns):
-    assert re.fullmatch(r"internal-[-a-z0-9]+\.eu-north-1\.elb\.amazonaws\.com", alb_dns)
+def private_alb_nodes(load_balancer):
+    assert load_balancer["VpcId"] == VPC
+    groups = ec2.describe_security_groups(GroupIds=load_balancer["SecurityGroups"])["SecurityGroups"]
+    protected = False
+    for group in groups:
+        for rule in group["IpPermissions"]:
+            covers_port = rule["IpProtocol"] == "-1" or (
+                rule["IpProtocol"] in {"tcp", "6"} and rule["FromPort"] <= 8081 <= rule["ToPort"]
+            )
+            if covers_port:
+                assert not any(rule.get(field) for field in ("IpRanges", "Ipv6Ranges", "PrefixListIds"))
+                peers = {peer["GroupId"] for peer in rule.get("UserIdGroupPairs", [])}
+                assert peers <= {EDGE_GROUP}, "The test listener allows another source"
+                protected |= EDGE_GROUP in peers
+    assert protected, "The green test listener must be restricted to the staging edge"
+    resource = load_balancer["LoadBalancerArn"].split("loadbalancer/", 1)[1]
+    interfaces = [
+        interface
+        for page in ec2.get_paginator("describe_network_interfaces").paginate(Filters=[
+            {"Name": "description", "Values": ["ELB " + resource]},
+            {"Name": "vpc-id", "Values": [VPC]},
+            {"Name": "status", "Values": ["in-use"]},
+        ])
+        for interface in page["NetworkInterfaces"]
+    ]
+    nodes = sorted({interface["PrivateIpAddress"] for interface in interfaces})
+    assert 1 <= len(nodes) <= 8 and all(ipaddress.ip_address(ip).is_private for ip in nodes)
+    return nodes
+
+
+def check_private_route(nodes):
     script = """set -euo pipefail
-origin="http://DNS:8081"
 request() {
   curl --noproxy '*' --silent --show-error --max-time 10 -H 'Host: 16.171.164.5' "$@"
 }
-request --fail "$origin/health/version/" | python3 -c 'import json,sys; assert json.load(sys.stdin)["git_sha"] == "SHA"'
-request --fail "$origin/health/dependencies/" | python3 -c 'import json,sys; d=json.load(sys.stdin)["dependencies"]; assert d["postgresql"] and d["redis"]'
-root_status="$(request -o /dev/null -w '%{http_code}' "$origin/")"
-get_status="$(request -o /dev/null -w '%{http_code}' "$origin/api/v1/paystack/webhook/")"
-post_status="$(request -o /dev/null -w '%{http_code}' -X POST "$origin/api/v1/paystack/webhook/")"
-echo "Private candidate root=$root_status webhook GET=$get_status unsigned POST=$post_status"
-[[ "$root_status" == 200 && "$get_status" == 405 && "$post_status" == 403 ]]
+for ip in NODE_ADDRESSES; do
+  origin="http://$ip:8081"
+  request --fail "$origin/health/version/" | python3 -c 'import json,sys; assert json.load(sys.stdin)["git_sha"] == "SHA"'
+  request --fail "$origin/health/dependencies/" | python3 -c 'import json,sys; d=json.load(sys.stdin)["dependencies"]; assert d["postgresql"] and d["redis"]'
+  root_status="$(request -o /dev/null -w '%{http_code}' "$origin/")"
+  get_status="$(request -o /dev/null -w '%{http_code}' "$origin/api/v1/paystack/webhook/")"
+  post_status="$(request -o /dev/null -w '%{http_code}' -X POST "$origin/api/v1/paystack/webhook/")"
+  echo "Private candidate root=$root_status webhook GET=$get_status unsigned POST=$post_status"
+  [[ "$root_status" == 200 && "$get_status" == 405 && "$post_status" == 403 ]]
+done
 echo 'PASS: private candidate version, frontend, PostgreSQL, Redis and webhook checks.'
-""".replace("DNS", alb_dns).replace("SHA", BACKEND_SHA)
+""".replace("NODE_ADDRESSES", " ".join(nodes)).replace("SHA", BACKEND_SHA)
     command = ssm.send_command(
         InstanceIds=[EDGE],
         DocumentName="AWS-RunShellScript",
@@ -128,7 +159,7 @@ def main(spare):
                     green_rules.append(rule)
     assert len(green_rules) == 1, "Expected one private rule for the green group"
     lb, = elb.describe_load_balancers(LoadBalancerArns=[alb])["LoadBalancers"]
-    assert lb["Scheme"] == "internal" and lb["VpcId"] == VPC
+    nodes = private_alb_nodes(lb)
     baseline = service_tasks()
     assert len(baseline) == 2
     check_blue(primary, baseline)
@@ -148,6 +179,10 @@ def main(spare):
     assert frontend["image"].endswith("@" + FRONTEND_DIGEST)
     assert {"name": "PAYSTACK_ENABLED", "value": "false"} in backend["environment"]
     assert "export PAYSTACK_ENABLED=false" in backend["entryPoint"][2]
+
+    if spare == "preflight":
+        print("PASS: staging route is restricted to the private edge and the candidate is pinned.")
+        return
 
     probe_tasks = []
     registrations = []
@@ -199,7 +234,7 @@ def main(spare):
 
         wait_until(220, "Both green targets did not become healthy", healthy_green)
         print("PASS: both candidate targets are healthy on the private green listener.", flush=True)
-        check_private_route(lb["DNSName"])
+        check_private_route(nodes)
         check_blue(primary, baseline)
     finally:
         if registrations:

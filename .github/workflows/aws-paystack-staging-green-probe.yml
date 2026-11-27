@@ -2,7 +2,7 @@ name: Verify two Paystack green replicas with temporary t4g.small capacity
 on:
   push:
     branches: [ops/aws-paystack-staging-acceptance-20261127]
-    paths: [.github/workflows/aws-paystack-staging-green-probe.yml]
+    paths: [.github/workflows/aws-paystack-staging-green-probe.yml, 'deploy/aws/paystack/staging-green-*']
   workflow_dispatch:
 permissions: {}
 concurrency:

@@ -104,6 +104,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # The run-specific stack name prevents deleting or adopting an unrelated host.
+python deploy/aws/paystack/staging-green-probe.py preflight
 stack_started=true
 aws cloudformation deploy --stack-name "$stack" --template-file deploy/aws/paystack/staging-green-host.yml \
   --parameter-overrides "VpcId=$vpc" "PrivateSubnet=$subnet" "InstanceProfileName=$profile" "ImageId=$ami" "RootDevice=$device" \
