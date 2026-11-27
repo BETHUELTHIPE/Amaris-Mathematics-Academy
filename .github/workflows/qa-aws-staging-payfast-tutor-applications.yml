@@ -64,9 +64,18 @@ jobs:
           from django.conf import settings
 
           os.environ.setdefault("DJANGO_SETTINGS_MODULE", "amaris_cms.settings")
-          role = os.environ.get("AMARIS_CONTAINER_ROLE", "")
-          env_mode = os.environ.get("PAYFAST_MODE") or os.environ.get("PAYFAST_ENV") or "sandbox"
-          notify = urlsplit(os.environ.get("PAYFAST_NOTIFY_URL", ""))
+          import django
+          django.setup()
+          from content.services.live_classes import _public_urls
+          from content.services.payments import _payfast_mode
+
+          env_mode = _payfast_mode()
+          notify = urlsplit(_public_urls()[2])
+          notify_target = (
+              'unset' if not notify.hostname else
+              'AWS staging IP' if notify.hostname == '16.171.164.5' else
+              'Render staging' if notify.hostname == 'amaris-mathematics-academy-staging.onrender.com' else 'another hostname'
+          )
           storage = settings.STORAGES.get("tutor_qualifications", {})
           mail_backend = settings.EMAIL_BACKEND.rsplit(".", 2)[-2]
           smtp_status = "not configured"
@@ -81,21 +90,24 @@ jobs:
           print(json.dumps({
               "payfast_mode": env_mode if env_mode in {"sandbox", "live"} else "invalid",
               "notify_url_is_aws_staging": notify.scheme == "https" and notify.hostname == "16.171.164.5" and notify.path == "/api/v1/payfast/itn/",
+              "notify_target": notify_target, "notify_scheme": notify.scheme,
               "smtp": smtp_status, "mail_backend": mail_backend,
               "tutor_six_documents_strict": settings.TUTOR_REQUIRE_SIX_DOCUMENTS,
-              "tutor_private_bucket_is_admin": storage.get("OPTIONS", {}).get("bucket_name") == "amaris-staging-admin",
-              "invoice_private_bucket_is_students": settings.SUPABASE_S3_STUDENT_BUCKET == "amaris-staging-students",
+              "tutor_storage_backend": storage.get("BACKEND", "unconfigured"),
+              "tutor_bucket": storage.get("OPTIONS", {}).get("bucket_name", ""),
+              "invoice_bucket": settings.SUPABASE_S3_STUDENT_BUCKET,
           }))
           PY
           BASH
           cluster=amaris-ecs-staging
           inspect() {
-            local service="$1" container="$2" task host instance revision
+            local service="$1" container="$2" task host instance revision image
             task="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" --desired-status RUNNING --query 'taskArns[0]' --output text)"
             host="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0].containerInstanceArn' --output text)"
             instance="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host" --query 'containerInstances[0].ec2InstanceId' --output text)"
             revision="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --query 'tasks[0].taskDefinitionArn' --output text)"
-            printf '%s revision %s\n' "$service" "$(basename "$revision")"
+            image="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" --output json | jq -er --arg container "$container" '.tasks[0].containers[] | select(.name == $container) | .imageDigest')"
+            printf '%s revision %s image %s\n' "$service" "$(basename "$revision")" "$image"
             # Pass the ECS task suffix to avoid quoting ARNs in the host helper.
             sed 's|com.amazonaws.ecs.task-arn=$task|com.amazonaws.ecs.task-arn=arn:aws:ecs:eu-north-1:110156539003:task/amaris-ecs-staging/$task|' "$RUNNER_TEMP/read-booking-config.sh" > "$RUNNER_TEMP/booking-config-host.sh"
             basename "$task" | grep -Eq '^[a-f0-9]+$'
