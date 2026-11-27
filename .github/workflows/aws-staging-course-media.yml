@@ -71,6 +71,10 @@ jobs:
           python-version: '3.13'
           cache: pip
           cache-dependency-path: backend/requirements.txt
+      - name: Install the MP4 fixture generator
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg
       - name: Verify the real S3 upload and private download
         env:
           DJANGO_DEBUG: 'true'
