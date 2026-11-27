@@ -1,0 +1,183 @@
+name: Build scan and publish reconciled Paystack staging images
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-candidate-images.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: amaris-paystack-candidate-images
+  cancel-in-progress: false
+env:
+  BACKEND_SHA: 164838a3143c22cc7b60ab669e1f0c7dca616a0f
+  FRONTEND_SHA: c0468df8c079a21b4a6c3e4d0bad46d3980e9dbf
+  DOCKERFILE_SHA: 6b55b646e809c9547f88975047872936e632b803
+  BACKEND_CI_RUN: '46057785440'
+  AWS_REGION: eu-north-1
+  AWS_PAGER: ''
+  ECR_REPO: 110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend
+jobs:
+  backend-gate:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require passing PostgreSQL and Valkey CI for the exact backend
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            result="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BACKEND_CI_RUN")"
+            jq -e --arg sha "$BACKEND_SHA" '.head_sha == $sha and .name == "Staging Django integration tests" and .event == "push"' <<<"$result" >/dev/null
+            if [[ "$(jq -r .status <<<"$result")" == completed ]]; then
+              jq -e '.conclusion == "success"' <<<"$result" >/dev/null
+              echo "PASS: pinned PostgreSQL and Valkey integration test run"
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
+  build:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend]
+    env:
+      COMPONENT: ${{ matrix.component }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BACKEND_SHA }}
+          path: backend-source
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.FRONTEND_SHA }}
+          path: frontend-source
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.DOCKERFILE_SHA }}
+          path: deployment-source
+          persist-credentials: false
+      - name: Build and test exact ARM64 component
+        run: |
+          set -euo pipefail
+          test "$(git -C backend-source rev-parse HEAD)" = "$BACKEND_SHA"
+          test "$(git -C frontend-source rev-parse HEAD)" = "$FRONTEND_SHA"
+          test "$(git -C deployment-source rev-parse HEAD)" = "$DOCKERFILE_SHA"
+          image="amaris-paystack-$COMPONENT:verified"
+          if [[ "$COMPONENT" == backend ]]; then
+            sha="$BACKEND_SHA"
+            docker build -f backend-source/backend/Dockerfile -t "$image" --label "org.opencontainers.image.revision=$sha" backend-source/backend
+            docker run --rm --entrypoint python -e DJANGO_DEBUG=true "$image" manage.py makemigrations --check --dry-run
+            docker run --rm --entrypoint python -e DJANGO_DEBUG=true "$image" manage.py test content.test_live_class_paystack content.test_course_media content.test_tutor_media
+          else
+            sha="$FRONTEND_SHA"
+            docker build -f deployment-source/deploy/aws/frontend.Dockerfile --target build -t amaris-paystack-frontend-build:verified frontend-source/frontend
+            docker run --rm amaris-paystack-frontend-build:verified sh -ec 'npm run typecheck && npm run lint && npm run test:unit'
+            docker build -f deployment-source/deploy/aws/frontend.Dockerfile -t "$image" --label "org.opencontainers.image.revision=$sha" frontend-source/frontend
+            docker run --rm -d --name paystack-preview -p 127.0.0.1:3000:3000 "$image"
+            trap 'docker stop paystack-preview >/dev/null 2>&1 || true' EXIT
+            for attempt in {1..24}; do
+              if curl -fsS --max-time 5 http://127.0.0.1:3000/ -o "$RUNNER_TEMP/preview.html"; then
+                break
+              fi
+              sleep 2
+            done
+            grep -Fq 'Amaris Mathematics Academy' "$RUNNER_TEMP/preview.html"
+          fi
+          test "$(docker image inspect --format '{{.Architecture}}' "$image")" = arm64
+      - name: Scan for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: amaris-paystack-${{ matrix.component }}:verified
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          scanners: vuln
+      - name: Archive the verified image
+        run: |
+          set -euo pipefail
+          mkdir image
+          cd image
+          docker save "amaris-paystack-$COMPONENT:verified" | gzip -1 > image.tar.gz
+          sha256sum image.tar.gz > image.sha256
+          docker image inspect --format '{{.Id}}' "amaris-paystack-$COMPONENT:verified" > image-id.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amaris-paystack-${{ matrix.component }}
+          path: image/
+          retention-days: 3
+          if-no-files-found: error
+  publish:
+    needs: [backend-gate, build]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: amaris-paystack-*
+          path: images
+      - name: Verify both archived images
+        run: |
+          set -euo pipefail
+          for component in backend frontend; do
+            cd "$GITHUB_WORKSPACE/images/amaris-paystack-$component"
+            sha256sum -c image.sha256
+            docker load --input image.tar.gz
+            image="amaris-paystack-$component:verified"
+            test "$(docker image inspect --format '{{.Id}}' "$image")" = "$(cat image-id.txt)"
+            expected="$FRONTEND_SHA"
+            [[ "$component" != backend ]] || expected="$BACKEND_SHA"
+            test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$expected"
+          done
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+          inline-session-policy: >-
+            {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ecr:GetAuthorizationToken","Resource":"*"},{"Effect":"Allow","Action":["ecr:BatchCheckLayerAvailability","ecr:InitiateLayerUpload","ecr:UploadLayerPart","ecr:CompleteLayerUpload","ecr:PutImage","ecr:DescribeImages"],"Resource":"arn:aws:ecr:eu-north-1:110156539003:repository/amaris-staging-frontend"}]}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Publish immutable staging candidates without updating ECS
+        run: |
+          set -euo pipefail
+          registry="${ECR_REPO%%/*}"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          trap 'docker logout "$registry" >/dev/null' EXIT
+          for component in backend frontend; do
+            tag="paystack-$component-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            docker tag "amaris-paystack-$component:verified" "$ECR_REPO:$tag"
+            docker push "$ECR_REPO:$tag"
+            digest="$(aws ecr describe-images --repository-name amaris-staging-frontend --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)"
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            printf '%s: %s@%s\n' "$component" "$ECR_REPO" "$digest" >> "$GITHUB_STEP_SUMMARY"
+          done
