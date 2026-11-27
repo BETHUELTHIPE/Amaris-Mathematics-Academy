@@ -79,6 +79,12 @@ jobs:
                   for lb in svc.get("loadBalancers", []):
                       targets = elb.describe_target_health(TargetGroupArn=lb["targetGroupArn"])["TargetHealthDescriptions"]
                       print("Healthy ALB targets", sum(t["TargetHealth"]["State"] == "healthy" for t in targets))
+          nat = boto3.client("ec2").describe_instances(InstanceIds=["i-02855f007d15af597"])["Reservations"][0]["Instances"][0]
+          assert nat["VpcId"] == "vpc-0252538d2febd4641" and nat["State"]["Name"] == "running"
+          import ipaddress
+          public_ip = ipaddress.ip_address(nat["PublicIpAddress"])
+          assert public_ip.version == 4 and public_ip.is_global
+          print("Existing staging NAT public IPv4 for Paystack test allowlist:", public_ip)
           origin = "https://16.171.164.5"
           with urllib.request.urlopen(origin + "/health/version/", timeout=15) as response:
               sha = json.load(response).get("git_sha", "")
@@ -115,8 +121,10 @@ jobs:
           try:
               with urllib.request.build_opener(NoRedirect()).open(request, timeout=15) as response:
                   valid = response.status == 200 and json.load(response).get("status") is True
-          except (urllib.error.URLError, ValueError, OSError):
-              raise SystemExit("BLOCKED: authenticated Paystack test API check failed; no response content printed.")
+          except urllib.error.HTTPError as exc:
+              raise SystemExit("BLOCKED: Paystack authenticated test API HTTP " + str(exc.code) + "; no response content printed.")
+          except (urllib.error.URLError, ValueError, OSError) as exc:
+              raise SystemExit("BLOCKED: Paystack authenticated test API failed (" + type(exc).__name__ + "); no response content printed.")
           if not valid:
               raise SystemExit("BLOCKED: Paystack did not validate the test credential.")
           print("PASS: authenticated Paystack test API read-only request; no transaction initialized or charged.")
