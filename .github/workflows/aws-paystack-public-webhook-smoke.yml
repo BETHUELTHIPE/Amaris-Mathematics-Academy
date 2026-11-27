@@ -52,7 +52,7 @@ jobs:
             if [[ "$sha" == 164838a3143c22cc7b60ab669e1f0c7dca616a0f ]]; then
               break
             fi
-            state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46070429651" --jq '.conclusion // empty')"
+            state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46070792339" --jq '.conclusion // empty')"
             if [[ -n "$state" ]] || ((attempt == 100)); then
               echo "The Paystack candidate is not serving the public staging site." >&2
               exit 1
