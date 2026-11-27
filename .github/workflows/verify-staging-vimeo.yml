@@ -54,12 +54,17 @@ jobs:
                   with opener.open(req, timeout=15) as resp:
                       return json.loads(resp.read(1000000))
               except HTTPError as exc:
+                  detail = exc.headers.get("WWW-Authenticate", "")
+                  if "invalid_token" in detail:
+                      print("Vimeo identified the access token as invalid.", flush=True)
                   sys.exit(f"Vimeo rejected the {label} request (HTTP {exc.code}).")
               except (URLError, TimeoutError, ValueError):
                   sys.exit("Vimeo request failed or returned invalid data.")
 
           expected_user = "/users/261260024"
           expected_folder = expected_user + "/projects/31427264"
+          if get("/oauth/verify?fields=scope", "token verification").get("scope") is None:
+              sys.exit("Vimeo did not confirm scope metadata for the supplied token.")
           if get("/me?fields=uri", "account authentication").get("uri") != expected_user:
               sys.exit("The token does not belong to the expected academy account.")
           if get(expected_folder + "?fields=uri", "academy folder access").get("uri") != expected_folder:
