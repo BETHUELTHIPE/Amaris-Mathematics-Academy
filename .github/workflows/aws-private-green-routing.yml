@@ -132,7 +132,10 @@ jobs:
               print("PASS: private test listener and rule created; ingress restricted to staging edge security group; production rules unchanged.",flush=True)
               print("Test port:",port,"Test rule:",rule["RuleArn"],"Infrastructure role:",role["RoleName"],flush=True)
               # Empty target group should respond 503 from the controlled runner; no student traffic.
-              script="set -euo pipefail\ncode=$(curl --noproxy '*' -6 -sS --retry 2 --retry-delay 2 --max-time 12 -o /dev/null -w '%{http_code}' 'http://"+alb["DNSName"]+":"+str(port)+"/__alb/ready')\n[[ \"$code\" == 503 ]]\necho 'PASS: protected runner reached empty green target group (HTTP 503 expected)'\n"
+              import ipaddress
+              nodes=[n["PrivateIpAddress"] for p in ec2.get_paginator("describe_network_interfaces").paginate(Filters=[{"Name":"description","Values":["ELB "+arn.split("loadbalancer/",1)[1]]},{"Name":"vpc-id","Values":[vpc]},{"Name":"status","Values":["in-use"]}]) for n in p["NetworkInterfaces"]]
+              assert 1<=len(nodes)<=8 and all(ipaddress.ip_address(n) in ipaddress.ip_network("10.86.0.0/25") for n in nodes)
+              script="set -euo pipefail\nfor node in "+" ".join(nodes)+"; do\n  code=$(curl --noproxy '*' -sS --max-time 12 -o /dev/null -w '%{http_code}' \"http://$node:"+str(port)+"/__alb/ready\")\n  echo \"Test listener HTTP $code\"\n  [[ \"$code\" == 503 ]]\ndone\necho 'PASS: protected runner reached empty green target group (HTTP 503 expected)'\n"
               encoded=base64.b64encode(script.encode()).decode()
               cmd=ssm.send_command(InstanceIds=[host],DocumentName="AWS-RunShellScript",Parameters={"commands":["printf '%s' '"+encoded+"' | base64 -d | bash"],"executionTimeout":["30"]},TimeoutSeconds=60)["Command"]["CommandId"]
               for _ in range(20):
