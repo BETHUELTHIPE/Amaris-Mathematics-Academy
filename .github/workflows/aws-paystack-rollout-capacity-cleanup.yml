@@ -1,4 +1,4 @@
-name: Clean up the first temporary Paystack rollout host
+name: Reconcile temporary capacity after Paystack rollback
 on:
   push:
     branches: [ops/aws-paystack-staging-acceptance-20261127]
@@ -12,7 +12,7 @@ jobs:
   inspect:
     if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 19
     environment:
       name: staging
       deployment: false
@@ -46,12 +46,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          release=46066676826
-          for attempt in {1..24}; do
+          release=46068313425
+          for attempt in {1..65}; do
             if [[ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$release" --jq '.status')" == completed ]]; then
               break
             fi
-            if ((attempt == 24)); then
+            if ((attempt == 65)); then
               echo 'The original rollout is still managing the temporary host.' >&2
               exit 1
             fi
