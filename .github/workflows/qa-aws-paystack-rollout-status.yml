@@ -1,4 +1,4 @@
-name: Observe the AWS staging Paystack rollout
+name: Verify recovery of the AWS staging web service
 on:
   push:
     branches: [qa/aws-staging-payfast-tutor-applications-20261127]
@@ -40,6 +40,25 @@ jobs:
           cluster=amaris-ecs-staging
           services="$(aws ecs describe-services --cluster "$cluster" \
             --services amaris-web-staging-stateless amaris-staging-singleton-jobs --output json)"
+          origin=https://16.171.164.5
+          web="$(jq -ce '.services[] | select(.serviceName == "amaris-web-staging-stateless")' <<< "$services")"
+          if jq -e '.taskDefinition | endswith("/amaris-ecs-staging-alb-web:15")' <<< "$web" >/dev/null; then
+            previous="$(jq -er '.deployments[] | select(.status=="ACTIVE" and .runningCount==2 and (.taskDefinition | endswith("/amaris-ecs-staging-alb-web:14"))).taskDefinition' <<< "$web")"
+            jq -e 'any(.deployments[]; .status=="PRIMARY" and .runningCount==0 and .pendingCount==0)' <<< "$web" >/dev/null
+            aws ecs update-service --cluster "$cluster" --service amaris-web-staging-stateless \
+              --task-definition "$previous" --query 'service.taskDefinition' --output text
+            aws ecs wait services-stable --cluster "$cluster" --services amaris-web-staging-stateless
+            services="$(aws ecs describe-services --cluster "$cluster" \
+              --services amaris-web-staging-stateless amaris-staging-singleton-jobs --output json)"
+          fi
+          jq -e 'any(.services[]; .serviceName=="amaris-web-staging-stateless" and .runningCount==2
+            and .pendingCount==0 and (.taskDefinition | endswith("/amaris-ecs-staging-alb-web:14"))) and
+            any(.services[]; .serviceName=="amaris-staging-singleton-jobs" and .runningCount==1 and .pendingCount==0)' \
+            <<< "$services" >/dev/null
+          curl -fsS --max-time 12 "$origin/health/dependencies/" | jq -e '.dependencies.postgresql and .dependencies.redis' >/dev/null
+          aws freetier get-account-plan-state --region us-east-1 --query 'accountPlanType' --output text |
+            awk '{ print "Current AWS account plan: " $0 }'
+          echo "Verified two restored AWS staging web tasks and one singleton worker task."
           jq -c '.services[] | {serviceName, desiredCount, runningCount, pendingCount,
             deployments: [.deployments[] | {status, rolloutState, taskDefinition, createdAt, runningCount, pendingCount}],
             capacity_events: [.events[:6][] | select(.message | test("was unable|unhealthy|steady state")) | {createdAt,message}]}' <<< "$services"
