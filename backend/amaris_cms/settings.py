@@ -243,13 +243,13 @@ SUPABASE_S3_ENDPOINT_URL = (
 SUPABASE_S3_ACCESS_KEY_ID = (
     os.getenv("SUPABASE_S3_ACCESS_KEY_ID")
     or os.getenv("SUPABASE_STORAGE_S3_ACCESS_KEY_ID")
-    or os.getenv("AWS_ACCESS_KEY_ID")
+    or (os.getenv("AWS_ACCESS_KEY_ID") if SUPABASE_S3_ENDPOINT_URL else "")
     or ""
 ).strip()
 SUPABASE_S3_SECRET_ACCESS_KEY = (
     os.getenv("SUPABASE_S3_SECRET_ACCESS_KEY")
     or os.getenv("SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY")
-    or os.getenv("AWS_SECRET_ACCESS_KEY")
+    or (os.getenv("AWS_SECRET_ACCESS_KEY") if SUPABASE_S3_ENDPOINT_URL else "")
     or ""
 ).strip()
 SUPABASE_S3_ADMIN_BUCKET = (

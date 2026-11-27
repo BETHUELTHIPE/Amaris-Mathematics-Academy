@@ -5,6 +5,8 @@ on:
     paths:
       - .github/workflows/aws-staging-course-media.yml
       - deploy/aws/course-media/**
+      - backend/amaris_cms/settings.py
+      - backend/content/services/course_media.py
 permissions:
   contents: read
 concurrency:
