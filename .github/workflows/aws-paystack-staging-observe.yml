@@ -48,12 +48,13 @@ jobs:
           state="$(aws ecs describe-services --cluster "$cluster" --services "$service" --output json)"
           jq -e '.services | length == 1 and .[0].serviceName == "amaris-web-staging-stateless"' <<< "$state" >/dev/null
           jq '.services[0] | {runningCount,desiredCount,pendingCount,revision:(.taskDefinition | split("/")[-1]),deployments:[.deployments[] | {status,runningCount,pendingCount,rolloutState}],strategy:(.deploymentConfiguration.strategy // "ROLLING")}' <<< "$state"
+          jq '.services[0] | [.events[0:5][] | {createdAt,message}]' <<< "$state"
           recent="$(aws ecs list-service-deployments --cluster "$cluster" --service "$service" --max-results 4 --no-paginate --output json)"
           jq '[.serviceDeployments[] | {status,createdAt}]' <<< "$recent"
           latest="$(jq -r '.serviceDeployments[0].serviceDeploymentArn // empty' <<< "$recent")"
           if [[ -n "$latest" ]]; then
             aws ecs describe-service-deployments --service-deployment-arns "$latest" --output json |
-              jq '.serviceDeployments[0] | {status,lifecycleStage,hookStates:[.lifecycleHookDetails[]? | .status],alarms:.alarms.status}'
+              jq '.serviceDeployments[0] | {status,statusReason,lifecycleStage,hookStates:[.lifecycleHookDetails[]? | .status],alarms:.alarms.status}'
           fi
           for group in amaris-staging-stateless amaris-staging-web-green; do
             arn="$(aws elbv2 describe-target-groups --names "$group" --query 'TargetGroups[0].TargetGroupArn' --output text)"
