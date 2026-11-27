@@ -1,15 +1,9 @@
-"""Render independent candidate task definitions. Never registers or starts tasks.
-
-The gateway and frontend must be Service Connect clients; backend/frontend
-are servers. Private routing and health contracts must be reviewed and tested
-before registering any candidate. Input and outputs can contain sensitive
-runtime configuration; keep them in memory or a protected local directory.
-"""
+"""Offline split-service candidate renderer; never deploys or prints runtime secrets."""
 import copy
 import re
 
-ALIASES = {"backend": "amaris-backend", "frontend": "amaris-frontend"}
-PORTS = {"backend": 8000, "frontend": 3000}
+PORTS = {"backend": 8000, "frontend": 3000, "cms": 8080}
+ALIASES = {"backend": "amaris-backend", "frontend": "amaris-frontend", "cms": "amaris-gateway"}
 ALLOWED = {"family", "networkMode", "requiresCompatibilities", "runtimePlatform",
            "executionRoleArn", "taskRoleArn", "cpu", "memory", "ephemeralStorage",
            "placementConstraints"}
@@ -20,7 +14,7 @@ def render(task):
     if task.get("runtimePlatform", {}).get("cpuArchitecture") != "ARM64":
         raise ValueError("Expected ARM64")
     containers = {c["name"]: copy.deepcopy(c) for c in task["containerDefinitions"]}
-    if set(containers) != {"backend", "frontend", "cms"}:
+    if set(containers) != set(PORTS):
         raise ValueError("Unexpected containers")
     result = {}
     for name, c in containers.items():
@@ -29,51 +23,47 @@ def render(task):
         if c.get("mountPoints") or c.get("volumesFrom") or c.get("links"):
             raise ValueError("Local state not permitted")
         c.pop("dependsOn", None)
-        if name in PORTS:
-            mappings = c.get("portMappings", [])
-            selected = [p for p in mappings if p["containerPort"] == PORTS[name]]
-            if len(selected) != 1:
-                raise ValueError("Unexpected port mapping for " + name)
-            selected[0]["name"] = name + "-http"
-            selected[0]["appProtocol"] = "http"
+        mappings = c.setdefault("portMappings", [])
+        if not mappings:
+            mappings.append({"containerPort": PORTS[name], "protocol": "tcp"})
+        if len(mappings) != 1 or mappings[0]["containerPort"] != PORTS[name]:
+            raise ValueError("Unexpected port mapping")
+        mappings[0].update(name=name+"-http", appProtocol="http")
         if name == "frontend":
-            settings = [x for x in c.get("environment", []) if x["name"] == "CMS_API_URL"]
-            if len(settings) != 1:
-                raise ValueError("Review actual frontend CMS configuration")
-            old = settings[0]["value"]
-            # Preserve API path and require the known local gateway endpoint.
-            m = re.fullmatch(r"http://(?:localhost|127\.0\.0\.1):(?:8080|8000)(/api/v1/?)", old)
-            if not m:
-                raise ValueError("Unexpected CMS endpoint; manual review")
-            settings[0]["value"] = "http://amaris-backend:8000" + m.group(1)
+            entry = c.get("entryPoint") or []
+            if len(entry) < 3 or entry[:2] != ["/bin/sh","-ec"] or entry[2].count('exec "$@"') != 1:
+                raise ValueError("Review frontend settings loader")
+            if not any(s["name"]=="AMARIS_RUNTIME_ENV" for s in c.get("secrets",[])):
+                raise ValueError("Expected protected runtime environment")
+            entry[2] = entry[2].replace('exec "$@"', 'export CMS_API_URL=http://amaris-gateway:8080/api/v1/\nexec "$@"')
         if name == "cms":
             commands = c.get("command") or []
-            if len(commands) != 1 or "127.0.0.1:8000" not in commands[0] or "127.0.0.1:3000" not in commands[0]:
-                raise ValueError("Expected embedded Nginx proxy configuration")
-            commands[0] = commands[0].replace("127.0.0.1:8000","amaris-backend:8000").replace("127.0.0.1:3000","amaris-frontend:3000")
-        doc = {k: copy.deepcopy(v) for k,v in task.items() if k in ALLOWED and v is not None}
-        # Preserve sizing if declared; new size optimization is a separate load test.
-        doc["family"] = "amaris-ecs-staging-independent-" + ("gateway" if name=="cms" else name)
-        doc["containerDefinitions"] = [c]
-        doc["volumes"] = []
-        result[name] = doc
+            if len(commands)!=1 or "127.0.0.1:8000" not in commands[0] or "127.0.0.1:3000" not in commands[0]:
+                raise ValueError("Review embedded gateway configuration")
+            commands[0]=commands[0].replace("127.0.0.1:8000","amaris-backend:8000").replace("127.0.0.1:3000","amaris-frontend:3000")
+        doc = {k:copy.deepcopy(v) for k,v in task.items() if k in ALLOWED and v is not None}
+        doc["family"]="amaris-ecs-staging-independent-"+("gateway" if name=="cms" else name)
+        doc["containerDefinitions"]=[c]
+        doc["volumes"]=[]
+        result[name]=doc
     return result
 
 def self_test():
-    digest = "repo@sha256:" + "a"*64
-    task = {"networkMode":"awsvpc","runtimePlatform":{"cpuArchitecture":"ARM64"},"volumes":[],
-            "containerDefinitions":[
-                {"name":"backend","image":digest,"portMappings":[{"containerPort":8000}],"secrets":[{"name":"DB","valueFrom":"test-secret"}]},
-                {"name":"frontend","image":digest,"portMappings":[{"containerPort":3000}],"environment":[{"name":"CMS_API_URL","value":"http://127.0.0.1:8080/api/v1/"}],"dependsOn":[{"containerName":"cms","condition":"START"}]},
-                {"name":"cms","image":digest,"command":["proxy_pass http://127.0.0.1:8000; proxy_pass http://127.0.0.1:3000;"]}]}
-    output = render(task)
-    assert set(output)=={"backend","frontend","cms"}
+    digest="repo@sha256:"+"a"*64
+    task={"networkMode":"awsvpc","runtimePlatform":{"cpuArchitecture":"ARM64"},"volumes":[],
+          "containerDefinitions":[
+          {"name":"backend","image":digest,"secrets":[{"name":"DB","valueFrom":"test"}]},
+          {"name":"frontend","image":digest,"entryPoint":["/bin/sh","-ec",'unset AMARIS_RUNTIME_ENV\nexec "$@"',"amaris-settings"],"secrets":[{"name":"AMARIS_RUNTIME_ENV","valueFrom":"test"}],"dependsOn":[{"containerName":"cms","condition":"START"}]},
+          {"name":"cms","image":digest,"command":["proxy_pass http://127.0.0.1:8000; proxy_pass http://127.0.0.1:3000;"]}]}
+    output=render(task)
+    assert set(output)==set(PORTS)
     assert all(len(x["containerDefinitions"])==1 for x in output.values())
-    assert output["frontend"]["containerDefinitions"][0]["environment"][0]["value"]=="http://amaris-backend:8000/api/v1/"
+    assert "export CMS_API_URL=http://amaris-gateway:8080/api/v1/" in output["frontend"]["containerDefinitions"][0]["entryPoint"][2]
     assert "amaris-frontend:3000" in output["cms"]["containerDefinitions"][0]["command"][0]
     assert output["backend"]["containerDefinitions"][0]["secrets"]==task["containerDefinitions"][0]["secrets"]
-    assert task["containerDefinitions"][1]["environment"][0]["value"].startswith("http://127.")
+    assert "CMS_API_URL" not in task["containerDefinitions"][1]["entryPoint"][2]
     assert "dependsOn" not in output["frontend"]["containerDefinitions"][0]
+    assert all(x["containerDefinitions"][0]["portMappings"][0]["containerPort"]==PORTS[n] for n,x in output.items())
     task["volumes"]=[{"name":"unsafe"}]
     try:
         render(task)
@@ -81,7 +71,7 @@ def self_test():
         pass
     else:
         raise AssertionError("Host state accepted")
-    print("PASS: eight isolated split-task rendering assertions")
+    print("PASS: nine split-task assertions")
 
 if __name__=="__main__":
     self_test()
