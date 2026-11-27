@@ -55,7 +55,12 @@ jobs:
               aws ecs describe-services --cluster amaris-ecs-staging --services amaris-web-staging-stateless                 --query 'services[0]' --output json > "$RUNNER_TEMP/tutor-media-service.json"
               if jq -e '.runningCount==2 and .pendingCount==0 and
                 any(.deployments[]; .status=="PRIMARY" and .rolloutState=="COMPLETED" and .runningCount==2)'                 "$RUNNER_TEMP/tutor-media-service.json" >/dev/null; then
-                exit 0
+                response="$(curl -sS --max-time 8 -H 'Origin: https://16.171.164.5' \
+                  -H 'Content-Type: application/json' --data '{"action":"start"}' \
+                  https://16.171.164.5/api/tutor-videos 2>/dev/null || true)"
+                if jq -e '.detail=="Sign in with a verified tutor account."' <<< "$response" >/dev/null; then
+                  exit 0
+                fi
               fi
             fi
             sleep 12

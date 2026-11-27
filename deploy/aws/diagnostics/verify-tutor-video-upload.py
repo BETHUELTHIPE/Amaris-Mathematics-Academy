@@ -55,6 +55,8 @@ def main():
     expect_denial(
         f"{ORIGIN}/api/tutor-videos", method="POST", data={"action": "start"}, headers={"Origin": ORIGIN}
     )
+    expect_denial(f"{ORIGIN}/api/tutor-videos", method="POST", data={"action": "start"},
+                  headers={"Origin": "https://different-origin.example"})
     email = os.environ["STAGING_TEST_TUTOR_EMAIL"].strip().lower()
     assert hashlib.sha256(email.encode()).hexdigest() == QA_HASH
     session, _ = request(
