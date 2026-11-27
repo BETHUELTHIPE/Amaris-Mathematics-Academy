@@ -70,11 +70,12 @@ jobs:
                          Tags=[{"Key":"Project","Value":"Amaris"},{"Key":"Environment","Value":"staging"}])["TargetGroups"][0]
           assert green["TargetGroupArn"] != primary and green["VpcId"] == blue["VpcId"] and green["Port"] == blue["Port"]
           assert green["TargetType"] == "ip" and green["HealthCheckPath"] == blue["HealthCheckPath"]
-          assert not green["LoadBalancerArns"], "Existing green group already attached; inspect manually"
-          assert not elb.describe_target_health(TargetGroupArn=green["TargetGroupArn"])["TargetHealthDescriptions"], "Green group is not empty"
+          assert not green.get("LoadBalancerArns", []), "Existing green group already attached; inspect manually"
+          assert not elb.describe_target_health(TargetGroupArn=green["TargetGroupArn"]).get("TargetHealthDescriptions", []), "Green group is not empty"
           after = {l["ListenerArn"]: list(elb.get_paginator("describe_rules").paginate(ListenerArn=l["ListenerArn"])) for l in listeners}
           assert before == after, "Listener routing changed concurrently"
           print("PASS: current healthy blue target group preserved; detached empty green target group available.")
+          print("Green target group:", green["TargetGroupName"])
           print("No listener rules, ECS strategy or service count changed.")
           # Report remaining physical ENI capacity conservatively, including attached task ENIs.
           ids = ecs.list_container_instances(cluster=cluster,status="ACTIVE")["containerInstanceArns"]
