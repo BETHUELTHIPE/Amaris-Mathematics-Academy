@@ -1,0 +1,45 @@
+name: Deploy the verified Paystack backend with temporary staging capacity
+on:
+  push:
+    branches: [fix/aws-staging-paystack-20261127]
+    paths: [.github/workflows/aws-staging-paystack-with-spare.yml, deploy/aws/paystack-capacity/**]
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+jobs:
+  rollout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      BACKEND_DIGEST: sha256:9150004b812d9400ee1809619b53fb817c34f3d5947df0ea01c4e1f53fd62a87
+      BACKEND_SHA: fd19cba3bb205b924d8f86fca1a2a765422c7017
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Deploy and remove temporary Free Tier staging capacity
+        run: bash deploy/aws/paystack-capacity/rollout.sh
