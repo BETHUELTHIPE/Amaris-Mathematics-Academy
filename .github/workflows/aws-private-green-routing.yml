@@ -59,7 +59,8 @@ jobs:
           port=8081
           def health():
               with urllib.request.urlopen("https://16.171.164.5/health/dependencies/",timeout=15) as r:
-                  assert all(json.load(r)["dependencies"].get(k) for k in ("postgresql","redis"))
+                  dependencies=json.load(r)["dependencies"]
+                  assert all(dependencies.get(k) for k in ("postgresql","redis"))
           health()
           svc=ecs.describe_services(cluster="amaris-ecs-staging",services=["amaris-web-staging-stateless"])["services"][0]
           assert svc["runningCount"]==svc["desiredCount"] and svc["runningCount"]>=2
