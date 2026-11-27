@@ -2,7 +2,7 @@ name: Create encrypted staging PostgreSQL recovery point
 on:
   push:
     branches: [ops/aws-paystack-staging-acceptance-20261127]
-    paths: [.github/workflows/aws-paystack-recovery-point.yml]
+    paths: [.github/workflows/aws-paystack-recovery-point.yml, deploy/aws/paystack/recovery-point.py, deploy/aws/paystack/restore-proof.sh]
   workflow_dispatch:
 permissions: {}
 concurrency:
