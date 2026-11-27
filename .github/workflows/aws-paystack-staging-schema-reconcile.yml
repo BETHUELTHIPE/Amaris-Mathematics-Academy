@@ -1,0 +1,214 @@
+name: Reconcile equivalent Paystack migrations in AWS staging
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-staging-schema-reconcile.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment: staging
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify staging restore and equivalent reviewed migration sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/46060920155" --jq '.conclusion' | grep -qx success
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/46065211978" --jq '.conclusion' | grep -qx success
+          python - <<'PY'
+          import ast
+          import os
+          import subprocess
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          old = "fd19cba3bb205b924d8f86fca1a2a765422c7017"
+          candidate = "164838a3143c22cc7b60ab669e1f0c7dca616a0f"
+          def assignment(ref, name, key):
+              source = subprocess.check_output([
+                  "gh", "api", "-H", "Accept: application/vnd.github.raw+json",
+                  f"repos/{repo}/contents/backend/content/migrations/{name}.py?ref={ref}",
+              ])
+              return next(
+                  node.value for node in ast.walk(ast.parse(source))
+                  if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == key for t in node.targets)
+              )
+          assert ast.dump(assignment(old, "0022_liveclass_paystack", "operations")) == ast.dump(
+              assignment(candidate, "0020_liveclass_paystack", "operations")
+          )
+          assert ast.literal_eval(assignment(candidate, "0022_merge_paystack_tutor_media", "operations")) == []
+          assert ast.literal_eval(assignment(candidate, "0022_merge_paystack_tutor_media", "dependencies")) == [
+              ("content", "0020_liveclass_paystack"), ("content", "0021_tutor_video_submissions")
+          ]
+          print("PASS: both Paystack migrations perform identical operations and the merge contains no operations.")
+          PY
+      - name: Reconcile only the two equivalent staging migration records
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import json
+          import re
+          import shlex
+          import time
+          from urllib.request import urlopen
+
+          import boto3
+
+          account = "110156539003"
+          cluster = "amaris-ecs-staging"
+          service = "amaris-web-staging-stateless"
+          assert boto3.client("sts").get_caller_identity()["Account"] == account
+          with urlopen("https://16.171.164.5/health/version/", timeout=12) as response:
+              assert json.load(response)["git_sha"] == "cfdb105761836c7730fec52ada54c58c624206db"
+          ecs = boto3.client("ecs")
+          ssm = boto3.client("ssm")
+          running = ecs.list_tasks(cluster=cluster, serviceName=service, desiredStatus="RUNNING")["taskArns"]
+          assert len(running) == 2
+          task, = ecs.describe_tasks(cluster=cluster, tasks=[running[0]])["tasks"]
+          assert task["taskDefinitionArn"].endswith("/amaris-ecs-staging-alb-web:14")
+          host, = ecs.describe_container_instances(
+              cluster=cluster, containerInstances=[task["containerInstanceArn"]]
+          )["containerInstances"]
+          task_arn = task["taskArn"]
+          assert re.fullmatch(rf"arn:aws:ecs:eu-north-1:{account}:task/{cluster}/[0-9a-f]{{32}}", task_arn)
+          command = """set -euo pipefail
+          backend=$(docker ps -q --filter label=com.amazonaws.ecs.task-arn=TASK --filter label=com.amazonaws.ecs.container-name=backend)
+          [[ "$backend" =~ ^[a-f0-9]{12,64}$ ]]
+          docker exec -i "$backend" python - 2>/dev/null <<'AUDIT'
+          import json
+          import os
+          import re
+          from urllib.parse import urlsplit
+          for line in os.environ.pop("AMARIS_RUNTIME_ENV", "").splitlines():
+              key, sep, value = line.partition("=")
+              if sep:
+                  os.environ.setdefault(key, value)
+          url = urlsplit(os.environ["DATABASE_URL"])
+          project = "atyhhjwwxgzeurnwayay"
+          host = url.hostname or ""
+          assert host == "db."+project+".supabase.co" or (host.endswith(".pooler.supabase.com") and (url.username or "").endswith("."+project))
+          schema = os.environ.get("DATABASE_SCHEMA", "").strip() or "public"
+          assert re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema)
+          assert schema not in {"auth", "storage", "vault", "extensions"} and "prod" not in schema.lower()
+          import django
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "amaris_cms.settings")
+          django.setup()
+          from django.db import connection, transaction
+          from django.db.migrations.recorder import MigrationRecorder
+
+          def normalize(fragment):
+              fragment = re.sub(r"::(?:character varying|varchar|text)\\b", "", fragment)
+              return re.sub(r"[()\\s]", "", fragment)
+
+          try:
+              assert connection.vendor == "postgresql"
+              with transaction.atomic(), connection.cursor() as cursor:
+                  cursor.execute("SET LOCAL statement_timeout = '5s'")
+                  cursor.execute("SET LOCAL lock_timeout = '2s'")
+                  cursor.execute("SELECT current_schema(), pg_try_advisory_xact_lock(hashtext(%s))", ["amaris-staging-paystack-migration-alias"])
+                  assert cursor.fetchone() == (schema, True), "Another reconciliation is active or schema is unexpected"
+                  table = "content_liveclassbooking"
+                  cursor.execute(
+                      "SELECT column_name, data_type, character_maximum_length, is_nullable, column_default "
+                      "FROM information_schema.columns WHERE table_schema = %s AND table_name = %s",
+                      [schema, table],
+                  )
+                  columns = {name: (typ, size, nullable, default) for name, typ, size, nullable, default in cursor.fetchall()}
+                  expected = {
+                      "payment_provider": (12, "'payfast'"),
+                      "paystack_checkout_url": (500, "''"),
+                      "paystack_mode": (4, "''"),
+                  }
+                  for name, (size, default) in expected.items():
+                      found_type, found_size, nullable, found_default = columns[name]
+                      assert (found_type, found_size, nullable, normalize(found_default)) == ("character varying", size, "NO", default)
+                  assert columns["provider_reference"][2] == "NO"
+                  cursor.execute(
+                      "SELECT i.indisunique, i.indisvalid, i.indisready, pg_get_expr(i.indpred, i.indrelid) "
+                      "FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid "
+                      "JOIN pg_class ix ON ix.oid = i.indexrelid JOIN pg_namespace ns ON ns.oid = t.relnamespace "
+                      "WHERE ns.nspname = %s AND t.relname = %s AND ix.relname = %s",
+                      [schema, table, "liveclass_paystack_transaction_unique"],
+                  )
+                  unique, valid, ready, predicate = cursor.fetchone()
+                  assert unique and valid and ready
+                  conditions = {normalize(item) for item in re.split(r"\\bAND\\b", predicate)}
+                  assert conditions in (
+                      {"payment_provider='paystack'", "NOTprovider_reference=''"},
+                      {"payment_provider='paystack'", "provider_reference<>''"},
+                  )
+                  index = connection.introspection.get_constraints(cursor, table)["liveclass_paystack_transaction_unique"]
+                  assert index["columns"] == ["provider_reference"]
+                  recorder = MigrationRecorder(connection)
+                  recorded = recorder.applied_migrations()
+                  app = "content"
+                  required = {
+                      (app, "0019_merge_recipient_receipts_tutor_documents"),
+                      (app, "0021_tutor_video_submissions"),
+                      (app, "0022_liveclass_paystack"),
+                  }
+                  assert required <= recorded.keys()
+                  equivalences = ("0020_liveclass_paystack", "0022_merge_paystack_tutor_media")
+                  for migration in equivalences:
+                      if (app, migration) not in recorded:
+                          recorder.record_applied(app, migration)
+                  assert all((app, migration) in recorder.applied_migrations() for migration in equivalences)
+          except (AssertionError, KeyError, TypeError, AttributeError, ValueError):
+              raise SystemExit("Staging database differs from the reviewed migration state")
+          print("PASS: equivalent Paystack migrations recorded in staging without repeating schema operations.")
+          AUDIT
+          """.replace("TASK", shlex.quote(task_arn))
+          command_id = ssm.send_command(
+              InstanceIds=[host["ec2InstanceId"]],
+              DocumentName="AWS-RunShellScript",
+              Parameters={"commands": [command], "executionTimeout": ["35"]},
+              TimeoutSeconds=55,
+          )["Command"]["CommandId"]
+          for _ in range(22):
+              time.sleep(3)
+              try:
+                  result = ssm.get_command_invocation(CommandId=command_id, InstanceId=host["ec2InstanceId"])
+              except ssm.exceptions.InvocationDoesNotExist:
+                  continue
+              if result["Status"] == "Success":
+                  marker = "PASS: equivalent Paystack migrations recorded in staging without repeating schema operations."
+                  assert result["StandardOutputContent"].strip() == marker
+                  print(marker)
+                  break
+              if result["Status"] not in {"Pending", "Delayed", "InProgress"}:
+                  raise SystemExit(f"Staging migration reconciliation failed: {result['Status']}")
+          else:
+              ssm.cancel_command(CommandId=command_id)
+              raise SystemExit("Staging migration reconciliation did not complete")
+          PY
