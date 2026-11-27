@@ -52,6 +52,29 @@ export default async function LessonPage({
             />
           </div>
         )}
+        {data.lesson.video?.provider === "vimeo" && data.lesson.video.playback_url && (
+          <div className="mt-8 aspect-video w-full overflow-hidden rounded-2xl bg-black">
+            <iframe
+              title={data.lesson.title}
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+              className="h-full w-full"
+              src={`${data.lesson.video.playback_url}#t=${requestedPosition}s`}
+              allow="fullscreen; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        )}
+        {data.lesson.video?.provider === "s3" && data.lesson.video.playback_url && (
+          <video
+            aria-label={data.lesson.title}
+            className="mt-8 aspect-video w-full rounded-2xl bg-black"
+            src={`${data.lesson.video.playback_url}#t=${requestedPosition}`}
+            controls
+            playsInline
+            preload="metadata"
+          />
+        )}
         <article className="prose prose-slate mt-8 max-w-none break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{data.lesson.lesson_body || "Lesson content is being prepared."}</article>
         <form action={saveLessonProgressAction} className="mt-8 flex flex-wrap items-center gap-3">
           <input type="hidden" name="courseSlug" value={courseSlug} />

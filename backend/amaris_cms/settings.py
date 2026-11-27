@@ -243,13 +243,13 @@ SUPABASE_S3_ENDPOINT_URL = (
 SUPABASE_S3_ACCESS_KEY_ID = (
     os.getenv("SUPABASE_S3_ACCESS_KEY_ID")
     or os.getenv("SUPABASE_STORAGE_S3_ACCESS_KEY_ID")
-    or os.getenv("AWS_ACCESS_KEY_ID")
+    or (os.getenv("AWS_ACCESS_KEY_ID") if SUPABASE_S3_ENDPOINT_URL else "")
     or ""
 ).strip()
 SUPABASE_S3_SECRET_ACCESS_KEY = (
     os.getenv("SUPABASE_S3_SECRET_ACCESS_KEY")
     or os.getenv("SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY")
-    or os.getenv("AWS_SECRET_ACCESS_KEY")
+    or (os.getenv("AWS_SECRET_ACCESS_KEY") if SUPABASE_S3_ENDPOINT_URL else "")
     or ""
 ).strip()
 SUPABASE_S3_ADMIN_BUCKET = (
@@ -320,6 +320,28 @@ STORAGES["tutor_qualifications"] = (
         "OPTIONS": {"location": BASE_DIR / "private-tutor-qualifications"},
     }
 )
+
+ACADEMY_MEDIA_BUCKET = os.getenv("ACADEMY_MEDIA_BUCKET", "").strip()
+ACADEMY_MEDIA_REGION = os.getenv("ACADEMY_MEDIA_REGION", "eu-north-1")
+ACADEMY_VIMEO_TOKEN = os.getenv("ACADEMY_VIMEO_TOKEN", "").strip()
+ACADEMY_VIMEO_EMBED_DOMAINS = tuple(
+    domain.strip().lower() for domain in os.getenv("ACADEMY_VIMEO_EMBED_DOMAINS", "").split(",") if domain.strip()
+)
+if ACADEMY_MEDIA_BUCKET:
+    STORAGES["academy_media"] = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": ACADEMY_MEDIA_BUCKET,
+            "region_name": ACADEMY_MEDIA_REGION,
+            "endpoint_url": f"https://s3.{ACADEMY_MEDIA_REGION}.amazonaws.com",
+            "addressing_style": "virtual",
+            "signature_version": "s3v4",
+            "default_acl": None,
+            "querystring_auth": True,
+            "querystring_expire": 600,
+            "file_overwrite": False,
+        },
+    }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
