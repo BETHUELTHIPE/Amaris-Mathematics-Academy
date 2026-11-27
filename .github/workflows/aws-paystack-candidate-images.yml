@@ -79,10 +79,24 @@ jobs:
             sha="$BACKEND_SHA"
             docker build -f backend-source/backend/Dockerfile -t "$image" --label "org.opencontainers.image.revision=$sha" backend-source/backend
             docker run --rm --entrypoint python -e DJANGO_DEBUG=true "$image" manage.py makemigrations --check --dry-run
-            docker run --rm --entrypoint python -e DJANGO_DEBUG=true "$image" manage.py test content.test_live_class_paystack content.test_course_media content.test_tutor_media
+            # Full Paystack tests, including pypdf, are required in backend-gate.
+            # Do not add development libraries to the published runtime image.
+            docker run --rm --entrypoint python -e DJANGO_DEBUG=true "$image" manage.py check
+            docker run --rm --entrypoint python -e DJANGO_DEBUG=true "$image" manage.py test content.test_course_media content.test_tutor_media
           else
             sha="$FRONTEND_SHA"
+            # Keep the original lockfile in the resolution rather than using --package-lock=false.
+            python3 - <<'PY'
+          from pathlib import Path
+          p = Path("deployment-source/deploy/aws/frontend.Dockerfile")
+          s = p.read_text()
+          before = "RUN npm ci --include=dev --no-audit --no-fund " + chr(92) + "\n    && npm install --no-save --package-lock=false --no-audit --no-fund " + chr(92) + "\n       nitro@3.0.260903-beta @tailwindcss/vite@4.3.3"
+          after = "RUN npm install --save-dev --save-exact --package-lock-only --no-audit --no-fund " + chr(92) + "\n       nitro@3.0.260903-beta @tailwindcss/vite@4.3.3 " + chr(92) + "\n    && npm ci --include=dev --no-audit --no-fund"
+          assert s.count(before) == 1
+          p.write_text(s.replace(before, after))
+          PY
             docker build -f deployment-source/deploy/aws/frontend.Dockerfile --target build -t amaris-paystack-frontend-build:verified frontend-source/frontend
+            docker run --rm amaris-paystack-frontend-build:verified cat package-lock.json > "$RUNNER_TEMP/aws-frontend-package-lock.json"
             docker run --rm amaris-paystack-frontend-build:verified sh -ec 'npm run typecheck && npm run lint && npm run test:unit'
             docker build -f deployment-source/deploy/aws/frontend.Dockerfile -t "$image" --label "org.opencontainers.image.revision=$sha" frontend-source/frontend
             docker run --rm -d --name paystack-preview -p 127.0.0.1:3000:3000 "$image"
@@ -96,6 +110,13 @@ jobs:
             grep -Fq 'Amaris Mathematics Academy' "$RUNNER_TEMP/preview.html"
           fi
           test "$(docker image inspect --format '{{.Architecture}}' "$image")" = arm64
+      - uses: actions/upload-artifact@v4
+        if: matrix.component == 'frontend'
+        with:
+          name: aws-frontend-resolved-lock
+          path: ${{ runner.temp }}/aws-frontend-package-lock.json
+          retention-days: 7
+          if-no-files-found: error
       - name: Scan for fixable high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
