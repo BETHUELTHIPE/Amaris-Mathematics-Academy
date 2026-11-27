@@ -1,0 +1,291 @@
+name: Verify current AWS backend with a genuine PayFast sandbox booking
+on:
+  push:
+    branches: [qa/aws-staging-payfast-tutor-applications-20261127]
+    paths:
+      - .github/workflows/qa-current-backend-payfast-sandbox.yml
+permissions:
+  contents: read
+jobs:
+  authentic-sandbox-itn:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/qa/aws-staging-payfast-tutor-applications-20261127'
+    environment: staging
+    name: Genuine sandbox ITN and three isolated role confirmations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: amaris_itn
+          POSTGRES_DB: amaris_itn
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U amaris_itn -d amaris_itn"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7.4-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DJANGO_SETTINGS_MODULE: booking_acceptance_settings
+      CELERY_BROKER_URL: "redis://127.0.0.1:6379/0"
+      CELERY_RESULT_BACKEND: "redis://127.0.0.1:6379/1"
+      DJANGO_DEBUG: "false"
+      DJANGO_SECRET_KEY: "synthetic-payfast-itn-acceptance-only"
+      DJANGO_ALLOWED_HOSTS: ".trycloudflare.com,localhost,127.0.0.1"
+      DATABASE_URL: "postgresql://amaris_itn@127.0.0.1:5432/amaris_itn"
+      DATABASE_SSL_REQUIRED: "false"
+      SUPABASE_DATABASE_REQUIRED: "false"
+      SUPABASE_STORAGE_ENABLED: "false"
+      SUPABASE_S3_REQUIRED: "false"
+      PAYFAST_MODE: "sandbox"
+      PAYFAST_ENV: "sandbox"
+      PAYFAST_MERCHANT_ID: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_ID }}
+      PAYFAST_MERCHANT_KEY: ${{ secrets.PAYFAST_SANDBOX_MERCHANT_KEY }}
+      PAYFAST_PASSPHRASE: ${{ secrets.PAYFAST_SANDBOX_PASSPHRASE }}
+      EMAIL_BACKEND: "django.core.mail.backends.filebased.EmailBackend"
+      EMAIL_FILE_PATH: "/tmp/amaris-staging-mail"
+      DEFAULT_FROM_EMAIL: "Amaris Sandbox <test@example.invalid>"
+      BOOKING_ADMIN_EMAIL: "sandbox-admin@example.invalid"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cfdb105761836c7730fec52ada54c58c624206db
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 2269398e05aea38ac50387070777167f55ad2223
+          path: verification-harness
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Fail closed unless this is isolated sandbox-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PAYFAST_MODE" = sandbox
+          test "$PAYFAST_ENV" = sandbox
+          test "$SUPABASE_DATABASE_REQUIRED" = false
+          test "$DATABASE_URL" = "postgresql://amaris_itn@127.0.0.1:5432/amaris_itn"
+          test -n "$PAYFAST_MERCHANT_ID"
+          test -n "$PAYFAST_MERCHANT_KEY"
+          echo "ISOLATION_GATE=PASS"
+      - name: Install isolated Django and browser
+        run: |
+          python -m pip install -r backend/requirements.txt pypdf==6.10.0 >/dev/null
+          mkdir -p /tmp/amaris-staging-mail /tmp/itn-playwright
+          cd /tmp/itn-playwright
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts playwright@1.56.1 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verify targeted payment and tutor upload tests on disposable PostgreSQL
+        working-directory: backend
+        env:
+          DJANGO_SETTINGS_MODULE: amaris_cms.settings
+        run: |
+          python manage.py test content.test_payfast_configuration content.test_payfast_provider_itn content.test_payfast_security content.test_payments content.test_live_classes content.test_invoice_archive content.test_invoice_letterhead content.test_official_letterhead content.test_tutor_applications --verbosity 1
+      - name: Start isolated Django and public HTTPS callback
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp verification-harness/scripts/release/booking_acceptance_settings.py backend/
+          cp verification-harness/scripts/release/booking_callback_diagnostics.py backend/
+          cd backend
+          python manage.py migrate --noinput >/dev/null
+          python manage.py check
+          python manage.py shell -c 'import tempfile; from pathlib import Path; from django.conf import settings; from django.core.mail import get_connection; connection=get_connection(); assert Path(connection.file_path).resolve()==Path("/tmp/amaris-staging-mail"); tempfile.NamedTemporaryFile(dir=settings.EMAIL_FILE_PATH).close(); print("ISOLATED_MAILBOX_BACKEND_AND_WRITE=PASS")'
+          celery -A amaris_cms worker --loglevel=WARNING --queues=critical,default,notifications --concurrency=2 --hostname=acceptance@%h > /tmp/amaris-ci-worker.log 2>&1 &
+          echo $! > /tmp/amaris-ci-worker.pid
+          celery -A amaris_cms beat --loglevel=WARNING --pidfile=/tmp/amaris-ci-beat.pid --schedule=/tmp/amaris-ci-beat-schedule > /tmp/amaris-ci-beat.log 2>&1 &
+          echo $! > /tmp/amaris-ci-beat-process.pid
+          python manage.py runserver 127.0.0.1:8000 --noreload > /tmp/amaris-itn-server.log 2>&1 &
+          echo $! > /tmp/amaris-itn-server.pid
+          for i in $(seq 1 45); do
+            if curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/health/ready/ >/dev/null;then break;fi
+            sleep 1
+          done
+          curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/health/ready/ >/dev/null
+          curl -fLsS --retry 3 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared
+          chmod +x /tmp/cloudflared
+          /tmp/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000 > /tmp/amaris-cloudflared.log 2>&1 &
+          echo $! > /tmp/amaris-cloudflared.pid
+          python - <<'PY'
+          import pathlib, re, time
+          log=pathlib.Path('/tmp/amaris-cloudflared.log')
+          for attempt in range(45):
+              value=log.read_text(errors='replace') if log.exists() else ''
+              result=re.search(r'https://[a-z0-9-]+\.trycloudflare\.com',value)
+              if result:
+                  pathlib.Path('/tmp/amaris-itn-host').write_text(result.group(0))
+                  print('HTTPS_CALLBACK_TUNNEL=READY')
+                  break
+              time.sleep(1)
+          else:raise SystemExit('HTTPS_CALLBACK_TUNNEL=UNAVAILABLE')
+          PY
+          origin="$(cat /tmp/amaris-itn-host)"
+          # Quick Tunnel names take time to publish through public DNS.
+          # Never post PayFast payments to a hostname that cannot be resolved.
+          python - <<'PY'
+          import pathlib, socket, time, urllib.parse
+          value=pathlib.Path('/tmp/amaris-itn-host').read_text()
+          host=urllib.parse.urlparse(value).hostname
+          for i in range(55):
+              try:
+                  socket.getaddrinfo(host,443)
+                  print('HTTPS_CALLBACK_PUBLIC_DNS=PASS')
+                  break
+              except OSError:
+                  time.sleep(2)
+          else:
+              raise SystemExit('HTTPS_CALLBACK_PUBLIC_DNS=UNAVAILABLE')
+          PY
+          for attempt in $(seq 1 12); do
+            if curl -fLsS --max-time 12 "$origin/health/ready/" >/dev/null;then
+              echo "EXTERNAL_ISOLATED_DJANGO_HEALTH=PASS"
+              break
+            fi
+            if [ "$attempt" -eq 12 ];then echo "EXTERNAL_ISOLATED_DJANGO_HEALTH=FAILED";exit 1;fi
+            sleep 4
+          done
+      - name: Prove external callback observer with a rejected empty request
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin="$(cat /tmp/amaris-itn-host)"
+          status="$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' -X POST "$origin/api/v1/payfast/itn/")"
+          test "$status" = 403
+          python - <<'PY'
+          import json,pathlib
+          rows=[json.loads(s) for s in pathlib.Path("/tmp/amaris-safe-callbacks.jsonl").read_text().splitlines()]
+          assert any(r["kind"]=="unknown" and r["http_status"]==403 for r in rows)
+          print("EXTERNAL_CALLBACK_OBSERVER_NEGATIVE_CANARY=PASS")
+          PY
+      - name: Create a signed sandbox checkout for the test booking
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin="$(cat /tmp/amaris-itn-host)"
+          export PAYFAST_NOTIFY_URL="$origin/api/v1/payfast/itn/"
+          export PUBLIC_SITE_URL="$origin"
+          export PUBLIC_API_URL="$origin"
+          cd backend
+          python manage.py shell -c 'exec(open("../verification-harness/scripts/release/current_booking_gateway_matrix.py").read())'
+      - name: Complete one genuine sandbox wallet payment
+        shell: bash
+        run: |
+          export ACCEPTANCE_REPO="$GITHUB_WORKSPACE"
+          cd /tmp/itn-playwright
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import {chromium} from 'playwright';
+          const checkouts=JSON.parse(fs.readFileSync('/tmp/amaris-all-payfast-bookings.json','utf8')).filter(item=>item.kind==='live_class_1h');
+          assert.equal(checkouts.length,1);
+          const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+          try {
+            for(const item of checkouts) {
+              assert.equal(item.url,'https://sandbox.payfast.co.za/eng/process');
+              const page=await browser.newPage();
+              {
+                const esc=x=>String(x).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
+                const hidden=Object.entries(item.fields).map(([k,v])=>'<input type="hidden" name="'+esc(k)+'" value="'+esc(v)+'">').join('');
+                await page.setContent('<form method="post" action="'+item.url+'">'+hidden+'<button id="pay">Pay test wallet</button></form>');
+                await page.locator('#pay').click({noWaitAfter:true,timeout:90000});
+                await page.waitForURL(u=>u.hostname==='sandbox.payfast.co.za',{timeout:90000,waitUntil:'domcontentloaded'});
+                await page.getByText('Complete Payment',{exact:true}).waitFor({timeout:40000});
+                await page.getByText('Complete Payment',{exact:true}).click({noWaitAfter:true,timeout:90000});
+                await page.getByText('Your payment was successful!',{exact:false}).waitFor({timeout:70000});
+                console.log('PASS genuine sandbox wallet: '+item.kind);
+              }
+              // Keep provider pages alive while genuine asynchronous callbacks complete.
+            }
+          } finally {await browser.close();}
+          NODE
+      - name: Verify settlement, canonical letterhead and three exact role messages
+        run: |
+          cd backend
+          python manage.py shell <<'PY'
+          from collections import Counter
+          from django.core.files.storage import storages
+          from content.models import LiveClassBooking
+          from content.services.invoices import student_invoice_key
+          from email import policy
+          from email.parser import BytesParser
+          from io import BytesIO
+          import json
+          from pathlib import Path
+          from pypdf import PdfReader
+          import time
+
+          matrix = json.loads(Path("/tmp/amaris-all-payfast-bookings.json").read_text())
+          reference, = (entry["reference"] for entry in matrix if entry["kind"] == "live_class_1h")
+          for _ in range(60):
+              row = LiveClassBooking.objects.get(reference=reference)
+              if all((row.gateway_verified_at, row.paid_at, row.provider_reference, row.invoice_number,
+                      row.confirmation_sent_at, row.tutor_confirmation_sent_at, row.admin_confirmation_sent_at)):
+                  break
+              time.sleep(3)
+          assert row.status == LiveClassBooking.Status.CONFIRMED
+          assert row.gateway_verified_at and row.paid_at and row.provider_reference
+          assert row.invoice_number and row.confirmation_sent_at and row.tutor_confirmation_sent_at and row.admin_confirmation_sent_at
+          assert LiveClassBooking.objects.filter(reference=reference).count() == 1
+          archived_key = student_invoice_key(row.student.supabase_user_id, row.invoice_number)
+          with storages["student_private"].open(archived_key, "rb") as archived:
+              canonical = archived.read()
+          pdf = PdfReader(BytesIO(canonical))
+          text = "\n".join(page.extract_text() for page in pdf.pages)
+          for field in ("Amaris Mathematics Academy", "BILLED TO", "PAYMENT NOTE", "Description", row.invoice_number):
+              assert field in text, "Invoice field missing: " + field
+          assert all(page.images for page in pdf.pages), "Official logo missing"
+
+          recipients = Counter()
+          for path in Path("/tmp/amaris-staging-mail").glob("*"):
+              for message in path.read_bytes().split(b"\n" + b"-" * 79 + b"\n"):
+                  parsed = BytesParser(policy=policy.default).parsebytes(message)
+                  for part in parsed.iter_attachments():
+                      if part.get_filename() == row.invoice_number + ".pdf":
+                          assert part.get_payload(decode=True) == canonical, "Invoice attachment differs from the private archived file"
+                          recipients[str(parsed["To"])] += 1
+          assert recipients == Counter({"sandbox-buyer@example.invalid": 1, "tutor@example.invalid": 1, "sandbox-admin@example.invalid": 1})
+          print("PASS: genuine provider ITN, one confirmed booking, one canonical branded PDF and byte-identical student, tutor and admin attachments in the isolated mailbox.")
+          PY
+      - name: Safe callback diagnostics, including failed payments
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re,json,collections
+          from pathlib import Path
+          server=Path("/tmp/amaris-itn-server.log")
+          log=server.read_text(errors="replace") if server.exists() else ""
+          statuses=re.findall(r'"POST /api/v1/payfast/itn/ HTTP/[0-9.]+" ([0-9]{3})',log)
+          print("SAFE_CALLBACK_HTTP_COUNTS="+json.dumps(dict(collections.Counter(statuses))))
+          classes=re.findall(r"^([A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)):",log,re.M)
+          print("SAFE_SERVER_EXCEPTION_CLASSES="+json.dumps(dict(collections.Counter(classes))))
+          path=Path("/tmp/amaris-safe-callbacks.jsonl")
+          lines=path.read_text().splitlines() if path.exists() else []
+          print("OBSERVED_PROVIDER_CALLBACKS="+str(sum(json.loads(line).get("kind")!="unknown" for line in lines)))
+          for line in lines[:100]:print("SAFE_CALLBACK="+line)
+          PY
+      - name: Stop isolated services
+        if: always()
+        shell: bash
+        run: |
+          for file in /tmp/amaris-itn-server.pid /tmp/amaris-cloudflared.pid /tmp/amaris-ci-worker.pid /tmp/amaris-ci-beat-process.pid; do
+            if [ -f "$file" ];then kill "$(cat "$file")" 2>/dev/null || true;fi
+          done
+
