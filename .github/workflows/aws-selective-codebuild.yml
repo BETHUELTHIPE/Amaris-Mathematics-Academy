@@ -1,0 +1,133 @@
+name: Build approved changed components in AWS CodeBuild
+on:
+  workflow_dispatch:
+    inputs:
+      deployed_sha:
+        description: Verified source commit of the currently deployed release
+        required: true
+        type: string
+      candidate_sha:
+        description: Reviewed candidate commit on the approved release branch
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: amaris-staging-selective-build
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-selective-bluegreen-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      BASE: ${{ inputs.deployed_sha }}
+      CANDIDATE: ${{ inputs.candidate_sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate source ancestry and prepare component-only archives
+        run: |
+          set -euo pipefail
+          [[ "$BASE" =~ ^[0-9a-f]{40}$ && "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]]
+          release=refs/remotes/origin/release/aws-full-platform-20261125
+          git merge-base --is-ancestor "$BASE" "$CANDIDATE"
+          git merge-base --is-ancestor "$CANDIDATE" "$release"
+          git diff --name-only --no-renames -z "$BASE" "$CANDIDATE" | python3 deploy/aws/blue-green/selective-release-plan.py > plan.json
+          jq -e '.manual_review==false and (.build_components|index("gateway")|not)' plan.json >/dev/null
+          mkdir -p "$RUNNER_TEMP/sources"
+          for component in frontend backend; do
+            if ! jq -e --arg component "$component" '.build_components|index($component)!=null' plan.json >/dev/null; then continue; fi
+            root="$(mktemp -d)"
+            if [[ "$component" == frontend ]]; then
+              git archive "$CANDIDATE" frontend deploy/aws/frontend.Dockerfile | tar -x -C "$root"
+            else
+              git archive "$CANDIDATE" backend | tar -x -C "$root"
+            fi
+            printf '%s\n' "$CANDIDATE" > "$root/release-source.sha"
+            (cd "$root" && zip -q -r "$RUNNER_TEMP/sources/$component.zip" .)
+            rm -rf -- "$root"
+          done
+          cat plan.json
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Start only selected builds and capture results; no ECR or ECS writes
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import boto3, os, json, time, pathlib, hashlib
+          account = "110156539003"
+          assert boto3.client("sts").get_caller_identity()["Account"] == account
+          bucket = f"amaris-staging-build-artifacts-{account}-eu-north-1"
+          s3 = boto3.client("s3", region_name="eu-north-1")
+          cb = boto3.client("codebuild", region_name="eu-north-1")
+          plan = json.load(open("plan.json"))
+          run = os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"]
+          sha = os.environ["CANDIDATE"]
+          ids = []
+          try:
+              for component in ("frontend","backend"):
+                  if component not in plan["build_components"]:
+                      continue
+                  path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "sources" / (component + ".zip")
+                  key = f"sources/{sha}/{run}/{component}.zip"
+                  with path.open("rb") as src:
+                      s3.upload_fileobj(src,bucket,key,ExtraArgs={"ServerSideEncryption":"AES256","ExpectedBucketOwner":account})
+                  version = s3.head_object(Bucket=bucket,Key=key,ExpectedBucketOwner=account)["VersionId"]
+                  b = cb.start_build(projectName="amaris-staging-"+component,
+                      sourceLocationOverride=f"{bucket}/{key}",sourceVersion=version,
+                      idempotencyToken=f"{run}-{component}")["build"]
+                  ids.append(b["id"])
+                  print("Started",b["projectName"],flush=True)
+              if not ids:
+                  print("No application changes; no build started.")
+              else:
+                  for _ in range(260):
+                      builds = cb.batch_get_builds(ids=ids)["builds"]
+                      if len(builds)==len(ids) and all(b["buildComplete"] for b in builds):
+                          assert all(b["buildStatus"]=="SUCCEEDED" for b in builds), "Candidate build failed"
+                          with open("build-evidence.json","w") as output:
+                              json.dump({"source_sha":sha,"builds":[{"id":b["id"],"project":b["projectName"],"artifact":b["artifacts"]["location"]} for b in builds],"deployment_approved":False},output,indent=2)
+                          print("PASS: selected candidate builds completed; integration and security scan required.")
+                          break
+                      time.sleep(10)
+                  else:
+                      raise RuntimeError("Build wait exceeded limit")
+          finally:
+              if ids:
+                  for b in cb.batch_get_builds(ids=ids)["builds"]:
+                      if not b["buildComplete"]:
+                          cb.stop_build(id=b["id"])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selective-codebuild-evidence
+          path: |
+            plan.json
+            build-evidence.json
+          if-no-files-found: warn

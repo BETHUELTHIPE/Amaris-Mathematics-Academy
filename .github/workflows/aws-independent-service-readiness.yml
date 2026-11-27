@@ -1,0 +1,77 @@
+name: Verify independent service candidates and rollback readiness
+on:
+  push:
+    branches: [ops/aws-selective-bluegreen-20261127]
+    paths: [.github/workflows/aws-independent-service-readiness.yml, deploy/aws/blue-green/render-independent-services.py]
+  workflow_dispatch:
+permissions: {}
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-selective-bluegreen-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: python3 deploy/aws/blue-green/render-independent-services.py
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+      - name: Render from live task in memory and inspect release blockers
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import boto3, runpy, json, urllib.request, concurrent.futures, time
+          assert boto3.client("sts").get_caller_identity()["Account"]=="110156539003"
+          ecs=boto3.client("ecs")
+          cw=boto3.client("cloudwatch")
+          cluster="amaris-ecs-staging"
+          svc=ecs.describe_services(cluster=cluster,services=["amaris-web-staging-stateless"])["services"][0]
+          task=ecs.describe_task_definition(taskDefinition=svc["taskDefinition"])["taskDefinition"]
+          render=runpy.run_path("deploy/aws/blue-green/render-independent-services.py")["render"]
+          candidates=render(task)
+          assert all(len(t["containerDefinitions"])==1 for t in candidates.values())
+          print("PASS: independent frontend, backend and gateway candidate definitions rendered from live revision without writing secrets or registering tasks.")
+          names=svc["deploymentConfiguration"]["alarms"]["alarmNames"]
+          alarms=cw.describe_alarms(AlarmNames=names)["MetricAlarms"]
+          assert {a["AlarmName"] for a in alarms}==set(names)
+          for a in alarms:
+              print(json.dumps({"alarm":a["AlarmName"],"state":a["StateValue"],"actionsEnabled":a["ActionsEnabled"]}))
+          # Low-volume, read-only baseline; not a capacity or rollback drill.
+          def probe(i):
+              path=["/","/health/ready","/api/v1/bootstrap/"][i%3]
+              start=time.monotonic()
+              with urllib.request.urlopen("https://16.171.164.5"+path,timeout=12) as r:
+                  assert r.status==200
+                  r.read(1024)
+              return round((time.monotonic()-start)*1000)
+          with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+              elapsed=list(pool.map(probe,range(12)))
+          print("PASS: 12 read-only staging requests; max observed milliseconds:",max(elapsed))
+          strategy=svc["deploymentConfiguration"].get("strategy","ROLLING")
+          print("Live strategy:",strategy)
+          if strategy!="BLUE_GREEN":
+              print("BLOCKED: real automatic rollback drill requires live native blue-green and verified spare capacity. No fault injected.")
+          PY

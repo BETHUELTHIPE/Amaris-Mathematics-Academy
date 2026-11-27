@@ -1,0 +1,72 @@
+name: Audit native blue-green readiness and selective release planning
+on:
+  push:
+    branches: [ops/aws-selective-bluegreen-20261127]
+    paths: [.github/workflows/aws-selective-bluegreen-audit.yml, deploy/aws/blue-green/selective-release-plan.py]
+  workflow_dispatch:
+permissions: {}
+jobs:
+  audit:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-selective-bluegreen-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify selective build planning
+        run: python3 deploy/aws/blue-green/selective-release-plan.py --self-test
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+      - name: Inspect live deployment strategy and overlapping task capacity
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import boto3
+          import json
+          account = "110156539003"
+          region = "eu-north-1"
+          cluster = "amaris-ecs-staging"
+          assert boto3.client("sts").get_caller_identity()["Account"] == account
+          ecs = boto3.client("ecs", region_name=region)
+          names = ["amaris-web-staging-stateless", "amaris-staging-singleton-jobs"]
+          data = ecs.describe_services(cluster=cluster, services=names)
+          assert not data["failures"]
+          for s in data["services"]:
+              d = s["deploymentConfiguration"]
+              print(json.dumps({"service":s["serviceName"],"controller":s["deploymentController"]["type"],
+                  "strategy":d.get("strategy","ROLLING"),"desired":s["desiredCount"],"running":s["runningCount"],
+                  "minimum":d["minimumHealthyPercent"],"maximum":d["maximumPercent"],
+                  "alarmRollback":d.get("alarms",{}),"advancedRouting":all("advancedConfiguration" in x for x in s["loadBalancers"]) if s["loadBalancers"] else False}))
+              t = ecs.describe_task_definition(taskDefinition=s["taskDefinition"])["taskDefinition"]
+              print(json.dumps({"service":s["serviceName"],"network":t["networkMode"],"volumes":len(t.get("volumes",[])),
+                  "containers":[{"name":x["name"],"cpu":x.get("cpu",0),"memoryReservation":x.get("memoryReservation",x.get("memory",0)),
+                  "mounts":len(x.get("mountPoints",[])),"immutable": "@sha256:" in x["image"]} for x in t["containerDefinitions"]]}))
+          ids = [i for p in ecs.get_paginator("list_container_instances").paginate(cluster=cluster,status="ACTIVE") for i in p["containerInstanceArns"]]
+          for c in ecs.describe_container_instances(cluster=cluster,containerInstances=ids)["containerInstances"]:
+              print(json.dumps({"connected":c["agentConnected"],"runningTasks":c["runningTasksCount"],
+                 "remaining":[{"name":x["name"],"value":x.get("integerValue")} for x in c["remainingResources"] if x["name"] in ("CPU","MEMORY","ENI")]}))
+          print("Read-only audit. No traffic shift or new AWS resource authorized.")
+          PY
