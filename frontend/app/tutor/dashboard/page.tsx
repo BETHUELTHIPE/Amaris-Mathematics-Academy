@@ -42,14 +42,14 @@ async function TutorEarningsDetails({ pending }: { pending: Promise<TutorEarning
 }
 
 async function TutorVideoDetails() {
-  try {
-    return <TutorLessonVideos library={await getTutorVideoLibrary()} />;
-  } catch {
+  const library = await getTutorVideoLibrary().catch(() => null);
+  if (!library) {
     return <section className="rounded-[2rem] border border-[#dce4ef] bg-white p-5 sm:p-9">
       <h2 className="text-2xl font-semibold">Lesson videos</h2>
       <p role="status" className="mt-2 text-sm text-[#53647b]">Lesson videos are temporarily unavailable.</p>
     </section>;
   }
+  return <TutorLessonVideos library={library} />;
 }
 
 export default async function TutorDashboardPage({
