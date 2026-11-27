@@ -84,6 +84,11 @@ try:
         storage = storages[alias]
         assert storage.bucket_name in ({bucket} if bucket else {"amaris-staging-admin", "amaris-tutor-files"})
         check_file(alias, storage)
+    # These existing staging buckets are separate from the three Django aliases.
+    for name, bucket in (("tutor_bucket", "amaris-tutor-files"),
+                         ("project_bucket", "amaris-mathematics-academy-staging")):
+        options = {**settings.STORAGES["default"]["OPTIONS"], "bucket_name": bucket}
+        check_file(name, type(storages["default"])(**options))
 except Exception as exc:
     # Provider exception messages can include a signed object URL.
     from traceback import extract_tb
