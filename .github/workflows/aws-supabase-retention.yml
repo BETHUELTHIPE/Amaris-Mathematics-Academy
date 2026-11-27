@@ -1,0 +1,96 @@
+name: Verify retained AWS staging Supabase data
+
+on:
+  push:
+    branches: [ops/aws-supabase-retention-20261127]
+    paths: [.github/workflows/aws-supabase-retention.yml, deploy/aws/diagnostics/*supabase*.sh]
+
+permissions: {}
+
+jobs:
+  verify:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_PAGER: ''
+      AWS_REGION: eu-north-1
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Authenticate with the staging deployment role
+        if: env.STAGING_AWS_ROLE != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Authenticate with existing staging credentials
+        if: env.STAGING_AWS_ROLE == ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify durable database and private storage across the two ECS replicas
+        run: bash deploy/aws/diagnostics/check-supabase-replicas.sh
+
+  tutor-auth:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Sign in with the approved staging tutor and read their private application
+        env:
+          TEST_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
+          PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          python - <<'PY'
+          import hashlib, os, runpy
+          from urllib.error import HTTPError, URLError
+
+          helpers = runpy.run_path("deploy/aws/verify-staging-auth.py")
+          request = helpers["json_request"]
+          email = os.environ["TEST_EMAIL"].strip().lower()
+          assert hashlib.sha256(email.encode()).hexdigest() == "2351cb430f5976021719b1c7fb36bd3ec0559d79a32b694c38b7f4a0313bb03a", "Approved staging tutor fixture mismatch"
+          assert os.environ["TEST_PASSWORD"] and os.environ["PUBLISHABLE_KEY"], "Missing staging tutor sign-in configuration"
+          endpoint = "https://16.171.164.5/api/v1/tutor-applications/"
+          try:
+              request(endpoint)
+          except HTTPError as error:
+              assert error.code in (401, 403)
+          else:
+              raise SystemExit("Unsigned request reached the private tutor API")
+          try:
+              session, _ = request("https://atyhhjwwxgzeurnwayay.supabase.co/auth/v1/token?grant_type=password",
+                  method="POST", headers={"apikey": os.environ["PUBLISHABLE_KEY"]},
+                  data={"email": email, "password": os.environ["TEST_PASSWORD"]})
+              assert session["user"].get("email_confirmed_at") and session["user"]["email"].lower() == email
+              result, headers = request(endpoint, headers={"Authorization": "Bearer " + session["access_token"]})
+              assert isinstance(result, dict) and "application" in result and "public" not in headers.get("Cache-Control","").lower()
+          except HTTPError as error:
+              raise SystemExit(f"Staging tutor verification returned HTTP {error.code}") from None
+          except URLError:
+              raise SystemExit("Staging tutor verification could not connect") from None
+          print("Verified staging tutor sign-in, authenticated AWS API access and signed-out denial.")
+          PY
