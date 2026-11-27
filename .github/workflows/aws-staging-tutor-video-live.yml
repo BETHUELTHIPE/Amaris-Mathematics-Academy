@@ -1,0 +1,91 @@
+name: Verify a tutor video upload on AWS staging
+
+on:
+  push:
+    branches: [ops/aws-tutor-media-staging-20261127]
+    paths: [.github/workflows/aws-staging-tutor-video-live.yml, deploy/aws/diagnostics/*tutor-video*]
+
+permissions: {}
+
+jobs:
+  tutor-upload:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Install the tiny test-video generator
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      - name: Wait for the exact staging backend before testing the authenticated upload
+        run: |
+          set -euo pipefail
+          for attempt in {1..125}; do
+            version="$(curl -fsS --max-time 6 https://16.171.164.5/health/version/ 2>/dev/null || true)"
+            if jq -e '.git_sha=="cfdb105761836c7730fec52ada54c58c624206db"' <<< "$version" >/dev/null; then
+              aws ecs describe-services --cluster amaris-ecs-staging --services amaris-web-staging-stateless                 --query 'services[0]' --output json > "$RUNNER_TEMP/tutor-media-service.json"
+              if jq -e '.runningCount==2 and .pendingCount==0 and
+                any(.deployments[]; .status=="PRIMARY" and .rolloutState=="COMPLETED" and .runningCount==2)'                 "$RUNNER_TEMP/tutor-media-service.json" >/dev/null; then
+                exit 0
+              fi
+            fi
+            sleep 12
+          done
+          echo 'The verified tutor upload revision did not complete rollout within the test window.'
+          exit 1
+      - name: Submit a private MP4 using the approved staging tutor account
+        env:
+          STAGING_TEST_TUTOR_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
+          STAGING_TEST_TUTOR_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
+          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+        run: python deploy/aws/diagnostics/verify-tutor-video-upload.py
+      - name: Remove only the isolated staging upload fixture
+        if: always()
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/tutor-video-probe.json"
+          [[ -f "$probe" ]] || exit 0
+          id="$(jq -er .id "$probe")"
+          title="$(jq -er .title "$probe")"
+          nonce="${title##* }"
+          key="$(jq -er .key "$probe")"
+          version="$(jq -r '.version // empty' "$probe")"
+          [[ "$id" =~ ^[a-f0-9-]{36}$ && "$nonce" =~ ^[a-f0-9]{32}$ && "$key" =~ ^academy-media/videos/[a-f0-9]{32}\.mp4$ ]]
+          cluster=amaris-ecs-staging
+          task="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-stateless             --desired-status RUNNING --query 'taskArns[0]' --output text)"
+          host="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task"             --query 'tasks[0].containerInstanceArn' --output text)"
+          instance="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host"             --query 'containerInstances[0].ec2InstanceId' --output text)"
+          bash deploy/aws/ecs/run-on-host.sh "$instance" deploy/aws/diagnostics/cleanup-tutor-video-probe.sh "${task##*/}" "$id" "$nonce"
+          if [[ -n "$version" ]]; then
+            aws s3api delete-object --bucket amaris-mathematics-academy-media-stage-110156539003-eu-north-1               --key "$key" --version-id "$version" --no-cli-pager >/dev/null
+            echo 'Removed the one S3 object version written by the verification.'
+          fi
