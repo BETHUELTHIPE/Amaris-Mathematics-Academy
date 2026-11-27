@@ -1,0 +1,187 @@
+name: Deploy and verify private staging S3 gateway endpoint
+on:
+  push:
+    branches: [ops/aws-staging-s3-gateway-endpoint]
+    paths: [.github/workflows/aws-staging-s3-gateway-endpoint.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-staging-s3-gateway-endpoint
+  cancel-in-progress: false
+jobs:
+  endpoint:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-staging-s3-gateway-endpoint'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Preflight, deploy, and verify S3 gateway with rollback on failure
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import time
+          import urllib.request
+          import boto3
+          from botocore.config import Config
+
+          account = "110156539003"
+          region = "eu-north-1"
+          vpc = "vpc-0252538d2febd4641"
+          route_table = "rtb-0dc01e9f7a0dc9515"
+          private_subnets = {"subnet-041cecdd7bd182d11", "subnet-0f4422980fa309a1c"}
+          service = f"com.amazonaws.{region}.s3"
+          media = f"amaris-mathematics-academy-media-stage-{account}-{region}"
+          archive = f"amaris-mathematics-academy-logs-{account}-{region}"
+          ec2 = boto3.client("ec2", region_name=region)
+          ecs = boto3.client("ecs", region_name=region)
+          ssm = boto3.client("ssm", region_name=region)
+          s3 = boto3.client("s3", region_name=region, config=Config(signature_version="s3v4", s3={"addressing_style":"virtual"}))
+
+          def require(ok, message):
+              if not ok:
+                  raise RuntimeError(message)
+
+          def route():
+              return ec2.describe_route_tables(RouteTableIds=[route_table])["RouteTables"][0]
+
+          def default_routes(rt):
+              return [r for r in rt["Routes"] if r.get("DestinationCidrBlock") == "0.0.0.0/0" or r.get("DestinationIpv6CidrBlock") == "::/0"]
+
+          def health():
+              for path in ["/health/ready", "/health/dependencies/"]:
+                  with urllib.request.urlopen("https://16.171.164.5" + path, timeout=15) as response:
+                      data = json.load(response)
+                  if path.endswith("ready"):
+                      require(data.get("status") == "ok", "Readiness failed")
+                  else:
+                      require(all(data.get("dependencies", {}).get(k) for k in ("postgresql","redis")), "Dependency check failed")
+              for name, count in [("amaris-web-staging-stateless",2),("amaris-staging-singleton-jobs",1)]:
+                  row = ecs.describe_services(cluster="amaris-ecs-staging", services=[name])["services"][0]
+                  require(row["runningCount"] >= count and row["runningCount"] == row["desiredCount"], "ECS task count unhealthy: " + name)
+              print("PASS: HTTPS readiness, dependencies and ECS running counts.", flush=True)
+
+          require(boto3.client("sts").get_caller_identity()["Account"] == account, "Wrong AWS account")
+          rt = route()
+          require(rt["VpcId"] == vpc and {a.get("SubnetId") for a in rt["Associations"]} == private_subnets, "Unexpected private route associations")
+          baseline = default_routes(rt)
+          require(any(r.get("State") == "active" and r.get("InstanceId") for r in baseline), "Expected active NAT instance route")
+          require(not any(r.get("GatewayId","").startswith("igw-") for r in baseline), "Private route unexpectedly public")
+          existing = ec2.describe_vpc_endpoints(Filters=[{"Name":"vpc-id","Values":[vpc]},{"Name":"service-name","Values":[service]}])["VpcEndpoints"]
+          existing = [e for e in existing if e["State"] not in ("deleted","failed","rejected")]
+          require(len(existing) <= 1, "Multiple S3 endpoints; review manually")
+          # Scope account-owned S3 resources; retain ECR and regional SSM agent read dependencies.
+          managed = [
+              f"prod-{region}-starport-layer-bucket", f"amazon-ssm-{region}",
+              f"amazon-ssm-packages-{region}", f"aws-ssm-distributor-file-{region}",
+              f"aws-ssm-document-attachments-{region}", f"patch-baseline-snapshot-{region}",
+              f"aws-patch-manager-{region}", f"aws-windows-downloads-{region}",
+              f"amazoncloudwatch-agent-{region}", f"al2023-repos-{region}-de612dc2",
+          ]
+          policy = {"Version":"2012-10-17","Statement":[
+              {"Sid":"AcademyAccountBuckets","Effect":"Allow","Principal":"*",
+               "Action":"s3:*","Resource":["arn:aws:s3:::amaris-*","arn:aws:s3:::amaris-*/*"],
+               "Condition":{"StringEquals":{"s3:ResourceAccount":account}}},
+              {"Sid":"AWSManagedArtifactReads","Effect":"Allow","Principal":"*",
+               "Action":"s3:GetObject","Resource":["arn:aws:s3:::" + b + "/*" for b in managed]}
+          ]}
+          # Do not mutate an existing endpoint with a different configuration.
+          if existing:
+              e = existing[0]
+              require(e["VpcEndpointType"] == "Gateway" and set(e["RouteTableIds"]) == {route_table}
+                      and json.loads(e["PolicyDocument"]) == policy, "Existing endpoint differs; no mutation")
+          for bucket in (media, archive):
+              s3.head_bucket(Bucket=bucket, ExpectedBucketOwner=account)
+          health()
+          hosts = [i for p in ec2.get_paginator("describe_instances").paginate(Filters=[{"Name":"vpc-id","Values":[vpc]},
+                   {"Name":"instance-state-name","Values":["running"]}]) for res in p["Reservations"] for i in res["Instances"]
+                   if i["SubnetId"] in private_subnets]
+          require(len(hosts) >= 1, "No running private host for endpoint probe")
+          host = hosts[0]["InstanceId"]
+          # Verify SSM reachability before changing a route.
+          info = ssm.describe_instance_information(Filters=[{"Key":"InstanceIds","Values":[host]}])["InstanceInformationList"]
+          require(len(info) == 1 and info[0]["PingStatus"] == "Online", "Private host SSM offline")
+          created = None
+          try:
+              if existing:
+                  endpoint = existing[0]["VpcEndpointId"]
+              else:
+                  endpoint = ec2.create_vpc_endpoint(VpcId=vpc, ServiceName=service, VpcEndpointType="Gateway",
+                      RouteTableIds=[route_table], PolicyDocument=json.dumps(policy),
+                      TagSpecifications=[{"ResourceType":"vpc-endpoint","Tags":[{"Key":"Name","Value":"amaris-staging-s3-gateway"},
+                      {"Key":"Environment","Value":"staging"},{"Key":"Application","Value":"Amaris-Mathematics-Academy"}]}])["VpcEndpoint"]["VpcEndpointId"]
+                  created = endpoint
+              print("Endpoint:", endpoint, flush=True)
+              for _ in range(36):
+                  e = ec2.describe_vpc_endpoints(VpcEndpointIds=[endpoint])["VpcEndpoints"][0]
+                  rt = route()
+                  matches = [r for r in rt["Routes"] if r.get("GatewayId") == endpoint and r.get("DestinationPrefixListId") and r["State"] == "active"]
+                  if e["State"] == "available" and matches:
+                      break
+                  time.sleep(5)
+              else:
+                  raise RuntimeError("Gateway route did not become available")
+              require(set(e["RouteTableIds"]) == {route_table} and json.loads(e["PolicyDocument"]) == policy, "Policy/association read-back failed")
+              require(default_routes(rt) == baseline, "Existing default route changed")
+              require({a.get("SubnetId") for a in rt["Associations"]} == private_subnets, "Subnet associations changed")
+              print("PASS: available endpoint and active S3 prefix-list route for both private subnets; NAT unchanged.", flush=True)
+              # A short-lived signed HEAD request for each bucket; no objects created or read.
+              # The private host uses the same effective route table as the private ECS ENIs.
+              urls = [s3.generate_presigned_url("head_bucket", Params={"Bucket":b}, ExpiresIn=240, HttpMethod="HEAD") for b in (media, archive)]
+              probe = "import urllib.request\n" + "urls=" + repr(urls) + "\nfor url in urls:\n    try:\n        with urllib.request.urlopen(urllib.request.Request(url, method='HEAD'), timeout=15) as r:\n            assert r.status == 200\n    except Exception:\n        raise SystemExit('Private S3 HEAD probe failed') from None\nprint('PASS: private host signed HEAD requests to both Academy buckets')\n"
+              encoded = base64.b64encode(probe.encode()).decode()
+              command = "printf '%s' '" + encoded + "' | base64 -d | python3"
+              ident = ssm.send_command(InstanceIds=[host], DocumentName="AWS-RunShellScript",
+                  Parameters={"commands":[command],"executionTimeout":["90"]}, TimeoutSeconds=90,
+                  Comment="Verify private S3 gateway; no object access")["Command"]["CommandId"]
+              for _ in range(36):
+                  try:
+                      result = ssm.get_command_invocation(CommandId=ident, InstanceId=host)
+                  except ssm.exceptions.InvocationDoesNotExist:
+                      time.sleep(5)
+                      continue
+                  if result["Status"] == "Success":
+                      require("PASS: private host signed HEAD" in result["StandardOutputContent"], "Missing probe evidence")
+                      print(result["StandardOutputContent"].strip(), flush=True)
+                      break
+                  if result["Status"] not in ("Pending","InProgress","Delayed"):
+                      raise RuntimeError("SSM private S3 probe failed: " + result["Status"])
+                  time.sleep(5)
+              else:
+                  raise RuntimeError("SSM private S3 probe timed out")
+              health()
+              print("PASS: S3 gateway deployment verified. No public route or bucket policy changed.", flush=True)
+          except BaseException:
+              if created:
+                  result = ec2.delete_vpc_endpoints(VpcEndpointIds=[created])
+                  require(not result.get("Unsuccessful"), "Automatic endpoint rollback failed; urgent manual review")
+                  print("Rollback requested for newly created gateway endpoint.", flush=True)
+              raise
+          PY
