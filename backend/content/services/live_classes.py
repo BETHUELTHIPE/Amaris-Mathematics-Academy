@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from content.models import LiveClassBooking, StudentRecord, TutorAvailabilitySlot
 
+from . import paystack
 from .payments import (
     DEFAULT_PUBLIC_SITE_URL,
     PAYFAST_LIVE_URL,
@@ -42,6 +43,8 @@ class LiveClassCheckoutSession:
     booking_reference: str
     gateway_url: str
     fields: dict[str, str]
+    payment_provider: str = LiveClassBooking.PaymentProvider.PAYFAST
+    test_mode: bool = False
 
 
 def _public_urls() -> tuple[str, str, str]:
@@ -71,6 +74,7 @@ def create_live_class_checkout(
     slot: TutorAvailabilitySlot,
     topic: str,
     idempotency_key: str,
+    payment_provider: str = LiveClassBooking.PaymentProvider.PAYFAST,
 ) -> LiveClassCheckoutSession:
     key = idempotency_key.strip()
     cleaned_topic = " ".join(topic.split()).strip()
@@ -81,8 +85,22 @@ def create_live_class_checkout(
     if not student.is_active:
         raise PaymentSecurityError("Inactive students cannot book live classes.")
 
+    first_name = " ".join(student.first_name.split())
+    last_name = " ".join(student.last_name.split())
+    if (
+        len(first_name) < 2
+        or len(last_name) < 2
+        or (first_name.casefold(), last_name.casefold()) == ("student", "learner")
+    ):
+        raise PaymentSecurityError("Complete your registered first and last name before booking.")
+    if payment_provider not in LiveClassBooking.PaymentProvider.values:
+        raise PaymentSecurityError("Unknown payment provider.")
+    using_paystack = payment_provider == LiveClassBooking.PaymentProvider.PAYSTACK
+    if using_paystack and not paystack.checkout_enabled():
+        raise PaymentSecurityError("Paystack checkout is unavailable.")
+
     now = timezone.now()
-    reference = f"LCB-{key}"
+    reference = paystack.booking_reference(key) if using_paystack else f"LCB-{key}"
     with transaction.atomic():
         locked_slot = TutorAvailabilitySlot.objects.select_for_update().select_related("tutor").get(pk=slot.pk)
         if not locked_slot.is_active or locked_slot.starts_at <= now:
@@ -126,6 +144,8 @@ def create_live_class_checkout(
             )
             if not same_booking:
                 raise PaymentSecurityError("This booking key is already bound to another live class.")
+            if existing.payment_provider != payment_provider:
+                raise PaymentSecurityError("This booking attempt already has a payment provider.")
             if existing.amount != amount:
                 raise PaymentSecurityError("The original booking duration or price has changed.")
             if existing.status == LiveClassBooking.Status.CONFIRMED:
@@ -154,10 +174,15 @@ def create_live_class_checkout(
                     topic=cleaned_topic,
                     amount=amount,
                     currency="ZAR",
+                    payment_provider=payment_provider,
+                    paystack_mode=paystack.mode() if using_paystack else "",
                     status=LiveClassBooking.Status.PENDING_PAYMENT,
                 )
             except IntegrityError as exc:
                 raise PaymentSecurityError("This tutor slot has already been booked.") from exc
+
+    if using_paystack:
+        return _paystack_checkout(booking.pk)
 
     merchant_id, merchant_key, passphrase = _payfast_credentials()
     return_url, cancel_url, notify_url = _public_urls()
@@ -186,7 +211,88 @@ def create_live_class_checkout(
         booking_reference=booking.reference,
         gateway_url=PAYFAST_SANDBOX_URL if _payfast_mode() == "sandbox" else PAYFAST_LIVE_URL,
         fields=fields,
+        test_mode=_payfast_mode() == "sandbox",
     )
+
+
+def _paystack_checkout(booking_id) -> LiveClassCheckoutSession:
+    # The slot transaction has committed. Lock only this booking while
+    # initializing to prevent parallel requests creating separate checkouts.
+    with transaction.atomic():
+        booking = (
+            LiveClassBooking.objects.select_for_update(of=("self",))
+            .select_related("student", "slot")
+            .get(pk=booking_id)
+        )
+        now = timezone.now()
+        if (
+            booking.status != LiveClassBooking.Status.PENDING_PAYMENT
+            or booking.hold_expires_at <= now
+            or booking.slot.starts_at <= now
+        ):
+            raise PaymentSecurityError("This checkout attempt has ended. Choose an available tutor time again.")
+        if booking.paystack_mode != paystack.mode():
+            raise PaymentSecurityError("The original Paystack payment mode has changed.")
+        if not booking.paystack_checkout_url:
+            booking.paystack_checkout_url = paystack.initialize(
+                email=booking.student.email, amount=booking.amount, reference=booking.reference
+            )
+            booking.save(update_fields=("paystack_checkout_url", "updated_at"))
+        return LiveClassCheckoutSession(
+            booking_reference=booking.reference,
+            gateway_url=booking.paystack_checkout_url,
+            fields={},
+            payment_provider=booking.payment_provider,
+            test_mode=paystack.mode() == "test",
+        )
+
+
+def _record_verified_charge(booking: LiveClassBooking, paid_at) -> None:
+    booking.paid_at = paid_at
+    if (
+        booking.status != LiveClassBooking.Status.PENDING_PAYMENT
+        or booking.hold_expires_at <= paid_at
+        or booking.slot.starts_at <= paid_at
+    ):
+        # A late verified charge needs reconciliation and cannot claim a released slot.
+        booking.status = LiveClassBooking.Status.PAYMENT_REVIEW
+        return
+    booking.status = LiveClassBooking.Status.CONFIRMED
+    booking.invoice_number = f"INV-LIVE-{paid_at:%Y%m%d}-{booking.pk.hex[:10].upper()}"
+
+
+def process_paystack_live_class_payment(reference: str) -> str:
+    provider = LiveClassBooking.PaymentProvider.PAYSTACK
+    bookings = LiveClassBooking.objects.filter(payment_provider=provider)
+    if not bookings.filter(reference=reference).exists():
+        return "ignored"
+
+    amount, provider_reference = paystack.verified_payment(reference)
+    with transaction.atomic():
+        booking = bookings.select_for_update(of=("self",)).select_related("slot").get(reference=reference)
+        if booking.paystack_mode != paystack.mode():
+            raise PaymentSecurityError("Paystack booking mode mismatch.")
+        if booking.currency != "ZAR" or amount != booking.amount * 100:
+            raise PaymentSecurityError("Paystack booking amount or currency mismatch.")
+        if booking.provider_reference == provider_reference:
+            return booking.status
+        if booking.provider_reference or bookings.filter(provider_reference=provider_reference).exists():
+            raise PaymentSecurityError("Paystack transaction is already linked to a booking.")
+
+        booking.provider_reference = provider_reference
+        booking.gateway_verified_at = timezone.now()
+        _record_verified_charge(booking, booking.gateway_verified_at)
+        booking.save(
+            update_fields=(
+                "provider_reference",
+                "gateway_verified_at",
+                "paid_at",
+                "status",
+                "invoice_number",
+                "updated_at",
+            )
+        )
+        return booking.status
 
 
 def _decimal(value: object) -> Decimal | None:
@@ -211,6 +317,9 @@ def process_live_class_notification(
         booking = LiveClassBooking.objects.select_related("student", "slot").get(reference=reference)
     except LiveClassBooking.DoesNotExist:
         return NotificationResult(False, "pending_payment", reason="unknown_booking")
+
+    if booking.payment_provider != LiveClassBooking.PaymentProvider.PAYFAST:
+        return NotificationResult(False, booking.status, reason="wrong_payment_provider")
 
     if booking.status == LiveClassBooking.Status.CONFIRMED:
         if booking.provider_reference == provider_reference:
@@ -252,7 +361,13 @@ def process_live_class_notification(
             booking.status,
             reason="provider_reference_replay",
         )
-    if LiveClassBooking.objects.filter(provider_reference=provider_reference).exclude(pk=booking.pk).exists():
+    if (
+        LiveClassBooking.objects.filter(
+            payment_provider=LiveClassBooking.PaymentProvider.PAYFAST, provider_reference=provider_reference
+        )
+        .exclude(pk=booking.pk)
+        .exists()
+    ):
         return NotificationResult(
             False,
             booking.status,
@@ -282,20 +397,7 @@ def process_live_class_notification(
         booking.gateway_verified_at = timezone.now()
 
         if gateway_status == "COMPLETE":
-            booking.paid_at = timezone.now()
-            if (
-                booking.status != LiveClassBooking.Status.PENDING_PAYMENT
-                or booking.hold_expires_at <= booking.paid_at
-                or booking.slot.starts_at <= booking.paid_at
-            ):
-                # Record the verified charge without issuing a Zoom link or occupying
-                # a slot that might already belong to another student.
-                booking.status = LiveClassBooking.Status.PAYMENT_REVIEW
-            else:
-                booking.status = LiveClassBooking.Status.CONFIRMED
-                booking.invoice_number = (
-                    f"INV-LIVE-{booking.paid_at:%Y%m%d}-{str(booking.pk).replace('-', '')[:10].upper()}"
-                )
+            _record_verified_charge(booking, timezone.now())
         elif gateway_status in {"FAILED", "CANCELLED"}:
             if booking.status == LiveClassBooking.Status.PENDING_PAYMENT:
                 booking.status = LiveClassBooking.Status.CANCELLED
