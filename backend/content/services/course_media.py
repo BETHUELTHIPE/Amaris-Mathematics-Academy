@@ -3,6 +3,8 @@
 import json
 import re
 import uuid
+from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from pathlib import PurePath
 from urllib.error import URLError
 from urllib.parse import quote, urlsplit
@@ -11,12 +13,16 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
+from botocore.signers import CloudFrontSigner
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 from django.conf import settings
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.core.files.storage import Storage, default_storage, storages
 
 PREFIX = "academy-media/"
+VIDEO_PREFIX = PREFIX + "videos/"
 FOLDER_URL = "https://vimeo.com/user/261260024/folder/31427264"
 FOLDER = "/users/261260024/projects/31427264"
 S3_FORMATS = {".mp4": "video/mp4", ".webm": "video/webm", ".m4v": "video/mp4"}
@@ -157,7 +163,7 @@ def begin_video_upload(*, user_id, asset_id, provider, filename, size, title, sc
         if suffix not in S3_FORMATS:
             raise ValidationError("Select an MP4, M4V or WebM file for S3 playback.")
         mime = S3_FORMATS[suffix]
-        reference = f"{PREFIX}videos/{uuid.uuid4().hex}{suffix}"
+        reference = f"{VIDEO_PREFIX}{uuid.uuid4().hex}{suffix}"
         url = s3_client().generate_presigned_url(
             "put_object",
             Params={
@@ -252,6 +258,26 @@ def verify_video_upload(ticket, *, user_id, asset_id, provider, scope="admin"):
     return (reference, claims["title"]) if scope == "tutor" else reference
 
 
+@lru_cache(maxsize=1)
+def _cloudfront_signer(key_id, pem):
+    private_key = serialization.load_pem_private_key(pem.encode(), password=None)
+    return CloudFrontSigner(
+        key_id,
+        lambda message: private_key.sign(message, padding.PKCS1v15(), hashes.SHA1()),
+    )
+
+
+def _cloudfront_playback_url(key):
+    signer = _cloudfront_signer(
+        settings.ACADEMY_VIDEO_CLOUDFRONT_KEY_ID,
+        settings.ACADEMY_VIDEO_CLOUDFRONT_PRIVATE_KEY,
+    )
+    url = f"https://{settings.ACADEMY_VIDEO_CLOUDFRONT_DOMAIN}/{quote(key, safe='/')}"
+    return signer.generate_presigned_url(
+        url, date_less_than=datetime.now(UTC) + timedelta(minutes=10)
+    )
+
+
 def lesson_playback_url(video):
     if video.provider == video.Provider.VIMEO and re.fullmatch(
         r"[1-9][0-9]{0,18}", video.vimeo_video_id
@@ -261,6 +287,8 @@ def lesson_playback_url(video):
         return ""
     try:
         if video.aws_media_key and settings.ACADEMY_MEDIA_BUCKET:
+            if settings.ACADEMY_VIDEO_CLOUDFRONT_DOMAIN and video.aws_media_key.startswith(VIDEO_PREFIX):
+                return _cloudfront_playback_url(video.aws_media_key)
             return storages["academy_media"].url(video.aws_media_key)
         if video.source_file and getattr(
             video.source_file.storage, "querystring_auth", False

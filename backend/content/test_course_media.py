@@ -1,4 +1,9 @@
+from datetime import UTC, datetime
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -11,6 +16,7 @@ from .admin_media import VideoAssetForm
 from .models import VideoAsset
 from .services.course_media import (
     FOLDER,
+    VIDEO_PREFIX,
     CourseFileStorage,
     begin_video_upload,
     lesson_playback_url,
@@ -100,6 +106,32 @@ class CourseMediaTests(TestCase):
             lesson_playback_url(VideoAsset(provider="vimeo", vimeo_video_id=video_id)),
             "https://player.vimeo.com/video/1234",
         )
+
+    @override_settings(
+        ACADEMY_VIDEO_CLOUDFRONT_DOMAIN="academytest.cloudfront.net",
+        ACADEMY_VIDEO_CLOUDFRONT_KEY_ID="TESTKEY",
+    )
+    def test_playback_links_sign_the_specific_object_and_expiration(self):
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode()
+        with override_settings(ACADEMY_VIDEO_CLOUDFRONT_PRIVATE_KEY=pem):
+            url = lesson_playback_url(
+                VideoAsset(provider="s3", aws_media_key=f"{VIDEO_PREFIX}algebra + lesson.mp4")
+            )
+        parsed = urlsplit(url)
+        fields = parse_qs(parsed.query)
+        self.assertEqual(parsed.scheme, "https")
+        self.assertEqual(parsed.netloc, "academytest.cloudfront.net")
+        self.assertEqual(parsed.path, "/academy-media/videos/algebra%20%2B%20lesson.mp4")
+        self.assertEqual(fields["Key-Pair-Id"], ["TESTKEY"])
+        self.assertTrue(fields["Signature"][0])
+        remaining = int(fields["Expires"][0]) - datetime.now(UTC).timestamp()
+        self.assertGreater(remaining, 590)
+        self.assertLessEqual(remaining, 600)
 
     @patch("content.services.course_media.storages")
     @patch("content.services.course_media.default_storage")

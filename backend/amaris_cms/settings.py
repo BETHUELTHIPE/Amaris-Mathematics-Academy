@@ -4,6 +4,7 @@ import secrets
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 from amaris_cms.database_policy import assert_supabase_database
@@ -323,6 +324,21 @@ STORAGES["tutor_qualifications"] = (
 
 ACADEMY_MEDIA_BUCKET = os.getenv("ACADEMY_MEDIA_BUCKET", "").strip()
 ACADEMY_MEDIA_REGION = os.getenv("ACADEMY_MEDIA_REGION", "eu-north-1")
+ACADEMY_VIDEO_CLOUDFRONT_DOMAIN = os.getenv("ACADEMY_VIDEO_CLOUDFRONT_DOMAIN", "").strip()
+ACADEMY_VIDEO_CLOUDFRONT_KEY_ID = os.getenv("ACADEMY_VIDEO_CLOUDFRONT_KEY_ID", "").strip()
+ACADEMY_VIDEO_CLOUDFRONT_PRIVATE_KEY = os.getenv("ACADEMY_VIDEO_CLOUDFRONT_PRIVATE_KEY", "").strip()
+if (
+    ACADEMY_VIDEO_CLOUDFRONT_DOMAIN
+    or ACADEMY_VIDEO_CLOUDFRONT_KEY_ID
+    or ACADEMY_VIDEO_CLOUDFRONT_PRIVATE_KEY
+):
+    if (
+        not ACADEMY_MEDIA_BUCKET
+        or not re.fullmatch(r"[a-z0-9]+\.cloudfront\.net", ACADEMY_VIDEO_CLOUDFRONT_DOMAIN)
+        or not re.fullmatch(r"[A-Z0-9]+", ACADEMY_VIDEO_CLOUDFRONT_KEY_ID)
+        or not ACADEMY_VIDEO_CLOUDFRONT_PRIVATE_KEY
+    ):
+        raise ImproperlyConfigured("Incomplete or invalid CloudFront lesson video settings")
 ACADEMY_VIMEO_TOKEN = os.getenv("ACADEMY_VIMEO_TOKEN", "").strip()
 ACADEMY_VIMEO_EMBED_DOMAINS = tuple(
     domain.strip().lower() for domain in os.getenv("ACADEMY_VIMEO_EMBED_DOMAINS", "").split(",") if domain.strip()
