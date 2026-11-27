@@ -49,7 +49,17 @@ try:
         ),
         timeout=12,
     ) as response:
-        assert response.headers.get("Access-Control-Allow-Origin") == ORIGIN
+        actual = response.headers.get("Access-Control-Allow-Origin")
+        print(
+            "Preflight status, host and allowed origin:",
+            response.status,
+            urlsplit(response.url).hostname,
+            actual,
+            "S3 request ID present:",
+            bool(response.headers.get("x-amz-request-id")),
+            flush=True,
+        )
+        assert actual == ORIGIN
     request = Request(
         url, data=body, method="PUT", headers={**upload["headers"], "Origin": ORIGIN}
     )

@@ -20,7 +20,20 @@ PREFIX = "academy-media/"
 FOLDER_URL = "https://vimeo.com/user/261260024/folder/31427264"
 FOLDER = "/users/261260024/projects/31427264"
 S3_FORMATS = {".mp4": "video/mp4", ".webm": "video/webm", ".m4v": "video/mp4"}
-VIMEO_FORMATS = {*S3_FORMATS, ".mov", ".mkv", ".avi", ".wmv", ".mpeg", ".mpg", ".mxf", ".3gp", ".flv", ".ogv", ".ts"}
+VIMEO_FORMATS = {
+    *S3_FORMATS,
+    ".mov",
+    ".mkv",
+    ".avi",
+    ".wmv",
+    ".mpeg",
+    ".mpg",
+    ".mxf",
+    ".3gp",
+    ".flv",
+    ".ogv",
+    ".ts",
+}
 MAX_BYTES = 4 * 1024**3
 VIDEO_URI = re.compile(r"/videos/([1-9][0-9]{0,18})", re.ASCII)
 
@@ -61,7 +74,9 @@ course_files = CourseFileStorage()
 def enabled_providers():
     return {
         "s3": bool(settings.ACADEMY_MEDIA_BUCKET),
-        "vimeo": bool(settings.ACADEMY_VIMEO_TOKEN and settings.ACADEMY_VIMEO_EMBED_DOMAINS),
+        "vimeo": bool(
+            settings.ACADEMY_VIMEO_TOKEN and settings.ACADEMY_VIMEO_EMBED_DOMAINS
+        ),
     }
 
 
@@ -69,7 +84,12 @@ def s3_client():
     return boto3.client(
         "s3",
         region_name=settings.ACADEMY_MEDIA_REGION,
-        config=Config(signature_version="s3v4", request_checksum_calculation="when_required"),
+        endpoint_url=f"https://s3.{settings.ACADEMY_MEDIA_REGION}.amazonaws.com",
+        config=Config(
+            signature_version="s3v4",
+            request_checksum_calculation="when_required",
+            s3={"addressing_style": "virtual"},
+        ),
     )
 
 
@@ -152,14 +172,24 @@ def begin_video_upload(*, user_id, asset_id, provider, filename, size, title):
         )
         post = {
             "url": url,
-            "headers": {"Content-Type": mime, "x-amz-server-side-encryption": "AES256", "If-None-Match": "*"},
+            "headers": {
+                "Content-Type": mime,
+                "x-amz-server-side-encryption": "AES256",
+                "If-None-Match": "*",
+            },
         }
     else:
         if suffix not in VIMEO_FORMATS:
             raise ValidationError("Select a supported video file for Vimeo.")
         post, reference = _begin_vimeo(title, size)
     ticket = signing.dumps(
-        {"admin": str(user_id), "asset": str(asset_id), "provider": provider, "ref": reference, "size": size},
+        {
+            "admin": str(user_id),
+            "asset": str(asset_id),
+            "provider": provider,
+            "ref": reference,
+            "size": size,
+        },
         salt="academy-video-upload",
     )
     return {**post, "ticket": ticket}
@@ -169,27 +199,37 @@ def verify_video_upload(ticket, *, user_id, asset_id, provider):
     try:
         claims = signing.loads(ticket, salt="academy-video-upload", max_age=6 * 3600)
     except signing.BadSignature:
-        raise ValidationError("This upload authorization expired. Upload the file again.") from None
+        raise ValidationError(
+            "This upload authorization expired. Upload the file again."
+        ) from None
     if (
         claims["admin"] != str(user_id)
         or claims["asset"] != str(asset_id)
         or claims["provider"] != provider
         or not enabled_providers().get(provider)
     ):
-        raise ValidationError("This upload does not belong to the selected asset and destination.")
+        raise ValidationError(
+            "This upload does not belong to the selected asset and destination."
+        )
     reference = claims["ref"]
     try:
         if provider == "s3":
-            obj = s3_client().head_object(Bucket=settings.ACADEMY_MEDIA_BUCKET, Key=reference)
+            obj = s3_client().head_object(
+                Bucket=settings.ACADEMY_MEDIA_BUCKET, Key=reference
+            )
             expected_type = S3_FORMATS[PurePath(reference).suffix]
             if (
                 obj["ContentLength"] != claims["size"]
                 or obj.get("ContentType") != expected_type
                 or obj.get("ServerSideEncryption") != "AES256"
             ):
-                raise ValidationError("The file in S3 does not match the authorized upload.")
+                raise ValidationError(
+                    "The file in S3 does not match the authorized upload."
+                )
         else:
-            video = _vimeo(f"/videos/{reference}?fields=uri,upload.status,privacy,parent_folder.uri")
+            video = _vimeo(
+                f"/videos/{reference}?fields=uri,upload.status,privacy,parent_folder.uri"
+            )
             privacy = video.get("privacy") or {}
             if (
                 video.get("uri") != f"/videos/{reference}"
@@ -199,7 +239,9 @@ def verify_video_upload(ticket, *, user_id, asset_id, provider):
                 or privacy.get("download") is not False
                 or (video.get("parent_folder") or {}).get("uri") != FOLDER
             ):
-                raise ValidationError("Vimeo has not confirmed the completed upload and embed restrictions.")
+                raise ValidationError(
+                    "Vimeo has not confirmed the completed upload and embed restrictions."
+                )
     except (BotoCoreError, ClientError, URLError, TimeoutError, ValueError):
         raise ValidationError(
             "The provider could not verify the file. Wait for the upload to finish and try saving again."
@@ -208,14 +250,18 @@ def verify_video_upload(ticket, *, user_id, asset_id, provider):
 
 
 def lesson_playback_url(video):
-    if video.provider == video.Provider.VIMEO and re.fullmatch(r"[1-9][0-9]{0,18}", video.vimeo_video_id):
+    if video.provider == video.Provider.VIMEO and re.fullmatch(
+        r"[1-9][0-9]{0,18}", video.vimeo_video_id
+    ):
         return f"https://player.vimeo.com/video/{video.vimeo_video_id}"
     if video.provider != video.Provider.S3:
         return ""
     try:
         if video.aws_media_key and settings.ACADEMY_MEDIA_BUCKET:
             return storages["academy_media"].url(video.aws_media_key)
-        if video.source_file and getattr(video.source_file.storage, "querystring_auth", False):
+        if video.source_file and getattr(
+            video.source_file.storage, "querystring_auth", False
+        ):
             return video.source_file.url
     except (BotoCoreError, ClientError):
         return ""
