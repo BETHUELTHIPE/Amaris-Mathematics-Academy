@@ -1,0 +1,113 @@
+name: Set approved Amaris AWS monthly budget and verify 70 percent alert
+on:
+  push:
+    branches: [ops/aws-budget-alert-70]
+    paths: [.github/workflows/aws-budget-alert-70.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-budget-alert-70
+  cancel-in-progress: false
+jobs:
+  configure:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-budget-alert-70'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Update the approved account-wide ceiling and verify the actual-spend alert
+        env:
+          OPERATOR_EMAIL: ${{ secrets.AWS_MONITORING_EMAIL }}
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import os
+          import boto3
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+
+          account = "110156539003"
+          require(boto3.client("sts").get_caller_identity()["Account"] == account, "Unexpected account")
+          email = os.environ.get("OPERATOR_EMAIL", "").strip()
+          require(bool(email) and "@" in email, "Missing protected monitoring email")
+          client = boto3.client("budgets", region_name="us-east-1")
+
+          def collect(operation, result, **kwargs):
+              return [item for page in client.get_paginator(operation).paginate(AccountId=account, **kwargs)
+                      for item in (page.get(result) or [])]
+
+          name = "Amaris-Monthly-Cost"
+          before_budget = client.describe_budget(AccountId=account, BudgetName=name)["Budget"]
+          require(before_budget["BudgetType"] == "COST" and before_budget["TimeUnit"] == "MONTHLY",
+                  "Unexpected budget type or period")
+          require(not before_budget.get("CostFilters") and not before_budget.get("FilterExpression"),
+                  "Expected an account-wide budget")
+          before = before_budget.get("BudgetLimit", {})
+          require(before.get("Unit") == "USD" and float(before.get("Amount", "0")) in (62.0, 142.0),
+                  "Unexpected existing limit or currency")
+          limit = {"Amount": "142", "Unit": "USD"}
+          notification = {"NotificationType": "ACTUAL", "ComparisonOperator": "GREATER_THAN",
+                          "Threshold": 70.0, "ThresholdType": "PERCENTAGE"}
+          subscriber = {"SubscriptionType": "EMAIL", "Address": email}
+
+          def notifications():
+              return collect("describe_notifications_for_budget", "Notifications", BudgetName=name)
+
+          def matches(n):
+              return all(n.get(k, "PERCENTAGE" if k == "ThresholdType" else None) == v
+                         for k, v in notification.items())
+
+          def subscribers():
+              return collect("describe_subscribers_for_notification", "Subscribers",
+                             BudgetName=name, Notification=notification)
+
+          def configuration(items):
+              return sorted((n["NotificationType"], n["ComparisonOperator"], n["Threshold"],
+                             n.get("ThresholdType", "PERCENTAGE")) for n in items)
+
+          existing = notifications()
+          require(any(matches(n) for n in existing), "Existing 70% actual-spend alert is missing")
+          require(subscriber in subscribers(), "Existing operator email does not match")
+
+          if float(before["Amount"]) != float(limit["Amount"]):
+              writable_fields = {
+                  "BudgetName", "BudgetType", "TimeUnit", "TimePeriod", "CostFilters",
+                  "CostTypes", "FilterExpression", "Metrics", "BillingViewArn", "AutoAdjustData",
+              }
+              updated = {key: value for key, value in before_budget.items() if key in writable_fields}
+              updated["BudgetLimit"] = limit
+              client.update_budget(AccountId=account, NewBudget=updated)
+
+          after = client.describe_budget(AccountId=account, BudgetName=name)["Budget"]["BudgetLimit"]
+          require(after["Unit"] == "USD" and float(after["Amount"]) == 142.0, "Budget limit read-back failed")
+          require(configuration(notifications()) == configuration(existing), "Existing notifications changed unexpectedly")
+          require(subscriber in subscribers(), "Subscriber read-back failed")
+          print("Verified account-wide monthly budget: USD 142.00. Actual-spend email alert: 70% (USD 99.40).")
+          PY
