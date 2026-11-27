@@ -99,6 +99,19 @@ jobs:
                   raw = resp.read(1000000)
                   return json.loads(raw) if raw else {}
 
+          phase = "verifying token scopes"
+          required = {"private", "upload", "edit"}
+          known = required | {"public", "create", "delete", "interact", "video_files", "purchased", "promo_codes"}
+          try:
+              response = api("/oauth/verify?fields=scope")
+          except (HTTPError, URLError, ValueError):
+              print("Vimeo did not return token scope metadata.", flush=True)
+          else:
+              scopes = set(str(response.get("scope", "")).split())
+              print("Vimeo scopes verified: " + ", ".join(sorted(known & scopes)), flush=True)
+              if scopes and required - scopes:
+                  sys.exit("Vimeo token missing required scope(s): " + ", ".join(sorted(required - scopes)))
+
           phase = "generation of the test clip"
           uri = None
           try:
@@ -170,11 +183,31 @@ jobs:
               code = ""
               if exc.url.startswith("https://api.vimeo.com/"):
                   try:
-                      raw_code = json.loads(exc.read(16384)).get("error_code")
-                      if isinstance(raw_code, int):
+                      payload = json.loads(exc.read(16384))
+                      raw_code = str(payload.get("error_code", ""))
+                      if re.fullmatch(r"[0-9]{1,7}", raw_code):
                           code = f"; Vimeo error code {raw_code}"
+                      fields = " ".join(str(payload.get(field, "")) for field in
+                                        ("error", "developer_message", "message", "error_description")).lower()
+                      if "upload access" in fields or "application" in fields and "upload" in fields:
+                          code += "; Vimeo requires API upload access for this app"
+                      elif "quota" in fields or "limit" in fields:
+                          code += "; Vimeo reported an upload quota or limit"
+                      elif "insufficient_scope" in fields or "scope" in fields:
+                          code += "; Vimeo reported insufficient token scope"
+                      elif "upgrade" in fields or "plan" in fields:
+                          code += "; Vimeo reported a plan restriction"
+                      elif "blocked" in fields or "captcha" in fields:
+                          code += "; Vimeo blocked the request"
+                      elif fields.strip():
+                          code += "; Vimeo supplied an unclassified JSON error"
+                      else:
+                          code += "; Vimeo supplied an empty JSON error"
                   except (ValueError, AttributeError):
-                      pass
+                      if "insufficient_scope" in exc.headers.get("WWW-Authenticate", ""):
+                          code += "; Vimeo reported insufficient token scope"
+                      else:
+                          code += "; Vimeo supplied a non-JSON error"
               sys.exit(f"Vimeo failed during {phase} (HTTP {exc.code}{code}).")
           except (URLError, TimeoutError, ValueError):
               sys.exit(f"Vimeo connection or response failed during {phase}.")
