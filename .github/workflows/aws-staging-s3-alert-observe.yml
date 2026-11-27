@@ -1,0 +1,84 @@
+name: Observe Amaris staging S3 alert delivery
+
+on:
+  push:
+    branches: [ops/aws-staging-s3-event-alerts]
+    paths: [.github/workflows/aws-staging-s3-alert-observe.yml]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: amaris-aws-staging-s3-alert-observe
+  cancel-in-progress: false
+
+jobs:
+  alerts:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-staging-s3-event-alerts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Observe queued events and SNS delivery
+        run: |
+          set -euo pipefail
+          group=/aws/lambda/amaris-staging-s3-object-alerts
+          stack=amaris-staging-s3-object-alerts
+          test "$(aws sts get-caller-identity --query Account --output text)" = 110156539003
+          aws lambda list-event-source-mappings --function-name amaris-staging-s3-object-alerts --output json |
+            jq '[.EventSourceMappings[]|{State,LastProcessingResult}]'
+          aws cloudformation list-stack-resources --stack-name "$stack" --output json |
+            jq -r '.StackResourceSummaries[]|select(.ResourceType=="AWS::SQS::Queue")|[.LogicalResourceId,.PhysicalResourceId]|@tsv' |
+            while IFS=$'\t' read -r logical url; do
+              echo "$logical"
+              aws sqs get-queue-attributes --queue-url "$url" --attribute-names                 ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible --output json
+            done
+          for bucket in amaris-mathematics-academy-logs-110156539003-eu-north-1 \
+              amaris-mathematics-academy-media-stage-110156539003-eu-north-1; do
+            aws s3api get-bucket-notification-configuration --bucket "$bucket" --expected-bucket-owner 110156539003 --output json |
+              jq --arg bucket "$bucket" '{bucket:$bucket,eventbridge:has("EventBridgeConfiguration")}'
+          done
+          aws events describe-rule --name amaris-staging-s3-object-events --output json |
+            jq '{State, EventPattern:(.EventPattern|fromjson)}'
+          aws events list-targets-by-rule --rule amaris-staging-s3-object-events --output json |
+            jq '[.Targets[]|{Id,Arn,DeadLetterConfig}]'
+          for metric in MatchedEvents Invocations FailedInvocations InvocationsSentToDLQ InvocationsFailedToBeSentToDLQ; do
+            echo "EventBridge $metric"
+            aws cloudwatch get-metric-statistics --namespace AWS/Events --metric-name "$metric" \
+              --dimensions Name=RuleName,Value=amaris-staging-s3-object-events --statistics Sum \
+              --start-time "$(date -u -d '15 minutes ago' +%FT%TZ)" --end-time "$(date -u +%FT%TZ)" \
+              --period 60 --output json | jq '[.Datapoints[]|{Timestamp,Sum}]|sort_by(.Timestamp)'
+          done
+          start_ms="$(date -u -d '20 minutes ago' +%s)000"
+          aws logs filter-log-events --log-group-name "$group" --start-time "$start_ms"             --filter-pattern '"status"' --max-items 500 --output json |
+            jq '[.events[].message|fromjson?|select(.status != null)]|group_by(.status)|map({status:.[0].status,count:length,types:([.[].event]|map(select(.!=null))|unique)})'
+          for metric in NumberOfNotificationsDelivered NumberOfNotificationsFailed; do
+            echo "$metric"
+            aws cloudwatch get-metric-statistics --namespace AWS/SNS --metric-name "$metric"               --dimensions Name=TopicName,Value=amaris-staging-cloudwatch-alarms --statistics Sum               --start-time "$(date -u -d '10 minutes ago' +%FT%TZ)" --end-time "$(date -u +%FT%TZ)"               --period 60 --output json | jq '[.Datapoints[]|{Timestamp,Sum}]|sort_by(.Timestamp)'
+          done

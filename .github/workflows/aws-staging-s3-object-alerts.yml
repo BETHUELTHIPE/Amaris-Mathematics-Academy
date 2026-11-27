@@ -1,0 +1,68 @@
+name: Deploy and verify Amaris staging S3 object alerts
+
+on:
+  push:
+    branches: [ops/aws-staging-s3-event-alerts]
+    paths: [.github/workflows/aws-staging-s3-object-alerts.yml, deploy/aws/s3-alerts/**]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: amaris-aws-staging-s3-object-alerts
+  cancel-in-progress: false
+
+jobs:
+  alerts:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-staging-s3-event-alerts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate and test the event notification stack
+        run: |
+          python -m pip install --quiet boto3 cfn-lint
+          cfn-lint --regions eu-north-1 --template deploy/aws/s3-alerts/stack.yml
+          python -m unittest discover -s deploy/aws/s3-alerts -p 'test_*.py'
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Validate both private buckets and the existing operator subscription
+        run: python deploy/aws/s3-alerts/configure.py preflight
+      - name: Deploy the staging EventBridge, SQS and Lambda resources
+        run: |
+          set -euo pipefail
+          aws cloudformation deploy             --stack-name amaris-staging-s3-object-alerts             --template-file deploy/aws/s3-alerts/stack.yml             --parameter-overrides               ArchiveBucket=amaris-mathematics-academy-logs-110156539003-eu-north-1               MediaBucket=amaris-mathematics-academy-media-stage-110156539003-eu-north-1               OperatorTopic=arn:aws:sns:eu-north-1:110156539003:amaris-staging-cloudwatch-alarms             --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset             --tags Application=Amaris-Mathematics-Academy Environment=staging
+      - name: Enable S3 object notifications while preserving existing destinations
+        run: python deploy/aws/s3-alerts/configure.py enable
+      - name: Verify live object changes reach the confirmed SNS topic
+        run: python deploy/aws/s3-alerts/verify.py
+      - name: Report infrastructure setup failures
+        if: failure()
+        run: |
+          aws cloudformation describe-stack-events --stack-name amaris-staging-s3-object-alerts --output json |
+            jq '[.StackEvents[] | select(.ResourceStatus | endswith("FAILED")) |
+                 {LogicalResourceId, ResourceStatusReason}][:8]'
