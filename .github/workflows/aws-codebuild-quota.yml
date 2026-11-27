@@ -1,0 +1,68 @@
+name: Inspect CodeBuild quota and request minimum ARM capacity if zero
+on:
+  push:
+    branches: [ops/aws-selective-bluegreen-20261127]
+    paths: [.github/workflows/aws-codebuild-quota.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-codebuild-quota
+  cancel-in-progress: false
+jobs:
+  quota:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-selective-bluegreen-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Read exact ARM small quota and submit at most one minimal quota request
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import boto3
+          assert boto3.client("sts").get_caller_identity()["Account"] == "110156539003"
+          q = boto3.client("service-quotas",region_name="eu-north-1")
+          quotas = [x for p in q.get_paginator("list_service_quotas").paginate(ServiceCode="codebuild") for x in p["Quotas"]]
+          match = [x for x in quotas if x["QuotaName"].lower() == "concurrently running builds for arm/small environment"]
+          assert len(match)==1, "Cannot uniquely identify the applied ARM/Small quota"
+          quota = match[0]
+          current = quota["Value"]
+          print("Applied ARM/Small concurrent build quota:",current)
+          if current >= 1:
+              print("Quota already permits at least one build. Queue restriction requires AWS investigation; no increase requested.")
+          else:
+              assert quota["Adjustable"], "Quota not adjustable"
+              history = [x for p in q.get_paginator("list_requested_service_quota_change_history_by_quota").paginate(ServiceCode="codebuild",QuotaCode=quota["QuotaCode"]) for x in p["RequestedQuotas"]]
+              pending = [x for x in history if x["Status"] in ("PENDING","CASE_OPENED","NOT_APPROVED","INVALID_REQUEST") and x["DesiredValue"] >= 1]
+              if pending:
+                  print("Existing quota request:",pending[0]["Id"],pending[0]["Status"])
+              else:
+                  result=q.request_service_quota_increase(ServiceCode="codebuild",QuotaCode=quota["QuotaCode"],DesiredValue=1)["RequestedQuota"]
+                  print("Requested one concurrent ARM/Small build:",result["Id"],result["Status"])
+          print("No builds started, no paid resources launched and no traffic changed.")
+          PY
