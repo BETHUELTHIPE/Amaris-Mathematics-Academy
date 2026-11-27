@@ -25,15 +25,27 @@ jobs:
           from urllib.error import HTTPError, URLError
           from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-          token = os.environ.get("ACADEMY_VIMEO_TOKEN", "").strip()
-          if not token:
+          if not os.environ.get("ACADEMY_VIMEO_TOKEN", "").strip():
               sys.exit("GitHub Actions did not supply ACADEMY_VIMEO_TOKEN to the staging job.")
+          def raw_token(value):
+              value = value.strip()
+              if len(value) > 1 and value[0] in ("'", '"') and value[-1] == value[0]:
+                  value = value[1:-1].strip()
+                  print("The saved credential was wrapped in quotes.", flush=True)
+              if value[:7].lower() == "bearer ":
+                  value = value[7:].strip()
+                  print("The saved credential included the Bearer prefix.", flush=True)
+              if not value or not value.isascii() or any(char.isspace() for char in value):
+                  sys.exit("The Vimeo credential is empty or contains unexpected spaces or characters.")
+              return value
+
+          token = raw_token(os.environ["ACADEMY_VIMEO_TOKEN"])
           class NoRedirect(HTTPRedirectHandler):
               def redirect_request(self, req, fp, code, msg, headers, newurl):
                   return None
 
           opener = build_opener(NoRedirect())
-          def get(path):
+          def get(path, label):
               req = Request("https://api.vimeo.com" + path, headers={
                   "Authorization": "Bearer " + token,
                   "Accept": "application/vnd.vimeo.*+json;version=3.4",
@@ -42,15 +54,15 @@ jobs:
                   with opener.open(req, timeout=15) as resp:
                       return json.loads(resp.read(1000000))
               except HTTPError as exc:
-                  sys.exit(f"Vimeo request failed (HTTP {exc.code}).")
+                  sys.exit(f"Vimeo rejected the {label} request (HTTP {exc.code}).")
               except (URLError, TimeoutError, ValueError):
                   sys.exit("Vimeo request failed or returned invalid data.")
 
           expected_user = "/users/261260024"
           expected_folder = expected_user + "/projects/31427264"
-          if get("/me?fields=uri").get("uri") != expected_user:
+          if get("/me?fields=uri", "account authentication").get("uri") != expected_user:
               sys.exit("The token does not belong to the expected academy account.")
-          if get(expected_folder + "?fields=uri").get("uri") != expected_folder:
+          if get(expected_folder + "?fields=uri", "academy folder access").get("uri") != expected_folder:
               sys.exit("The academy folder could not be verified.")
           print("PASS: Academy account and folder access verified.")
           print("Read-only check: upload permissions and playback are not verified.")
@@ -82,6 +94,10 @@ jobs:
           domain = "16.171.164.5"
           origin = "https://" + domain
           token = os.environ["ACADEMY_VIMEO_TOKEN"].strip()
+          if len(token) > 1 and token[0] in ("'", '"') and token[-1] == token[0]:
+              token = token[1:-1].strip()
+          if token[:7].lower() == "bearer ":
+              token = token[7:].strip()
           title = "Amaris disposable staging upload " + os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"]
 
           class NoRedirect(HTTPRedirectHandler):
