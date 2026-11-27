@@ -102,6 +102,9 @@ def record_live_class_sale(booking: LiveClassBooking):
         or booking.currency != "ZAR"
     ):
         raise TutorRevenueError("Only verified paid live classes qualify.")
+    # Sandbox Paystack transactions must never become payable tutor revenue.
+    if booking.payment_provider == LiveClassBooking.PaymentProvider.PAYSTACK and booking.paystack_mode != "live":
+        return None
     return _record(
         booking.slot.tutor_id,
         TutorContract.Service.LIVE_CLASS,

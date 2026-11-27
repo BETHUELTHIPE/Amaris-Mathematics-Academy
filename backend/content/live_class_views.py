@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 
 from .authentication import SupabaseStudentAuthentication
 from .models import LiveClassBooking, TutorAvailabilitySlot
+from .services import paystack
 from .services.invoices import student_invoice_key
 from .services.live_classes import create_live_class_checkout, price_for_live_class_slot
 from .services.payments import PaymentSecurityError
@@ -114,12 +115,17 @@ class LiveClassCheckoutRequestSerializer(serializers.Serializer):
     slot_id = serializers.IntegerField(min_value=1)
     topic = serializers.CharField(min_length=2, max_length=180, trim_whitespace=True)
     idempotency_key = serializers.RegexField(r"^[A-Za-z0-9_-]{8,64}$")
+    payment_provider = serializers.ChoiceField(
+        choices=LiveClassBooking.PaymentProvider.choices, default=LiveClassBooking.PaymentProvider.PAYFAST
+    )
 
 
 class LiveClassCheckoutResponseSerializer(serializers.Serializer):
     booking_reference = serializers.CharField()
     status = serializers.CharField()
     gateway_url = serializers.URLField()
+    payment_provider = serializers.ChoiceField(choices=LiveClassBooking.PaymentProvider.choices)
+    test_mode = serializers.BooleanField()
     fields = serializers.DictField(child=serializers.CharField())
     booking = serializers.DictField()
 
@@ -152,11 +158,21 @@ class LiveClassStudentAPIView(APIView):
 
 
 class LiveClassCheckoutView(LiveClassStudentAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request):
+        return Response(
+            {"paystack_enabled": paystack.checkout_enabled()}, headers={"Cache-Control": "private, no-store"}
+        )
+
     @extend_schema(
         request=LiveClassCheckoutRequestSerializer,
         responses={201: LiveClassCheckoutResponseSerializer},
     )
     def post(self, request):
+        if not request.user.has_registered_booking_name:
+            raise serializers.ValidationError(
+                {"detail": "Complete your registered first and last name before booking."}
+            )
         serializer = LiveClassCheckoutRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         values = serializer.validated_data
@@ -177,6 +193,11 @@ class LiveClassCheckoutView(LiveClassStudentAPIView):
                 slot=slot,
                 topic=values["topic"],
                 idempotency_key=values["idempotency_key"],
+                payment_provider=values["payment_provider"],
+            )
+        except paystack.PaystackUnavailable:
+            return Response(
+                {"detail": "Paystack is temporarily unavailable."}, status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         except PaymentSecurityError as exc:
             raise serializers.ValidationError({"detail": str(exc)}) from exc
@@ -189,6 +210,8 @@ class LiveClassCheckoutView(LiveClassStudentAPIView):
                 "booking_reference": booking.reference,
                 "status": booking.status,
                 "gateway_url": checkout.gateway_url,
+                "payment_provider": checkout.payment_provider,
+                "test_mode": checkout.test_mode,
                 "fields": checkout.fields,
                 "booking": {
                     "programme": booking.get_programme_display(),
