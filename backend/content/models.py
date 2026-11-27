@@ -7,6 +7,8 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
+from .services.course_media import course_files
+
 
 class TimeStampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -170,7 +172,7 @@ class Course(PublishableModel):
     compare_at_price = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True, validators=[MinValueValidator(0)]
     )
-    cover_image = models.ImageField(upload_to="courses/covers/", blank=True)
+    cover_image = models.ImageField(upload_to="courses/covers/", storage=course_files, blank=True)
     outcomes = models.JSONField(default=list, blank=True)
     estimated_hours = models.PositiveIntegerField(default=0)
     featured = models.BooleanField(default=False, db_index=True)
@@ -226,6 +228,7 @@ class VideoAsset(PublishableModel):
     class Provider(models.TextChoices):
         YOUTUBE = "youtube", "Private YouTube"
         S3 = "s3", "Private S3 upload"
+        VIMEO = "vimeo", "Vimeo course folder"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=180)
@@ -233,6 +236,8 @@ class VideoAsset(PublishableModel):
     youtube_video_id = models.CharField(max_length=32, blank=True)
     youtube_url = models.URLField(blank=True)
     source_file = models.FileField(upload_to="videos/%Y/%m/", blank=True)
+    aws_media_key = models.CharField(max_length=255, blank=True, editable=False)
+    vimeo_video_id = models.CharField(max_length=19, blank=True, editable=False)
     thumbnail = models.ImageField(upload_to="videos/thumbnails/", blank=True)
     captions_file = models.FileField(upload_to="videos/captions/", blank=True)
     duration_seconds = models.PositiveIntegerField(default=0)
@@ -255,8 +260,10 @@ class VideoAsset(PublishableModel):
                     self.youtube_video_id = parse_qs(parsed.query).get("v", [""])[0]
             if not self.youtube_video_id:
                 raise ValidationError("The YouTube URL does not contain a valid video ID.")
-        elif not self.source_file:
+        elif self.provider == self.Provider.S3 and not (self.source_file or self.aws_media_key):
             raise ValidationError("Upload a private video file for S3-hosted videos.")
+        elif self.provider == self.Provider.VIMEO and not self.vimeo_video_id:
+            raise ValidationError("Upload a video to the Vimeo course folder.")
 
     def __str__(self) -> str:
         return self.title
@@ -298,7 +305,7 @@ class ResourceAsset(PublishableModel):
 
     title = models.CharField(max_length=180)
     resource_type = models.CharField(max_length=20, choices=ResourceType.choices)
-    file = models.FileField(upload_to="resources/%Y/%m/")
+    file = models.FileField(upload_to="resources/%Y/%m/", storage=course_files)
     course = models.ForeignKey(Course, related_name="resources", on_delete=models.CASCADE)
     lesson = models.ForeignKey(Lesson, related_name="resources", on_delete=models.CASCADE, blank=True, null=True)
     description = models.TextField(blank=True)

@@ -247,6 +247,34 @@ class StudentJourneyApiTests(APITestCase):
         cross_user = self.client.get(reverse("student-resume", args=[self.course.slug]), secure=True)
         self.assertEqual(cross_user.status_code, 404)
 
+    def test_enrollment_is_required_to_get_new_lesson_playback(self):
+        from .models import VideoAsset
+
+        self.lesson.video = VideoAsset.objects.create(
+            title="Synthetic hosted lesson",
+            provider="vimeo",
+            vimeo_video_id="1234",
+            is_published=True,
+        )
+        self.lesson.save()
+        path = reverse("student-lesson", args=[self.course.slug, self.lesson.slug])
+        self.authenticate(self.other)
+        self.assertEqual(self.client.get(path, secure=True).status_code, 404)
+        self.authenticate()
+        response = self.client.get(path, secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["lesson"]["video"]["playback_url"],
+            "https://player.vimeo.com/video/1234",
+        )
+        self.assertEqual(response.headers["Cache-Control"], "private, no-store")
+        self.lesson.video.is_published = False
+        self.lesson.video.save()
+        self.assertEqual(
+            self.client.get(path, secure=True).data["lesson"]["video"]["playback_url"],
+            "",
+        )
+
     def test_course_start_skips_hidden_and_future_lessons(self):
         self.authenticate()
         for published, publish_at in ((False, None), (True, timezone.now() + timedelta(days=1))):

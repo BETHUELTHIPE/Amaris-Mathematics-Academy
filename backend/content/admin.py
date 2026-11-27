@@ -6,6 +6,7 @@ from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils import timezone
 
+from .admin_media import VideoAssetForm, begin_admin_upload
 from .models import (
     FAQ,
     LIVE_CLASS_MAX_HOURS,
@@ -218,15 +219,33 @@ class LessonAdmin(PublishableAdmin):
 
 @admin.register(VideoAsset)
 class VideoAssetAdmin(PublishableAdmin):
+    form = VideoAssetForm
+
+    def get_form(self, request, obj=None, **kwargs):
+        base = super().get_form(request, obj, **kwargs)
+
+        class RequestVideoForm(base):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, user=request.user, **kwargs)
+
+        return RequestVideoForm
+
+    def get_urls(self):
+        return [
+            path(
+                "begin-upload/", self.admin_site.admin_view(begin_admin_upload), name="content_videoasset_begin_upload"
+            ),
+        ] + super().get_urls()
+
     list_display = ("title", "provider", "duration_seconds", "allow_preview", "is_published", "updated_at")
     list_filter = PublishableAdmin.list_filter + ("provider", "allow_preview")
     list_editable = ("allow_preview", "is_published")
     search_fields = ("title", "youtube_video_id", "youtube_url", "transcript")
     readonly_fields = ("id", "created_at", "updated_at")
     fieldsets = (
-        ("Video", {"fields": ("id", "title", "provider", "duration_seconds", "thumbnail")}),
+        ("Video", {"fields": ("id", "title", "provider", "upload_ticket", "duration_seconds", "thumbnail")}),
         ("Private YouTube", {"fields": ("youtube_video_id", "youtube_url")}),
-        ("Private S3 upload", {"fields": ("source_file", "captions_file")}),
+        ("Existing video file and captions", {"fields": ("source_file", "captions_file")}),
         ("Learning content", {"fields": ("transcript", "allow_preview")}),
         ("Publishing", {"fields": ("is_published", "publish_at")}),
         ("Audit", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),

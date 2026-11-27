@@ -1,0 +1,70 @@
+name: Verify the private Amaris course media bucket
+on:
+  push:
+    branches: [feat/admin-s3-vimeo-course-media]
+    paths:
+      - .github/workflows/aws-staging-course-media.yml
+      - deploy/aws/course-media/**
+permissions:
+  contents: read
+concurrency:
+  group: amaris-aws-staging-course-media
+  cancel-in-progress: false
+jobs:
+  s3:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Provision staging media storage and its scoped task role
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = 110156539003
+          aws cloudformation deploy --stack-name amaris-staging-course-media --capabilities CAPABILITY_IAM \
+            --template-file deploy/aws/course-media/staging.yml --no-fail-on-empty-changeset \
+            --tags Application=Amaris-Mathematics-Academy Environment=staging
+          bucket="$(aws cloudformation describe-stacks --stack-name amaris-staging-course-media \
+            --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue|[0]" --output text)"
+          printf 'ACADEMY_MEDIA_BUCKET=%s\n' "$bucket" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Verify the real S3 upload and private download
+        env:
+          DJANGO_DEBUG: 'true'
+        run: |
+          python -m pip install -q -r backend/requirements.txt
+          python deploy/aws/course-media/verify.py
+      - name: Identify current staging backend
+        run: curl --max-time 12 -fsS https://16.171.164.5/health/version/ | jq -e '{git_sha}'

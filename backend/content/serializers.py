@@ -353,6 +353,7 @@ class StudentCourseEnrollmentSerializer(serializers.Serializer):
 class LessonVideoSerializer(serializers.Serializer):
     provider = serializers.CharField()
     youtube_video_id = serializers.CharField(allow_blank=True)
+    playback_url = serializers.URLField(allow_blank=True)
     duration_seconds = serializers.IntegerField()
 
 
