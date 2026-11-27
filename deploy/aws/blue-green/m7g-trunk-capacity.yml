@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Prepare dedicated private m7g.large ECS launch template; no EC2 instances or ASG are created.
+Description: Private m7g.large launch template for Amaris staging with role-scoped ECS ENI trunking.
 Parameters:
   VpcId:
     Type: AWS::EC2::VPC::Id
@@ -18,6 +18,19 @@ Resources:
       ManagedPolicyArns:
         - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
         - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: EnableOwnEcsTrunkingInStockholm
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:PutAccountSetting
+                  - ecs:ListAccountSettings
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: !Ref AWS::Region
       Tags:
         - {Key: Project, Value: Amaris}
         - {Key: Environment, Value: staging}
@@ -66,6 +79,30 @@ Resources:
           Fn::Base64: |
             #!/bin/bash
             set -euo pipefail
+            export AWS_PAGER=""
+
+            # ECS starts after cloud-init. Prevent registration with the default
+            # ENI limit if the role's opt-in cannot be set and read back.
+            install -d /etc/systemd/system/ecs.service.d
+            printf '[Unit]\nConditionPathExists=/etc/ecs/amaris-trunk-ready\n' \
+              > /etc/systemd/system/ecs.service.d/amaris-trunking.conf
+            systemctl daemon-reload
+            for attempt in {1..12}; do
+              if aws ecs put-account-setting --name awsvpcTrunking --value enabled \
+                   --region eu-north-1 --cli-connect-timeout 5 --cli-read-timeout 5 \
+                   --query 'setting.value' --output text | grep -qx enabled &&
+                 aws ecs list-account-settings --name awsvpcTrunking --effective-settings \
+                   --region eu-north-1 --cli-connect-timeout 5 --cli-read-timeout 5 \
+                   --query 'settings[0].value' --output text | grep -qx enabled; then
+                break
+              fi
+              if [[ "$attempt" -eq 12 ]]; then
+                echo 'ECS ENI trunking did not become effective for the instance role.' >&2
+                exit 1
+              fi
+              sleep 5
+            done
+
             cat > /etc/ecs/ecs.config <<'ECS'
             ECS_CLUSTER=amaris-ecs-staging
             ECS_ENABLE_TASK_ENI=true
@@ -73,6 +110,8 @@ Resources:
             ECS_ENABLE_AWSLOGS_EXECUTIONROLE_OVERRIDE=true
             ECS_INSTANCE_ATTRIBUTES={"amaris.capacity":"m7g-large-trunk"}
             ECS
+            touch /etc/ecs/amaris-trunk-ready
+            systemctl enable --now --no-block ecs.service
         TagSpecifications:
           - ResourceType: instance
             Tags:

@@ -1,4 +1,4 @@
-name: Prepare m7g.large trunk-enabled ECS capacity without launching a host
+name: Activate one approved m7g.large ECS staging host
 on:
   push:
     branches: [ops/aws-selective-bluegreen-20261127]
@@ -9,10 +9,10 @@ concurrency:
   group: amaris-m7g-trunk-capacity
   cancel-in-progress: false
 jobs:
-  prepare:
+  activate:
     if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-selective-bluegreen-20261127'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 18
     environment:
       name: staging
       deployment: false
@@ -43,36 +43,110 @@ jobs:
           aws-region: eu-north-1
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
-      - name: Create launch template and opt in only dedicated host role
+      - name: Verify budget, launch the private host and validate ECS trunking
         run: |
           set -euo pipefail
-          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          account=110156539003
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == "$account" ]]
+          aws budgets describe-budget --region us-east-1 --account-id "$account" \
+            --budget-name Amaris-Monthly-Cost --output json | jq -e '
+            .Budget | .TimeUnit == "MONTHLY" and .BudgetType == "COST" and
+            .BudgetLimit.Unit == "USD" and (.BudgetLimit.Amount | tonumber) == 142' >/dev/null
           vpc=vpc-0252538d2febd4641
           cluster=amaris-ecs-staging
           stack=amaris-staging-m7g-trunk-capacity
+          nat=i-02855f007d15af597
+          private_subnets='["subnet-041cecdd7bd182d11","subnet-0f4422980fa309a1c"]'
+
+          check_health() {
+            aws ecs describe-services --cluster "$cluster" \
+              --services amaris-web-staging-stateless amaris-staging-singleton-jobs --output json |
+              jq -e '.failures == [] and (.services | length == 2 and all(.[];
+                .runningCount == .desiredCount and .pendingCount == 0 and (.deployments | length) == 1)) and
+                any(.services[]; .serviceName == "amaris-web-staging-stateless" and .runningCount == 2) and
+                any(.services[]; .serviceName == "amaris-staging-singleton-jobs" and .runningCount == 1)' >/dev/null
+            curl --silent --show-error --fail --retry 2 --max-time 15 https://16.171.164.5/health/dependencies/ |
+              jq -e '.dependencies.postgresql and .dependencies.redis' >/dev/null
+          }
+
+          check_health
           aws iam get-role --role-name AWSServiceRoleForECS --query 'Role.RoleName' --output text | grep -qx AWSServiceRoleForECS
           before="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-stateless --desired-status RUNNING --query 'taskArns' --output json | jq -c 'sort')"
           jq -e 'length==2' <<< "$before" >/dev/null
+          aws ec2 describe-route-tables --route-table-ids rtb-0dc01e9f7a0dc9515 --output json |
+            jq -e --arg vpc "$vpc" --arg nat "$nat" --argjson subnets "$private_subnets" '
+            .RouteTables[0] | .VpcId == $vpc and
+            ([.Associations[].SubnetId] | sort) == ($subnets | sort) and
+            any(.Routes[]; .DestinationCidrBlock == "0.0.0.0/0" and .State == "active" and .InstanceId == $nat) and
+            any(.Routes[]; .GatewayId == "vpce-021234ea87b755a8d" and .State == "active")' >/dev/null
+          subnet="$(aws ec2 describe-instances --filters "Name=vpc-id,Values=$vpc" \
+            'Name=instance-type,Values=t4g.small' 'Name=instance-state-name,Values=running' --output json |
+            jq -er --arg nat "$nat" --argjson subnets "$private_subnets" '
+            [.Reservations[].Instances[] | select(.InstanceId != $nat and .PublicIpAddress == null)
+             | .SubnetId as $subnet | select($subnets | index($subnet))] |
+            if length == 1 then .[0].SubnetId else error("Could not identify the private t4g.small host subnet") end')"
+          aws ec2 describe-subnets --subnet-ids "$subnet" --output json | jq -e --arg vpc "$vpc" '
+            .Subnets | length == 1 and all(.[]; .VpcId == $vpc and .MapPublicIpOnLaunch == false
+            and .AvailableIpAddressCount >= 12)' >/dev/null
           ami="$(aws ssm get-parameter --name /aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id --query Parameter.Value --output text)"
           [[ "$ami" =~ ^ami-[a-f0-9]+$ ]]
           aws ec2 describe-images --image-ids "$ami" --output json | jq -e '.Images|length==1 and all(.[]; .Architecture=="arm64" and .State=="available")' >/dev/null
-          aws ec2 describe-subnets --subnet-ids subnet-041cecdd7bd182d11 subnet-0f4422980fa309a1c --output json | jq -e --arg vpc "$vpc" '.Subnets|length==2 and all(.[]; .VpcId==$vpc and .MapPublicIpOnLaunch==false and .AvailableIpAddressCount>=12)' >/dev/null
           template=deploy/aws/blue-green/m7g-trunk-capacity.yml
           aws cloudformation validate-template --template-body "file://$template" >/dev/null
           aws cloudformation deploy --stack-name "$stack" --template-file "$template" --parameter-overrides VpcId="$vpc" EcsAmi="$ami" --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset
           outputs="$(aws cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].Outputs' --output json)"
-          role="$(jq -er '.[]|select(.OutputKey=="RoleArn").OutputValue' <<< "$outputs")"
           lt="$(jq -er '.[]|select(.OutputKey=="LaunchTemplateId").OutputValue' <<< "$outputs")"
           ver="$(jq -er '.[]|select(.OutputKey=="LaunchTemplateVersion").OutputValue' <<< "$outputs")"
-          aws ecs put-account-setting --name awsvpcTrunking --value enabled --principal-arn "$role" --output json | jq -e '.setting.value=="enabled"' >/dev/null
-          aws ecs list-account-settings --name awsvpcTrunking --principal-arn "$role" --effective-settings --output json | jq -e 'any(.settings[]; .name=="awsvpcTrunking" and .value=="enabled")' >/dev/null
-          aws ec2 describe-launch-template-versions --launch-template-id "$lt" --versions "$ver" --output json | jq -e '
+          launch_data="$(aws ec2 describe-launch-template-versions --launch-template-id "$lt" --versions "$ver" --output json)"
+          jq -e '
             .LaunchTemplateVersions[0].LaunchTemplateData |
             .InstanceType=="m7g.large" and .MetadataOptions.HttpTokens=="required" and
             .PrivateDnsNameOptions.EnableResourceNameDnsARecord==false and
             .NetworkInterfaces[0].AssociatePublicIpAddress==false and
-            all(.BlockDeviceMappings[]; .Ebs.Encrypted==true and .Ebs.DeleteOnTermination==true)' >/dev/null
+            (.BlockDeviceMappings | length == 1 and all(.[];
+              .Ebs.Encrypted and .Ebs.DeleteOnTermination and .Ebs.VolumeType == "gp3" and .Ebs.VolumeSize == 30))' \
+            <<< "$launch_data" >/dev/null
+          candidates="$(aws ec2 describe-instances --filters "Name=vpc-id,Values=$vpc" \
+            'Name=tag:Name,Values=amaris-staging-m7g-large-trunk' 'Name=tag:Environment,Values=staging' \
+            'Name=instance-state-name,Values=pending,running,stopping,stopped' \
+            --query 'Reservations[].Instances[].InstanceId' --output json)"
+          jq -e 'length <= 1' <<< "$candidates" >/dev/null
+          instance="$(jq -r '.[0] // empty' <<< "$candidates")"
+          if [[ -z "$instance" ]]; then
+            network="$(jq -c --arg subnet "$subnet" '
+              .LaunchTemplateVersions[0].LaunchTemplateData.NetworkInterfaces | .[0].SubnetId=$subnet' <<< "$launch_data")"
+            instance="$(aws ec2 run-instances --launch-template "LaunchTemplateId=$lt,Version=$ver" \
+              --network-interfaces "$network" --count 1 --client-token amaris-staging-m7g-trunk-v1 \
+              --query 'Instances[0].InstanceId' --output text)"
+          fi
+          [[ "$instance" =~ ^i-[a-f0-9]+$ ]]
+          echo "Checking m7g.large host $instance"
+          aws ec2 wait instance-running --instance-ids "$instance"
+          aws ec2 describe-instances --instance-ids "$instance" --output json | jq -e --arg subnet "$subnet" '
+            .Reservations[0].Instances[0] | .InstanceType == "m7g.large" and .SubnetId == $subnet and
+            .PublicIpAddress == null and all(.NetworkInterfaces[]; .Association.PublicIp == null)' >/dev/null
+          verified=false
+          for attempt in {1..30}; do
+            host="$(aws ecs list-container-instances --cluster "$cluster" --status ACTIVE \
+              --filter 'attribute:amaris.capacity == m7g-large-trunk' --query 'containerInstanceArns[0]' --output text)"
+            if [[ "$host" == arn:* ]]; then
+              if aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host" --output json |
+                jq -e --arg instance "$instance" '.containerInstances[0] |
+                  .ec2InstanceId == $instance and .agentConnected and .status == "ACTIVE" and
+                  any(.attributes[]; .name == "ecs.awsvpc-trunk-id" and (.value | startswith("eni-"))) and
+                  any(.remainingResources[]; .name == "CPU" and .integerValue >= 832) and
+                  any(.remainingResources[]; .name == "MEMORY" and .integerValue >= 1200)' >/dev/null; then
+                verified=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          [[ "$verified" == true ]] || { echo 'Host did not register with a trunk ENI and capacity for two web tasks.' >&2; exit 1; }
+          aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance" \
+            --query 'InstanceInformationList[0].PingStatus' --output text | grep -qx Online
+          check_health
           after="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-stateless --desired-status RUNNING --query 'taskArns' --output json | jq -c 'sort')"
           [[ "$before" == "$after" ]]
-          echo 'PASS: private m7g.large launch template and dedicated role ENI trunking setting verified. Existing web tasks unchanged.'
-          echo 'No host launched, no ASG created, no traffic or global ECS setting changed. Budget approval required for permanent compute.'
+          echo 'PASS: private m7g.large registered in ECS with its trunk ENI, SSM access and spare CPU and memory for two staging web tasks.'
+          echo 'Two original web replicas and the singleton jobs service remained healthy during host activation.'
