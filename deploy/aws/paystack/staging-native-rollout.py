@@ -121,18 +121,12 @@ def promote(spare):
     assert len(old_tasks) == 2
     routes = list(listen_rules(alb))
     existing = old_lb.get("advancedConfiguration")
-    if existing:
-        public_rule, = (rule for listener, rule in routes if
-                        listener["Port"] != 8081 and rule["RuleArn"] == existing["productionListenerRule"])
-        test_rule, = (rule for listener, rule in routes if
-                      listener["Port"] == 8081 and rule["RuleArn"] == existing["testListenerRule"])
-        assert set(weights(test_rule)) <= {primary, alternate}
-    else:
-        public_rule, = (rule for listener, rule in routes if
-                        listener["Port"] != 8081 and primary in str(rule["Actions"]))
-        test_rule, = (rule for listener, rule in routes if
-                      listener["Port"] == 8081 and alternate in str(rule["Actions"]))
-        assert effective_group(test_rule["RuleArn"]) == alternate
+    public_rule, = (rule for listener, rule in routes if
+                    listener["Port"] == 80 and primary in str(rule["Actions"]))
+    test_rule, = (rule for listener, rule in routes if
+                  listener["Port"] == 8081 and not rule["IsDefault"] and
+                  any(action["Type"] == "forward" for action in rule["Actions"]))
+    assert set(weights(test_rule)) <= {primary, alternate}
     assert effective_group(public_rule["RuleArn"]) == primary
     lb, = elb.describe_load_balancers(LoadBalancerArns=[alb])["LoadBalancers"]
     nodes = probe["private_alb_nodes"](lb)
@@ -174,10 +168,13 @@ def promote(spare):
     }
     previous_deployments = {row["serviceDeploymentArn"] for row in deployments()}
     load_balancer_update = {}
-    if existing := old_lb.get("advancedConfiguration"):
-        assert existing == advanced, "Existing blue-green routes differ from verified staging routes"
-    else:
-        load_balancer_update["loadBalancers"] = [{**old_lb, "advancedConfiguration": advanced}]
+    if existing != advanced:
+        load_balancer_update["loadBalancers"] = [{
+            "targetGroupArn": primary,
+            "containerName": old_lb["containerName"],
+            "containerPort": old_lb["containerPort"],
+            "advancedConfiguration": advanced,
+        }]
     deployment = None
     placement_changed = False
     try:

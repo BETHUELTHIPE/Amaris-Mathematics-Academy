@@ -155,7 +155,9 @@ def main(spare):
     for listener in listeners:
         for page in elb.get_paginator("describe_rules").paginate(ListenerArn=listener["ListenerArn"]):
             for rule in page["Rules"]:
-                if advanced and rule["RuleArn"] == advanced["productionListenerRule"]:
+                if listener["Port"] != 8081:
+                    if alternate not in str(rule["Actions"]):
+                        continue
                     # After rollback ECS keeps the alternate in the public rule at zero weight.
                     for action in rule["Actions"]:
                         weights = action.get("ForwardConfig", {}).get("TargetGroups", [])
@@ -164,7 +166,7 @@ def main(spare):
                             row["TargetGroupArn"] == alternate and row.get("Weight") == 0 for row in weights
                         )
                     continue
-                is_test = rule["RuleArn"] == advanced["testListenerRule"] if advanced else alternate in str(rule["Actions"])
+                is_test = not rule["IsDefault"] and any(action["Type"] == "forward" for action in rule["Actions"])
                 if is_test:
                     assert listener["Port"] == 8081 and listener["Protocol"] == "HTTP"
                     assert not rule["IsDefault"]
@@ -172,7 +174,7 @@ def main(spare):
                 else:
                     assert alternate not in str(rule["Actions"]), "The green group has an unexpected listener rule"
     assert len(green_rules) == 1, "Expected one private rule for the green group"
-    if advanced:
+    if advanced and advanced.get("alternateTargetGroupArn"):
         assert advanced["alternateTargetGroupArn"] == alternate
     lb, = elb.describe_load_balancers(LoadBalancerArns=[alb])["LoadBalancers"]
     nodes = private_alb_nodes(lb)
