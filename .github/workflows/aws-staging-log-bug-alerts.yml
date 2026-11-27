@@ -47,7 +47,6 @@ jobs:
           import boto3
           import hashlib
           import os
-          import re
           import time
 
           def require(ok, message):
@@ -87,7 +86,7 @@ jobs:
           ]
           negative = ["INFO GET /health/ 200", "DEBUG scheduler tick", "WARNING retry planned", "INFO normal request"]
           matched = logs.test_metric_filter(filterPattern=pattern, logEventMessages=positive + negative)["matches"]
-          require({m["eventNumber"] for m in matched} == set(range(1, len(positive) + 1)),
+          require({m["eventNumber"] for m in matched} == set(range(len(positive))),
                   "AWS filter test did not classify all fixtures correctly.")
           print("PASS: AWS filter classified error and normal-log fixtures.")
 
