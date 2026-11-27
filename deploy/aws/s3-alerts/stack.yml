@@ -1,0 +1,193 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Notify the Amaris staging operator of S3 object events through EventBridge, SQS, Lambda and SNS
+Parameters:
+  ArchiveBucket:
+    Type: String
+  MediaBucket:
+    Type: String
+  OperatorTopic:
+    Type: String
+Resources:
+  FailedEvents:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: RetainExceptOnCreate
+    UpdateReplacePolicy: Retain
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+  PendingEvents:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 345600
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt FailedEvents.Arn
+        maxReceiveCount: 5
+  EventBridgeAccess:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref PendingEvents, !Ref FailedEvents]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: events.amazonaws.com}
+            Action: sqs:SendMessage
+            Resource: [!GetAtt PendingEvents.Arn, !GetAtt FailedEvents.Arn]
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/amaris-staging-s3-object-events
+  ObjectEvents:
+    Type: AWS::Events::Rule
+    DependsOn: EventBridgeAccess
+    Properties:
+      Name: amaris-staging-s3-object-events
+      EventPattern:
+        source: [aws.s3]
+        account: [!Ref AWS::AccountId]
+        region: [!Ref AWS::Region]
+        resources:
+          - !Sub arn:${AWS::Partition}:s3:::${ArchiveBucket}
+          - !Sub arn:${AWS::Partition}:s3:::${MediaBucket}
+        detail-type:
+          - prefix: 'Object '
+          - Async Copy Completion
+      State: ENABLED
+      Targets:
+        - Id: PendingEvents
+          Arn: !GetAtt PendingEvents.Arn
+          DeadLetterConfig:
+            Arn: !GetAtt FailedEvents.Arn
+  FunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/amaris-staging-s3-object-alerts
+      RetentionInDays: 30
+  NotificationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PublishObjectEventDigest
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+                Resource: !GetAtt PendingEvents.Arn
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref OperatorTopic
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt FunctionLogs.Arn
+  NotifyOperator:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: amaris-staging-s3-object-alerts
+      Role: !GetAtt NotificationRole.Arn
+      Runtime: python3.13
+      Architectures: [arm64]
+      Handler: index.handler
+      Timeout: 15
+      MemorySize: 128
+      Environment:
+        Variables:
+          BUCKETS: !Join [',', [!Ref MediaBucket, !Ref ArchiveBucket]]
+          ACCOUNT: !Ref AWS::AccountId
+          TOPIC_ARN: !Ref OperatorTopic
+      Code:
+        ZipFile: |
+          import hashlib
+          import json
+          import os
+
+          import boto3
+          from botocore.config import Config
+          from botocore.exceptions import BotoCoreError, ClientError
+
+          sns = boto3.client("sns", config=Config(connect_timeout=2, read_timeout=3,
+                                                 retries={"total_max_attempts": 2}))
+          buckets = frozenset(os.environ["BUCKETS"].split(","))
+          bucket_arns = {"arn:aws:s3:::" + bucket: bucket for bucket in buckets}
+
+          def summarize(event):
+              kind = event["detail-type"]
+              arn = next(arn for arn in event["resources"] if arn in bucket_arns)
+              detail = event["detail"]
+              bucket = detail.get("bucket", {}).get("name") or bucket_arns[arn]
+              if (event["source"] != "aws.s3" or event["account"] != os.environ["ACCOUNT"]
+                      or event["region"] != os.environ["AWS_REGION"]
+                      or bucket != bucket_arns[arn]
+                      or not (kind.startswith("Object ") or kind == "Async Copy Completion")):
+                  raise ValueError("Unexpected S3 event")
+              obj = detail.get("object", {})
+              key = obj.get("key")
+              if not isinstance(key, str) and kind != "Async Copy Completion":
+                  raise ValueError("Expected an S3 object key")
+              return {
+                  "event": kind, "bucket": bucket, "key": key, "time_utc": event["time"],
+                  "reason": detail.get("reason"), "deletion_type": detail.get("deletion-type"),
+                  "version_id": obj.get("version-id"), "storage_class": detail.get("storage-class"),
+                  "size_bytes": obj.get("size"), "event_id": event["id"],
+              }
+
+          def handler(event, context):
+              failures = []
+              rows = {}
+              accepted = []
+              for message in event["Records"]:
+                  message_id = message["messageId"]
+                  try:
+                      row = summarize(json.loads(message["body"]))
+                  except (KeyError, StopIteration, TypeError, ValueError, AttributeError):
+                      print(json.dumps({"status": "invalid_event", "message_id": message_id}))
+                      failures.append({"itemIdentifier": message_id})
+                      continue
+                  rows[row["event_id"]] = row
+                  accepted.append({"itemIdentifier": message_id})
+
+              if not rows:
+                  return {"batchItemFailures": failures}
+
+              # JSON-lines preserve arbitrary object names on a single line.
+              lines = [json.dumps({k: v for k, v in row.items() if v is not None},
+                                  ensure_ascii=False) for row in rows.values()]
+              body = "Amaris Mathematics Academy AWS staging S3 object activity (UTC)\n\n" + "\n".join(lines)
+              try:
+                  result = sns.publish(TopicArn=os.environ["TOPIC_ARN"],
+                                       Subject=f"Amaris S3 staging - {len(rows)} object event(s)",
+                                       Message=body)
+              except (BotoCoreError, ClientError) as error:
+                  print(json.dumps({"status": "publish_failed", "error_type": type(error).__name__}))
+                  return {"batchItemFailures": failures + accepted}
+
+              for row in rows.values():
+                  key = row["key"]
+                  print(json.dumps({
+                      "status": "sns_accepted", "event": row["event"], "bucket": row["bucket"],
+                      "key_sha256": hashlib.sha256(key.encode()).hexdigest() if key is not None else None,
+                      "event_id": row["event_id"], "sns_message_id": result["MessageId"],
+                  }))
+              return {"batchItemFailures": failures}
+  ProcessObjectEvents:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt PendingEvents.Arn
+      FunctionName: !Ref NotifyOperator
+      Enabled: true
+      BatchSize: 50
+      MaximumBatchingWindowInSeconds: 60
+      FunctionResponseTypes: [ReportBatchItemFailures]
+      ScalingConfig: {MaximumConcurrency: 2}
+Outputs:
+  Rule: {Value: !Ref ObjectEvents}
+  Function: {Value: !Ref NotifyOperator}
+  FunctionLogs: {Value: !Ref FunctionLogs}
+  DeadLetterQueue: {Value: !GetAtt FailedEvents.QueueName}
