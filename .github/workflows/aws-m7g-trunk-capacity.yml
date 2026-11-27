@@ -1,0 +1,78 @@
+name: Prepare m7g.large trunk-enabled ECS capacity without launching a host
+on:
+  push:
+    branches: [ops/aws-selective-bluegreen-20261127]
+    paths: [.github/workflows/aws-m7g-trunk-capacity.yml, deploy/aws/blue-green/m7g-trunk-capacity.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-m7g-trunk-capacity
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-selective-bluegreen-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Create launch template and opt in only dedicated host role
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          vpc=vpc-0252538d2febd4641
+          cluster=amaris-ecs-staging
+          stack=amaris-staging-m7g-trunk-capacity
+          aws iam get-role --role-name AWSServiceRoleForECS --query 'Role.RoleName' --output text | grep -qx AWSServiceRoleForECS
+          before="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-stateless --desired-status RUNNING --query 'taskArns' --output json | jq -c 'sort')"
+          jq -e 'length==2' <<< "$before" >/dev/null
+          ami="$(aws ssm get-parameter --name /aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id --query Parameter.Value --output text)"
+          [[ "$ami" =~ ^ami-[a-f0-9]+$ ]]
+          aws ec2 describe-images --image-ids "$ami" --output json | jq -e '.Images|length==1 and all(.[]; .Architecture=="arm64" and .State=="available")' >/dev/null
+          aws ec2 describe-subnets --subnet-ids subnet-041cecdd7bd182d11 subnet-0f4422980fa309a1c --output json | jq -e --arg vpc "$vpc" '.Subnets|length==2 and all(.[]; .VpcId==$vpc and .MapPublicIpOnLaunch==false and .AvailableIpAddressCount>=12)' >/dev/null
+          template=deploy/aws/blue-green/m7g-trunk-capacity.yml
+          aws cloudformation validate-template --template-body "file://$template" >/dev/null
+          aws cloudformation deploy --stack-name "$stack" --template-file "$template" --parameter-overrides VpcId="$vpc" EcsAmi="$ami" --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset
+          outputs="$(aws cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].Outputs' --output json)"
+          role="$(jq -er '.[]|select(.OutputKey=="RoleArn").OutputValue' <<< "$outputs")"
+          lt="$(jq -er '.[]|select(.OutputKey=="LaunchTemplateId").OutputValue' <<< "$outputs")"
+          ver="$(jq -er '.[]|select(.OutputKey=="LaunchTemplateVersion").OutputValue' <<< "$outputs")"
+          aws ecs put-account-setting --name awsvpcTrunking --value enabled --principal-arn "$role" --output json | jq -e '.setting.value=="enabled"' >/dev/null
+          aws ecs list-account-settings --name awsvpcTrunking --principal-arn "$role" --effective-settings --output json | jq -e 'any(.settings[]; .name=="awsvpcTrunking" and .value=="enabled")' >/dev/null
+          aws ec2 describe-launch-template-versions --launch-template-id "$lt" --versions "$ver" --output json | jq -e '
+            .LaunchTemplateVersions[0].LaunchTemplateData |
+            .InstanceType=="m7g.large" and .MetadataOptions.HttpTokens=="required" and
+            .PrivateDnsNameOptions.EnableResourceNameDnsARecord==false and
+            .NetworkInterfaces[0].AssociatePublicIpAddress==false and
+            all(.BlockDeviceMappings[]; .Ebs.Encrypted==true and .Ebs.DeleteOnTermination==true)' >/dev/null
+          after="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-stateless --desired-status RUNNING --query 'taskArns' --output json | jq -c 'sort')"
+          [[ "$before" == "$after" ]]
+          echo 'PASS: private m7g.large launch template and dedicated role ENI trunking setting verified. Existing web tasks unchanged.'
+          echo 'No host launched, no ASG created, no traffic or global ECS setting changed. Budget approval required for permanent compute.'
