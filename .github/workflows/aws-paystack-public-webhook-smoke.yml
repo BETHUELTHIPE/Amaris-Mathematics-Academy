@@ -12,7 +12,7 @@ jobs:
   inspect:
     if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
     runs-on: ubuntu-24.04
-    timeout-minutes: 18
+    timeout-minutes: 28
     environment:
       name: staging
       deployment: false
@@ -47,17 +47,17 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --quiet boto3
-          for attempt in {1..46}; do
+          for attempt in {1..100}; do
             sha="$(curl --silent --fail --max-time 10 https://16.171.164.5/health/version/ | jq -r '.git_sha' || true)"
             if [[ "$sha" == 164838a3143c22cc7b60ab669e1f0c7dca616a0f ]]; then
               break
             fi
-            state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46068313425" --jq '.conclusion // empty')"
-            if [[ -n "$state" ]] || ((attempt == 46)); then
+            state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46069300335" --jq '.conclusion // empty')"
+            if [[ -n "$state" ]] || ((attempt == 100)); then
               echo "The Paystack candidate is not serving the public staging site." >&2
               exit 1
             fi
-            sleep 20
+            sleep 15
           done
           python - <<'PY'
           import hashlib
