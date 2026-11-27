@@ -42,6 +42,22 @@ jobs:
           aws-region: eu-north-1
           allowed-account-ids: '110156539003'
           mask-aws-account-id: true
+      - name: Provision the staging log archive
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = 110156539003
+          aws cloudformation deploy --stack-name amaris-staging-log-archive \
+            --template-file deploy/aws/log-archive/stack.yml --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset --tags Application=Amaris-Mathematics-Academy Environment=staging
+      - name: Verify CloudWatch to Lambda to S3 delivery
+        run: |
+          python -m pip -q install boto3
+          python deploy/aws/log-archive/verify-archive.py
+      - name: Report archive provisioning failure
+        if: failure()
+        run: |
+          aws cloudformation describe-stack-events --stack-name amaris-staging-log-archive --output json |
+            jq '[.StackEvents[] | select(.ResourceStatus | endswith("FAILED")) | {LogicalResourceId, ResourceStatusReason}][:6]'
       - name: Identify Academy logging sources
         run: |
           set -euo pipefail

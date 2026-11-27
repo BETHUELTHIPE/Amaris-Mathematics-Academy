@@ -1,0 +1,147 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Amaris Mathematics Academy staging application logs and private S3 archive
+Resources:
+  ApplicationLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: RetainExceptOnCreate
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: /amaris/mathematics-academy/staging
+      RetentionInDays: 30
+  Archive:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: RetainExceptOnCreate
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'amaris-mathematics-academy-logs-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration: {Status: Enabled}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  ArchivePolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Archive
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [!GetAtt Archive.Arn, !Sub '${Archive.Arn}/*']
+            Condition:
+              Bool: {'aws:SecureTransport': 'false'}
+  FunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/amaris-mathematics-academy-staging-log-archive
+      RetentionInDays: 30
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WriteLogBatches
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: [!Sub '${Archive.Arn}/staging/*', !Sub '${Archive.Arn}/aws/lambda/async/*']
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt Archive.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt FunctionLogs.Arn
+  Writer:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: amaris-mathematics-academy-staging-log-archive
+      Role: !GetAtt FunctionRole.Arn
+      Runtime: python3.13
+      Architectures: [arm64]
+      Handler: index.handler
+      Timeout: 45
+      MemorySize: 256
+      Environment:
+        Variables:
+          BUCKET: !Ref Archive
+          ACCOUNT: !Ref AWS::AccountId
+          LOG_GROUP: !Ref ApplicationLogs
+      Code:
+        ZipFile: |
+          import base64
+          import gzip
+          import hashlib
+          import json
+          import os
+          from datetime import datetime, timezone
+          from urllib.parse import quote
+          import boto3
+          from botocore.exceptions import ClientError
+
+          s3 = boto3.client("s3")
+
+          def handler(event, context):
+              compressed = base64.b64decode(event["awslogs"]["data"], validate=True)
+              raw = gzip.decompress(compressed)
+              batch = json.loads(raw)
+              if batch["messageType"] == "CONTROL_MESSAGE":
+                  return
+              if (batch["messageType"] != "DATA_MESSAGE" or batch["owner"] != os.environ["ACCOUNT"]
+                      or batch["logGroup"] != os.environ["LOG_GROUP"] or not batch["logEvents"]):
+                  raise ValueError("Unexpected CloudWatch Logs batch")
+              first = min(row["timestamp"] for row in batch["logEvents"])
+              date = datetime.fromtimestamp(first / 1000, timezone.utc)
+              stream = quote(batch["logStream"], safe="")[:300]
+              digest = hashlib.sha256(raw).hexdigest()
+              key = f"staging/{date:%Y/%m/%d}/{stream}/{digest}.json.gz"
+              try:
+                  s3.put_object(Bucket=os.environ["BUCKET"], Key=key, Body=compressed,
+                                ContentType="application/json", ContentEncoding="gzip",
+                                IfNoneMatch="*", ExpectedBucketOwner=os.environ["ACCOUNT"])
+              except ClientError as exc:
+                  if exc.response["Error"]["Code"] != "PreconditionFailed":
+                      raise
+  FailureRecovery:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref Writer
+      Qualifier: '$LATEST'
+      MaximumEventAgeInSeconds: 21600
+      MaximumRetryAttempts: 2
+      DestinationConfig:
+        OnFailure: {Destination: !GetAtt Archive.Arn}
+  AllowLogDelivery:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Writer
+      Action: lambda:InvokeFunction
+      Principal: !Sub 'logs.${AWS::URLSuffix}'
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt ApplicationLogs.Arn
+  AllApplicationEvents:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn: [AllowLogDelivery, FailureRecovery]
+    Properties:
+      FilterName: archive-every-event
+      FilterPattern: ''
+      LogGroupName: !Ref ApplicationLogs
+      DestinationArn: !GetAtt Writer.Arn
+Outputs:
+  LogGroup: {Value: !Ref ApplicationLogs}
+  Bucket: {Value: !Ref Archive}
+  Function: {Value: !Ref Writer}
