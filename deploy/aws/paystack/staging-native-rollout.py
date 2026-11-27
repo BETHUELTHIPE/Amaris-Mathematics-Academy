@@ -137,7 +137,9 @@ def promote(spare):
     hosts = ecs.describe_container_instances(cluster=cluster, containerInstances=current_hosts)["containerInstances"]
     assert any(host["ec2InstanceId"] == spare and host["agentConnected"] for host in hosts)
     current = info["deploymentConfiguration"]
-    assert current.get("strategy", "ROLLING") == "ROLLING"
+    assert current.get("strategy", "ROLLING") in {"ROLLING", "BLUE_GREEN"}
+    constraints = info.get("placementConstraints", [])
+    assert constraints == [{"type": "distinctInstance"}], "Unexpected staging host placement policy"
     alarms = current["alarms"]
     assert alarms["enable"] and alarms["rollback"] and len(alarms["alarmNames"]) == 3
     results = session.client("cloudwatch").describe_alarms(AlarmNames=alarms["alarmNames"])["MetricAlarms"]
@@ -167,15 +169,24 @@ def promote(spare):
         "roleArn": role["Arn"],
     }
     previous_deployments = {row["serviceDeploymentArn"] for row in deployments()}
+    load_balancer_update = {}
+    if existing := old_lb.get("advancedConfiguration"):
+        assert existing == advanced, "Existing blue-green routes differ from verified staging routes"
+    else:
+        load_balancer_update["loadBalancers"] = [{**old_lb, "advancedConfiguration": advanced}]
     deployment = None
+    placement_changed = False
     try:
         ecs.update_service(
             cluster=cluster,
             service=service,
             taskDefinition=candidate,
-            loadBalancers=[{**old_lb, "advancedConfiguration": advanced}],
+            placementConstraints=[],
             deploymentConfiguration=config,
+            **load_balancer_update,
         )
+        placement_changed = True
+        print("Temporarily allowed blue and green task sets to share a host during overlap.", flush=True)
         print("Started native ECS blue-green deployment for the public staging service.", flush=True)
 
         def discovered():
@@ -248,6 +259,20 @@ def promote(spare):
                 wait_until(540, "Staging rollback did not settle", lambda: settled() and public_smoke(baseline_sha))
                 print("Staging baseline is healthy after the failed deploy attempt.", flush=True)
         raise
+    finally:
+        if placement_changed:
+            ecs.update_service(cluster=cluster, service=service, placementConstraints=constraints)
+            wait_until(45, "Staging distinct-host placement was not restored",
+                       lambda: web().get("placementConstraints") == constraints)
+            print("PASS: restored hard separation of staging replicas for normal scheduling.", flush=True)
+
+
+def distinct_running_hosts():
+    tasks = probe["service_tasks"]()
+    if len(tasks) != 2:
+        return False
+    rows = ecs.describe_tasks(cluster=cluster, tasks=list(tasks))["tasks"]
+    return len({task["containerInstanceArn"] for task in rows if task["lastStatus"] == "RUNNING"}) == 2
 
 
 def terminated(signum, _frame):
@@ -256,6 +281,12 @@ def terminated(signum, _frame):
 
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, terminated)
-    if sys.argv[1] in {"check", "check-drain"}:
-        raise SystemExit(0 if settled(verify_public=sys.argv[1] == "check") else 1)
+    if sys.argv[1] in {"check", "check-drain", "check-final"}:
+        mode = sys.argv[1]
+        result = settled(verify_public=mode != "check-drain")
+        if result and mode == "check-final":
+            result = distinct_running_hosts() and web().get("placementConstraints") == [{"type": "distinctInstance"}]
+            if result:
+                print("PASS: two healthy staging replicas run on distinct permanent hosts.", flush=True)
+        raise SystemExit(0 if result else 1)
     promote(sys.argv[1])

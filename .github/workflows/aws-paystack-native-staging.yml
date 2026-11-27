@@ -47,10 +47,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          for attempt in {1..20}; do
-            verdict="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46068205023" --jq '.conclusion // empty')"
+          for attempt in {1..65}; do
+            verdict="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46069190765" --jq '.conclusion // empty')"
             if [[ "$verdict" == success ]]; then break; fi
-            [[ -z "$verdict" && "$attempt" -lt 20 ]]
+            [[ -z "$verdict" && "$attempt" -lt 65 ]]
             sleep 10
           done
           for run in 46059730757 46060920155 46064280648 46065439979 46065635240; do

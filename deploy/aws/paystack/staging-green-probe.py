@@ -139,7 +139,8 @@ def main(spare):
     web, = ecs.describe_services(cluster=CLUSTER, services=[SERVICE])["services"]
     load_balancer, = web["loadBalancers"]
     assert load_balancer["containerName"] == "cms" and load_balancer["containerPort"] == 8080
-    assert not load_balancer.get("advancedConfiguration")
+    if spare != "preflight":
+        assert not load_balancer.get("advancedConfiguration")
     primary = load_balancer["targetGroupArn"]
     blue, = elb.describe_target_groups(TargetGroupArns=[primary])["TargetGroups"]
     green, = elb.describe_target_groups(Names=["amaris-staging-web-green"])["TargetGroups"]
@@ -158,6 +159,9 @@ def main(spare):
                     assert not rule["IsDefault"]
                     green_rules.append(rule)
     assert len(green_rules) == 1, "Expected one private rule for the green group"
+    if advanced := load_balancer.get("advancedConfiguration"):
+        assert advanced["alternateTargetGroupArn"] == alternate
+        assert advanced["testListenerRule"] == green_rules[0]["RuleArn"]
     lb, = elb.describe_load_balancers(LoadBalancerArns=[alb])["LoadBalancers"]
     nodes = private_alb_nodes(lb)
     baseline = service_tasks()

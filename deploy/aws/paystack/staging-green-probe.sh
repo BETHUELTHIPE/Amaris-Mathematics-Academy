@@ -112,7 +112,11 @@ cleanup() {
     aws cloudformation wait stack-delete-complete --stack-name "$stack" || exit 1
     echo "PASS: temporary t4g.small stack and encrypted root volume removed."
   fi
-  healthy || exit 1
+  if [[ "$mode" == native ]]; then
+    healthy -final || exit 1
+  else
+    healthy || exit 1
+  fi
   exit "$result"
 }
 trap cleanup EXIT
