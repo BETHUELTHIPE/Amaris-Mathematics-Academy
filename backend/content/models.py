@@ -584,6 +584,10 @@ class TutorAvailabilitySlot(TimeStampedModel):
 
 
 class LiveClassBooking(TimeStampedModel):
+    class PaymentProvider(models.TextChoices):
+        PAYFAST = "payfast", "PayFast"
+        PAYSTACK = "paystack", "Paystack"
+
     class Status(models.TextChoices):
         PENDING_PAYMENT = "pending_payment", "Pending payment"
         CONFIRMED = "confirmed", "Confirmed"
@@ -610,6 +614,11 @@ class LiveClassBooking(TimeStampedModel):
         db_index=True,
     )
     hold_expires_at = models.DateTimeField(default=live_class_hold_expiry, db_index=True)
+    payment_provider = models.CharField(
+        max_length=12, choices=PaymentProvider.choices, default=PaymentProvider.PAYFAST, db_default="payfast"
+    )
+    paystack_checkout_url = models.URLField(max_length=500, blank=True, editable=False, db_default="")
+    paystack_mode = models.CharField(max_length=4, blank=True, editable=False, db_default="")
     provider_reference = models.CharField(max_length=160, blank=True)
     paid_at = models.DateTimeField(blank=True, null=True)
     gateway_verified_at = models.DateTimeField(blank=True, null=True)
@@ -626,7 +635,12 @@ class LiveClassBooking(TimeStampedModel):
                 fields=("slot",),
                 condition=models.Q(status__in=("pending_payment", "confirmed")),
                 name="liveclass_active_slot_unique",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=("provider_reference",),
+                condition=models.Q(payment_provider="paystack") & ~models.Q(provider_reference=""),
+                name="liveclass_paystack_transaction_unique",
+            ),
         ]
         indexes = [
             models.Index(fields=("student", "status", "-created_at"), name="liveclass_student_status_idx"),

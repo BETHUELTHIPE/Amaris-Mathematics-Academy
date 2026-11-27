@@ -70,6 +70,7 @@ class InvoiceDocument:
     lines: tuple[InvoiceLine, ...]
     total: Decimal
     status: Literal["Paid", "Template"] = "Paid"
+    payment_provider: str = "PayFast"
 
 
 @lru_cache(maxsize=1)
@@ -283,7 +284,7 @@ def render_document(document: InvoiceDocument) -> bytes:
                     Spacer(1, 7),
                     _paragraph(
                         (
-                            "Payment verified through PayFast. "
+                            f"Payment verified through {document.payment_provider}. "
                             "Your invoice is linked to the verified payment reference below."
                             if document.status == "Paid"
                             else "SAMPLE - NOT ISSUED. This preview is not a payment receipt."

@@ -553,7 +553,7 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
         "admin_confirmation_sent_at",
         "reminder_sent_at",
     )
-    list_filter = ("status", "programme", "subject", "slot__starts_at")
+    list_filter = ("status", "payment_provider", "programme", "subject", "slot__starts_at")
     search_fields = (
         "reference",
         "student__email",
@@ -576,6 +576,7 @@ class LiveClassBookingAdmin(TimeStampedAdmin):
         "currency",
         "status",
         "hold_expires_at",
+        "payment_provider",
         "provider_reference",
         "paid_at",
         "gateway_verified_at",
