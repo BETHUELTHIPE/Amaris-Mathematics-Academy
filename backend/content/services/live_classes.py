@@ -292,6 +292,10 @@ def process_paystack_live_class_payment(reference: str) -> str:
                 "updated_at",
             )
         )
+        if booking.status == LiveClassBooking.Status.CONFIRMED and booking.paystack_mode == "live":
+            from content.services.tutor_finance import record_live_class_sale
+
+            record_live_class_sale(booking)
         return booking.status
 
 
