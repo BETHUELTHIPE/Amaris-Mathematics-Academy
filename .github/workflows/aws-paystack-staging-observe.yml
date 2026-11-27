@@ -1,0 +1,67 @@
+name: Observe the public Paystack staging rollout
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-staging-observe.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-paystack-staging-observe
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Report the ECS deployment and staging API status
+        run: |
+          set -euo pipefail
+          cluster=amaris-ecs-staging
+          service=amaris-web-staging-stateless
+          state="$(aws ecs describe-services --cluster "$cluster" --services "$service" --output json)"
+          jq -e '.services | length == 1 and .[0].serviceName == "amaris-web-staging-stateless"' <<< "$state" >/dev/null
+          jq '.services[0] | {runningCount,desiredCount,pendingCount,revision:(.taskDefinition | split("/")[-1]),strategy:(.deploymentConfiguration.strategy // "ROLLING")}' <<< "$state"
+          recent="$(aws ecs list-service-deployments --cluster "$cluster" --service "$service" --max-results 4 --no-paginate --output json)"
+          jq '[.serviceDeployments[] | {status,createdAt}]' <<< "$recent"
+          latest="$(jq -r '.serviceDeployments[0].serviceDeploymentArn // empty' <<< "$recent")"
+          if [[ -n "$latest" ]]; then
+            aws ecs describe-service-deployments --service-deployment-arns "$latest" --output json |
+              jq '.serviceDeployments[0] | {status,lifecycleStage,hookStates:[.lifecycleHookDetails[]? | .status],alarms:.alarms.status}'
+          fi
+          for group in amaris-staging-stateless amaris-staging-web-green; do
+            arn="$(aws elbv2 describe-target-groups --names "$group" --query 'TargetGroups[0].TargetGroupArn' --output text)"
+            aws elbv2 describe-target-health --target-group-arn "$arn" --output json |
+              jq --arg group "$group" '{group:$group,states:[.TargetHealthDescriptions[] | .TargetHealth.State]}'
+          done
+          origin=https://16.171.164.5
+          curl -fsS --max-time 12 "$origin/health/version/" | jq '{git_sha}'
+          curl -fsS --max-time 12 "$origin/health/dependencies/" | jq '{dependencies}'
+          curl -sS --max-time 12 -o /dev/null -w 'Webhook GET HTTP %{http_code}\n' "$origin/api/v1/paystack/webhook/"
+          curl -sS --max-time 12 -o /dev/null -w 'Unsigned webhook POST HTTP %{http_code}\n' -X POST "$origin/api/v1/paystack/webhook/"
