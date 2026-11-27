@@ -1,0 +1,120 @@
+name: Check managed backup of actual AWS staging database
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-managed-backup.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-paystack-managed-backup
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Confirm actual ECS database identity without printing credentials
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          cat > "$RUNNER_TEMP/database-identity.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          task="$1"
+          [[ "$task" =~ ^[a-f0-9]{32}$ ]]
+          backend="$(docker ps -q --filter "label=com.amazonaws.ecs.task-arn=arn:aws:ecs:eu-north-1:110156539003:task/amaris-ecs-staging/$task" --filter label=com.amazonaws.ecs.container-name=backend)"
+          [[ "$backend" =~ ^[a-f0-9]{12,64}$ ]]
+          docker exec -i "$backend" python - <<'PY'
+          import os, re
+          from urllib.parse import urlsplit
+          for line in os.environ.pop("AMARIS_RUNTIME_ENV", "").splitlines():
+              k, sep, v = line.partition("=")
+              if sep:
+                  os.environ.setdefault(k, v)
+          value = urlsplit(os.environ.get("DATABASE_URL", ""))
+          ref = "atyhhjwwxgzeurnwayay"
+          host = value.hostname or ""
+          direct = host == "db." + ref + ".supabase.co"
+          pooled = host.endswith(".pooler.supabase.com") and (value.username or "").endswith("." + ref)
+          if value.scheme not in ("postgres", "postgresql") or not (direct or pooled) or value.path != "/postgres":
+              raise SystemExit("BLOCKED: live AWS database does not match the pinned staging Supabase project.")
+          print("PASS: actual AWS backend uses pinned staging Supabase database")
+          PY
+          SH
+          python - <<'PY'
+          import boto3, subprocess, os
+          ecs = boto3.client("ecs")
+          assert boto3.client("sts").get_caller_identity()["Account"] == "110156539003"
+          cluster = "amaris-ecs-staging"
+          service = "amaris-web-staging-stateless"
+          state = ecs.describe_services(cluster=cluster, services=[service])["services"][0]
+          assert state["runningCount"] == state["desiredCount"] == 2 and state["pendingCount"] == 0
+          ids = ecs.list_tasks(cluster=cluster, serviceName=service, desiredStatus="RUNNING")["taskArns"]
+          assert len(ids) == 2
+          for task in ecs.describe_tasks(cluster=cluster, tasks=ids)["tasks"]:
+              host = ecs.describe_container_instances(cluster=cluster, containerInstances=[task["containerInstanceArn"]])["containerInstances"][0]["ec2InstanceId"]
+              subprocess.run(["bash", "deploy/aws/ecs/run-on-host.sh", host, os.environ["RUNNER_TEMP"] + "/database-identity.sh", task["taskArn"].rsplit("/", 1)[-1]], check=True)
+          PY
+      - name: Read Supabase managed backup metadata only
+        env:
+          TOKEN: ${{ secrets.SUPABASE_STAGING_ACCESS_TOKEN || secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os, json, urllib.request, urllib.error
+          from datetime import datetime, timezone, timedelta
+          token = os.environ.get("TOKEN", "").strip()
+          if not token:
+              raise SystemExit("BLOCKED: Supabase management access token unavailable in staging.")
+          url = "https://api.supabase.com/v1/projects/atyhhjwwxgzeurnwayay/database/backups"
+          try:
+              with urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": "Bearer " + token}), timeout=20) as response:
+                  payload = json.load(response)
+          except urllib.error.HTTPError as exc:
+              raise SystemExit("BLOCKED: backup metadata API HTTP " + str(exc.code))
+          except Exception as exc:
+              raise SystemExit("BLOCKED: backup metadata API " + type(exc).__name__)
+          now = datetime.now(timezone.utc)
+          times = []
+          for b in payload.get("backups", []):
+              if b.get("status") == "COMPLETED":
+                  try:
+                      dt = datetime.fromisoformat(b["inserted_at"].replace("Z", "+00:00"))
+                      if dt.tzinfo and now - timedelta(hours=48) <= dt <= now + timedelta(minutes=5):
+                          times.append(dt)
+                  except (ValueError, KeyError, TypeError):
+                      pass
+          if not times:
+              raise SystemExit("BLOCKED: no completed managed backup within 48 hours confirmed.")
+          print("PASS: recent managed staging backup exists:", max(times).isoformat())
+          print("Backup metadata only; isolated restoration and recovery procedure remain unverified.")
+          PY

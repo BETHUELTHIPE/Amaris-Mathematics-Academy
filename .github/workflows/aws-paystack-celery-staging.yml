@@ -1,0 +1,139 @@
+name: Verify and release the Paystack staging worker and Beat
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-celery-staging.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-jobs
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: staging
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify release gating and start the matching singleton runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..90}; do
+            result="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46070792339" --jq '.conclusion // empty')"
+            if [[ "$result" == success ]]; then break; fi
+            if [[ -n "$result" ]] || ((attempt == 90)); then
+              echo 'The blue-green staging web rollout has not completed successfully.' >&2
+              exit 1
+            fi
+            sleep 14
+          done
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import json
+          import time
+          from urllib.request import urlopen
+
+          import boto3
+
+          account = "110156539003"
+          cluster = "amaris-ecs-staging"
+          web = "amaris-web-staging-stateless"
+          jobs = "amaris-staging-singleton-jobs"
+          region = "eu-north-1"
+          image = "sha256:bc67977a14b7f91bc5e095715d413367e84595666c96ba41e237e1820df88d30"
+          session = boto3.Session(region_name=region)
+          assert session.client("sts").get_caller_identity()["Account"] == account
+          ecs = session.client("ecs")
+
+          def service(name):
+              state, = ecs.describe_services(cluster=cluster, services=[name])["services"]
+              return state
+
+          def ready(revision):
+              state = service(jobs)
+              if state["taskDefinition"] != revision or state["runningCount"] != 1 or state["pendingCount"]:
+                  return False
+              if len(state["deployments"]) != 1 or state["deployments"][0].get("rolloutState") != "COMPLETED":
+                  return False
+              arns = ecs.list_tasks(cluster=cluster, serviceName=jobs, desiredStatus="RUNNING")["taskArns"]
+              if len(arns) != 1:
+                  return False
+              if not (tasks := ecs.describe_tasks(cluster=cluster, tasks=arns)["tasks"]):
+                  return False
+              task = tasks[0]
+              return task["lastStatus"] == "RUNNING" and {
+                  item["name"] for item in task["containers"]
+                  if item["lastStatus"] == "RUNNING" and item.get("healthStatus") == "HEALTHY" and
+                  (revision == before or item.get("imageDigest") == image)
+              } == {"celery-worker", "celery-beat"}
+
+          def verify_site():
+              assert service(web)["taskDefinition"].endswith("/amaris-ecs-staging-alb-web:17")
+              with urlopen("https://16.171.164.5/health/version/", timeout=12) as response:
+                  assert json.load(response)["git_sha"] == "164838a3143c22cc7b60ab669e1f0c7dca616a0f"
+              with urlopen("https://16.171.164.5/health/dependencies/", timeout=12) as response:
+                  dependencies = json.load(response)["dependencies"]
+                  assert dependencies["postgresql"] and dependencies["redis"]
+
+          def wait_stable(revision, seconds):
+              end = time.monotonic() + seconds
+              while time.monotonic() < end:
+                  if ready(revision):
+                      return
+                  time.sleep(8)
+              raise SystemExit("Singleton worker and Beat did not become healthy.")
+
+          verify_site()
+          current = service(jobs)
+          before = current["taskDefinition"]
+          assert before.endswith("/amaris-ecs-staging-singleton-jobs:2")
+          assert current["desiredCount"] == 1 and ready(before)
+          config = current["deploymentConfiguration"]
+          assert config["minimumHealthyPercent"] == 0 and config["maximumPercent"] == 100
+          next_task = ecs.describe_task_definition(
+              taskDefinition="amaris-ecs-staging-singleton-jobs:3"
+          )["taskDefinition"]
+          assert next_task["runtimePlatform"]["cpuArchitecture"] == "ARM64" and not next_task["volumes"]
+          assert {item["name"] for item in next_task["containerDefinitions"]} == {"celery-worker", "celery-beat"}
+          for item in next_task["containerDefinitions"]:
+              assert item["image"].endswith("@" + image)
+              assert {"name": "PAYSTACK_ENABLED", "value": "false"} in item["environment"]
+              assert any(secret["name"] == "PAYSTACK_SECRET_KEY" for secret in item["secrets"])
+          next_revision = next_task["taskDefinitionArn"]
+          ecs.update_service(cluster=cluster, service=jobs, taskDefinition=next_revision)
+          try:
+              wait_stable(next_revision, 270)
+              verify_site()
+          except BaseException:
+              ecs.update_service(cluster=cluster, service=jobs, taskDefinition=before)
+              wait_stable(before, 270)
+              print("PASS: recovered the previous healthy singleton staging task.")
+              raise
+          print("PASS: one healthy Celery worker and one healthy Beat container use the verified Paystack image.")
+          PY

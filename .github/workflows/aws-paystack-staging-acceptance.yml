@@ -1,0 +1,161 @@
+name: Paystack AWS staging acceptance preflight
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-staging-acceptance.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-paystack-readonly-preflight
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Inspect live staging baseline and rollback readiness
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import boto3, json, re, urllib.request, urllib.error
+          assert boto3.client("sts").get_caller_identity()["Account"] == "110156539003"
+          ecs = boto3.client("ecs")
+          elb = boto3.client("elbv2")
+          cw = boto3.client("cloudwatch")
+          cluster = "amaris-ecs-staging"
+          for name, minimum in (("amaris-web-staging-stateless", 2), ("amaris-staging-singleton-jobs", 1)):
+              svc = ecs.describe_services(cluster=cluster, services=[name])["services"][0]
+              assert svc["status"] == "ACTIVE" and svc["runningCount"] == svc["desiredCount"] and svc["runningCount"] >= minimum and svc["pendingCount"] == 0, "Service not stable"
+              task = ecs.describe_task_definition(taskDefinition=svc["taskDefinition"])["taskDefinition"]
+              print("Service", name, "revision", task["revision"], "running", svc["runningCount"])
+              for c in task["containerDefinitions"]:
+                  env = {x["name"]: x["value"] for x in c.get("environment", [])}
+                  keys = {x["name"] for x in c.get("secrets", [])}
+                  if c["name"] in ("backend", "frontend", "worker", "beat", "celery-worker", "celery-beat"):
+                      print("Container", c["name"], "Paystack secret mapping", "present" if "PAYSTACK_SECRET_KEY" in keys else "absent",
+                            "webhook secret mapping", "present" if "PAYSTACK_WEBHOOK_SECRET" in keys else "absent")
+                      mode = env.get("PAYSTACK_MODE")
+                      print("Paystack mode", mode if mode in ("test", "live") else "unset or invalid",
+                            "enabled", env.get("PAYSTACK_ENABLED", "").lower() == "true")
+                  for value in c.get("entryPoint", []) + c.get("command", []):
+                      for sha in re.findall(r"RELEASE_GIT_SHA=([a-f0-9]{40})", value):
+                          print("Pinned release", c["name"], sha)
+              if name == "amaris-web-staging-stateless":
+                  cfg = svc["deploymentConfiguration"]
+                  print("Deployment strategy", cfg.get("strategy", "ROLLING"))
+                  print("Circuit breaker rollback", cfg.get("deploymentCircuitBreaker", {}).get("rollback", False))
+                  alarms = cfg.get("alarms", {})
+                  alarm_names = alarms.get("alarmNames", [])
+                  actual = cw.describe_alarms(AlarmNames=alarm_names)["MetricAlarms"] if alarm_names else []
+                  print("Rollback alarms configured", len(alarm_names), "OK", sum(a["StateValue"] == "OK" for a in actual))
+                  for lb in svc.get("loadBalancers", []):
+                      targets = elb.describe_target_health(TargetGroupArn=lb["targetGroupArn"])["TargetHealthDescriptions"]
+                      print("Healthy ALB targets", sum(t["TargetHealth"]["State"] == "healthy" for t in targets))
+          nat = boto3.client("ec2").describe_instances(InstanceIds=["i-02855f007d15af597"])["Reservations"][0]["Instances"][0]
+          assert nat["VpcId"] == "vpc-0252538d2febd4641" and nat["State"]["Name"] == "running"
+          import ipaddress
+          public_ip = ipaddress.ip_address(nat["PublicIpAddress"])
+          assert public_ip.version == 4 and public_ip.is_global
+          print("Existing staging NAT public IPv4 for Paystack test allowlist:", public_ip)
+          origin = "https://16.171.164.5"
+          with urllib.request.urlopen(origin + "/health/version/", timeout=15) as response:
+              sha = json.load(response).get("git_sha", "")
+          assert re.fullmatch(r"[a-f0-9]{40}", sha), "No trusted baseline revision"
+          print("Public backend revision:", sha)
+          with urllib.request.urlopen(origin + "/health/dependencies/", timeout=15) as response:
+              deps = json.load(response)["dependencies"]
+          assert deps["postgresql"] and deps["redis"], "Unhealthy dependencies"
+          print("PASS: PostgreSQL and Redis dependency health")
+          try:
+              with urllib.request.urlopen(origin + "/api/v1/paystack/webhook/", timeout=15) as response:
+                  status = response.status
+          except urllib.error.HTTPError as exc:
+              status = exc.code
+          print("Public webhook GET status:", status, "(405 expected when route is deployed)")
+          PY
+      - name: Install AWS Session Manager client for NAT-only API check
+        run: |
+          set -euo pipefail
+          if ! command -v session-manager-plugin >/dev/null; then
+            curl --fail --silent --show-error --proto '=https' --tlsv1.2 https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb -o "$RUNNER_TEMP/session-manager-plugin.deb"
+            sudo dpkg -i "$RUNNER_TEMP/session-manager-plugin.deb" >/dev/null
+          fi
+      - name: Verify Paystack through the existing staging NAT without storing the key on AWS
+        env:
+          PAYSTACK_STAGING_TEST_KEY: ${{ secrets.PAYSTACK_TEST_SECRET_KEY || secrets.PAYSTACK_SECRET_KEY }}
+          PAYSTACK_STAGING_WEBHOOK_SECRET: ${{ secrets.PAYSTACK_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          umask 077
+          session_log="$RUNNER_TEMP/paystack-ssm.log"
+          aws ssm start-session --target i-02855f007d15af597 --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters '{"host":["api.paystack.co"],"portNumber":["443"],"localPortNumber":["18443"]}' >"$session_log" 2>&1 &
+          session_pid=$!
+          cleanup() {
+            sid="$(sed -n 's/.*Starting session with SessionId: \([^[:space:]]*\).*/\1/p' "$session_log" | head -1)"
+            if [[ -n "$sid" ]]; then
+              aws ssm terminate-session --session-id "$sid" >/dev/null 2>&1 || true
+            fi
+            kill "$session_pid" 2>/dev/null || true
+            wait "$session_pid" 2>/dev/null || true
+            rm -f "$session_log"
+          }
+          trap cleanup EXIT
+          python - <<'PY'
+          import http.client, json, os, socket, ssl, time
+          key = os.environ.get("PAYSTACK_STAGING_TEST_KEY", "").strip()
+          if not key.startswith("sk_test_"):
+              raise SystemExit("BLOCKED: test secret missing or not a test key.")
+          print("Timestamped webhook secret:", "present" if os.environ.get("PAYSTACK_STAGING_WEBHOOK_SECRET", "").startswith("whsec_") else "missing")
+          class NATConnection(http.client.HTTPSConnection):
+              def connect(self):
+                  raw = socket.create_connection(("127.0.0.1", 18443), timeout=12)
+                  self.sock = ssl.create_default_context().wrap_socket(raw, server_hostname="api.paystack.co")
+          for _ in range(25):
+              try:
+                  conn = NATConnection("api.paystack.co", timeout=12)
+                  conn.connect()
+                  break
+              except (OSError, ssl.SSLError):
+                  time.sleep(2)
+          else:
+              raise SystemExit("BLOCKED: AWS SSM NAT tunnel could not be opened; check session permissions and agent.")
+          try:
+              conn.request("GET", "/transaction?perPage=1", headers={"Authorization": "Bearer " + key})
+              response = conn.getresponse()
+              status = response.status
+              if status != 200:
+                  raise SystemExit("BLOCKED: Paystack API from approved NAT returned HTTP " + str(status))
+              if json.loads(response.read(1024 * 1024)).get("status") is not True:
+                  raise SystemExit("BLOCKED: Paystack response did not confirm credential validity.")
+              print("PASS: authenticated test API through staging NAT; no payment created.")
+          finally:
+              conn.close()
+          PY

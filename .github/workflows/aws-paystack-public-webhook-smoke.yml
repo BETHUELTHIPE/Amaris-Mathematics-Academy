@@ -1,0 +1,105 @@
+name: Verify public staging webhook signature handling
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-public-webhook-smoke.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-paystack-public-webhook-smoke
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Validate the deployed public webhook without creating a booking or payment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          for attempt in {1..100}; do
+            sha="$(curl --silent --fail --max-time 10 https://16.171.164.5/health/version/ | jq -r '.git_sha' || true)"
+            if [[ "$sha" == 164838a3143c22cc7b60ab669e1f0c7dca616a0f ]]; then
+              break
+            fi
+            state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46070792339" --jq '.conclusion // empty')"
+            if [[ -n "$state" ]] || ((attempt == 100)); then
+              echo "The Paystack candidate is not serving the public staging site." >&2
+              exit 1
+            fi
+            sleep 15
+          done
+          python - <<'PY'
+          import hashlib
+          import hmac
+          import json
+          from urllib.error import HTTPError
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+          import boto3
+
+          ssm = boto3.client("ssm")
+          account = "110156539003"
+          assert boto3.client("sts").get_caller_identity()["Account"] == account
+          name = "/amaris/aws-staging/paystack/test-secret-key"
+          parameter = ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]
+          assert parameter["Type"] == "SecureString"
+          assert parameter["ARN"] == f"arn:aws:ssm:eu-north-1:{account}:parameter{name}"
+          key = parameter["Value"]
+          assert key.startswith("sk_test_")
+          event = b'{"event":"amaris.staging.signature_probe"}'
+          digest = hmac.new(key.encode(), event, hashlib.sha512).hexdigest()
+          url = "https://16.171.164.5/api/v1/paystack/webhook/"
+
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, request, fp, code, message, headers, new_url):
+                  return None
+
+          opener = build_opener(NoRedirect)
+
+          def post(body, signature=None):
+              headers = {"Content-Type": "application/json"}
+              if signature:
+                  headers["X-Paystack-Signature"] = signature
+              try:
+                  with opener.open(Request(url, data=body, headers=headers, method="POST"), timeout=12) as response:
+                      return response.status, json.load(response)
+              except HTTPError as error:
+                  return error.code, None
+
+          assert post(event)[0] == 403, "Unsigned request was not rejected"
+          assert post(event + b" ", digest)[0] == 403, "Changed request body was not rejected"
+          assert post(event, digest) == (200, {"status": "ignored"}), "Signed test event was not accepted"
+          print("PASS: the public staging endpoint accepts a correctly signed legacy test event and rejects unsigned or altered events.")
+          print("This probe did not create a booking, send an email or make a payment.")
+          PY

@@ -1,0 +1,58 @@
+name: Prepare inactive Paystack ECS task revisions and inspect capacity budget
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-candidate-tasks.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Prepare inactive task definitions only
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          python deploy/aws/paystack/candidate-tasks.py
+      - name: Diagnose approved host prerequisites without launching compute
+        run: |
+          set -euo pipefail
+          aws budgets describe-budget --region us-east-1 --account-id 110156539003 --budget-name Amaris-Monthly-Cost --query 'Budget.{Limit:BudgetLimit,Actual:CalculatedSpend.ActualSpend,Forecast:CalculatedSpend.ForecastedSpend}' --output json
+          aws freetier get-account-plan-state --region us-east-1 --query '{Type:accountPlanType,Status:accountPlanStatus}' --output json
+          aws service-quotas get-service-quota --service-code ec2 --quota-code L-1216C47A --query 'Quota.{Name:QuotaName,VCPUs:Value}' --output json
+          aws ec2 describe-instances --filters Name=vpc-id,Values=vpc-0252538d2febd4641 Name=instance-state-name,Values=running,pending --query 'Reservations[].Instances[].{Type:InstanceType,State:State.Name}' --output json
+          echo "No host launched or budget altered."

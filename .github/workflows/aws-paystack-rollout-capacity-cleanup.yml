@@ -1,0 +1,101 @@
+name: Reconcile temporary capacity after Paystack rollback
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-rollout-capacity-cleanup.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-paystack-capacity-cleanup
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 19
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Remove only the finished rollout's empty staging host
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release=46068313425
+          for attempt in {1..65}; do
+            if [[ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$release" --jq '.status')" == completed ]]; then
+              break
+            fi
+            if ((attempt == 65)); then
+              echo 'The original rollout is still managing the temporary host.' >&2
+              exit 1
+            fi
+            sleep 12
+          done
+          stack="amaris-staging-paystack-green-${release}-1"
+          if ! status="$(aws cloudformation describe-stacks --stack-name "$stack" --output json 2>&1)"; then
+            if [[ "$status" == *"does not exist"* ]]; then
+              echo 'PASS: the original rollout removed the temporary stack.'
+              exit 0
+            fi
+            exit 1
+          fi
+          instance="$(jq -er '.Stacks[0] | select(.StackStatus=="CREATE_COMPLETE" or .StackStatus=="DELETE_FAILED") |
+            select((.Tags|map({key:.Key,value:.Value})|from_entries) == {"Project":"Amaris","Environment":"staging","Purpose":"paystack-green-validation"}) |
+            .Outputs[] | select(.OutputKey=="InstanceId").OutputValue' <<< "$status")"
+          [[ "$instance" =~ ^i-[0-9a-f]+$ ]]
+          cluster=amaris-ecs-staging
+          web=amaris-web-staging-stateless
+          state="$(aws ecs describe-services --cluster "$cluster" --services "$web" --output json)"
+          primary="$(jq -er '.services[0] | select(.taskDefinition | endswith("/amaris-ecs-staging-alb-web:14")) |
+            select(.desiredCount==2 and .runningCount==2 and .pendingCount==0 and (.deployments|length)==1) |
+            .loadBalancers[0].targetGroupArn' <<< "$state")"
+          aws elbv2 describe-target-health --target-group-arn "$primary" --output json |
+            jq -e '[.TargetHealthDescriptions[] | select(.TargetHealth.State=="healthy")]|length==2' >/dev/null
+          aws ec2 describe-instances --instance-ids "$instance" --output json |
+            jq -e '.Reservations[0].Instances[0] | .VpcId=="vpc-0252538d2febd4641" and .InstanceType=="t4g.small" and
+              .PublicIpAddress==null and (.NetworkInterfaces|length)==1' >/dev/null
+
+          ids="$(aws ecs list-container-instances --cluster "$cluster" --status DRAINING --output json)"
+          mapfile -t hosts < <(jq -r '.containerInstanceArns[]' <<< "$ids")
+          if (( ${#hosts[@]} )); then
+            record="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "${hosts[@]}" --output json)"
+            arn="$(jq -r --arg instance "$instance" '.containerInstances[] | select(.ec2InstanceId==$instance) |
+              select(.runningTasksCount==0 and .pendingTasksCount==0) | .containerInstanceArn' <<< "$record")"
+            [[ -n "$arn" ]]
+            aws ecs deregister-container-instance --cluster "$cluster" --container-instance "$arn" --query containerInstance.status --output text
+          fi
+          # Abort if AWS still reports the dedicated host in active ECS.
+          ids="$(aws ecs list-container-instances --cluster "$cluster" --status ACTIVE --output json)"
+          mapfile -t hosts < <(jq -r '.containerInstanceArns[]' <<< "$ids")
+          aws ecs describe-container-instances --cluster "$cluster" --container-instances "${hosts[@]}" --output json |
+            jq -e --arg instance "$instance" '.containerInstances | all(.ec2InstanceId != $instance)' >/dev/null
+
+          aws cloudformation delete-stack --stack-name "$stack"
+          aws cloudformation wait stack-delete-complete --stack-name "$stack"
+          echo 'PASS: empty temporary host and its stack were removed.'

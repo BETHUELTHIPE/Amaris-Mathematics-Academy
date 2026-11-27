@@ -1,0 +1,125 @@
+name: Observe the public Paystack staging rollout
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-staging-observe.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-paystack-staging-observe
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Report the ECS deployment and staging API status
+        run: |
+          set -euo pipefail
+          cluster=amaris-ecs-staging
+          service=amaris-web-staging-stateless
+          state="$(aws ecs describe-services --cluster "$cluster" --services "$service" --output json)"
+          jq -e '.services | length == 1 and .[0].serviceName == "amaris-web-staging-stateless"' <<< "$state" >/dev/null
+          jq '.services[0] | {runningCount,desiredCount,pendingCount,revision:(.taskDefinition | split("/")[-1]),deployments:[.deployments[] | {status,runningCount,pendingCount,rolloutState}],strategy:(.deploymentConfiguration.strategy // "ROLLING")}' <<< "$state"
+          jq '.services[0] | [.events[0:5][] | {createdAt,message}]' <<< "$state"
+          recent="$(aws ecs list-service-deployments --cluster "$cluster" --service "$service" --max-results 4 --no-paginate --output json)"
+          jq '[.serviceDeployments[] | {status,createdAt}]' <<< "$recent"
+          latest="$(jq -r '.serviceDeployments[0].serviceDeploymentArn // empty' <<< "$recent")"
+          if [[ -n "$latest" ]]; then
+            aws ecs describe-service-deployments --service-deployment-arns "$latest" --output json |
+              jq '.serviceDeployments[0] | {status,statusReason,lifecycleStage,hookStates:[.lifecycleHookDetails[]? | .status],alarms:.alarms.status}'
+          fi
+          for group in amaris-staging-stateless amaris-staging-web-green; do
+            arn="$(aws elbv2 describe-target-groups --names "$group" --query 'TargetGroups[0].TargetGroupArn' --output text)"
+            aws elbv2 describe-target-health --target-group-arn "$arn" --output json |
+              jq --arg group "$group" '{group:$group,states:[.TargetHealthDescriptions[] | .TargetHealth.State]}'
+          done
+          aws ec2 describe-instances --filters Name=vpc-id,Values=vpc-0252538d2febd4641 Name=instance-state-name,Values=pending,running,shutting-down \
+            --query 'Reservations[].Instances[].{type:InstanceType,state:State.Name,purpose:Tags[?Key==`Purpose`].Value|[0]}'
+          if snapshot="$(aws cloudformation describe-stacks --stack-name amaris-staging-paystack-green-46066676826-1 --query 'Stacks[0].StackStatus' --output text 2>/dev/null)"; then
+            echo "Temporary capacity stack status $snapshot"
+          fi
+          for status in ACTIVE DRAINING REGISTERING REGISTRATION_FAILED; do
+            ids="$(aws ecs list-container-instances --cluster "$cluster" --status "$status" --output json)"
+            mapfile -t hosts < <(jq -r '.containerInstanceArns[]' <<< "$ids")
+            if (( ${#hosts[@]} )); then
+              aws ecs describe-container-instances --cluster "$cluster" --container-instances "${hosts[@]}" --output json |
+                jq '[.containerInstances[] | {status,agentConnected,runningTasksCount,pendingTasksCount}]'
+            fi
+          done
+          jq '.services[0] | {placementConstraints,placementStrategy,availabilityZoneRebalancing,launchType,capacityProviderStrategy}' <<< "$state"
+          stopped="$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" --desired-status STOPPED --output json)"
+          mapfile -t failed_tasks < <(jq -r '.taskArns[0:32][]' <<< "$stopped")
+          if (( ${#failed_tasks[@]} )); then
+            aws ecs describe-tasks --cluster "$cluster" --tasks "${failed_tasks[@]}" --output json |
+              jq '[.tasks[] | select(.taskDefinitionArn | endswith(":17")) |
+                {Task:(.taskArn|split("/")[-1]),az:.availabilityZone,stopCode,stoppedReason:(.stoppedReason|split("\\n")[0]|.[0:450]),
+                 containers:[.containers[] | {name,exitCode,reason:(.reason//""|split("\\n")[0]|.[0:250])}]}]'
+          fi
+          origin=https://16.171.164.5
+          curl -sSL --max-time 12 -o /dev/null -w 'Homepage HTTP %{http_code}\n' "$origin/"
+          curl -fsS --max-time 12 "$origin/health/version/" | jq '{git_sha}'
+          curl -fsS --max-time 12 "$origin/health/dependencies/" | jq '{dependencies}'
+          curl -sS --max-time 12 -o /dev/null -w 'Webhook GET HTTP %{http_code}\n' "$origin/api/v1/paystack/webhook/"
+          curl -sS --max-time 12 -o /dev/null -w 'Unsigned webhook POST HTTP %{http_code}\n' -X POST "$origin/api/v1/paystack/webhook/"
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Reproduce the release drain checks without changing resources
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          if python deploy/aws/paystack/staging-native-rollout.py check-drain; then
+            echo 'Service health check for draining capacity passed.'
+          else
+            status="$?"
+            echo "Service health check for draining capacity failed with exit $status."
+          fi
+          stack=amaris-staging-paystack-green-46068313425-1
+          if instance="$(aws cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue | [0]' --output text 2>/dev/null)"; then
+            ids="$(aws ecs list-container-instances --cluster amaris-ecs-staging --status DRAINING --query containerInstanceArns --output json)"
+            mapfile -t hosts < <(jq -r '.[]' <<< "$ids")
+            if (( ${#hosts[@]} )); then
+              aws ecs describe-container-instances --cluster amaris-ecs-staging --container-instances "${hosts[@]}" --output json |
+                jq --arg instance "$instance" '[.containerInstances[] | select(.ec2InstanceId==$instance) | {status,runningTasksCount,pendingTasksCount}]'
+            fi
+          fi
+      - name: Inspect the active and test listener rule bindings
+        run: |
+          set -euo pipefail
+          aws ecs describe-services --cluster amaris-ecs-staging --services amaris-web-staging-stateless --output json |
+            jq '.services[0].loadBalancers'
+          load_balancer="$(aws elbv2 describe-load-balancers --names amaris-staging-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text)"
+          aws elbv2 describe-listeners --load-balancer-arn "$load_balancer" --output json |
+            jq -r '.Listeners[] | [.Port,.Protocol,.ListenerArn] | @tsv' |
+            while IFS=$'\t' read -r port protocol listener; do
+              aws elbv2 describe-rules --listener-arn "$listener" --output json |
+                jq --arg port "$port" --arg protocol "$protocol" '{port:$port,protocol:$protocol,rules:[.Rules[] | {RuleArn,IsDefault,forwarding:[.Actions[]|select(.Type=="forward")|{TargetGroupArn,ForwardConfig}]}]}'
+            done

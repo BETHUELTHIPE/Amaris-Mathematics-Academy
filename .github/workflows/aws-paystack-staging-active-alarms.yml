@@ -1,0 +1,79 @@
+name: Point AWS staging health alarms at the active Paystack targets
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-staging-active-alarms.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-paystack-staging-monitoring
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Align staging monitoring with the current public listener
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/46070792339" --jq '.conclusion' | grep -qx success
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          cluster=amaris-ecs-staging
+          service=amaris-web-staging-stateless
+          stack=amaris-staging-monitoring
+          state="$(aws ecs describe-services --cluster "$cluster" --services "$service" --output json)"
+          rule="$(jq -er '.services[0] | select(.taskDefinition|endswith("/amaris-ecs-staging-alb-web:17")) |
+            select(.runningCount==2 and .pendingCount==0 and (.deployments|length)==1 and
+            .deploymentConfiguration.strategy=="BLUE_GREEN" and .deploymentConfiguration.alarms.rollback) |
+            .loadBalancers[0].advancedConfiguration.productionListenerRule' <<< "$state")"
+          [[ "$rule" == arn:aws:elasticloadbalancing:eu-north-1:110156539003:listener-rule/app/amaris-staging-alb/* ]]
+          target="$(aws elbv2 describe-rules --rule-arns "$rule" --output json |
+            jq -er '.Rules[0].Actions | map(select(.Type=="forward")) | .[0].ForwardConfig.TargetGroups |
+            map(select(.Weight>0)) | select(length==1 and .[0].Weight==100) | .[0].TargetGroupArn')"
+          [[ "$target" == arn:aws:elasticloadbalancing:eu-north-1:110156539003:targetgroup/amaris-staging-web-green/* ]]
+          aws elbv2 describe-target-health --target-group-arn "$target" --output json |
+            jq -e '[.TargetHealthDescriptions[] | select(.TargetHealth.State=="healthy")]|length==2' >/dev/null
+          target_dimension="targetgroup/${target#*:targetgroup/}"
+          parameters="$(aws cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].Parameters' --output json)"
+          jq -e '(map(.ParameterKey)|sort)==(["OperatorEmail","ClusterName","ServiceName","LoadBalancerFullName","ActiveTargetGroupFullName"]|sort)' <<< "$parameters" >/dev/null
+          if ! jq -e --arg target "$target_dimension" 'any(.[]; .ParameterKey=="ActiveTargetGroupFullName" and .ParameterValue==$target)' <<< "$parameters" >/dev/null; then
+            aws cloudformation update-stack --stack-name "$stack" --use-previous-template --parameters \
+              ParameterKey=OperatorEmail,UsePreviousValue=true ParameterKey=ClusterName,UsePreviousValue=true \
+              ParameterKey=ServiceName,UsePreviousValue=true ParameterKey=LoadBalancerFullName,UsePreviousValue=true \
+              "ParameterKey=ActiveTargetGroupFullName,ParameterValue=$target_dimension" --query StackId --output text >/dev/null
+            aws cloudformation wait stack-update-complete --stack-name "$stack"
+          fi
+          alarms="$(aws cloudwatch describe-alarms --alarm-names amaris-staging-no-healthy-targets amaris-staging-unhealthy-targets --output json)"
+          jq -e --arg target "$target_dimension" '.MetricAlarms | length==2 and
+            all(.[]; .ActionsEnabled and any(.Dimensions[]; .Name=="TargetGroup" and .Value==$target))' <<< "$alarms" >/dev/null
+          echo "PASS: healthy/unhealthy target alarms now follow the staging target group serving public traffic."
