@@ -1,0 +1,180 @@
+name: Release Amaris private lesson video CDN on AWS staging
+
+on:
+  push:
+    branches: [ops/aws-staging-cloudfront-course-video]
+    paths: [.github/workflows/aws-staging-course-video-cdn.yml, deploy/aws/course-video-cdn/**]
+  workflow_dispatch:
+
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+env:
+  BACKEND_SHA: 06063b7b3b6b2cc8d4d19e6ec1d3b78bf8da6c12
+  ECR_REPO: 110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend
+  AWS_REGION: eu-north-1
+  AWS_PAGER: ''
+
+jobs:
+  cdn:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-staging-cloudfront-course-video'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    outputs:
+      domain: ${{ steps.cdn.outputs.domain }}
+      key-id: ${{ steps.cdn.outputs.key-id }}
+      distribution-id: ${{ steps.cdn.outputs.distribution-id }}
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Provision the private CloudFront origin and signing key
+        id: cdn
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3 cfn-lint
+          cfn-lint --regions eu-north-1 --template deploy/aws/course-video-cdn/stack.yml
+          python deploy/aws/course-video-cdn/provision.py
+      - name: Report provisioning failures
+        if: failure()
+        run: |
+          aws cloudformation describe-stack-events --stack-name amaris-staging-course-video-cdn --output json |
+            jq '[.StackEvents[]|select(.ResourceStatus|endswith("FAILED"))|{LogicalResourceId,ResourceStatusReason}][:7]'
+
+  image:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-staging-cloudfront-course-video'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BACKEND_SHA }}
+          path: backend-source
+          persist-credentials: false
+      - name: Build and verify the pinned ARM64 Django image
+        run: |
+          set -euo pipefail
+          test "$(git -C backend-source rev-parse HEAD)" = "$BACKEND_SHA"
+          docker build --file backend-source/backend/Dockerfile --tag amaris-cloudfront:verified             --label "org.opencontainers.image.revision=$BACKEND_SHA" backend-source/backend
+          test "$(docker image inspect --format '{{.Architecture}}' amaris-cloudfront:verified)" = arm64
+          docker run --rm --entrypoint python -e DJANGO_DEBUG=true amaris-cloudfront:verified             manage.py makemigrations --check --dry-run
+          docker run --rm --entrypoint python -e DJANGO_DEBUG=true amaris-cloudfront:verified             manage.py test content.test_course_media content.test_tutor_media content.test_student_api
+      - name: Scan the candidate for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: amaris-cloudfront:verified
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          scanners: vuln
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Publish the verified backend by immutable digest
+        id: publish
+        run: |
+          set -euo pipefail
+          registry="${ECR_REPO%%/*}"
+          tag="course-video-cdn-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          trap 'docker logout "$registry" >/dev/null' EXIT
+          docker tag amaris-cloudfront:verified "$ECR_REPO:$tag"
+          docker push "$ECR_REPO:$tag"
+          digest="$(aws ecr describe-images --repository-name amaris-staging-frontend             --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: [cdn, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Generate a one-second verification MP4
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg; }
+          ffmpeg -nostdin -loglevel error -f lavfi -i color=c=blue:s=64x64:d=1             -c:v libx264 -pix_fmt yuv420p "$RUNNER_TEMP/amaris-cdn-probe.mp4"
+      - name: Deploy Django and verify signed cache hits and video range playback
+        env:
+          VIDEO_CDN_DOMAIN: ${{ needs.cdn.outputs.domain }}
+          VIDEO_CDN_KEY_ID: ${{ needs.cdn.outputs.key-id }}
+          BACKEND_DIGEST: ${{ needs.image.outputs.digest }}
+        run: python deploy/aws/course-video-cdn/release.py
