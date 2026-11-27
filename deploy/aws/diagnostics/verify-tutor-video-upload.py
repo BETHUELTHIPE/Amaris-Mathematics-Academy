@@ -1,10 +1,12 @@
 """Exercise the staging tutor API with a disposable private S3 video."""
+import base64
 import hashlib
 import json
 import os
 import re
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from urllib.error import HTTPError
@@ -61,6 +63,23 @@ def main():
         data={"email": email, "password": os.environ["STAGING_TEST_TUTOR_PASSWORD"]},
     )
     assert session["user"]["email"].lower() == email and session["user"]["email_confirmed_at"]
+    # Use the cookie format of the installed @supabase/ssr client with the
+    # newly issued real staging session. Never print the cookie or its value.
+    session.setdefault("expires_at", int(time.time()) + session["expires_in"])
+    encoded = base64.urlsafe_b64encode(json.dumps(session, separators=(",", ":")).encode()).decode().rstrip("=")
+    value = "base64-" + encoded
+    cookie_name = "sb-atyhhjwwxgzeurnwayay-auth-token"
+    if len(value) <= 3180:
+        cookie = f"{cookie_name}={value}"
+    else:
+        cookie = "; ".join(
+            f"{cookie_name}.{i // 3180}={value[i:i + 3180]}" for i in range(0, len(value), 3180)
+        )
+    browser_headers = {"Cookie": cookie, "Origin": ORIGIN}
+    with http.open(Request(f"{ORIGIN}/tutor/dashboard", headers={"Cookie": cookie}), timeout=25) as response:
+        page = response.read()
+        assert response.status == 200 and b"Lesson videos" in page and b"Upload for review" in page
+    print("Confirmed the authenticated tutor dashboard renders the upload form.")
     auth = {"Authorization": f'Bearer {session["access_token"]}'}
     videos = f"{ORIGIN}/api/v1/tutor/videos/"
     initial, headers = request(videos, headers=auth)
@@ -74,8 +93,8 @@ def main():
         )
         body = video.read_bytes()
     title = f"Staging tutor upload probe {uuid.uuid4().hex}"
-    start, _ = request(videos+"start/", method="POST", headers=auth,
-                       data={"provider":"s3","title":title,"filename":"fixture.mp4","size":len(body)})
+    start, _ = request(f"{ORIGIN}/api/tutor-videos", method="POST", headers=browser_headers,
+                       data={"action":"start","provider":"s3","title":title,"filename":"fixture.mp4","size":len(body)})
     url = urlsplit(start["url"])
     assert url.scheme == "https" and url.hostname == EXPECTED_HOST
     key = url.path.lstrip("/")
@@ -90,11 +109,11 @@ def main():
         save_fixture()
         assert response.status == 200 and response.headers["Access-Control-Allow-Origin"] == ORIGIN
 
-    payload = {"provider":"s3", "ticket":start["ticket"], "submission":start["submission"]}
-    result, headers = request(videos+"finish/", method="POST", headers=auth, data=payload)
+    payload = {"action":"finish","provider":"s3", "ticket":start["ticket"], "submission":start["submission"]}
+    result, headers = request(f"{ORIGIN}/api/tutor-videos", method="POST", headers=browser_headers, data=payload)
     assert result == {"id":start["submission"], "title":title, "provider":"s3", "ready":False}
     assert headers["Cache-Control"] == "private, no-store"
-    repeat, _ = request(videos+"finish/", method="POST", headers=auth, data=payload)
+    repeat, _ = request(f"{ORIGIN}/api/tutor-videos", method="POST", headers=browser_headers, data=payload)
     assert repeat == result
     own, _ = request(videos, headers=auth)
     assert sum(video == result for video in own["videos"]) == 1
