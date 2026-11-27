@@ -1,0 +1,57 @@
+name: Verify AWS staging Paystack and test account availability
+on:
+  push:
+    branches: [qa/aws-staging-payfast-tutor-applications-20261127]
+    paths: [.github/workflows/qa-paystack-staging-availability.yml]
+permissions: {}
+jobs:
+  readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    environment:
+      name: staging
+      deployment: false
+    steps:
+      - name: Check the deployed route and authenticate to the provider test account
+        env:
+          PAYSTACK_TEST_SECRET_KEY: ${{ secrets.PAYSTACK_TEST_SECRET_KEY }}
+          PAYSTACK_SANDBOX_SECRET_KEY: ${{ secrets.PAYSTACK_SANDBOX_SECRET_KEY }}
+          PAYSTACK_SECRET_KEY: ${{ secrets.PAYSTACK_SECRET_KEY }}
+          PAYSTACK_TEST_SECRET: ${{ secrets.PAYSTACK_TEST_SECRET }}
+          PAYSTACK_WEBHOOK_SECRET: ${{ secrets.PAYSTACK_WEBHOOK_SECRET }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from urllib.error import HTTPError
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, request, fp, code, msg, headers, newurl):
+                  return None
+
+          opener = build_opener(NoRedirect())
+          try:
+              with opener.open("https://16.171.164.5/api/v1/paystack/webhook/", timeout=15) as response:
+                  print("AWS webhook GET status:", response.status)
+          except HTTPError as error:
+              print("AWS webhook GET status:", error.code)
+
+          names = ("PAYSTACK_TEST_SECRET_KEY", "PAYSTACK_SANDBOX_SECRET_KEY",
+                   "PAYSTACK_SECRET_KEY", "PAYSTACK_TEST_SECRET")
+          configured = {name: bool(os.environ.get(name, "").strip()) for name in names}
+          candidates = {os.environ[name].strip() for name in names
+                        if configured[name] and os.environ[name].strip().startswith("sk_test_")}
+          print("Paystack staging secret names present:", json.dumps(configured))
+          print("Timestamped webhook secret format present:", os.environ.get("PAYSTACK_WEBHOOK_SECRET", "").startswith("whsec_"))
+          if len(candidates) != 1:
+              print("Provider API unavailable: expected one configured Paystack test key.")
+          else:
+              request = Request("https://api.paystack.co/transaction?perPage=1&page=1",
+                                headers={"Authorization": "Bearer " + candidates.pop()})
+              try:
+                  with opener.open(request, timeout=15) as response:
+                      print("Paystack test API authenticated:", json.load(response).get("status") is True)
+              except HTTPError as error:
+                  print("Paystack test API authentication returned HTTP", error.code)
+          PY
