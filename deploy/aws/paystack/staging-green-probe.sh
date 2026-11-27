@@ -5,6 +5,8 @@ umask 077
 account=110156539003
 cluster=amaris-ecs-staging
 web=amaris-web-staging-stateless
+mode="${1:-probe}"
+[[ "$mode" == probe || "$mode" == native ]]
 stack="amaris-staging-paystack-green-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
 existing_stack=amaris-staging-ecs-second-host
 origin=https://16.171.164.5
@@ -22,6 +24,10 @@ service_state() {
 }
 
 healthy() {
+  if [[ "$mode" == native ]]; then
+    python deploy/aws/paystack/staging-native-rollout.py check
+    return
+  fi
   local state
   state="$(service_state)" || return 1
   jq -e '.desiredCount == 2 and .runningCount == 2 and .pendingCount == 0 and
@@ -85,10 +91,20 @@ cleanup() {
     if [[ -n "$registered" ]]; then
       aws ecs update-container-instances-state --cluster "$cluster" --container-instances "$registered" \
         --status DRAINING --query 'containerInstances[0].status' --output text || exit 1
-      running="$(aws ecs list-tasks --cluster "$cluster" --container-instance "$registered" \
-        --desired-status RUNNING --query 'taskArns' --output json)" || exit 1
-      jq -e 'length == 0' <<< "$running" >/dev/null || { echo "Temporary host retained: tasks remain" >&2; exit 1; }
-      healthy || { echo "Temporary host retained: baseline health could not be verified" >&2; exit 1; }
+      local drained=false
+      for attempt in {1..45}; do
+        running="$(aws ecs list-tasks --cluster "$cluster" --container-instance "$registered" \
+          --desired-status RUNNING --query 'taskArns' --output json)" || exit 1
+        if jq -e 'length == 0' <<< "$running" >/dev/null && healthy; then
+          drained=true
+          break
+        fi
+        sleep 10
+      done
+      if [[ "$drained" != true ]]; then
+        echo "Temporary host retained: drain and staging health could not both be verified." >&2
+        exit 1
+      fi
       aws ecs deregister-container-instance --cluster "$cluster" --container-instance "$registered" \
         --query 'containerInstance.status' --output text || exit 1
     fi
@@ -126,4 +142,8 @@ for attempt in {1..30}; do
 done
 healthy
 echo "PASS: private Free plan-eligible t4g.small connected to staging ECS."
-python deploy/aws/paystack/staging-green-probe.py "$spare"
+if [[ "$mode" == native ]]; then
+  python deploy/aws/paystack/staging-native-rollout.py "$spare"
+else
+  python deploy/aws/paystack/staging-green-probe.py "$spare"
+fi

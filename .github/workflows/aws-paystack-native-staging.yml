@@ -1,0 +1,57 @@
+name: Deploy verified Paystack release to public AWS staging
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-native-staging.yml, deploy/aws/paystack/staging-native-rollout.py]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 48
+    environment: staging
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Confirm pinned staging release evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for run in 46059730757 46060920155 46064280648 46065439979 46065635240; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.conclusion' | grep -qx success
+          done
+      - name: Release the pinned candidate through a protected staging traffic pause
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          bash deploy/aws/paystack/staging-green-probe.sh native
