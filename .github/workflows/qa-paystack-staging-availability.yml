@@ -23,6 +23,7 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import uuid
           from urllib.error import HTTPError
           from urllib.request import HTTPRedirectHandler, Request, build_opener
 
@@ -47,11 +48,35 @@ jobs:
           if len(candidates) != 1:
               print("Provider API unavailable: expected one configured Paystack test key.")
           else:
-              request = Request("https://api.paystack.co/transaction?perPage=1&page=1",
-                                headers={"Authorization": "Bearer " + candidates.pop()})
+              key = candidates.pop()
+              reference = "LCB-PS-" + uuid.uuid4().hex + uuid.uuid4().hex
+              payload = {
+                  "email": "amaris-paystack-qa@example.invalid", "amount": 25000,
+                  "currency": "ZAR", "reference": reference,
+                  "callback_url": "https://16.171.164.5/book-online-live-class/confirmation",
+              }
+              request = Request("https://api.paystack.co/transaction/initialize",
+                                data=json.dumps(payload).encode(),
+                                headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
               try:
                   with opener.open(request, timeout=15) as response:
-                      print("Paystack test API authenticated:", json.load(response).get("status") is True)
+                      result = json.load(response)
+                      data = result.get("data") or {}
+                      valid = (result.get("status") is True and data.get("reference") == reference
+                               and str(data.get("authorization_url", "")).startswith("https://checkout.paystack.com/"))
+                      print("Paystack provider test checkout initialized:", valid)
               except HTTPError as error:
-                  print("Paystack test API authentication returned HTTP", error.code)
+                  detail = error.read(8192)
+                  try:
+                      reply = json.loads(detail)
+                      message = " ".join(str(reply.get(name, "")) for name in ("message", "code")).lower()
+                  except (ValueError, AttributeError):
+                      message = ""
+                  reason = (
+                      "IP restriction reported" if any(token in message for token in ("ip address", "whitelist", "allowlist", "ip_allowed"))
+                      else "credential rejection reported" if any(token in message for token in ("api key", "secret key", "authorization", "unauthorized", "access token"))
+                      else "merchant authorization or currency issue reported" if any(token in message for token in ("currency", "business", "merchant"))
+                      else "no specific provider reason available"
+                  )
+                  print("Paystack test checkout initialization returned HTTP", error.code, reason)
           PY
