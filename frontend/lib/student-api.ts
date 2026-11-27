@@ -163,6 +163,7 @@ export type ProtectedLesson = {
     video: null | {
       provider: string;
       youtube_video_id: string;
+      playback_url?: string;
       duration_seconds: number;
     };
   };

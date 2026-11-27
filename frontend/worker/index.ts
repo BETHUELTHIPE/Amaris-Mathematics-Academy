@@ -38,7 +38,7 @@ const csp = [
   "script-src 'self' 'unsafe-inline'",
   "connect-src 'self' https://*.supabase.co",
   "media-src 'self' https:",
-  "frame-src 'self' https://www.youtube-nocookie.com",
+  "frame-src 'self' https://www.youtube-nocookie.com https://player.vimeo.com",
   "upgrade-insecure-requests",
   "report-uri /api/csp-report",
 ].join("; ");

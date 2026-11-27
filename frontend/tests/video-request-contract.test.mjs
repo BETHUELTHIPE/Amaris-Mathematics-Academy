@@ -81,7 +81,7 @@ test("video checkout security headers permit PayFast and embedded lessons while 
   assert.match(response.headers.get("vary") ?? "", /Cookie/i);
   const policy = response.headers.get("content-security-policy") ?? "";
   assert.match(policy, /form-action 'self' https:\/\/www\.payfast\.co\.za https:\/\/sandbox\.payfast\.co\.za;/);
-  assert.match(policy, /frame-src 'self' https:\/\/www\.youtube-nocookie\.com;/);
+  assert.match(policy, /frame-src 'self' https:\/\/www\.youtube-nocookie\.com https:\/\/player\.vimeo\.com;/);
   assert.match(policy, /frame-ancestors 'none'/);
   assert.match(policy, /object-src 'none'/);
 });
