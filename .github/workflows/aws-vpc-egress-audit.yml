@@ -1,0 +1,67 @@
+name: Read-only audit of Amaris staging VPC egress
+on:
+  push:
+    branches: [ops/aws-vpc-egress-audit-20261127]
+    paths: [.github/workflows/aws-vpc-egress-audit.yml]
+  workflow_dispatch:
+permissions: {}
+jobs:
+  audit:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-vpc-egress-audit-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Inspect current VPC egress and active ECS service configuration
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = 110156539003
+          vpc=vpc-0252538d2febd4641
+          aws ec2 describe-vpcs --vpc-ids "$vpc" --query 'Vpcs[].{Id:VpcId,State:State,CIDR:CidrBlock}' --output json
+          aws ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc" --query 'Subnets[].{Id:SubnetId,AZ:AvailabilityZone,CIDR:CidrBlock,PublicIP:MapPublicIpOnLaunch,FreeIPs:AvailableIpAddressCount}' --output json
+          aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$vpc" --query 'RouteTables[].{Id:RouteTableId,Associations:Associations[].{Subnet:SubnetId,Main:Main},Routes:Routes[].{CIDR:DestinationCidrBlock,IPv6:DestinationIpv6CidrBlock,Prefix:DestinationPrefixListId,Gateway:GatewayId,NAT:NatGatewayId,Instance:InstanceId,ENI:NetworkInterfaceId,Endpoint:VpcEndpointId,State:State}}' --output json
+          echo 'Managed NAT gateways:'
+          aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=$vpc" --query 'NatGateways[].{Id:NatGatewayId,State:State,Subnet:SubnetId,Connectivity:ConnectivityType}' --output json
+          echo 'VPC endpoints (service, state, associations and security groups):'
+          aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=$vpc" --query 'VpcEndpoints[].{Id:VpcEndpointId,Service:ServiceName,Type:VpcEndpointType,State:State,PrivateDNS:PrivateDnsEnabled,RouteTables:RouteTableIds,Subnets:SubnetIds,Groups:Groups[].GroupId,Policy:PolicyDocument}' --output json
+          echo 'Running VPC instances and NAT source/destination checks:'
+          aws ec2 describe-instances --filters "Name=vpc-id,Values=$vpc" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].{Id:InstanceId,Subnet:SubnetId,AZ:Placement.AvailabilityZone,SourceDestCheck:SourceDestCheck,PublicIp:PublicIpAddress,Groups:SecurityGroups[].GroupId}' --output json
+          echo 'VPC security group ingress/egress:'
+          aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" --query 'SecurityGroups[].{Id:GroupId,Name:GroupName,Ingress:IpPermissions,Egress:IpPermissionsEgress}' --output json
+          echo 'VPC network ACL rules:'
+          aws ec2 describe-network-acls --filters "Name=vpc-id,Values=$vpc" --query 'NetworkAcls[].{Id:NetworkAclId,Associations:Associations[].SubnetId,Entries:Entries}' --output json
+          echo 'VPC DNS support and hostnames:'
+          aws ec2 describe-vpc-attribute --vpc-id "$vpc" --attribute enableDnsSupport --output json
+          aws ec2 describe-vpc-attribute --vpc-id "$vpc" --attribute enableDnsHostnames --output json
+          echo 'Current ECS services and subnets:'
+          cluster=amaris-ecs-staging
+          mapfile -t services < <(aws ecs list-services --cluster "$cluster" --query 'serviceArns[]' --output text | tr '\t' '\n')
+          for service in "${services[@]}"; do
+            aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[].{Name:serviceName,Status:status,Desired:desiredCount,Running:runningCount,Network:networkConfiguration.awsvpcConfiguration}' --output json
+          done
+          echo 'Read-only audit complete. No network resources changed.'
