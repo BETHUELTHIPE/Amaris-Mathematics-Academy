@@ -99,7 +99,21 @@ jobs:
           PY
             docker build -f deployment-source/deploy/aws/frontend.Dockerfile --target build -t amaris-paystack-frontend-build:verified frontend-source/frontend
             docker run --rm amaris-paystack-frontend-build:verified cat package-lock.json > "$RUNNER_TEMP/aws-frontend-package-lock.json"
-            docker run --rm amaris-paystack-frontend-build:verified sh -ec 'npm run typecheck && npm run lint && npm run test:unit'
+            # The source-contract suite expects sibling backend and workflow files,
+            # and the rendered-response tests use Vinext's dist/server build.
+            # Execute it in a disposable full-repository tree, not the Nitro runtime image.
+            docker run --rm -v "$PWD/frontend-source:/candidate:ro" -v "$PWD/backend-source/backend:/verified-backend:ro" amaris-paystack-frontend-build:verified sh -ec '
+              mkdir /test-repo
+              cp -a /candidate/. /test-repo/
+              rm -rf /test-repo/backend
+              cp -a /verified-backend /test-repo/backend
+              rm -rf /test-repo/frontend/node_modules
+              ln -s /app/node_modules /test-repo/frontend/node_modules
+              cd /test-repo/frontend
+              npm run typecheck
+              npm run lint
+              npm test
+            '
             docker build -f deployment-source/deploy/aws/frontend.Dockerfile -t "$image" --label "org.opencontainers.image.revision=$sha" frontend-source/frontend
             docker run --rm -d --name paystack-preview -p 127.0.0.1:3000:3000 "$image"
             trap 'docker stop paystack-preview >/dev/null 2>&1 || true' EXIT
