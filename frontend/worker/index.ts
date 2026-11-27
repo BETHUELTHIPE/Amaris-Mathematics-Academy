@@ -24,7 +24,7 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
-const protectedPrefixes = ["/tutor", "/api/tutor-applications", "/dashboard", "/documents", "/checkout", "/book-online-live-class", "/request-a-video", "/api/video-requests", "/api/auth-state"];
+const protectedPrefixes = ["/tutor", "/api/tutor-applications", "/dashboard", "/learn", "/documents", "/checkout", "/book-online-live-class", "/request-a-video", "/api/video-requests", "/api/auth-state"];
 const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const csp = [
   "default-src 'self'",
@@ -38,7 +38,7 @@ const csp = [
   "script-src 'self' 'unsafe-inline'",
   "connect-src 'self' https://*.supabase.co",
   "media-src 'self' https:",
-  "frame-src 'self' https://www.youtube-nocookie.com",
+  "frame-src 'self' https://www.youtube-nocookie.com https://player.vimeo.com",
   "upgrade-insecure-requests",
   "report-uri /api/csp-report",
 ].join("; ");

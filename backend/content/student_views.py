@@ -37,6 +37,7 @@ from .serializers import (
     StudentCourseEnrollmentSerializer,
     StudentLessonResponseSerializer,
 )
+from .services.course_media import lesson_playback_url
 from .services.invoices import InvoiceArchiveError, archive_invoice_pdf, invoice_storage_path
 from .services.payments import PaymentSecurityError, _payfast_mode, create_checkout, process_payfast_notification
 
@@ -363,6 +364,7 @@ class StudentLessonView(StudentAPIView):
                                 video.youtube_video_id if video.provider == video.Provider.YOUTUBE else ""
                             ),
                             "duration_seconds": video.duration_seconds,
+                            "playback_url": lesson_playback_url(video) if video.is_live else "",
                         }
                         if video
                         else None
