@@ -65,6 +65,14 @@ jobs:
           if snapshot="$(aws cloudformation describe-stacks --stack-name amaris-staging-paystack-green-46066676826-1 --query 'Stacks[0].StackStatus' --output text 2>/dev/null)"; then
             echo "Temporary capacity stack status $snapshot"
           fi
+          for status in ACTIVE DRAINING REGISTERING REGISTRATION_FAILED; do
+            ids="$(aws ecs list-container-instances --cluster "$cluster" --status "$status" --output json)"
+            mapfile -t hosts < <(jq -r '.containerInstanceArns[]' <<< "$ids")
+            if (( ${#hosts[@]} )); then
+              aws ecs describe-container-instances --cluster "$cluster" --container-instances "${hosts[@]}" --output json |
+                jq '[.containerInstances[] | {status,agentConnected,runningTasksCount,pendingTasksCount}]'
+            fi
+          done
           origin=https://16.171.164.5
           curl -fsS --max-time 12 "$origin/health/version/" | jq '{git_sha}'
           curl -fsS --max-time 12 "$origin/health/dependencies/" | jq '{dependencies}'
