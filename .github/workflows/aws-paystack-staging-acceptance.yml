@@ -1,0 +1,123 @@
+name: Paystack AWS staging acceptance preflight
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-staging-acceptance.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Inspect live staging baseline and rollback readiness
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import boto3, json, re, urllib.request, urllib.error
+          assert boto3.client("sts").get_caller_identity()["Account"] == "110156539003"
+          ecs = boto3.client("ecs")
+          elb = boto3.client("elbv2")
+          cw = boto3.client("cloudwatch")
+          cluster = "amaris-ecs-staging"
+          for name, minimum in (("amaris-web-staging-stateless", 2), ("amaris-staging-singleton-jobs", 1)):
+              svc = ecs.describe_services(cluster=cluster, services=[name])["services"][0]
+              assert svc["status"] == "ACTIVE" and svc["runningCount"] == svc["desiredCount"] and svc["runningCount"] >= minimum and svc["pendingCount"] == 0, "Service not stable"
+              task = ecs.describe_task_definition(taskDefinition=svc["taskDefinition"])["taskDefinition"]
+              print("Service", name, "revision", task["revision"], "running", svc["runningCount"])
+              for c in task["containerDefinitions"]:
+                  env = {x["name"]: x["value"] for x in c.get("environment", [])}
+                  keys = {x["name"] for x in c.get("secrets", [])}
+                  if c["name"] in ("backend", "frontend", "worker", "beat", "celery-worker", "celery-beat"):
+                      print("Container", c["name"], "Paystack secret mapping", "present" if "PAYSTACK_SECRET_KEY" in keys else "absent",
+                            "webhook secret mapping", "present" if "PAYSTACK_WEBHOOK_SECRET" in keys else "absent")
+                      mode = env.get("PAYSTACK_MODE")
+                      print("Paystack mode", mode if mode in ("test", "live") else "unset or invalid",
+                            "enabled", env.get("PAYSTACK_ENABLED", "").lower() == "true")
+                  for value in c.get("entryPoint", []) + c.get("command", []):
+                      for sha in re.findall(r"RELEASE_GIT_SHA=([a-f0-9]{40})", value):
+                          print("Pinned release", c["name"], sha)
+              if name == "amaris-web-staging-stateless":
+                  cfg = svc["deploymentConfiguration"]
+                  print("Deployment strategy", cfg.get("strategy", "ROLLING"))
+                  print("Circuit breaker rollback", cfg.get("deploymentCircuitBreaker", {}).get("rollback", False))
+                  alarms = cfg.get("alarms", {})
+                  alarm_names = alarms.get("alarmNames", [])
+                  actual = cw.describe_alarms(AlarmNames=alarm_names)["MetricAlarms"] if alarm_names else []
+                  print("Rollback alarms configured", len(alarm_names), "OK", sum(a["StateValue"] == "OK" for a in actual))
+                  for lb in svc.get("loadBalancers", []):
+                      targets = elb.describe_target_health(TargetGroupArn=lb["targetGroupArn"])["TargetHealthDescriptions"]
+                      print("Healthy ALB targets", sum(t["TargetHealth"]["State"] == "healthy" for t in targets))
+          origin = "https://16.171.164.5"
+          with urllib.request.urlopen(origin + "/health/version/", timeout=15) as response:
+              sha = json.load(response).get("git_sha", "")
+          assert re.fullmatch(r"[a-f0-9]{40}", sha), "No trusted baseline revision"
+          print("Public backend revision:", sha)
+          with urllib.request.urlopen(origin + "/health/dependencies/", timeout=15) as response:
+              deps = json.load(response)["dependencies"]
+          assert deps["postgresql"] and deps["redis"], "Unhealthy dependencies"
+          print("PASS: PostgreSQL and Redis dependency health")
+          try:
+              with urllib.request.urlopen(origin + "/api/v1/paystack/webhook/", timeout=15) as response:
+                  status = response.status
+          except urllib.error.HTTPError as exc:
+              status = exc.code
+          print("Public webhook GET status:", status, "(405 expected when route is deployed)")
+          PY
+      - name: Verify staging test credential without creating a payment
+        env:
+          PAYSTACK_STAGING_TEST_KEY: ${{ secrets.PAYSTACK_TEST_SECRET_KEY || secrets.PAYSTACK_SECRET_KEY }}
+          PAYSTACK_STAGING_WEBHOOK_SECRET: ${{ secrets.PAYSTACK_WEBHOOK_SECRET }}
+        run: |
+          python - <<'PY'
+          import os, json, urllib.request, urllib.error
+          key = os.environ.get("PAYSTACK_STAGING_TEST_KEY", "").strip()
+          webhook = os.environ.get("PAYSTACK_STAGING_WEBHOOK_SECRET", "").strip()
+          print("Timestamped webhook secret:", "present" if webhook.startswith("whsec_") else "not configured in GitHub staging")
+          if not key.startswith("sk_test_"):
+              raise SystemExit("BLOCKED: no Paystack test key in GitHub staging secrets; no key was sent and no payment was created.")
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          request = urllib.request.Request("https://api.paystack.co/transaction?perPage=1",
+                                           headers={"Authorization": "Bearer " + key})
+          try:
+              with urllib.request.build_opener(NoRedirect()).open(request, timeout=15) as response:
+                  valid = response.status == 200 and json.load(response).get("status") is True
+          except (urllib.error.URLError, ValueError, OSError):
+              raise SystemExit("BLOCKED: authenticated Paystack test API check failed; no response content printed.")
+          if not valid:
+              raise SystemExit("BLOCKED: Paystack did not validate the test credential.")
+          print("PASS: authenticated Paystack test API read-only request; no transaction initialized or charged.")
+          PY
