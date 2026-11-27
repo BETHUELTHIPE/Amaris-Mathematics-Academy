@@ -1,0 +1,46 @@
+name: Verify isolated staging backup before Paystack release
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-backup-preflight.yml]
+  workflow_dispatch:
+permissions: {}
+jobs:
+  backup:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 0512d3f97571c6e1c175d4c9baa07fd530e8db3d
+          persist-credentials: false
+      - name: Verify staging identity and encrypted backup metadata
+        env:
+          STAGING_BACKUP_DATABASE_URL: ${{ secrets.STAGING_BACKUP_DATABASE_URL }}
+          STAGING_BACKUP_EXPECTED_DB_HOST: ${{ vars.STAGING_BACKUP_EXPECTED_DB_HOST }}
+          STAGING_BACKUP_EXPECTED_DB_NAME: ${{ vars.STAGING_BACKUP_EXPECTED_DB_NAME }}
+          STAGING_BACKUP_MAX_AGE_HOURS: ${{ vars.STAGING_BACKUP_MAX_AGE_HOURS || '48' }}
+          RESTIC_REPOSITORY: ${{ secrets.STAGING_BACKUP_RESTIC_REPOSITORY }}
+          RESTIC_PASSWORD: ${{ secrets.STAGING_BACKUP_RESTIC_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.STAGING_BACKUP_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.STAGING_BACKUP_AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.STAGING_BACKUP_AWS_REGION || 'eu-north-1' }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/check_staging_backup_readiness.py config
+          command -v restic >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq restic; }
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/paystack-snapshots.json" "$RUNNER_TEMP/paystack-backup-errors"' EXIT
+          if ! restic --no-lock snapshots --json > "$RUNNER_TEMP/paystack-snapshots.json" 2>"$RUNNER_TEMP/paystack-backup-errors"; then
+            echo "BLOCKED: cannot read staging backup snapshot metadata."
+            exit 1
+          fi
+          python3 scripts/release/check_staging_backup_readiness.py snapshots < "$RUNNER_TEMP/paystack-snapshots.json"
+          echo "PASS: recent tagged encrypted staging backup metadata; no student data restored or exported."
+          echo "Actual recovery into an isolated database and live database identity correspondence remain separate release gates."
