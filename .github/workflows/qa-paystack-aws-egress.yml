@@ -1,0 +1,109 @@
+name: Diagnose Paystack test access from the AWS staging network
+on:
+  push:
+    branches: [qa/aws-staging-payfast-tutor-applications-20261127]
+    paths: [.github/workflows/qa-paystack-aws-egress.yml]
+permissions: {}
+jobs:
+  provider:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Verify the test key from a private staging ECS host
+        env:
+          PAYSTACK_SECRET_KEY: ${{ secrets.PAYSTACK_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          [[ "$PAYSTACK_SECRET_KEY" == sk_test_* ]]
+          temp="$(mktemp -d)"
+          path="/amaris/aws-staging/paystack-qa-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          export AMARIS_PAYSTACK_PARAMETER="$path"
+          cleanup() {
+            aws ssm delete-parameter --name "$path" >/dev/null 2>&1 || true
+            rm -rf -- "$temp"
+          }
+          trap cleanup EXIT
+          umask 077
+          aws ec2 describe-route-tables --route-table-ids rtb-0dc01e9f7a0dc9515 --output json |
+            jq -e 'any(.RouteTables[0].Routes[]; .DestinationCidrBlock == "0.0.0.0/0" and .State == "active" and .InstanceId == "i-02855f007d15af597")' >/dev/null
+          aws ec2 describe-instances --instance-ids i-02855f007d15af597 --output json |
+            jq -er '.Reservations[0].Instances[0] | select(.State.Name == "running").PublicIpAddress | "Staging NAT public IPv4: " + .'
+          instance="$(aws ec2 describe-instances --filters 'Name=vpc-id,Values=vpc-0252538d2febd4641' \
+            'Name=subnet-id,Values=subnet-041cecdd7bd182d11,subnet-0f4422980fa309a1c' \
+            'Name=instance-state-name,Values=running' --output json |
+            jq -er '[.Reservations[].Instances[] | select(.PublicIpAddress == null) | .InstanceId] |
+              if length == 1 then .[0] else error("No unambiguous private staging host") end')"
+          python - <<'PY' > "$temp/parameter.json"
+          import json, os
+          print(json.dumps({"Name": os.environ["AMARIS_PAYSTACK_PARAMETER"],
+                            "Type": "SecureString", "Value": os.environ["PAYSTACK_SECRET_KEY"]}))
+          PY
+          aws ssm put-parameter --cli-input-json "file://$temp/parameter.json" >/dev/null
+          rm -f -- "$temp/parameter.json"
+          cat > "$temp/check.sh" <<'BASH'
+          set -euo pipefail
+          python3 - "$1" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from urllib.error import HTTPError
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, request, fp, code, msg, headers, newurl):
+                  return None
+
+          key = subprocess.check_output(["aws", "ssm", "get-parameter", "--with-decryption",
+                                         "--region", "eu-north-1", "--name", sys.argv[1],
+                                         "--query", "Parameter.Value", "--output", "text"], text=True).strip()
+          assert key.startswith("sk_test_")
+          request = Request("https://api.paystack.co/transaction?perPage=1&page=1",
+                            headers={"Authorization": "Bearer " + key})
+          try:
+              with build_opener(NoRedirect()).open(request, timeout=15) as response:
+                  print("Paystack test API from AWS staging authorized:", json.load(response).get("status") is True)
+          except HTTPError as error:
+              try:
+                  data = json.loads(error.read(8192))
+                  message = " ".join(str(data.get(name, "")) for name in ("message", "code")).lower()
+              except (ValueError, AttributeError):
+                  message = ""
+              reason = (
+                  "IP restriction reported" if any(token in message for token in ("ip address", "whitelist", "allowlist", "ip_allowed"))
+                  else "key authorization issue reported" if any(token in message for token in ("api key", "secret key", "unauthorized"))
+                  else "no specific provider reason available"
+              )
+              print("Paystack test API from AWS staging returned HTTP", error.code, reason)
+          PY
+          BASH
+          bash deploy/aws/ecs/run-on-host.sh "$instance" "$temp/check.sh" "$path"
