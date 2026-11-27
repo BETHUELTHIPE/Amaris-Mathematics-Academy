@@ -104,6 +104,9 @@ jobs:
           set -euo pipefail
           cp verification-harness/scripts/release/booking_acceptance_settings.py backend/
           cp verification-harness/scripts/release/booking_callback_diagnostics.py backend/
+          # This observer logs only HTTP status and safe facts. Django verifies the signature.
+          sed -i '/^import hmac$/d; s/_payfast_credentials, generate_payfast_itn_signature/_payfast_credentials/; /"signature_matches":/d; s/hmac.compare_digest(str(payload.get("merchant_id","")).strip(), merchant)/str(payload.get("merchant_id","")).strip() == merchant/' backend/booking_callback_diagnostics.py
+          python -m py_compile backend/booking_callback_diagnostics.py
           cd backend
           python manage.py migrate --noinput >/dev/null
           python manage.py check
