@@ -10,7 +10,7 @@ Resources:
     DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
-      BucketName: !Sub amaris-mathematics-academy-media-staging-${AWS::AccountId}-${AWS::Region}
+      BucketName: !Sub amaris-mathematics-academy-media-stage-${AWS::AccountId}-${AWS::Region}
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}

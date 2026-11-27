@@ -49,6 +49,15 @@ jobs:
         run: |
           set -euo pipefail
           test "$(aws sts get-caller-identity --query Account --output text)" = 110156539003
+          stack=amaris-staging-course-media
+          status="$(aws cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || true)"
+          if [[ "$status" == ROLLBACK_COMPLETE ]]; then
+            aws cloudformation list-stack-resources --stack-name "$stack" --output json |
+              jq -e 'all(.StackResourceSummaries[]; .ResourceStatus == "DELETE_COMPLETE" or
+                     (.ResourceStatus == "CREATE_FAILED" and (.PhysicalResourceId // "") == ""))' >/dev/null
+            aws cloudformation delete-stack --stack-name "$stack"
+            aws cloudformation wait stack-delete-complete --stack-name "$stack"
+          fi
           aws cloudformation deploy --stack-name amaris-staging-course-media --capabilities CAPABILITY_IAM \
             --template-file deploy/aws/course-media/staging.yml --no-fail-on-empty-changeset \
             --tags Application=Amaris-Mathematics-Academy Environment=staging
@@ -68,3 +77,8 @@ jobs:
           python deploy/aws/course-media/verify.py
       - name: Identify current staging backend
         run: curl --max-time 12 -fsS https://16.171.164.5/health/version/ | jq -e '{git_sha}'
+      - name: Report failed staging resource operations
+        if: failure()
+        run: |
+          aws cloudformation describe-stack-events --stack-name amaris-staging-course-media --output json |
+            jq '[.StackEvents[] | select(.ResourceStatus | endswith("FAILED")) | {LogicalResourceId, ResourceStatusReason}][:6]'
