@@ -1,0 +1,83 @@
+name: Release the stalled staging rollout job after verified rollback
+on:
+  push:
+    branches: [ops/aws-paystack-staging-acceptance-20261127]
+    paths: [.github/workflows/aws-paystack-clear-stalled-rollout.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-paystack-stalled-job-recovery
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paystack-staging-acceptance-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      actions: write
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Cancel only the stalled job after verifying the completed rollback and empty host
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=46068313425
+          state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run")"
+          jq -e '.head_sha=="cac38b61649c8b3ba96bdb79f4129abd7ac592a5" and
+            .head_branch=="ops/aws-paystack-staging-acceptance-20261127"' <<< "$state" >/dev/null
+          if [[ "$(jq -r .status <<< "$state")" == completed ]]; then
+            echo 'The stalled job already completed.'
+            exit 0
+          fi
+          jq -e '.status=="in_progress"' <<< "$state" >/dev/null
+          cluster=amaris-ecs-staging
+          service=amaris-web-staging-stateless
+          web="$(aws ecs describe-services --cluster "$cluster" --services "$service" --output json)"
+          target="$(jq -er '.services[0] |
+            select((.taskDefinition | endswith("/amaris-ecs-staging-alb-web:14")) and .desiredCount==2 and
+            .runningCount==2 and .pendingCount==0 and (.deployments|length)==1) | .loadBalancers[0].targetGroupArn' <<< "$web")"
+          aws elbv2 describe-target-health --target-group-arn "$target" --output json |
+            jq -e '[.TargetHealthDescriptions[]|select(.TargetHealth.State=="healthy")]|length==2' >/dev/null
+          aws ecs list-service-deployments --cluster "$cluster" --service "$service" --max-results 2 --no-paginate --output json |
+            jq -e '.serviceDeployments[0].status=="ROLLBACK_SUCCESSFUL"' >/dev/null
+          origin=https://16.171.164.5
+          curl -fsS --max-time 12 "$origin/health/version/" |
+            jq -e '.git_sha=="cfdb105761836c7730fec52ada54c58c624206db"' >/dev/null
+          stack=amaris-staging-paystack-green-46068313425-1
+          instance="$(aws cloudformation describe-stacks --stack-name "$stack" --output json |
+            jq -er '.Stacks[0] | select(.StackStatus=="CREATE_COMPLETE" and
+              any(.Tags[]; .Key=="Purpose" and .Value=="paystack-green-validation")) |
+              .Outputs[] | select(.OutputKey=="InstanceId").OutputValue')"
+          ids="$(aws ecs list-container-instances --cluster "$cluster" --status DRAINING --output json)"
+          mapfile -t hosts < <(jq -r '.containerInstanceArns[]' <<< "$ids")
+          (( ${#hosts[@]} ))
+          aws ecs describe-container-instances --cluster "$cluster" --container-instances "${hosts[@]}" --output json |
+            jq -e --arg instance "$instance" '.containerInstances | any(.ec2InstanceId==$instance and
+              .status=="DRAINING" and .runningTasksCount==0 and .pendingTasksCount==0)' >/dev/null
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run/cancel"
+          echo 'Requested cancellation of the stalled job after verified rollback. The separate cleanup can now take over.'
