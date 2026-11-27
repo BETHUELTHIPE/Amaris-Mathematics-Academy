@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 permissions: {}
 concurrency:
-  group: amaris-stockholm-staging-release
+  group: amaris-paystack-readonly-preflight
   cancel-in-progress: false
 jobs:
   inspect:
