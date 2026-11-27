@@ -111,3 +111,15 @@ jobs:
                 jq --arg instance "$instance" '[.containerInstances[] | select(.ec2InstanceId==$instance) | {status,runningTasksCount,pendingTasksCount}]'
             fi
           fi
+      - name: Inspect the active and test listener rule bindings
+        run: |
+          set -euo pipefail
+          aws ecs describe-services --cluster amaris-ecs-staging --services amaris-web-staging-stateless --output json |
+            jq '.services[0].loadBalancers'
+          load_balancer="$(aws elbv2 describe-load-balancers --names amaris-staging-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text)"
+          aws elbv2 describe-listeners --load-balancer-arn "$load_balancer" --output json |
+            jq -r '.Listeners[] | [.Port,.Protocol,.ListenerArn] | @tsv' |
+            while IFS=$'\t' read -r port protocol listener; do
+              aws elbv2 describe-rules --listener-arn "$listener" --output json |
+                jq --arg port "$port" --arg protocol "$protocol" '{port:$port,protocol:$protocol,rules:[.Rules[] | {RuleArn,IsDefault,forwarding:[.Actions[]|select(.Type=="forward")|{TargetGroupArn,ForwardConfig}]}]}'
+            done
