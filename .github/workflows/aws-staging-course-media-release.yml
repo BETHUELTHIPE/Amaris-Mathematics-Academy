@@ -9,8 +9,8 @@ concurrency:
   group: amaris-stockholm-staging-release
   cancel-in-progress: false
 env:
-  FRONTEND_SHA: d4fc2819240b927c52d95d8581ca5505cdece0f1
-  BACKEND_SHA: 41135990e514b129c002c1a60ef803e3fa298b75
+  FRONTEND_SHA: bcf08afa4846a66fc5f8be1318883e880e17a59e
+  BACKEND_SHA: a62a425f2ce84be89ae1327c8a232664e9c04534
   ECR_REPO: 110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend
   AWS_REGION: eu-north-1
   AWS_PAGER: ''
