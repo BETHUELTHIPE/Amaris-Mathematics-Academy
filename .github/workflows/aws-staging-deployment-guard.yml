@@ -1,0 +1,112 @@
+name: Protect live ECS task capacity and audit split service placement
+on:
+  push:
+    branches: [ops/aws-selective-bluegreen-20261127]
+    paths: [.github/workflows/aws-staging-deployment-guard.yml]
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: amaris-staging-deployment-guard
+  cancel-in-progress: false
+jobs:
+  guard:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-selective-bluegreen-20261127'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Keep all healthy web tasks during future rollouts and inspect capacity
+        run: |
+          python -m pip install --quiet boto3
+          python - <<'PY'
+          import boto3,json,urllib.request,time
+          account="110156539003"
+          assert boto3.client("sts").get_caller_identity()["Account"]==account
+          ecs=boto3.client("ecs")
+          ec2=boto3.client("ec2")
+          elb=boto3.client("elbv2")
+          cluster="amaris-ecs-staging"
+          name="amaris-web-staging-stateless"
+          def service():
+              return ecs.describe_services(cluster=cluster,services=[name])["services"][0]
+          def tasks():
+              return set(arn for p in ecs.get_paginator("list_tasks").paginate(cluster=cluster,serviceName=name,desiredStatus="RUNNING") for arn in p["taskArns"])
+          def health():
+              with urllib.request.urlopen("https://16.171.164.5/health/dependencies/",timeout=15) as r:
+                  assert all(json.load(r)["dependencies"].get(k) for k in ("postgresql","redis"))
+              s=service()
+              assert s["runningCount"]==s["desiredCount"]==2 and s["pendingCount"]==0
+              assert len(s["deployments"])==1
+              for group in s["loadBalancers"]:
+                  assert len([t for t in elb.describe_target_health(TargetGroupArn=group["targetGroupArn"])["TargetHealthDescriptions"] if t["TargetHealth"]["State"]=="healthy"])>=2
+          health()
+          s=service()
+          original=s["deploymentConfiguration"]
+          assert s["deploymentController"]["type"]=="ECS" and original.get("strategy","ROLLING")=="ROLLING"
+          assert original["alarms"]["enable"] and original["alarms"]["rollback"]
+          before=tasks()
+          assert len(before)==2
+          # Update only the deployment configuration. No task definition or forced deployment.
+          cfg={k:v for k,v in original.items() if k in ("deploymentCircuitBreaker","alarms","minimumHealthyPercent","maximumPercent")}
+          cfg.update(minimumHealthyPercent=100,maximumPercent=150)
+          ecs.update_service(cluster=cluster,service=name,deploymentConfiguration=cfg)
+          for _ in range(10):
+              check=service()["deploymentConfiguration"]
+              if (check["minimumHealthyPercent"],check["maximumPercent"])==(100,150):
+                  break
+              time.sleep(2)
+          else:
+              raise RuntimeError("Deployment guard not applied")
+          assert check["alarms"]==original["alarms"]
+          health()
+          assert tasks()==before
+          print("PASS: rolling deployment minimum healthy 100%, maximum 150%; same two healthy task IDs and alarms preserved.")
+          t=ecs.describe_task_definition(taskDefinition=s["taskDefinition"])["taskDefinition"]
+          for c in t["containerDefinitions"]:
+              # Never emit environment values, secret references or entrypoint contents.
+              print(json.dumps({"component":c["name"],"ports":[p["containerPort"] for p in c.get("portMappings",[])],
+                  "environmentNames":[e["name"] for e in c.get("environment",[])],
+                  "secretNames":[e["name"] for e in c.get("secrets",[])],
+                  "dependsOn":[d["containerName"] for d in c.get("dependsOn",[])],
+                  "memoryReservationMiB":c.get("memoryReservation",c.get("memory",0))}))
+          ids=[i for p in ecs.get_paginator("list_container_instances").paginate(cluster=cluster,status="ACTIVE") for i in p["containerInstanceArns"]]
+          free=0
+          for host in ecs.describe_container_instances(cluster=cluster,containerInstances=ids)["containerInstances"]:
+              row=ec2.describe_instances(InstanceIds=[host["ec2InstanceId"]])["Reservations"][0]["Instances"][0]
+              limit=ec2.describe_instance_types(InstanceTypes=[row["InstanceType"]])["InstanceTypes"][0]["NetworkInfo"]["MaximumNetworkInterfaces"]
+              slots=limit-len(row["NetworkInterfaces"])
+              free+=slots
+              print(json.dumps({"type":row["InstanceType"],"freeStandardENIs":slots,"remainingMemoryMiB":next(x["integerValue"] for x in host["remainingResources"] if x["name"]=="MEMORY"),"trunking":any(a["name"]=="ecs.awsvpc-trunk-id" for a in host["attributes"])}))
+          print("Standard free ENIs:",free,"Additional ENIs required for full combined web rollout:",s["desiredCount"])
+          try:
+              b=boto3.client("budgets",region_name="us-east-1").describe_budget(AccountId=account,BudgetName="Amaris-Monthly-Cost")["Budget"]
+              print(json.dumps({"budget":b.get("BudgetLimit"),"actual":b.get("CalculatedSpend",{}).get("ActualSpend"),"forecast":b.get("CalculatedSpend",{}).get("ForecastedSpend")}))
+          except Exception as e:
+              print("Budget read unavailable:",type(e).__name__)
+          print("No tasks replaced, no new EC2 hosts and no blue-green traffic shift.")
+          PY
