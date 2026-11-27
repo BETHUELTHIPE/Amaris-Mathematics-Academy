@@ -133,9 +133,15 @@ jobs:
               info = ssm.describe_instance_information(Filters=[{"Key":"InstanceIds","Values":[host]}])["InstanceInformationList"]
               require(len(info) == 1 and info[0]["PingStatus"] == "Online", "SSM unavailable")
           health()
-          if instance.get("SourceDestCheck") is not False:
-              ec2.modify_instance_attribute(InstanceId=nat, SourceDestCheck={"Value":False})
-          require(ec2.describe_instance_attribute(InstanceId=nat, Attribute="sourceDestCheck")["SourceDestCheck"]["Value"] is False, "Source/destination check not disabled")
+          default = next(r for r in table(private_table)["Routes"] if r.get("DestinationCidrBlock") == "0.0.0.0/0")
+          eni = default.get("NetworkInterfaceId")
+          require(eni and any(n["NetworkInterfaceId"] == eni for n in instance["NetworkInterfaces"]), "NAT route ENI does not belong to the expected host")
+          def nat_interface():
+              return ec2.describe_network_interfaces(NetworkInterfaceIds=[eni])["NetworkInterfaces"][0]
+          require(nat_interface()["Attachment"]["InstanceId"] == nat, "Unexpected NAT ENI attachment")
+          if nat_interface().get("SourceDestCheck") is not False:
+              ec2.modify_network_interface_attribute(NetworkInterfaceId=eni, SourceDestCheck={"Value":False})
+          require(nat_interface().get("SourceDestCheck") is False, "Source/destination check not disabled on NAT route ENI")
           print("PASS: NAT instance source/destination check disabled and both private routes verified", flush=True)
 
           configure = r"""
