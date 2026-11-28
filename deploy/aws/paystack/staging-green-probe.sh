@@ -64,19 +64,115 @@ jq -e --arg private "$private" 'any(.[]; .ec2InstanceId == $private)' <<< "$orig
 host="$(aws ec2 describe-instances --instance-ids "$private" --query 'Reservations[0].Instances[0]' --output json)"
 jq -e '.VpcId == "vpc-0252538d2febd4641" and .InstanceType == "t4g.small" and .PublicIpAddress == null' <<< "$host" >/dev/null
 vpc="$(jq -er .VpcId <<< "$host")"
-subnet="$(jq -er .SubnetId <<< "$host")"
+current_subnet="$(jq -er .SubnetId <<< "$host")"
 profile="$(jq -er '.IamInstanceProfile.Arn | split("/") | last' <<< "$host")"
 ami="$(jq -er .ImageId <<< "$host")"
 device="$(aws ec2 describe-images --image-ids "$ami" --owners amazon --filters Name=free-tier-eligible,Values=true --output json |
   jq -er '.Images[0] | .RootDeviceName as $root |
     select(.Architecture == "arm64" and .State == "available" and
     any(.BlockDeviceMappings[]; .DeviceName == $root and .Ebs.VolumeSize <= 30)) | $root')"
-aws ec2 describe-subnets --subnet-ids "$subnet" --output json |
-  jq -e --arg vpc "$vpc" '.Subnets[0] | .VpcId == $vpc and .AvailableIpAddressCount >= 5 and
-    .MapPublicIpOnLaunch == false' >/dev/null
-aws ec2 describe-route-tables --filters "Name=association.subnet-id,Values=$subnet" --output json |
-  jq -e 'any(.RouteTables[].Routes[]; .DestinationCidrBlock == "0.0.0.0/0" and .State == "active" and
-    .InstanceId == "i-02855f007d15af597")' >/dev/null
+mapfile -t service_subnets < <(jq -r '.networkConfiguration.awsvpcConfiguration.subnets[]' <<< "$initial")
+(( ${#service_subnets[@]} >= 1 ))
+zones="$(aws elbv2 describe-load-balancers --names amaris-staging-alb --query 'LoadBalancers[0].AvailabilityZones[].ZoneName' --output json)"
+inventory="$(aws ec2 describe-subnets --subnet-ids "${service_subnets[@]}" --output json)"
+echo 'Staging task placement by Availability Zone:'
+jq '[.Subnets[] | {AvailabilityZone, AvailableIpAddressCount, MapPublicIpOnLaunch}]' <<< "$inventory"
+mapfile -t options < <(jq -r --arg vpc "$vpc" --arg current "$current_subnet" --argjson zones "$zones" '
+  .Subnets[] | select(.VpcId==$vpc and .SubnetId!=$current and .AvailableIpAddressCount>=5 and
+    .MapPublicIpOnLaunch==false and (.AvailabilityZone=="eu-north-1b" or .AvailabilityZone=="eu-north-1c") and
+    (.AvailabilityZone as $az | $zones | index($az))) | [.SubnetId,.AvailabilityZone] | @tsv' <<< "$inventory")
+subnet=""
+for candidate in "${options[@]}"; do
+  IFS=
+
+spare=""
+stack_started=false
+cleanup() {
+  local result=$?
+  trap - EXIT
+  trap '' INT TERM
+  if "$stack_started"; then
+    # The probe stops its standalone tasks before returning. Check again before removing the host.
+    local hosts registered tasks
+    hosts="$(active_hosts)" || { echo "Temporary host retained: ECS status unavailable" >&2; exit 1; }
+    registered="$(jq -r --arg host "$spare" '.[] | select(.ec2InstanceId == $host) | .containerInstanceArn' <<< "$hosts")"
+    if [[ -n "$registered" ]]; then
+      aws ecs update-container-instances-state --cluster "$cluster" --container-instances "$registered" \
+        --status DRAINING --query 'containerInstances[0].status' --output text || exit 1
+      local drained=false
+      for attempt in {1..45}; do
+        tasks="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$registered" \
+          --query 'containerInstances[0]' --output json)" || exit 1
+        if jq -e '.status=="DRAINING" and .runningTasksCount==0 and .pendingTasksCount==0' <<< "$tasks" >/dev/null && healthy -drain; then
+          drained=true
+          break
+        fi
+        sleep 10
+      done
+      if [[ "$drained" != true ]]; then
+        echo "Temporary host retained: drain and staging health could not both be verified." >&2
+        exit 1
+      fi
+      aws ecs deregister-container-instance --cluster "$cluster" --container-instance "$registered" \
+        --query 'containerInstance.status' --output text || exit 1
+    fi
+    aws cloudformation delete-stack --stack-name "$stack" || exit 1
+    aws cloudformation wait stack-delete-complete --stack-name "$stack" || exit 1
+    echo "PASS: temporary t4g.small stack and encrypted root volume removed."
+  fi
+  if [[ "$mode" == native ]]; then
+    healthy -final || exit 1
+  else
+    healthy || exit 1
+  fi
+  exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# The run-specific stack name prevents deleting or adopting an unrelated host.
+python deploy/aws/paystack/staging-native-rollout.py check
+stack_started=true
+aws cloudformation deploy --stack-name "$stack" --template-file deploy/aws/paystack/staging-green-host.yml \
+  --parameter-overrides "VpcId=$vpc" "PrivateSubnet=$subnet" "InstanceProfileName=$profile" "ImageId=$ami" "RootDevice=$device" \
+  --tags Project=Amaris Environment=staging Purpose=paystack-green-validation
+spare="$(aws cloudformation describe-stacks --stack-name "$stack" \
+  --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue | [0]' --output text)"
+[[ "$spare" =~ ^i-[a-f0-9]+$ && "$spare" != "$private" ]]
+for attempt in {1..30}; do
+  hosts="$(active_hosts)"
+  if jq -e --arg spare "$spare" 'any(.[]; .ec2InstanceId == $spare and .agentConnected and
+    any(.attributes[]; .name == "ecs.capability.task-eni"))' <<< "$hosts" >/dev/null; then
+    break
+  fi
+  if ((attempt == 30)); then
+    echo "Temporary host did not register with ECS." >&2
+    exit 1
+  fi
+  sleep 8
+done
+healthy
+echo "PASS: private Free plan-eligible t4g.small connected to staging ECS."
+if [[ "$mode" == native ]]; then
+  python deploy/aws/paid-content/setup.py migrate
+  python deploy/aws/paystack/staging-native-rollout.py "$spare"
+else
+  python deploy/aws/paystack/staging-green-probe.py "$spare"
+fi
+\t' read -r option zone <<< "$candidate"
+  if aws ec2 describe-route-tables --filters "Name=association.subnet-id,Values=$option" --output json |
+    jq -e 'any(.RouteTables[].Routes[]; .DestinationCidrBlock == "0.0.0.0/0" and .State == "active" and
+      .InstanceId == "i-02855f007d15af597")' >/dev/null; then
+    subnet="$option"
+    echo "Using the existing private staging subnet and NAT path in $zone."
+    break
+  fi
+done
+if [[ -z "$subnet" ]]; then
+  echo 'No existing staging task subnet in eu-north-1b or eu-north-1c has the required ALB coverage and NAT route.' >&2
+  exit 1
+fi
 
 spare=""
 stack_started=false

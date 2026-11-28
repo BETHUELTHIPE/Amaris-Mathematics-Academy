@@ -3,7 +3,7 @@ name: Deploy paid course and video access to AWS staging
 on:
   push:
     branches: [ops/aws-paid-content-staging-20261128]
-    paths: [.github/workflows/aws-paid-content-deploy.yml, deploy/aws/paid-content/**]
+    paths: [.github/workflows/aws-paid-content-deploy.yml, deploy/aws/paid-content/**, deploy/aws/paystack/staging-green-probe.sh]
   workflow_dispatch:
 
 permissions: {}
