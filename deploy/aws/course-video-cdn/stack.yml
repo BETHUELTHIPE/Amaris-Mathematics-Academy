@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Signed CloudFront playback for Amaris staging course videos in the existing private S3 bucket
+Parameters:
+  MediaBucket:
+    Type: String
+  SigningPublicKey:
+    Type: String
+  ExecutionRoleName:
+    Type: String
+Resources:
+  ReadSigningKey:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: AmarisStagingCloudFrontVideoSigningKey
+      Roles: [!Ref ExecutionRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: ssm:GetParameters
+            Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/amaris/aws-staging/course-cdn/signing-key
+  SigningKey:
+    Type: AWS::CloudFront::PublicKey
+    Properties:
+      PublicKeyConfig:
+        CallerReference: !Ref AWS::StackId
+        Name: amaris-staging-course-video
+        EncodedKey: !Ref SigningPublicKey
+  VideoSigners:
+    Type: AWS::CloudFront::KeyGroup
+    Properties:
+      KeyGroupConfig:
+        Name: amaris-staging-course-video
+        Items: [!Ref SigningKey]
+  PrivateOrigin:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: amaris-staging-course-video
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  Cache:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: amaris-staging-course-video
+        MinTTL: 0
+        DefaultTTL: 300
+        MaxTTL: 300
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig: {CookieBehavior: none}
+          HeadersConfig: {HeaderBehavior: none}
+          QueryStringsConfig: {QueryStringBehavior: none}
+          EnableAcceptEncodingGzip: false
+          EnableAcceptEncodingBrotli: false
+  CDN:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: Amaris Mathematics Academy private staging lesson videos
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_All
+        Origins:
+          - Id: PrivateCourseVideos
+            DomainName: !Sub '${MediaBucket}.s3.${AWS::Region}.${AWS::URLSuffix}'
+            S3OriginConfig: {OriginAccessIdentity: ''}
+            OriginAccessControlId: !GetAtt PrivateOrigin.Id
+        DefaultCacheBehavior:
+          TargetOriginId: PrivateCourseVideos
+          ViewerProtocolPolicy: https-only
+          AllowedMethods: [GET, HEAD]
+          CachePolicyId: !Ref Cache
+          TrustedKeyGroups: [!Ref VideoSigners]
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ErrorCachingMinTTL: 0
+Outputs:
+  DistributionId: {Value: !Ref CDN}
+  Domain: {Value: !GetAtt CDN.DomainName}
+  KeyId: {Value: !Ref SigningKey}
