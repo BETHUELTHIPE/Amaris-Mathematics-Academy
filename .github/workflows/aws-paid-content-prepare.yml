@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 env:
-  BACKEND_SHA: 4f398b236b0cbce9562f658a2284f0a9f8d3bb69
+  BACKEND_SHA: 8f7b34f436c0c1da6cc0bace9c62c89d0712c5d2
   BASELINE_SHA: 164838a3143c22cc7b60ab669e1f0c7dca616a0f
   AWS_REGION: eu-north-1
   AWS_PAGER: ''
@@ -54,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: 4f398b236b0cbce9562f658a2284f0a9f8d3bb69
+          ref: 8f7b34f436c0c1da6cc0bace9c62c89d0712c5d2
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
