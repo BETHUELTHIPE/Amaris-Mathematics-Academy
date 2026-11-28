@@ -115,6 +115,7 @@ class CourseCategorySerializer(serializers.ModelSerializer):
 
 class LessonSummarySerializer(serializers.ModelSerializer):
     has_video = serializers.SerializerMethodField()
+    is_free_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = Lesson
@@ -132,6 +133,9 @@ class LessonSummarySerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_has_video(self, obj) -> bool:
         return obj.video_id is not None
+
+    def get_is_free_preview(self, obj) -> bool:
+        return False
 
 
 class CourseModuleSerializer(serializers.ModelSerializer):

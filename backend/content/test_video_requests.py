@@ -225,6 +225,27 @@ class VideoRequestWorkflowTests(TestCase):
         with self.assertRaises(ValidationError):
             request.full_clean()
 
+    def test_ready_flag_without_verified_payment_does_not_release_requested_video(self):
+        item = VideoRequest.objects.get(reference=self.create_checkout().request_reference)
+        item.status = VideoRequest.Status.READY
+        item.video_provider = VideoRequest.VideoProvider.DIRECT
+        item.video_external_id = "private/test.mp4"
+        item.save()
+        path = Path(self.storage_directory.name, item.video_external_id)
+        path.parent.mkdir()
+        path.write_bytes(b"test video")
+        student = self.authenticated_client()
+        status_url = reverse("video-request-status", args=[item.reference])
+        download_url = reverse("video-request-video", args=[item.reference])
+
+        self.assertIsNone(student.get(status_url, secure=True).data["video"])
+        self.assertEqual(student.get(download_url, secure=True).status_code, 404)
+        VideoRequest.objects.filter(pk=item.pk).update(gateway_verified_at=timezone.now())
+        self.assertEqual(student.get(status_url, secure=True).data["video"]["direct_download_url"], download_url)
+        download = student.get(download_url, secure=True)
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(b"".join(download.streaming_content), b"test video")
+
     def test_unpaid_request_cannot_be_moved_into_fulfilment(self):
         request = VideoRequest.objects.get(reference=self.create_checkout().request_reference)
         request.status = VideoRequest.Status.QUEUED

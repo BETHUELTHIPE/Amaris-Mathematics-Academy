@@ -433,6 +433,8 @@ def process_payfast_notification(
             return _reject_event(locked_event, "provider_reference_replay", verified=True)
         if locked_payment.provider_reference and locked_payment.provider_reference != provider_reference:
             return _reject_event(locked_event, "provider_reference_mismatch", verified=True)
+        if locked_payment.status == Payment.Status.REFUNDED:
+            return _reject_event(locked_event, "refunded_payment_is_immutable", verified=True)
 
         if locked_payment.status == Payment.Status.PAID and locked_payment.gateway_verified_at:
             if target_status != Payment.Status.PAID:

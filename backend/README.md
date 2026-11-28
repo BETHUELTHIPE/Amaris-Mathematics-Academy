@@ -74,6 +74,14 @@ Performance defaults are environment-driven: Gunicorn recycles workers with jitt
 
 The current Next.js site already contains the CMS adapter for its brand details, navigation, course catalogue, pricing and enquiry delivery. Give the frontend a server-side `CMS_API_URL` only after this service has a stable HTTPS production address. Until then, the public site automatically continues using its existing content and enquiry database safely.
 
+## Private YouTube lesson copies
+
+Configure the four `ACADEMY_YOUTUBE_*` settings from the approved Academy YouTube channel. Obtain the refresh token with both the `youtube.upload` and `youtube.readonly` OAuth permissions. Enable YouTube Data API and give the web process and the worker on the `default` queue access to the secret settings. Use a separate authorised test channel for staging.
+
+In Django Admin, open **Video assets** as a superuser. Select one published S3 lesson, then run **Copy one published S3 lesson to private YouTube**. The worker confirms the channel identity and uploads with private visibility. Open the video record to check the result or resume an interrupted copy by selecting the same lesson again. If Google reports an expired session, check YouTube Studio for a completed copy first.
+
+Open the copy in YouTube Studio to review its processing and audience settings. Keep the copy restricted to authorised staff. Students use the lesson in Amaris after the server verifies payment. The YouTube copy and its upload session are available only to authorised staff.
+
 ## Reliability and disaster recovery
 
 The production target is a **6-hour RPO** and **4-hour RTO**. PostgreSQL plus locally stored media are backed up every six hours to a client-side encrypted off-server Restic repository, retained as 7 daily, 5 weekly and 12 monthly recovery points, and restored into an isolated disposable PostgreSQL instance every week. Redis is excluded from Django readiness, Celery uses late acknowledgements and bounded retry backoff, and a Redis-independent watchdog reconciles server-verified payments with enrolments.

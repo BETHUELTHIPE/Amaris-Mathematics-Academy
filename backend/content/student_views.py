@@ -3,7 +3,7 @@ from __future__ import annotations
 from botocore.exceptions import BotoCoreError, ClientError
 from django.core.files.storage import storages
 from django.db import transaction
-from django.db.models import OuterRef, Q, Subquery
+from django.db.models import Exists, OuterRef, Q, Subquery
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -94,14 +94,26 @@ class StudentAPIView(APIView):
         return response
 
 
+def _paid_enrollments(student):
+    verified_purchase = Payment.objects.filter(
+        student_id=OuterRef("student_id"),
+        course_id=OuterRef("course_id"),
+        status=Payment.Status.PAID,
+        gateway_verified_at__isnull=False,
+        amount__gt=0,
+    )
+    return Enrollment.objects.filter(
+        Exists(verified_purchase),
+        student=student,
+        status__in=(Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED),
+    )
+
+
 class StudentCoursesView(StudentAPIView):
     @extend_schema(responses=StudentCourseEnrollmentSerializer(many=True))
     def get(self, request):
         enrollments = (
-            Enrollment.objects.filter(
-                student=request.user.student,
-                status__in=[Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED],
-            )
+            _paid_enrollments(self.student)
             .select_related("course", "last_lesson", "last_lesson__module")
             .annotate(
                 first_lesson_slug=Subquery(
@@ -331,10 +343,8 @@ class StudentLessonView(StudentAPIView):
     @extend_schema(responses=StudentLessonResponseSerializer)
     def get(self, request, course_slug: str, lesson_slug: str):
         enrollment = get_object_or_404(
-            Enrollment.objects.select_related("course"),
-            student=request.user.student,
+            _paid_enrollments(self.student).select_related("course"),
             course__slug=course_slug,
-            status__in=[Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED],
         )
         lesson = get_object_or_404(
             Lesson.objects.select_related("module", "video"),
@@ -364,9 +374,9 @@ class StudentLessonView(StudentAPIView):
                                 video.youtube_video_id if video.provider == video.Provider.YOUTUBE else ""
                             ),
                             "duration_seconds": video.duration_seconds,
-                            "playback_url": lesson_playback_url(video) if video.is_live else "",
+                            "playback_url": lesson_playback_url(video),
                         }
-                        if video
+                        if video and video.is_live
                         else None
                     ),
                 },
@@ -428,14 +438,10 @@ class AcceptanceSeedView(StudentAPIView):
                 "is_free_preview": False,
             },
         )
-        enrollment, _ = Enrollment.objects.update_or_create(
+        enrollment, _ = Enrollment.objects.get_or_create(
             student=request.user.student,
             course=course,
-            defaults={"status": Enrollment.Status.ACTIVE},
         )
-        if enrollment.status != Enrollment.Status.ACTIVE:
-            enrollment.status = Enrollment.Status.ACTIVE
-            enrollment.save(update_fields=["status", "updated_at"])
 
         Payment.objects.filter(
             student=request.user.student,
@@ -574,10 +580,8 @@ class ProgressView(StudentAPIView):
 
         with transaction.atomic():
             enrollment = get_object_or_404(
-                Enrollment.objects.select_for_update().select_related("course"),
-                student=request.user.student,
+                _paid_enrollments(self.student).select_for_update().select_related("course"),
                 course__slug=values["course_slug"],
-                status__in=[Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED],
             )
             lesson = get_object_or_404(
                 Lesson.objects.select_related("module"),
@@ -603,10 +607,8 @@ class ResumeView(StudentAPIView):
     @extend_schema(responses=ResumeSerializer)
     def get(self, request, course_slug: str):
         enrollment = get_object_or_404(
-            Enrollment.objects.select_related("course", "last_lesson", "last_lesson__module"),
-            student=request.user.student,
+            _paid_enrollments(self.student).select_related("course", "last_lesson", "last_lesson__module"),
             course__slug=course_slug,
-            status__in=[Enrollment.Status.ACTIVE, Enrollment.Status.COMPLETED],
         )
         return Response(_resume_payload(enrollment))
 

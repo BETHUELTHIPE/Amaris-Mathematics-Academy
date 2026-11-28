@@ -205,12 +205,14 @@ class PermissionTests(TestCase):
             video=video,
             order=1,
             is_published=True,
+            is_free_preview=True,
         )
 
         response = self.client.get(reverse("courses-detail", kwargs={"slug": course.slug}), secure=True)
         body = response.content.decode()
 
         self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["modules"][0]["lessons"][0]["is_free_preview"])
         self.assertNotIn("private-video-id", body)
         self.assertNotIn("youtube_url", body)
         self.assertNotIn("youtube_video_id", body)

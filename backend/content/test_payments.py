@@ -156,6 +156,14 @@ class PayFastPaymentAuthorityTests(TestCase):
         self.assertIsNotNone(payment.gateway_verified_at)
         self.assert_no_fulfilment()
 
+    def test_late_paid_callback_does_not_restore_a_refunded_purchase(self):
+        Payment.objects.filter(reference=self.checkout.payment_reference).update(status=Payment.Status.REFUNDED)
+        result = process_payfast_notification(self.callback(), gateway=MockPayFastGateway(True))
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.reason, "refunded_payment_is_immutable")
+        self.assertEqual(Payment.objects.get(reference=self.checkout.payment_reference).status, Payment.Status.REFUNDED)
+        self.assert_no_fulfilment()
+
     def test_successful_verified_callback_atomically_activates_service_and_creates_artifacts(
         self,
     ):
