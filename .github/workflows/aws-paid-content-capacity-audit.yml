@@ -1,0 +1,59 @@
+name: Diagnose AWS staging rollout capacity
+on:
+  push:
+    branches: [ops/aws-paid-content-staging-20261128]
+    paths: [.github/workflows/aws-paid-content-capacity-audit.yml]
+permissions: {}
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Inspect the failed CloudFormation stack and existing EC2 capacity
+        run: |
+          set -euo pipefail
+          name=amaris-staging-paystack-green-46169592772-1
+          if id="$(aws cloudformation list-stacks --stack-status-filter DELETE_COMPLETE ROLLBACK_COMPLETE CREATE_FAILED --output json |
+            jq -er --arg name "$name" '[.StackSummaries[] | select(.StackName==$name)][0].StackId')"; then
+            aws cloudformation describe-stack-events --stack-name "$id" --output json |
+              jq '[.StackEvents[] | select(.ResourceStatus | endswith("FAILED")) | {LogicalResourceId,ResourceStatusReason}]'
+          fi
+          cluster=amaris-ecs-staging
+          read -r -a hosts <<< "$(aws ecs list-container-instances --cluster "$cluster" --query 'containerInstanceArns' --output text)"
+          aws ecs describe-container-instances --cluster "$cluster" --container-instances "${hosts[@]}" --output json |
+            jq '[.containerInstances[] | {instance:.ec2InstanceId,connected:.agentConnected,running:.runningTasksCount,resources:[.remainingResources[] | select(.name=="CPU" or .name=="MEMORY" or .name=="ENI") | {name,integerValue}],trunking:[.attributes[] | select(.name=="ecs.awsvpc-trunk-id") | .name]}]'
+          aws ecs describe-task-definition --task-definition amaris-ecs-staging-alb-web:18 --output json |
+            jq '.taskDefinition | {family,cpu,memory,containers:[.containerDefinitions[] | {name,cpu,memory,memoryReservation}]}'
+          for region in eu-north-1 af-south-1 us-east-1; do
+            if clusters="$(aws ecs list-clusters --region "$region" --output json 2>/dev/null)"; then
+              jq --arg region "$region" '{region:$region, production_clusters:[.clusterArns[] | split("/")[-1] | select(test("^amaris.*prod";"i"))]}' <<< "$clusters"
+            else
+              printf 'Cluster inventory unavailable in %s.\n' "$region"
+            fi
+          done
