@@ -1,0 +1,134 @@
+name: Check production readiness of staging lesson media
+
+on:
+  push:
+    branches: [ops/aws-tutor-media-staging-20261127]
+    paths:
+      - .github/workflows/aws-staging-media-readiness.yml
+      - deploy/aws/diagnostics/media-readiness-*.sh
+      - deploy/aws/diagnostics/media-readiness-*.py
+
+permissions: {}
+
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+
+jobs:
+  tutor-upload:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Confirm the running release and private S3 bucket
+        run: |
+          set -euo pipefail
+          curl --max-time 10 --fail --silent --show-error https://16.171.164.5/health/version/ |
+            jq -e '{git_sha} | select(.git_sha | type == "string" and test("^[a-f0-9]{40}$"))'
+          curl --max-time 10 --fail --silent --show-error https://16.171.164.5/health/ready/ |
+            jq -e '{status} | select(.status == "ready")'
+          aws ecs describe-services --cluster amaris-ecs-staging --services amaris-web-staging-stateless --output json |
+            jq -e '.services[0] | {taskDefinition,desiredCount,runningCount,status} | select(.status == "ACTIVE" and .runningCount == 2)'
+          bucket=amaris-mathematics-academy-media-stage-110156539003-eu-north-1
+          aws s3api get-public-access-block --bucket "$bucket" --output json |
+            jq -e '.PublicAccessBlockConfiguration | [.[]] | length == 4 and all(.[]; . == true)' >/dev/null
+          aws s3api get-bucket-versioning --bucket "$bucket" --query Status --output text | grep -qx Enabled
+          echo 'S3 blocks all four kinds of public access and has versioning enabled.'
+      - name: Check the live Vimeo integration on each active backend task
+        run: |
+          set -euo pipefail
+          cluster=amaris-ecs-staging
+          service=amaris-web-staging-stateless
+          task_definition="$(aws ecs describe-services --cluster "$cluster" --services "$service" \
+            --query 'services[0].taskDefinition' --output text)"
+          read -r -a task_arns <<< "$(aws ecs list-tasks --cluster "$cluster" --service-name "$service" \
+            --desired-status RUNNING --query taskArns --output text)"
+          mapfile -t current < <(aws ecs describe-tasks --cluster "$cluster" --tasks "${task_arns[@]}" --output json |
+            jq -r --arg def "$task_definition" '.tasks[] | select(.lastStatus == "RUNNING" and .taskDefinitionArn == $def) |
+              [.taskArn,.containerInstanceArn] | @tsv')
+          test "${#current[@]}" -eq 2
+          for t in "${current[@]}"; do
+            IFS=$'\t' read -r task host <<< "$t"
+            instance="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host" \
+              --query 'containerInstances[0].ec2InstanceId' --output text)"
+            bash deploy/aws/ecs/run-on-host.sh "$instance" deploy/aws/diagnostics/media-readiness-vimeo.sh "${task##*/}"
+          done
+      - name: Check whether a protected Vimeo test credential is available in GitHub
+        env:
+          VIMEO_TEST_CREDENTIAL: ${{ secrets.ACADEMY_VIMEO_TOKEN || secrets.VIMEO_ACCESS_TOKEN || secrets.VIMEO_TOKEN }}
+        run: python deploy/aws/diagnostics/media-readiness-vimeo-secret.py
+      - name: Inventory AWS production ECS service status without making changes
+        run: |
+          set -euo pipefail
+          for region in eu-north-1 af-south-1; do
+            if result="$(aws ecs list-clusters --region "$region" --output json 2>/dev/null)"; then
+              jq --arg region "$region" '{region:$region, production_clusters: [.clusterArns[] |
+                split("/")[-1] | select(test("^amaris"; "i") and test("prod"; "i"))]}' <<< "$result"
+            else
+              printf 'AWS ECS cluster inventory unavailable in %s.\n' "$region"
+            fi
+          done
+      - name: Install the tiny test-video generator
+        run: |
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          fi
+      - name: Submit a private MP4 using the approved staging tutor account
+        env:
+          STAGING_TEST_TUTOR_EMAIL: ${{ secrets.STAGING_TEST_TUTOR_EMAIL }}
+          STAGING_TEST_TUTOR_PASSWORD: ${{ secrets.STAGING_TEST_TUTOR_PASSWORD }}
+          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+        run: python deploy/aws/diagnostics/media-readiness-s3-upload.py
+      - name: Remove only the isolated staging upload fixture
+        if: always()
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/tutor-video-probe.json"
+          [[ -f "$probe" ]] || exit 0
+          id="$(jq -er .id "$probe")"
+          title="$(jq -er .title "$probe")"
+          nonce="${title##* }"
+          key="$(jq -er .key "$probe")"
+          version="$(jq -r '.version // empty' "$probe")"
+          [[ "$id" =~ ^[a-f0-9-]{36}$ && "$nonce" =~ ^[a-f0-9]{32}$ && "$key" =~ ^academy-media/videos/[a-f0-9]{32}\.mp4$ ]]
+          cluster=amaris-ecs-staging
+          task="$(aws ecs list-tasks --cluster "$cluster" --service-name amaris-web-staging-stateless             --desired-status RUNNING --query 'taskArns[0]' --output text)"
+          host="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task"             --query 'tasks[0].containerInstanceArn' --output text)"
+          instance="$(aws ecs describe-container-instances --cluster "$cluster" --container-instances "$host"             --query 'containerInstances[0].ec2InstanceId' --output text)"
+          bash deploy/aws/ecs/run-on-host.sh "$instance" deploy/aws/diagnostics/cleanup-tutor-video-probe.sh "${task##*/}" "$id" "$nonce"
+          if [[ -n "$version" ]]; then
+            aws s3api delete-object --bucket amaris-mathematics-academy-media-stage-110156539003-eu-north-1               --key "$key" --version-id "$version" --no-cli-pager >/dev/null
+            aws s3api list-object-versions --bucket amaris-mathematics-academy-media-stage-110156539003-eu-north-1 --prefix "$key" --output json |
+              jq -e --arg key "$key" 'all(((.Versions // []) + (.DeleteMarkers // []))[]; .Key != $key)' >/dev/null
+            echo 'Removed the one S3 object version written by the verification.'
+          fi
