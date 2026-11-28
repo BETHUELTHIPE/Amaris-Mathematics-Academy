@@ -1,0 +1,199 @@
+name: Prepare immutable AWS staging paid-content release
+
+on:
+  push:
+    branches: [ops/aws-paid-content-staging-20261128]
+    paths: [.github/workflows/aws-paid-content-prepare.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+env:
+  BACKEND_SHA: 4f398b236b0cbce9562f658a2284f0a9f8d3bb69
+  BASELINE_SHA: 164838a3143c22cc7b60ab669e1f0c7dca616a0f
+  AWS_REGION: eu-north-1
+  AWS_PAGER: ''
+  ECR_REPO: 110156539003.dkr.ecr.eu-north-1.amazonaws.com/amaris-staging-frontend
+
+jobs:
+  django-integration:
+    name: Django with PostgreSQL and Valkey
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: amaris_ci
+          POSTGRES_USER: amaris_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U amaris_ci -d amaris_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      valkey:
+        image: valkey/valkey:8.1.12-alpine@sha256:9971099af41c36e887aabdfe22b80c0fe45df949163dfc9cb434febc57cfc3fc
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DJANGO_DEBUG: 'false'
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: postgresql://amaris_ci@127.0.0.1:5432/amaris_ci
+      DATABASE_SSL_REQUIRED: 'false'
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: '0'
+      SUPABASE_DATABASE_REQUIRED: 'false'
+      DJANGO_CACHE_URL: redis://127.0.0.1:6379/0
+      DJANGO_PUBLIC_CACHE_URL: redis://127.0.0.1:6379/1
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/2
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/3
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 4f398b236b0cbce9562f658a2284f0a9f8d3bb69
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - name: Generate a Django secret for this test run
+        run: |
+          secret="$(openssl rand -hex 64)"
+          echo "::add-mask::$secret"
+          printf 'DJANGO_SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Check migrations and collect static files
+        run: |
+          test "$(git rev-parse HEAD)" = "$BACKEND_SHA"
+          python -m ruff check content/student_views.py content/video_request_views.py content/admin.py content/services/youtube_copy.py
+          python manage.py makemigrations --check --dry-run
+          python manage.py migrate --noinput
+          python manage.py collectstatic --noinput
+      - name: Run Django tests, including Redis and Celery
+        run: python manage.py test --noinput --verbosity 2
+
+  image:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BACKEND_SHA }}
+          persist-credentials: false
+      - name: Build the pinned ARM64 backend image
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BACKEND_SHA"
+          docker build -f backend/Dockerfile -t amaris-paid-content:verified \
+            --label "org.opencontainers.image.revision=$BACKEND_SHA" backend
+          test "$(docker image inspect --format '{{.Architecture}}' amaris-paid-content:verified)" = arm64
+          docker run --rm --entrypoint python -e DJANGO_DEBUG=true amaris-paid-content:verified manage.py check
+      - name: Scan the backend image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: amaris-paid-content:verified
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          scanners: vuln
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Publish verified backend by immutable digest
+        run: |
+          set -euo pipefail
+          registry="${ECR_REPO%%/*}"
+          tag="paid-content-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          trap 'docker logout "$registry" >/dev/null' EXIT
+          docker tag amaris-paid-content:verified "$ECR_REPO:$tag"
+          docker push "$ECR_REPO:$tag"
+          digest="$(aws ecr describe-images --repository-name amaris-staging-frontend \
+            --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'Verified backend digest: %s\n' "$digest"
+
+  recovery:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paid-content-staging-20261128'
+    concurrency:
+      group: amaris-stockholm-staging-release
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify the current staging revision and capture a fresh encrypted recovery point
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/recovery-venv"
+          "$RUNNER_TEMP/recovery-venv/bin/pip" install --quiet 'boto3>=1.36,<2'
+          aws s3api head-bucket --bucket amaris-staging-db-recovery-110156539003-eu-north-1 --expected-bucket-owner 110156539003
+          sed "s/cfdb105761836c7730fec52ada54c58c624206db/$BASELINE_SHA/g" deploy/aws/paystack/recovery-point.py > "$RUNNER_TEMP/recovery-point.py"
+          "$RUNNER_TEMP/recovery-venv/bin/python" "$RUNNER_TEMP/recovery-point.py"
+      - name: Verify restore in disposable isolated PostgreSQL
+        run: |
+          set -euo pipefail
+          bash deploy/aws/paystack/restore-proof.sh
+      - name: Remove local recovery data
+        if: always()
+        run: |
+          docker rm -f amaris-paystack-recovery-test >/dev/null 2>&1 || true
+          rm -rf "$RUNNER_TEMP/amaris-paystack-recovery"
