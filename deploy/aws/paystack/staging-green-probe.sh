@@ -6,11 +6,11 @@ account=110156539003
 cluster=amaris-ecs-staging
 web=amaris-web-staging-stateless
 mode="${1:-probe}"
-[[ "$mode" == probe || "$mode" == native ]]
+[[ "$mode" == native ]]
 stack="amaris-staging-paystack-green-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
 existing_stack=amaris-staging-ecs-second-host
 origin=https://16.171.164.5
-digest="sha256:bc67977a14b7f91bc5e095715d413367e84595666c96ba41e237e1820df88d30"
+digest="${BACKEND_DIGEST:?}"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$account" ]]
 [[ "$(aws freetier get-account-plan-state --region us-east-1 --query accountPlanType --output text)" == FREE ]]
 [[ "$(aws freetier get-account-plan-state --region us-east-1 --query accountPlanStatus --output text)" == ACTIVE ]]
@@ -47,10 +47,11 @@ active_hosts() {
 
 initial="$(service_state)"
 target="$(jq -er '.loadBalancers[] | select(.containerName == "cms").targetGroupArn' <<< "$initial")"
-[[ "$target" == arn:aws:elasticloadbalancing:eu-north-1:"$account":targetgroup/amaris-staging-stateless/* ]]
+[[ "$target" == arn:aws:elasticloadbalancing:eu-north-1:"$account":targetgroup/amaris-staging-stateless/* ||
+   "$target" == arn:aws:elasticloadbalancing:eu-north-1:"$account":targetgroup/amaris-staging-web-green/* ]]
 healthy
 health_sha="$(curl -fsS --max-time 15 "$origin/health/version/" | jq -er .git_sha)"
-[[ "$health_sha" == cfdb105761836c7730fec52ada54c58c624206db ]]
+[[ "$health_sha" == 164838a3143c22cc7b60ab669e1f0c7dca616a0f ]]
 jq -e '.deploymentConfiguration.minimumHealthyPercent == 100 and
   .deploymentConfiguration.maximumPercent >= 150' <<< "$initial" >/dev/null
 original_hosts="$(active_hosts)"
@@ -124,7 +125,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # The run-specific stack name prevents deleting or adopting an unrelated host.
-python deploy/aws/paystack/staging-green-probe.py preflight
+python deploy/aws/paystack/staging-native-rollout.py check
 stack_started=true
 aws cloudformation deploy --stack-name "$stack" --template-file deploy/aws/paystack/staging-green-host.yml \
   --parameter-overrides "VpcId=$vpc" "PrivateSubnet=$subnet" "InstanceProfileName=$profile" "ImageId=$ami" "RootDevice=$device" \
@@ -147,6 +148,7 @@ done
 healthy
 echo "PASS: private Free plan-eligible t4g.small connected to staging ECS."
 if [[ "$mode" == native ]]; then
+  python deploy/aws/paid-content/setup.py migrate
   python deploy/aws/paystack/staging-native-rollout.py "$spare"
 else
   python deploy/aws/paystack/staging-green-probe.py "$spare"

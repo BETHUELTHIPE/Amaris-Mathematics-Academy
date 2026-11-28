@@ -16,10 +16,10 @@ SERVICE = "amaris-web-staging-stateless"
 VPC = "vpc-0252538d2febd4641"
 EDGE = "i-02855f007d15af597"
 EDGE_GROUP = "sg-037ced8e9b8da3084"
-BASELINE = "amaris-ecs-staging-alb-web:14"
-CANDIDATE = "amaris-ecs-staging-alb-web:17"
-BACKEND_SHA = "164838a3143c22cc7b60ab669e1f0c7dca616a0f"
-BACKEND_DIGEST = "sha256:bc67977a14b7f91bc5e095715d413367e84595666c96ba41e237e1820df88d30"
+BASELINE = "amaris-ecs-staging-alb-web:17"
+CANDIDATE = os.environ["CANDIDATE_TASK"].rsplit("/", 1)[-1]
+BACKEND_SHA = "8f7b34f436c0c1da6cc0bace9c62c89d0712c5d2"
+BACKEND_DIGEST = os.environ["BACKEND_DIGEST"]
 FRONTEND_DIGEST = "sha256:6a90ef51552b39254b1945d8c3ff8ead5a8889da671122b7184558d56bb586c0"
 TAG = "paystack-green-" + os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"]
 

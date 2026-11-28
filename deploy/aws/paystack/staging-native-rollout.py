@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import runpy
 import signal
+import subprocess
 import sys
 import time
 from urllib.error import HTTPError, URLError
@@ -17,7 +18,7 @@ cluster, service = probe["CLUSTER"], probe["SERVICE"]
 baseline, candidate = probe["BASELINE"], probe["CANDIDATE"]
 wait_until = probe["wait_until"]
 origin = "https://16.171.164.5"
-baseline_sha = "cfdb105761836c7730fec52ada54c58c624206db"
+baseline_sha = "164838a3143c22cc7b60ab669e1f0c7dca616a0f"
 candidate_sha = probe["BACKEND_SHA"]
 terminal = {"SUCCESSFUL", "STOPPED", "ROLLBACK_SUCCESSFUL", "ROLLBACK_FAILED"}
 rollback_states = {"STOP_REQUESTED", "ROLLBACK_REQUESTED", "ROLLBACK_IN_PROGRESS"}
@@ -73,7 +74,7 @@ def public_smoke(expected):
     if not deps["postgresql"] or not deps["redis"] or public_status("/") != 200:
         return False
     webhook = "/api/v1/paystack/webhook/"
-    return expected == baseline_sha or (
+    return (
         public_status(webhook) == 405 and public_status(webhook, method="POST") == 403
     )
 
@@ -110,24 +111,25 @@ def promote(spare):
     assert info["schedulingStrategy"] == "REPLICA"
     assert settled()
     old_lb, = info["loadBalancers"]
-    primary = old_lb["targetGroupArn"]
-    blue, = elb.describe_target_groups(TargetGroupArns=[primary])["TargetGroups"]
-    green, = elb.describe_target_groups(Names=["amaris-staging-web-green"])["TargetGroups"]
-    alternate = green["TargetGroupArn"]
-    alb, = blue["LoadBalancerArns"]
+    existing = old_lb["advancedConfiguration"]
+    base_group = old_lb["targetGroupArn"]
+    other_group = existing["alternateTargetGroupArn"]
+    group_rows = elb.describe_target_groups(TargetGroupArns=[base_group, other_group])["TargetGroups"]
+    assert {row["TargetGroupName"] for row in group_rows} == {"amaris-staging-stateless", "amaris-staging-web-green"}
+    assert all(row["VpcId"] == probe["VPC"] and row["TargetType"] == "ip" and row["Port"] == 8080 for row in group_rows)
+    alb, = group_rows[0]["LoadBalancerArns"]
     assert alb.split("loadbalancer/", 1)[1].startswith("app/amaris-staging-alb/")
-    assert green["LoadBalancerArns"] == [alb] and not probe["targets"](alternate)
+    assert all(row["LoadBalancerArns"] == [alb] for row in group_rows)
+    routes = list(listen_rules(alb))
+    public_rule, = (rule for listener, rule in routes if listener["Port"] == 80 and
+                    rule["RuleArn"] == existing["productionListenerRule"])
+    test_rule, = (rule for listener, rule in routes if listener["Port"] == 8081 and
+                  rule["RuleArn"] == existing["testListenerRule"] and not rule["IsDefault"])
+    primary = effective_group(public_rule["RuleArn"])
+    alternate, = ({base_group, other_group} - {primary})
+    assert not probe["targets"](alternate) and set(weights(test_rule)) <= {primary, alternate}
     old_tasks = probe["service_tasks"]()
     assert len(old_tasks) == 2
-    routes = list(listen_rules(alb))
-    existing = old_lb.get("advancedConfiguration")
-    public_rule, = (rule for listener, rule in routes if
-                    listener["Port"] == 80 and primary in str(rule["Actions"]))
-    test_rule, = (rule for listener, rule in routes if
-                  listener["Port"] == 8081 and not rule["IsDefault"] and
-                  any(action["Type"] == "forward" for action in rule["Actions"]))
-    assert set(weights(test_rule)) <= {primary, alternate}
-    assert effective_group(public_rule["RuleArn"]) == primary
     lb, = elb.describe_load_balancers(LoadBalancerArns=[alb])["LoadBalancers"]
     nodes = probe["private_alb_nodes"](lb)
 
@@ -160,21 +162,8 @@ def promote(spare):
             "timeoutConfiguration": {"timeoutInMinutes": 6, "action": "ROLLBACK"},
         }],
     }
-    advanced = {
-        "alternateTargetGroupArn": alternate,
-        "productionListenerRule": public_rule["RuleArn"],
-        "testListenerRule": test_rule["RuleArn"],
-        "roleArn": role["Arn"],
-    }
+    assert existing["roleArn"] == role["Arn"]
     previous_deployments = {row["serviceDeploymentArn"] for row in deployments()}
-    load_balancer_update = {}
-    if existing != advanced:
-        load_balancer_update["loadBalancers"] = [{
-            "targetGroupArn": primary,
-            "containerName": old_lb["containerName"],
-            "containerPort": old_lb["containerPort"],
-            "advancedConfiguration": advanced,
-        }]
     deployment = None
     placement_changed = False
     try:
@@ -184,7 +173,6 @@ def promote(spare):
             taskDefinition=candidate,
             placementConstraints=[],
             deploymentConfiguration=config,
-            **load_balancer_update,
         )
         placement_changed = True
         print("Temporarily allowed blue and green task sets to share a host during overlap.", flush=True)
@@ -224,6 +212,7 @@ def promote(spare):
         assert effective_group(public_rule["RuleArn"]) == primary
         assert effective_group(test_rule["RuleArn"]) == alternate
         probe["check_private_route"](nodes)
+        subprocess.run([sys.executable, "deploy/aws/paid-content/probe.py"], check=True)
         assert public_smoke(baseline_sha)
         ecs.continue_service_deployment(serviceDeploymentArn=deployment, hookId=hook, action="CONTINUE")
         print("Passed both private targets and released the staging traffic pause.", flush=True)

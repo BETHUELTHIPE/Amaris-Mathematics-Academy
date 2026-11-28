@@ -1,0 +1,143 @@
+name: Deploy paid course and video access to AWS staging
+
+on:
+  push:
+    branches: [ops/aws-paid-content-staging-20261128]
+    paths: [.github/workflows/aws-paid-content-deploy.yml, deploy/aws/paid-content/**]
+  workflow_dispatch:
+
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-paid-content-staging-20261128'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 48
+    environment: staging
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      AWS_REGION: eu-north-1
+      AWS_PAGER: ''
+      BACKEND_SHA: 8f7b34f436c0c1da6cc0bace9c62c89d0712c5d2
+      PREPARE_RUN: '46169501642'
+      PREPARE_SHA: 817bc73729bbb7c17216697730fa8446e0a82fd3
+      ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Require successful image, integration and staging recovery jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for n in {1..72}; do
+            result="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREPARE_RUN")"
+            jq -e --arg sha "$PREPARE_SHA" '.head_sha == $sha and .name == "Prepare immutable AWS staging paid-content release"' <<< "$result" >/dev/null
+            if [[ "$(jq -r .status <<< "$result")" == completed ]]; then
+              jq -e '.conclusion=="success"' <<< "$result" >/dev/null
+              printf 'PREPARE_ATTEMPT=%s\n' "$(jq -er .run_attempt <<< "$result")" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE != ''
+        with:
+          role-to-assume: ${{ env.ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Register exact web, worker and migration revisions
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet 'boto3>=1.43.119,<2'
+          digest="$(aws ecr describe-images --repository-name amaris-staging-frontend \
+            --image-ids "imageTag=paid-content-$PREPARE_RUN-$PREPARE_ATTEMPT" \
+            --query 'imageDetails[0].imageDigest' --output text)"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          export BACKEND_DIGEST="$digest"
+          printf 'BACKEND_DIGEST=%s\n' "$digest" >> "$GITHUB_ENV"
+          python deploy/aws/paid-content/setup.py prepare
+      - name: Verify before shifting staging traffic and remove only the synthetic video
+        run: |
+          set -euo pipefail
+          bucket=amaris-mathematics-academy-media-stage-110156539003-eu-north-1
+          export PAID_PROBE_KEY="academy-media/videos/paid-course-probe-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.mp4"
+          fixture="$RUNNER_TEMP/paid-content.mp4"
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          fi
+          ffmpeg -nostdin -loglevel error -f lavfi -i color=c=blue:s=64x64:d=1 \
+            -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$fixture"
+          export PAID_PROBE_SHA="$(sha256sum "$fixture" | cut -d' ' -f1)"
+          version=""
+          cleanup() {
+            local result=$?
+            if [[ -n "$version" && "$version" != None && "$version" != null ]]; then
+              aws s3api delete-object --bucket "$bucket" --key "$PAID_PROBE_KEY" --version-id "$version" \
+                --expected-bucket-owner 110156539003 >/dev/null || result=1
+            fi
+            exit "$result"
+          }
+          trap cleanup EXIT
+          aws s3api get-bucket-versioning --bucket "$bucket" --query Status --output text | grep -qx Enabled
+          version="$(aws s3api put-object --bucket "$bucket" --key "$PAID_PROBE_KEY" \
+            --body "$fixture" --content-type video/mp4 --server-side-encryption AES256 \
+            --if-none-match '*' --expected-bucket-owner 110156539003 --query VersionId --output text)"
+          [[ -n "$version" && "$version" != None && "$version" != null ]]
+          bash deploy/aws/paystack/staging-green-probe.sh native
+          python deploy/aws/paid-content/probe.py
+      - name: Start one worker and one Beat from the matching backend
+        run: python deploy/aws/paid-content/setup.py jobs
+      - name: Align staging monitoring with the current public listener
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 110156539003 ]]
+          cluster=amaris-ecs-staging
+          service=amaris-web-staging-stateless
+          stack=amaris-staging-monitoring
+          state="$(aws ecs describe-services --cluster "$cluster" --services "$service" --output json)"
+          rule="$(jq -er '.services[0] | select(.taskDefinition == env.CANDIDATE_TASK) |
+            select(.runningCount==2 and .pendingCount==0 and (.deployments|length)==1 and
+            .deploymentConfiguration.strategy=="BLUE_GREEN" and .deploymentConfiguration.alarms.rollback) |
+            .loadBalancers[0].advancedConfiguration.productionListenerRule' <<< "$state")"
+          [[ "$rule" == arn:aws:elasticloadbalancing:eu-north-1:110156539003:listener-rule/app/amaris-staging-alb/* ]]
+          target="$(aws elbv2 describe-rules --rule-arns "$rule" --output json |
+            jq -er '.Rules[0].Actions | map(select(.Type=="forward")) | .[0].ForwardConfig.TargetGroups |
+            map(select(.Weight>0)) | select(length==1 and .[0].Weight==100) | .[0].TargetGroupArn')"
+          [[ "$target" == arn:aws:elasticloadbalancing:eu-north-1:110156539003:targetgroup/amaris-staging-web-green/* ||
+             "$target" == arn:aws:elasticloadbalancing:eu-north-1:110156539003:targetgroup/amaris-staging-stateless/* ]]
+          aws elbv2 describe-target-health --target-group-arn "$target" --output json |
+            jq -e '[.TargetHealthDescriptions[] | select(.TargetHealth.State=="healthy")]|length==2' >/dev/null
+          target_dimension="targetgroup/${target#*:targetgroup/}"
+          parameters="$(aws cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].Parameters' --output json)"
+          jq -e '(map(.ParameterKey)|sort)==(["OperatorEmail","ClusterName","ServiceName","LoadBalancerFullName","ActiveTargetGroupFullName"]|sort)' <<< "$parameters" >/dev/null
+          if ! jq -e --arg target "$target_dimension" 'any(.[]; .ParameterKey=="ActiveTargetGroupFullName" and .ParameterValue==$target)' <<< "$parameters" >/dev/null; then
+            aws cloudformation update-stack --stack-name "$stack" --use-previous-template --parameters \
+              ParameterKey=OperatorEmail,UsePreviousValue=true ParameterKey=ClusterName,UsePreviousValue=true \
+              ParameterKey=ServiceName,UsePreviousValue=true ParameterKey=LoadBalancerFullName,UsePreviousValue=true \
+              "ParameterKey=ActiveTargetGroupFullName,ParameterValue=$target_dimension" --query StackId --output text >/dev/null
+            aws cloudformation wait stack-update-complete --stack-name "$stack"
+          fi
+          alarms="$(aws cloudwatch describe-alarms --alarm-names amaris-staging-no-healthy-targets amaris-staging-unhealthy-targets --output json)"
+          jq -e --arg target "$target_dimension" '.MetricAlarms | length==2 and
+            all(.[]; .ActionsEnabled and any(.Dimensions[]; .Name=="TargetGroup" and .Value==$target))' <<< "$alarms" >/dev/null
+          echo "PASS: healthy/unhealthy target alarms now follow the staging target group serving public traffic."
