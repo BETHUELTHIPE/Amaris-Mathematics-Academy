@@ -117,16 +117,16 @@ class PrivateYouTubeCopyTests(TestCase):
         url = reverse("admin:content_videoasset_changelist")
         action = {"action": "copy_to_private_youtube", "_selected_action": str(self.asset.pk), "index": "0"}
         self.client.force_login(manager)
-        self.assertNotContains(self.client.get(url), "Copy one published S3 lesson")
-        self.client.post(url, action)
+        self.assertNotContains(self.client.get(url, secure=True), "Copy one published S3 lesson")
+        self.client.post(url, action, secure=True)
         enqueue.assert_not_called()
 
         self.client.force_login(user_model.objects.create_superuser(username="owner"))
         self.asset.is_published = False
         self.asset.save(update_fields=["is_published"])
-        self.client.post(url, action)
+        self.client.post(url, action, secure=True)
         enqueue.assert_not_called()
         self.asset.is_published = True
         self.asset.save(update_fields=["is_published"])
-        self.client.post(url, action)
+        self.client.post(url, action, secure=True)
         enqueue.assert_called_once_with(self.copy.pk)
