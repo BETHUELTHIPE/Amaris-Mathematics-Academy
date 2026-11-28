@@ -283,7 +283,7 @@ class VideoAssetAdmin(PublishableAdmin):
             return format_html(
                 '<a href="https://studio.youtube.com/video/{}/edit" rel="noopener noreferrer" target="_blank">'
                 "Open private copy in YouTube Studio</a>. "
-                "Review the audience setting and invite viewers in Studio.",
+                "Keep this copy restricted to authorised staff. Students watch the paid lesson in Amaris.",
                 copy.youtube_video_id,
             )
         return copy.issue or copy.get_status_display()
@@ -333,6 +333,26 @@ class VideoAssetAdmin(PublishableAdmin):
         ("Publishing", {"fields": ("is_published", "publish_at")}),
         ("Audit", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
     )
+
+
+@admin.register(YouTubeLessonCopy)
+class YouTubeLessonCopyAdmin(TimeStampedAdmin):
+    list_display = ("video", "status", "updated_at")
+    list_select_related = ("video",)
+    fields = ("video", "status", "issue", "updated_at")
+    readonly_fields = fields
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(ResourceAsset)

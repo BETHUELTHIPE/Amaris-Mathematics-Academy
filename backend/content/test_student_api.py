@@ -28,6 +28,7 @@ from content.models import (
     Payment,
     StudentRecord,
     TutorAvailabilitySlot,
+    VideoAsset,
     VideoRequest,
 )
 from content.payment_models import Invoice, NotificationOutbox, ServiceTicket
@@ -196,6 +197,17 @@ class StudentJourneyApiTests(APITestCase):
             )
         )
 
+    def verified_purchase(self):
+        return Payment.objects.create(
+            reference="QA-VERIFIED-COURSE",
+            student=self.student,
+            course=self.course,
+            provider=Payment.Provider.PAYFAST,
+            amount=Decimal("950.00"),
+            status=Payment.Status.PAID,
+            gateway_verified_at=timezone.now(),
+        )
+
     def test_checkout_creation_and_status_polling_use_server_owned_facts(self):
         self.authenticate()
         checkout = self.client.post(
@@ -219,6 +231,7 @@ class StudentJourneyApiTests(APITestCase):
         self.assertEqual(cross_user.status_code, 404)
 
     def test_last_lesson_resume_persists_and_is_student_scoped(self):
+        self.verified_purchase()
         self.authenticate()
         courses = self.client.get(reverse("student-courses"), secure=True)
         self.assertEqual(courses.data[0]["course"]["first_lesson_slug"], self.lesson.slug)
@@ -248,8 +261,7 @@ class StudentJourneyApiTests(APITestCase):
         self.assertEqual(cross_user.status_code, 404)
 
     def test_enrollment_is_required_to_get_new_lesson_playback(self):
-        from .models import VideoAsset
-
+        self.verified_purchase()
         self.lesson.video = VideoAsset.objects.create(
             title="Synthetic hosted lesson",
             provider="vimeo",
@@ -270,12 +282,82 @@ class StudentJourneyApiTests(APITestCase):
         self.assertEqual(response.headers["Cache-Control"], "private, no-store")
         self.lesson.video.is_published = False
         self.lesson.video.save()
-        self.assertEqual(
-            self.client.get(path, secure=True).data["lesson"]["video"]["playback_url"],
-            "",
+        self.assertIsNone(self.client.get(path, secure=True).data["lesson"]["video"])
+
+    @patch("content.student_views.lesson_playback_url", return_value="https://private.example.test/playback")
+    def test_only_a_verified_purchase_for_this_student_and_course_unlocks_content(self, sign_video):
+        self.lesson.is_free_preview = True
+        self.lesson.video = VideoAsset.objects.create(
+            title="Private video", provider=VideoAsset.Provider.S3, is_published=True
         )
+        self.lesson.save()
+        self.authenticate()
+        lesson_url = reverse("student-lesson", args=[self.course.slug, self.lesson.slug])
+        dashboard_url = reverse("student-courses")
+        resume_url = reverse("student-resume", args=[self.course.slug])
+        progress_url = reverse("student-progress")
+        progress = {"course_slug": self.course.slug, "lesson_slug": self.lesson.slug, "position_seconds": 42}
+
+        Payment.objects.create(
+            reference="QA-OTHER-STUDENT",
+            student=self.other,
+            course=self.course,
+            enrollment=self.enrollment,
+            provider=Payment.Provider.PAYFAST,
+            amount=Decimal("950.00"),
+            status=Payment.Status.PAID,
+            gateway_verified_at=timezone.now(),
+        )
+        different_course = Course.objects.create(
+            category=self.course.category, title="Other course", slug="other-course", price=Decimal("950.00")
+        )
+        Payment.objects.create(
+            reference="QA-WRONG-COURSE",
+            student=self.student,
+            course=different_course,
+            provider=Payment.Provider.PAYFAST,
+            amount=Decimal("950.00"),
+            status=Payment.Status.PAID,
+            gateway_verified_at=timezone.now(),
+        )
+        self.assertEqual(self.client.get(lesson_url, secure=True).status_code, 404)
+        self.assertEqual(self.client.get(dashboard_url, secure=True).data, [])
+        self.assertEqual(self.client.get(resume_url, secure=True).status_code, 404)
+        self.assertEqual(self.client.patch(progress_url, progress, format="json", secure=True).status_code, 404)
+
+        payment = self.verified_purchase()
+        verified_at = payment.gateway_verified_at
+        for status, timestamp, amount in (
+            (Payment.Status.PENDING, verified_at, Decimal("950.00")),
+            (Payment.Status.PAID, None, Decimal("950.00")),
+            (Payment.Status.PAID, verified_at, Decimal("0.00")),
+            (Payment.Status.REFUNDED, verified_at, Decimal("950.00")),
+        ):
+            with self.subTest(status=status, verified=timestamp is not None, amount=amount):
+                Payment.objects.filter(pk=payment.pk).update(
+                    status=status, gateway_verified_at=timestamp, amount=amount
+                )
+                self.assertEqual(self.client.get(lesson_url, secure=True).status_code, 404)
+        sign_video.assert_not_called()
+
+        # The verified purchase remains valid after pricing changes and legacy payment linkage repairs.
+        Payment.objects.filter(pk=payment.pk).update(status=Payment.Status.PAID)
+        Course.objects.filter(pk=self.course.pk).update(price=Decimal("1200.00"))
+        Enrollment.objects.filter(pk=self.enrollment.pk).update(status=Enrollment.Status.COMPLETED)
+        self.assertEqual(self.client.get(dashboard_url, secure=True).data[0]["course"]["slug"], self.course.slug)
+        self.assertEqual(self.client.get(resume_url, secure=True).status_code, 200)
+        self.assertEqual(self.client.patch(progress_url, progress, format="json", secure=True).status_code, 200)
+        response = self.client.get(lesson_url, secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["lesson"]["video"]["playback_url"], sign_video.return_value)
+        sign_video.assert_called_once()
+
+        Enrollment.objects.filter(pk=self.enrollment.pk).update(status=Enrollment.Status.CANCELLED)
+        self.assertEqual(self.client.get(lesson_url, secure=True).status_code, 404)
+        self.assertEqual(self.client.get(dashboard_url, secure=True).data, [])
 
     def test_course_start_skips_hidden_and_future_lessons(self):
+        self.verified_purchase()
         self.authenticate()
         for published, publish_at in ((False, None), (True, timezone.now() + timedelta(days=1))):
             self.lesson.is_published = published

@@ -14,7 +14,11 @@ from .services.youtube_copy import perform_youtube_copy
 CHANNEL = "UC" + "A" * 22
 VIDEO = "abcdefghijk"
 SESSION = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=fixture"
-FINISHED = {"id": VIDEO, "snippet": {"channelId": CHANNEL}, "status": {"privacyStatus": "private"}}
+FINISHED = {
+    "id": VIDEO,
+    "snippet": {"channelId": CHANNEL},
+    "status": {"privacyStatus": "private", "embeddable": False},
+}
 
 
 @override_settings(
@@ -72,7 +76,7 @@ class PrivateYouTubeCopyTests(TestCase):
         self.assertEqual(self.asset.youtube_video_id, "")
         self.assertEqual(google.call_count, 9)
         request = google.call_args_list[2].kwargs
-        self.assertEqual(json.loads(request["data"])["status"], {"privacyStatus": "private"})
+        self.assertEqual(json.loads(request["data"])["status"], {"privacyStatus": "private", "embeddable": False})
         self.assertEqual(s3.get_object.call_args.kwargs["Range"], "bytes=4-7")
         self.assertEqual(s3.get_object.call_args.kwargs["IfMatch"], '"fixture"')
 

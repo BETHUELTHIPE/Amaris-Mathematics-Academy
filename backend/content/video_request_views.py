@@ -91,7 +91,12 @@ def _status_payload(request: VideoRequest) -> dict:
     position = video_request_queue_position(request)
     eta_from, eta_to = video_request_eta(request)
     video = None
-    if request.status == VideoRequest.Status.READY and request.video_external_id:
+    if (
+        request.status == VideoRequest.Status.READY
+        and request.gateway_verified_at
+        and request.amount > 0
+        and request.video_external_id
+    ):
         video = {
             "provider": request.video_provider,
             "youtube_video_id": (
@@ -282,6 +287,8 @@ class VideoRequestVideoDownloadView(VideoRequestStudentAPIView):
             reference=reference,
             student=self.student,
             status=VideoRequest.Status.READY,
+            gateway_verified_at__isnull=False,
+            amount__gt=0,
             video_provider=VideoRequest.VideoProvider.DIRECT,
         ).first()
         if item is None or not item.video_external_id:

@@ -80,7 +80,7 @@ Configure the four `ACADEMY_YOUTUBE_*` settings from the approved Academy YouTub
 
 In Django Admin, open **Video assets** as a superuser. Select one published S3 lesson, then run **Copy one published S3 lesson to private YouTube**. The worker confirms the channel identity and uploads with private visibility. Open the video record to check the result or resume an interrupted copy by selecting the same lesson again. If Google reports an expired session, check YouTube Studio for a completed copy first.
 
-Open the copy in YouTube Studio to review its processing and audience settings. Use **Share privately** to invite viewers when appropriate. The student lesson continues to use its existing S3 URL. The YouTube copy and its upload session are available only to authorised staff.
+Open the copy in YouTube Studio to review its processing and audience settings. Keep the copy restricted to authorised staff. Students use the lesson in Amaris after the server verifies payment. The YouTube copy and its upload session are available only to authorised staff.
 
 ## Reliability and disaster recovery
 

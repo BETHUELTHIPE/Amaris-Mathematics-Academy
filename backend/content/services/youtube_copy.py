@@ -115,7 +115,7 @@ def begin_session(token, title, size, mime):
         data=json.dumps(
             {
                 "snippet": {"title": title or "Amaris lesson", "categoryId": "27"},
-                "status": {"privacyStatus": "private"},
+                "status": {"privacyStatus": "private", "embeddable": False},
             }
         ).encode(),
         token=token,
@@ -179,6 +179,7 @@ def send_file(copy, s3, token, mime):
         or not VIDEO_ID.fullmatch(video_id)
         or (result.get("snippet") or {}).get("channelId") != copy.channel_id
         or (result.get("status") or {}).get("privacyStatus") != "private"
+        or (result.get("status") or {}).get("embeddable") is not False
     ):
         raise CopyError(
             "The provider response did not confirm a private copy on the Academy channel. Check YouTube Studio."

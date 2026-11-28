@@ -159,6 +159,16 @@ class CapacityStudentUser(FastHttpUser):
                     raise RuntimeError("Could not create a synthetic pending checkout.")
                 reference = response.json()["payment_reference"]
             self.payment_status_path = f"/api/v1/student/payments/{reference}/"
+            with self.client.post(
+                f"/api/v1/student/acceptance/payments/{reference}/complete/",
+                headers=headers,
+                json={},
+                name="00 Verify synthetic sandbox payment",
+                catch_response=True,
+            ) as response:
+                if response.status_code != 200 or response.json().get("status") != "paid":
+                    response.failure("synthetic sandbox payment was not verified")
+                    raise RuntimeError("Could not verify the synthetic student's course payment.")
         if SESSION_COOKIE_NAME and SESSION_COOKIE_VALUE and not (AUTH_BEARER or COOKIE_HEADER):
             self.client.cookies.set(
                 SESSION_COOKIE_NAME,
