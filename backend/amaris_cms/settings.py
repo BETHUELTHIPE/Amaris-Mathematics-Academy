@@ -327,6 +327,10 @@ ACADEMY_VIMEO_TOKEN = os.getenv("ACADEMY_VIMEO_TOKEN", "").strip()
 ACADEMY_VIMEO_EMBED_DOMAINS = tuple(
     domain.strip().lower() for domain in os.getenv("ACADEMY_VIMEO_EMBED_DOMAINS", "").split(",") if domain.strip()
 )
+ACADEMY_YOUTUBE_CHANNEL_ID = os.getenv("ACADEMY_YOUTUBE_CHANNEL_ID", "").strip()
+ACADEMY_YOUTUBE_CLIENT_ID = os.getenv("ACADEMY_YOUTUBE_CLIENT_ID", "").strip()
+ACADEMY_YOUTUBE_CLIENT_SECRET = os.getenv("ACADEMY_YOUTUBE_CLIENT_SECRET", "").strip()
+ACADEMY_YOUTUBE_REFRESH_TOKEN = os.getenv("ACADEMY_YOUTUBE_REFRESH_TOKEN", "").strip()
 if ACADEMY_MEDIA_BUCKET:
     STORAGES["academy_media"] = {
         "BACKEND": "storages.backends.s3.S3Storage",

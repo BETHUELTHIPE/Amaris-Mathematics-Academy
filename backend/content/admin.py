@@ -1,10 +1,13 @@
 from datetime import timedelta
 
 from django import forms
+from django.conf import settings
 from django.contrib import admin, messages
 from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils import timezone
+from django.utils.html import format_html
+from kombu.exceptions import OperationalError
 
 from .admin_media import VideoAssetForm, begin_admin_upload
 from .models import (
@@ -34,7 +37,10 @@ from .models import (
     VideoRequest,
     VideoRequestDocument,
     WebVitalBucket,
+    YouTubeLessonCopy,
 )
+from .services.youtube_copy import eligible_source, youtube_copy_enabled
+from .tasks import upload_private_youtube_copy
 
 admin.site.site_header = "Amaris Mathematics Academy"
 admin.site.site_title = "Amaris Academy Admin"
@@ -220,6 +226,67 @@ class LessonAdmin(PublishableAdmin):
 @admin.register(VideoAsset)
 class VideoAssetAdmin(PublishableAdmin):
     form = VideoAssetForm
+    actions = PublishableAdmin.actions + ("copy_to_private_youtube",)
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not request.user.is_superuser or not youtube_copy_enabled():
+            actions.pop("copy_to_private_youtube", None)
+        return actions
+
+    @admin.action(description="Copy one published S3 lesson to private YouTube")
+    def copy_to_private_youtube(self, request, queryset):
+        if not request.user.is_superuser or not youtube_copy_enabled():
+            return
+        assets = list(queryset[:2])
+        if len(assets) != 1 or not eligible_source(assets[0]):
+            self.message_user(
+                request, "Select one published lesson video stored in the private S3 bucket.", messages.ERROR
+            )
+            return
+
+        video = assets[0]
+        copy, _ = YouTubeLessonCopy.objects.get_or_create(
+            video=video,
+            defaults={
+                "channel_id": settings.ACADEMY_YOUTUBE_CHANNEL_ID,
+                "source_bucket": settings.ACADEMY_MEDIA_BUCKET,
+                "source_key": video.aws_media_key,
+            },
+        )
+        if copy.status == copy.Status.COMPLETE or (copy.lease_until and copy.lease_until > timezone.now()):
+            self.message_user(request, "This video already has a YouTube copy or an upload is in progress.")
+            return
+        try:
+            upload_private_youtube_copy.delay(copy.pk)
+        except OperationalError:
+            self.message_user(
+                request, "The upload queue is unavailable. Select the video and try again later.", messages.ERROR
+            )
+        else:
+            self.message_user(
+                request, "Private YouTube copy queued. Check the video record for the result.", messages.SUCCESS
+            )
+
+    def get_fieldsets(self, request, obj=None):
+        sections = super().get_fieldsets(request, obj)
+        if request.user.is_superuser and obj and obj.provider == VideoAsset.Provider.S3:
+            return sections + (("Private YouTube copy", {"fields": ("youtube_copy_status",)}),)
+        return sections
+
+    @admin.display(description="Copy status")
+    def youtube_copy_status(self, obj):
+        copy = getattr(obj, "youtube_copy", None)
+        if copy is None:
+            return "No copy requested."
+        if copy.status == copy.Status.COMPLETE:
+            return format_html(
+                '<a href="https://studio.youtube.com/video/{}/edit" rel="noopener noreferrer" target="_blank">'
+                "Open private copy in YouTube Studio</a>. "
+                "Review the audience setting and invite viewers in Studio.",
+                copy.youtube_video_id,
+            )
+        return copy.issue or copy.get_status_display()
 
     def get_form(self, request, obj=None, **kwargs):
         base = super().get_form(request, obj, **kwargs)
@@ -254,7 +321,7 @@ class VideoAssetAdmin(PublishableAdmin):
     list_editable = ("allow_preview", "is_published")
     search_fields = ("title", "youtube_video_id", "youtube_url", "transcript", "submitted_by__email")
     list_select_related = ("submitted_by",)
-    readonly_fields = ("id", "submitted_by", "created_at", "updated_at")
+    readonly_fields = ("id", "submitted_by", "created_at", "updated_at", "youtube_copy_status")
     fieldsets = (
         (
             "Video",

@@ -278,6 +278,26 @@ class VideoAsset(PublishableModel):
         return self.title
 
 
+class YouTubeLessonCopy(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        COPYING = "copying", "Copying"
+        COMPLETE = "complete", "Private copy complete"
+        FAILED = "failed", "Needs attention"
+
+    video = models.OneToOneField(VideoAsset, related_name="youtube_copy", on_delete=models.CASCADE)
+    channel_id = models.CharField(max_length=24)
+    source_bucket = models.CharField(max_length=63)
+    source_key = models.CharField(max_length=255)
+    source_etag = models.CharField(max_length=128, blank=True)
+    source_size = models.PositiveBigIntegerField(null=True)
+    upload_session = models.URLField(max_length=2048, blank=True)
+    youtube_video_id = models.CharField(max_length=11, blank=True)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    lease_until = models.DateTimeField(null=True)
+    issue = models.CharField(max_length=240, blank=True)
+
+
 class Lesson(PublishableModel):
     module = models.ForeignKey(CourseModule, related_name="lessons", on_delete=models.CASCADE)
     title = models.CharField(max_length=180)

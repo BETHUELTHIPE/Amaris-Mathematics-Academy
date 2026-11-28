@@ -22,6 +22,12 @@ from content.services.video_requests import video_request_eta, video_request_que
 
 # Celery autodiscovery imports content.tasks; register the finance jobs.
 from . import tutor_finance_tasks  # noqa: F401
+from .services.youtube_copy import perform_youtube_copy
+
+
+@shared_task(ignore_result=True)
+def upload_private_youtube_copy(copy_id: int) -> None:
+    perform_youtube_copy(copy_id)
 
 
 @shared_task(
