@@ -1,0 +1,77 @@
+name: Retry private CloudFront provisioning for Amaris staging
+
+on:
+  push:
+    branches: [ops/aws-staging-cloudfront-course-video]
+    paths: [.github/workflows/aws-staging-cloudfront-provision.yml]
+  workflow_dispatch:
+
+permissions: {}
+concurrency:
+  group: amaris-stockholm-staging-release
+  cancel-in-progress: false
+env:
+  AWS_REGION: eu-north-1
+  AWS_PAGER: ''
+
+jobs:
+  cdn:
+    if: github.repository == 'BETHUELTHIPE/Amaris-Mathematics-Academy' && github.ref == 'refs/heads/ops/aws-staging-cloudfront-course-video'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      STAGING_AWS_ROLE: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE != ''
+        with:
+          role-to-assume: ${{ env.STAGING_AWS_ROLE }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: env.STAGING_AWS_ROLE == ''
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: eu-north-1
+          allowed-account-ids: '110156539003'
+          mask-aws-account-id: true
+      - name: Check for an existing CloudFront account-verification case
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/amaris-cloudfront-support.json"
+          errors="$RUNNER_TEMP/amaris-cloudfront-support.stderr"
+          trap 'rm -f "$response" "$errors"' EXIT
+          if aws support describe-cases --region us-east-1 --no-include-communications \
+            --include-resolved-cases --after-time "$(date -u --date='30 days ago' +%FT%TZ)" \
+            --output json > "$response" 2> "$errors"; then
+            jq '[.cases[] | select(.subject | test("cloudfront"; "i") and test("verif|activat|access"; "i")) |
+              {case: .displayId, status}]' "$response"
+          elif grep -q 'SubscriptionRequiredException' "$errors"; then
+            echo 'AWS Support case lookup requires a supported plan.'
+          else
+            echo 'The staging credentials could not read AWS Support cases.'
+          fi
+      - name: Provision the private CloudFront origin and signing key
+        id: cdn
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet boto3 cfn-lint
+          cfn-lint --regions eu-north-1 --template deploy/aws/course-video-cdn/stack.yml
+          python deploy/aws/course-video-cdn/provision.py
+      - name: Report provisioning failures
+        if: failure()
+        run: |
+          aws cloudformation describe-stack-events --stack-name amaris-staging-course-video-cdn --output json |
+            jq '[.StackEvents[]|select(.ResourceStatus|endswith("FAILED"))|{LogicalResourceId,ResourceStatusReason}][:7]'
